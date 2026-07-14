@@ -29,6 +29,7 @@ pub(crate) struct SameControllerSacrificeShape {
 pub(crate) struct GraveyardCastReplacementShape {
     pub(crate) without_paying_mana_cost: bool,
     pub(crate) includes_artifact: bool,
+    pub(crate) artifact_first: bool,
     pub(crate) mana_value_limit: Option<i32>,
 }
 
@@ -296,6 +297,55 @@ const MANA_COMPARISONS: &[&[&str]] = &[
     &["less", "than", "or", "equal", "to"],
 ];
 
+const FILTERED_FUTURE_EXILE_THIS_TURN: &[&str] = &[
+    "if",
+    "a",
+    "permanent",
+    "you",
+    "control",
+    "would",
+    "be",
+    "put",
+    "into",
+    "a",
+    "graveyard",
+    "from",
+    "the",
+    "battlefield",
+    "this",
+    "turn",
+    "exile",
+    "it",
+    "instead",
+];
+const RETURN_LINKED_AT_NEXT_END_STEP: &[&str] = &[
+    "return",
+    "it",
+    "to",
+    "the",
+    "battlefield",
+    "under",
+    "its",
+    "owners",
+    "control",
+    "at",
+    "the",
+    "beginning",
+    "of",
+    "the",
+    "next",
+    "end",
+    "step",
+];
+
+pub(crate) fn is_filtered_future_exile_return_next_end_step_shape(
+    replacement: &[OwnedLexToken],
+    delayed_return: &[OwnedLexToken],
+) -> bool {
+    matches_complete_content_sequence(replacement, &[FILTERED_FUTURE_EXILE_THIS_TURN])
+        && matches_complete_content_sequence(delayed_return, &[RETURN_LINKED_AT_NEXT_END_STEP])
+}
+
 fn parse_fixed_limit_word(input: &mut LexStream<'_>) -> WResult<i32> {
     let token = super::next_word(input)?;
     let word = token.parser_text();
@@ -352,6 +402,11 @@ pub(crate) fn parse_graveyard_cast_replacement_shape(
     Some(GraveyardCastReplacementShape {
         without_paying_mana_cost: contains_sequence_phrase(cast, WITHOUT_MANA),
         includes_artifact: contains_sequence_word(cast, "artifact"),
+        artifact_first: cast
+            .iter()
+            .position(|token| token.is_word("artifact"))
+            .zip(cast.iter().position(|token| token.is_word("instant")))
+            .is_some_and(|(artifact, instant)| artifact < instant),
         mana_value_limit: mana_value_limit(cast),
     })
 }
@@ -515,6 +570,7 @@ mod tests {
         .unwrap();
         assert_eq!(shape.mana_value_limit, Some(3));
         assert!(shape.includes_artifact);
+        assert!(shape.artifact_first);
         assert!(shape.without_paying_mana_cost);
         assert_eq!(
             parse_return_tagged_battlefield_shape(&lex(
@@ -522,5 +578,13 @@ mod tests {
             )),
             Some(ReturnTaggedBattlefieldShape { tapped: true })
         );
+        assert!(is_filtered_future_exile_return_next_end_step_shape(
+            &lex(
+                "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead"
+            ),
+            &lex(
+                "Return it to the battlefield under its owner's control at the beginning of the next end step"
+            ),
+        ));
     }
 }

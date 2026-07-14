@@ -56,6 +56,7 @@ pub(crate) enum CounterCountPrefixShape<'a> {
     NumberOf {
         value_tokens: Option<&'a [OwnedLexToken]>,
         equal_to_difference: bool,
+        equal_to_after_target: bool,
     },
     ExistingCounterEqual {
         value_tokens: &'a [OwnedLexToken],
@@ -330,9 +331,15 @@ pub(crate) fn parse_counter_count_prefix_shape(
         primitives::parse_prefix(tokens, primitives::phrase(&["a", "number", "of"]).void())
     {
         let equal = equal_value_shape(tokens);
+        let equal_to_after_target = primitives::find_prefix(tokens, || primitives::kw("on").void())
+            .zip(primitives::find_prefix(tokens, || {
+                primitives::phrase(&["equal", "to"]).void()
+            }))
+            .is_some_and(|((on_idx, _, _), (equal_idx, _, _))| on_idx < equal_idx);
         return CounterCountPrefixShape::NumberOf {
             value_tokens: equal.map(|(value_tokens, _)| value_tokens),
             equal_to_difference: equal.is_some_and(|(_, difference)| difference),
+            equal_to_after_target,
         };
     }
     if filters::parse_counter_type_from_tokens(tokens).is_some()

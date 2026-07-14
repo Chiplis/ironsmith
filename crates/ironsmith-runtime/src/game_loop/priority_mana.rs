@@ -250,6 +250,22 @@ pub(super) fn preferred_auto_pip_choice(
     None
 }
 
+pub(super) fn selectable_mana_pip_option(
+    option: &ManaPipPaymentOption,
+) -> crate::decisions::context::SelectableOption {
+    let selectable =
+        crate::decisions::context::SelectableOption::new(option.index, &option.description);
+    match option.action {
+        ManaPipPaymentAction::ActivateManaAbility { source_id, .. } => {
+            selectable.with_object(source_id)
+        }
+        ManaPipPaymentAction::PayViaAlternative { permanent_id, .. } => {
+            selectable.with_object(permanent_id)
+        }
+        ManaPipPaymentAction::UseFromPool(_) | ManaPipPaymentAction::PayLife(_) => selectable,
+    }
+}
+
 /// Build payment options for a single mana pip.
 pub(super) fn build_pip_payment_options(
     game: &GameState,
@@ -681,6 +697,7 @@ fn add_policy_pool_options_for_required(
 pub(super) struct SpentManaInfo {
     symbol: crate::mana::ManaSymbol,
     source: ObjectId,
+    source_snapshot: Option<ObjectSnapshot>,
     source_chosen_creature_type: Option<crate::types::Subtype>,
     restrictions: Vec<crate::ability::ManaUsageRestriction>,
 }
@@ -1074,32 +1091,51 @@ fn spend_pool_symbol_common(
             .map(|(idx, unit)| (idx, restricted_unit_priority(game, unit, payment_source)))
     });
 
-    let player_obj = game.player_mut(player)?;
-    if let Some((idx, priority)) = payable_restricted
-        && !(unrestricted_available && priority >= 2)
-    {
-        if !player_obj.mana_pool.remove(symbol, 1) {
+    let (source, tracked_snapshot, source_chosen_creature_type, restrictions) = {
+        let player_obj = game.player_mut(player)?;
+        if let Some((idx, priority)) = payable_restricted
+            && !(unrestricted_available && priority >= 2)
+        {
+            if !player_obj.mana_pool.remove(symbol, 1) {
+                return None;
+            }
+            let unit = player_obj.restricted_mana.remove(idx);
+            let tracked = player_obj.take_mana_source_provenance(symbol, true, Some(unit.source));
+            (
+                unit.source,
+                tracked.and_then(|tracked| tracked.snapshot),
+                unit.source_chosen_creature_type,
+                unit.restrictions,
+            )
+        } else if unrestricted_available && player_obj.mana_pool.remove(symbol, 1) {
+            let tracked = player_obj.take_mana_source_provenance(symbol, false, None);
+            (
+                tracked
+                    .as_ref()
+                    .map(|tracked| tracked.source)
+                    .unwrap_or_else(|| ObjectId::from_raw(0)),
+                tracked.and_then(|tracked| tracked.snapshot),
+                None,
+                Vec::new(),
+            )
+        } else {
             return None;
         }
-        let unit = player_obj.restricted_mana.remove(idx);
-        return Some(SpentManaInfo {
-            symbol,
-            source: unit.source,
-            source_chosen_creature_type: unit.source_chosen_creature_type,
-            restrictions: unit.restrictions,
-        });
-    }
+    };
 
-    if unrestricted_available && player_obj.mana_pool.remove(symbol, 1) {
-        return Some(SpentManaInfo {
-            symbol,
-            source: ObjectId::from_raw(0),
-            source_chosen_creature_type: None,
-            restrictions: Vec::new(),
-        });
-    }
-
-    None
+    let source_snapshot = tracked_snapshot.or_else(|| {
+        (source != ObjectId::from_raw(0))
+            .then(|| game.object(source))
+            .flatten()
+            .map(|source_obj| ObjectSnapshot::from_object(source_obj, game))
+    });
+    Some(SpentManaInfo {
+        symbol,
+        source,
+        source_snapshot,
+        source_chosen_creature_type,
+        restrictions,
+    })
 }
 
 pub(super) fn apply_spent_mana_bonuses(
@@ -1110,6 +1146,18 @@ pub(super) fn apply_spent_mana_bonuses(
     let Some(source_id) = payment_source else {
         return;
     };
+    if let Some(source_snapshot) = &spent.source_snapshot
+        && let Some(source_obj) = game.object_mut(source_id)
+        && source_obj.zone == Zone::Stack
+    {
+        source_obj
+            .cast_tagged_objects
+            .entry(crate::tag::TagKey::from(
+                ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
+            ))
+            .or_default()
+            .push(source_snapshot.clone());
+    }
     let unit = crate::ability::RestrictedManaUnit {
         symbol: spent.symbol,
         source: spent.source,
@@ -1513,8 +1561,9 @@ pub(super) fn execute_pip_payment_action(
                 .player(player)
                 .map(|player_obj| player_obj.mana_pool.clone());
             let mut source_policy = mana_spend_policy.clone();
-            source_policy.allow_any_color |=
-                game.can_spend_mana_as_any_color_from_mana_source(player, source, *source_id);
+            if game.can_spend_mana_as_any_color_from_mana_source(player, source, *source_id) {
+                source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+            }
             let mana_color_restriction = pip_mana_color_restriction(pip, &source_policy);
             let emitted_events =
                 crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
@@ -2294,6 +2343,10 @@ pub(super) fn execute_pending_mana_ability(
     use crate::costs::CostContext;
     use crate::effects::ExecutionContext;
 
+    let source_snapshot = game
+        .object(pending.source)
+        .map(|obj| ObjectSnapshot::from_object(obj, game));
+
     // Pay the mana cost
     if !game.try_pay_mana_cost_with_reason(
         pending.activator,
@@ -2318,9 +2371,6 @@ pub(super) fn execute_pending_mana_ability(
     drain_pending_trigger_events(game, trigger_queue);
 
     // Add fixed mana to player's pool
-    let source_snapshot = game
-        .object(pending.source)
-        .map(|obj| ObjectSnapshot::from_object(obj, game));
     let mana_to_add = crate::events::mana::apply_mana_replacements(
         game,
         pending.source,
@@ -2335,14 +2385,21 @@ pub(super) fn execute_pending_mana_ability(
         if let Some(player_obj) = game.player_mut(pending.activator) {
             for symbol in &mana_to_add {
                 if pending.mana_usage_restrictions.is_empty() {
-                    player_obj.mana_pool.add(*symbol, 1);
+                    player_obj.add_unrestricted_mana(
+                        *symbol,
+                        pending.source,
+                        source_snapshot.clone(),
+                    );
                 } else {
-                    player_obj.add_restricted_mana(crate::ability::RestrictedManaUnit {
-                        symbol: *symbol,
-                        source: pending.source,
-                        source_chosen_creature_type: pending.mana_source_chosen_creature_type,
-                        restrictions: pending.mana_usage_restrictions.clone(),
-                    });
+                    player_obj.add_restricted_mana_with_snapshot(
+                        crate::ability::RestrictedManaUnit {
+                            symbol: *symbol,
+                            source: pending.source,
+                            source_chosen_creature_type: pending.mana_source_chosen_creature_type,
+                            restrictions: pending.mana_usage_restrictions.clone(),
+                        },
+                        source_snapshot.clone(),
+                    );
                 }
             }
         }
@@ -3973,7 +4030,10 @@ pub(super) fn finalize_spell_cast(
     chosen_modes: Option<Vec<usize>>,
     mut mana_spent_to_cast: ManaPool,
     keyword_payment_contributions: Vec<KeywordPaymentContribution>,
-    stack_entry_tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    mut stack_entry_tagged_objects: std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<ObjectSnapshot>,
+    >,
     stack_entry_effect_outcomes: std::collections::HashMap<
         crate::effect::EffectId,
         crate::effect::EffectOutcome,
@@ -3984,7 +4044,7 @@ pub(super) fn finalize_spell_cast(
     provenance: ProvNodeId,
     _decision_maker: &mut impl DecisionMaker,
 ) -> Result<SpellCastResult, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method;
+    use crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone;
     let _ = payment_trace;
 
     // Get the mana cost, alternative additional cost, and exile count based on casting method.
@@ -4060,14 +4120,16 @@ pub(super) fn finalize_spell_cast(
     // Calculate effective cost and Delve exile count
     let (mut effective_cost, delve_exile_count) = if let Some(ref base_cost) = base_mana_cost {
         if let Some(obj) = game.object(spell_id) {
-            let eff_cost = calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
-                game,
-                caster,
-                obj,
-                base_cost,
-                &targets,
-                &casting_method,
-            );
+            let eff_cost =
+                calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone(
+                    game,
+                    caster,
+                    obj,
+                    base_cost,
+                    &targets,
+                    &casting_method,
+                    from_zone,
+                );
             let delve_count = crate::decision::calculate_delve_exile_count_with_targets(
                 game,
                 caster,
@@ -4267,6 +4329,18 @@ pub(super) fn finalize_spell_cast(
                 .grant_cast_uses_this_turn
                 .insert((caster, *source));
         }
+    }
+
+    // Preserve mana-source LKI on the stack entry so the resolved permanent can
+    // evaluate "for each mana from ... spent to cast it" replacement effects.
+    let mana_sources_tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+    let spent_mana_sources = game
+        .object(new_id)
+        .and_then(|spell_obj| spell_obj.cast_tagged_objects.get(&mana_sources_tag))
+        .cloned()
+        .unwrap_or_default();
+    if !spent_mana_sources.is_empty() {
+        stack_entry_tagged_objects.insert(mana_sources_tag, spent_mana_sources);
     }
 
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes

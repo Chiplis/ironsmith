@@ -125,7 +125,7 @@ struct SourceStaticEffectsKey {
     object_revision: u64,
     zone: Zone,
     controller: crate::ids::PlayerId,
-    entry_timestamp: Option<u64>,
+    object_timestamp: Option<u64>,
     text_overlay_revision: Option<u64>,
 }
 
@@ -279,11 +279,11 @@ pub fn generate_continuous_effects_from_static_abilities(
                     let mut ability_effects =
                         static_ability.generate_effects(object_id, controller, game);
                     // Static ability effect timestamps come from the source object's
-                    // current-zone entry timestamp (CR 613.7a/613.7d behavior).
+                    // current timestamp, including attachment and face changes.
                     if let Some(ts) = game
                         .effect_store
                         .continuous_effects
-                        .get_entry_timestamp(object_id)
+                        .get_object_timestamp(object_id)
                     {
                         for effect in &mut ability_effects {
                             effect.timestamp = ts;
@@ -341,10 +341,10 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
             object_revision: object.last_modified,
             zone,
             controller,
-            entry_timestamp: game
+            object_timestamp: game
                 .effect_store
                 .continuous_effects
-                .get_entry_timestamp(object_id),
+                .get_object_timestamp(object_id),
             text_overlay_revision: text_box_scope
                 .includes(object_id)
                 .then_some(text_overlay_revision),
@@ -421,7 +421,7 @@ fn generate_static_effects_for_source(
             if let Some(ts) = game
                 .effect_store
                 .continuous_effects
-                .get_entry_timestamp(object_id)
+                .get_object_timestamp(object_id)
             {
                 for effect in &mut ability_effects {
                     effect.timestamp = ts;

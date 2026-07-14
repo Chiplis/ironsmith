@@ -135,10 +135,16 @@ export class WasmGame {
      * Replace game state with demo decks and no battlefield/stack state.
      */
     loadDemoDecks(): void;
-    manabrewCommandFromPromptOutput(output: any, binding: any): any;
-    manabrewPrompt(prompt_id: string): any;
+    manabrewApplyDirective(player: number, directive: any): any;
+    /**
+     * Deprecated alias for a spectator-safe typed view.
+     */
     manabrewPublicState(): any;
-    manabrewView(prompt_id: string): any;
+    manabrewRespond(player: number, prompt_id: number, output: any): any;
+    /**
+     * Build a typed player-specific view. Passing no viewer produces a spectator-safe public view.
+     */
+    manabrewView(viewer?: number | null): any;
     /**
      * Move a hand card onto the battlefield with the shared morph-style
      * face-down overlay. This is used by ported test harnesses that set up a
@@ -320,10 +326,10 @@ export interface InitOutput {
     readonly wasmgame_registerManabrewDeckSources: (a: number, b: any) => [number, number, number];
     readonly wasmgame_validateManabrewMatchConfig: (a: number, b: any) => [number, number, number];
     readonly wasmgame_startManabrewMatch: (a: number, b: any) => [number, number, number];
-    readonly wasmgame_manabrewView: (a: number, b: number, c: number) => [number, number, number];
+    readonly wasmgame_manabrewView: (a: number, b: number) => [number, number, number];
     readonly wasmgame_manabrewPublicState: (a: number) => [number, number, number];
-    readonly wasmgame_manabrewPrompt: (a: number, b: number, c: number) => [number, number, number];
-    readonly wasmgame_manabrewCommandFromPromptOutput: (a: number, b: any, c: any) => [number, number, number];
+    readonly wasmgame_manabrewRespond: (a: number, b: number, c: number, d: any) => [number, number, number];
+    readonly wasmgame_manabrewApplyDirective: (a: number, b: number, c: any) => [number, number, number];
     readonly __wbg_wasmgame_free: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

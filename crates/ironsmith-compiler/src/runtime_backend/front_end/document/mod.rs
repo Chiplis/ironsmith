@@ -730,6 +730,14 @@ fn trigger_presentation_from_preprocessed_line(
         .or_else(|| trigger_presentation_from_line_tokens(&line.tokens))
 }
 
+pub(super) fn activated_presentation_from_preprocessed_line(
+    line: &PreprocessedLine,
+) -> Option<PresentationLabel> {
+    let (label, _, _) = split_label_prefix_lexed(&line.info.source_tokens)
+        .or_else(|| split_label_prefix_lexed(&line.tokens))?;
+    Some(PresentationLabel::AbilityWord(label))
+}
+
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
     split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens)).is_some_and(
         |(label, label_tokens, _)| {
@@ -2573,6 +2581,29 @@ mod tests {
     }
 
     #[test]
+    fn triggered_conditional_split_preserves_negative_attack_history_gates() {
+        for (text, expected) in [
+            (
+                "At the beginning of your end step, if this creature didn't attack this turn, put a +1/+1 counter on it.",
+                crate::cards::builders::PredicateAst::Not(Box::new(
+                    crate::cards::builders::PredicateAst::SourceAttackedThisTurn,
+                )),
+            ),
+            (
+                "At the beginning of your end step, if you didn't attack with a creature this turn, sacrifice this Aura.",
+                crate::cards::builders::PredicateAst::Not(Box::new(
+                    crate::cards::builders::PredicateAst::YouAttackedThisTurn,
+                )),
+            ),
+        ] {
+            let line = single_preprocessed_line(text);
+            let parsed = parse_triggered_line_cst(&line)
+                .unwrap_or_else(|err| panic!("negative attack gate should parse: {err}"));
+            assert_eq!(parsed.intervening_if, Some(expected), "{text}");
+        }
+    }
+
+    #[test]
     fn triggered_conditional_split_preserves_named_label_unpaid_gate() {
         let line = single_preprocessed_line(
             "When this creature enters, if tribute wasn't paid, it gains haste until end of turn.",
@@ -2655,6 +2686,25 @@ mod tests {
             trigger_presentation_from_line_tokens(&tokens),
             Some(PresentationLabel::AbilityWord("Mold Earth".to_string()))
         );
+    }
+
+    #[test]
+    fn triggered_presentation_label_keeps_source_acronym_casing_after_dispatch()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "ED-E").card_types(vec![CardType::Creature]),
+            "ED-E My Love — Whenever you attack, draw a card.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Triggered(triggered)] => assert_eq!(
+                triggered.presentation,
+                Some(PresentationLabel::AbilityWord("ED-E My Love".to_string()))
+            ),
+            other => panic!("expected one labeled triggered line, got {other:?}"),
+        }
+        Ok(())
     }
 
     #[test]
@@ -3224,6 +3274,11 @@ fn normalize_activation_cost_tokens_for_builder(
     if !normalized_line_mentions_source_alias(builder, cost_text.as_str()) {
         return Ok(cost_tokens);
     }
+    // Keep a directly parseable named-source cost intact so the typed cost
+    // model can retain its Oracle-facing source-reference surface.
+    if parse_activation_cost_tokens_rewrite(&cost_tokens).is_ok() {
+        return Ok(cost_tokens);
+    }
     let Some(rewritten) = normalize_named_source_sentence_for_builder(builder, cost_text.as_str())
     else {
         return Ok(cost_tokens);
@@ -3462,6 +3517,10 @@ fn try_parse_labeled_line_dispatch(
     let is_named_label = is_named_ability_label(label.as_str());
     let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx)
         && labeled_choice_block_has_named_option_header(&preprocessed.items, idx);
+    let presentation = (!preserve_as_choice_label).then(|| {
+        activated_presentation_from_preprocessed_line(line)
+            .unwrap_or_else(|| PresentationLabel::AbilityWord(label.clone()))
+    });
     if document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some() {
         return Ok(None);
     }
@@ -3494,7 +3553,8 @@ fn try_parse_labeled_line_dispatch(
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
+                triggered.presentation = trigger_presentation_from_preprocessed_line(line)
+                    .or_else(|| Some(trigger_presentation(label_tokens, &label)));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -3513,7 +3573,8 @@ fn try_parse_labeled_line_dispatch(
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation = Some(trigger_presentation(label_tokens, &label));
+                triggered.presentation = trigger_presentation_from_preprocessed_line(line)
+                    .or_else(|| Some(trigger_presentation(label_tokens, &label)));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -3559,6 +3620,7 @@ fn try_parse_labeled_line_dispatch(
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
                         effect_parse_tokens,
+                        presentation: presentation.clone(),
                         chosen_option: preserve_as_choice_label
                             .then(|| {
                                 document_grammar::parse_chosen_option_context_tokens(label_tokens)
@@ -3663,6 +3725,7 @@ fn try_parse_labeled_line_dispatch(
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
                         effect_parse_tokens,
+                        presentation,
                         chosen_option: preserve_as_choice_label
                             .then(|| {
                                 document_grammar::parse_chosen_option_context_tokens(label_tokens)
@@ -4099,6 +4162,7 @@ pub(crate) fn parse_document_cst(
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
                         effect_parse_tokens,
+                        presentation: None,
                         chosen_option: None,
                     });
                     trace_cst_line(&cst);

@@ -14,6 +14,7 @@ const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
 pub(crate) enum MetadataLine {
     ManaCost(String),
     TypeLine(String),
+    FirstPrintedSet(String),
     PowerToughness(String),
     Loyalty(String),
     Defense(String),
@@ -38,6 +39,7 @@ pub(crate) struct StatementLineSemanticFacts {
     pub(crate) instead_followup: InsteadFollowupFacts,
     pub(crate) trailing_instead_if_predicate: Option<PredicateAst>,
     pub(crate) replacement_surfaces: Vec<StatementReplacementSurfaceKind>,
+    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
     pub(crate) creature_type_choice_buff: bool,
     pub(crate) leading_condition_intro: Option<StatementConditionIntro>,
 }
@@ -48,6 +50,7 @@ impl Default for StatementLineSemanticFacts {
             instead_followup: InsteadFollowupFacts::default(),
             trailing_instead_if_predicate: None,
             replacement_surfaces: Vec::new(),
+            presentation_label: None,
             creature_type_choice_buff: false,
             leading_condition_intro: None,
         }
@@ -235,6 +238,7 @@ impl CompileContext {
 pub(crate) struct EffectLoweringContext {
     ids: CompileContext,
     frame: LoweringFrame,
+    reserved_object_result_tag: Option<String>,
 }
 
 impl Deref for EffectLoweringContext {
@@ -256,6 +260,7 @@ impl EffectLoweringContext {
         Self {
             ids: CompileContext::new(),
             frame: LoweringFrame::default(),
+            reserved_object_result_tag: None,
         }
     }
 
@@ -263,6 +268,7 @@ impl EffectLoweringContext {
         Self {
             ids: CompileContext::from_id_gen(id_gen),
             frame,
+            reserved_object_result_tag: None,
         }
     }
 
@@ -311,5 +317,18 @@ impl EffectLoweringContext {
 
     pub(crate) fn next_tag(&mut self, prefix: &str) -> String {
         self.ids.next_tag(prefix)
+    }
+
+    pub(crate) fn reserve_object_result_tag(&mut self, tag: Option<String>) {
+        self.reserved_object_result_tag = tag;
+    }
+
+    pub(crate) fn take_reserved_object_result_tag(&mut self, prefix: &str) -> Option<String> {
+        let prefix = format!("{prefix}_");
+        self.reserved_object_result_tag
+            .as_ref()
+            .is_some_and(|tag| tag.starts_with(&prefix))
+            .then(|| self.reserved_object_result_tag.take())
+            .flatten()
     }
 }

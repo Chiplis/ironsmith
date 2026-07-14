@@ -1210,8 +1210,6 @@ pub(super) fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast(
             "you may cast an instant or sorcery spell from your hand with mana value equal to the number of charge counters on this artifact without paying its mana cost"
         ) || rendered_lower.contains(
             "you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost"
-        ) || rendered_lower.contains(
-            "you may cast a spell matching instant or sorcery with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost"
         ),
         "expected counter-gated free-cast clause in compiled output, got {rendered}"
     );

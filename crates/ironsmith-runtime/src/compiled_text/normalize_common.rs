@@ -53,6 +53,9 @@ fn is_source_exiled_count_filter(filter: &ObjectFilter) -> bool {
 
     let mut base = filter.clone();
     base.zone = None;
+    // Source-reference wording (for example, "this enchantment") is
+    // presentation metadata on source-exiled threshold predicates.
+    base.source_surface = None;
     base.tagged_constraints.retain(|constraint| {
         !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
@@ -129,6 +132,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 format!("target {}", strip_leading_article(&inner_text))
             }
         }
+        PlayerFilter::AliasedTarget(_) => "that player".to_string(),
         PlayerFilter::Specific(_) => "that player".to_string(),
         PlayerFilter::MostLifeTied => {
             "a player with the most life or tied for most life".to_string()
@@ -176,7 +180,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Active => "that player".to_string(),
         PlayerFilter::Defending => "the defending player".to_string(),
         PlayerFilter::Attacking => "the attacking player".to_string(),
-        PlayerFilter::DamagedPlayer => "the damaged player".to_string(),
+        PlayerFilter::DamagedPlayer => "that player".to_string(),
         PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
@@ -206,7 +210,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
             "its controller".to_string()
         }
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_)) => {
+            "its controller".to_string()
+        }
         PlayerFilter::OwnerOf(crate::target::ObjectRef::Target) => "its owner".to_string(),
+        PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(_)) => "its owner".to_string(),
         PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
         PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),
         PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -220,7 +228,9 @@ pub(super) fn describe_player_counter_holder(filter: &PlayerFilter) -> String {
         PlayerFilter::You => "you have".to_string(),
         PlayerFilter::Opponent => "an opponent has".to_string(),
         PlayerFilter::Any => "a player has".to_string(),
-        PlayerFilter::Target(_) | PlayerFilter::Specific(_) => "that player has".to_string(),
+        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) | PlayerFilter::Specific(_) => {
+            "that player has".to_string()
+        }
         other => format!("{} has", describe_player_filter(other)),
     }
 }
@@ -235,10 +245,167 @@ pub(super) fn describe_player_set_filter(filter: &PlayerFilter) -> String {
     }
 }
 
-pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String {
-    if filter == &ObjectFilter::default() {
-        return "spell".to_string();
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CastSpellFilterContext {
+    Standalone,
+    EnclosingPermission,
+}
+
+fn collapse_simple_cast_spell_alternatives(filter: &ObjectFilter) -> Option<ObjectFilter> {
+    if filter.any_of.is_empty() {
+        return None;
     }
+
+    let mut collapsed = filter.clone();
+    let alternatives = std::mem::take(&mut collapsed.any_of);
+    for mut alternative in alternatives {
+        let card_types = std::mem::take(&mut alternative.card_types);
+        let subtypes = std::mem::take(&mut alternative.subtypes);
+        if card_types.len() + subtypes.len() != 1 || alternative != ObjectFilter::default() {
+            return None;
+        }
+        collapsed.card_types.extend(card_types);
+        collapsed.subtypes.extend(subtypes);
+    }
+    if !collapsed.card_types.is_empty() && !collapsed.subtypes.is_empty() {
+        collapsed.type_or_subtype_union = true;
+    }
+    Some(collapsed)
+}
+
+fn describe_cast_spell_card_types(filter: &ObjectFilter) -> Option<String> {
+    if !filter.all_card_types.is_empty() {
+        return Some(
+            filter
+                .all_card_types
+                .iter()
+                .map(|card_type| card_type.name())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+    }
+    if filter.card_types.is_empty() {
+        return None;
+    }
+
+    let permanent_types = [
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    if filter.card_types.len() == permanent_types.len()
+        && permanent_types
+            .iter()
+            .all(|card_type| filter.card_types.contains(card_type))
+    {
+        return Some("permanent".to_string());
+    }
+
+    Some(join_with_or(
+        &filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string())
+            .collect::<Vec<_>>(),
+    ))
+}
+
+fn describe_cast_spell_subtypes(filter: &ObjectFilter) -> Option<String> {
+    if filter.subtypes.is_empty() {
+        return None;
+    }
+
+    let outlaw_pack = [
+        Subtype::Assassin,
+        Subtype::Mercenary,
+        Subtype::Pirate,
+        Subtype::Rogue,
+        Subtype::Warlock,
+    ];
+    let mut remaining = filter.subtypes.clone();
+    let mut subtype_words = Vec::new();
+    if outlaw_pack
+        .iter()
+        .all(|subtype| remaining.contains(subtype))
+    {
+        subtype_words.push("outlaw".to_string());
+        remaining.retain(|subtype| !outlaw_pack.contains(subtype));
+    }
+    subtype_words.extend(remaining.iter().map(std::string::ToString::to_string));
+    Some(join_with_or(&subtype_words))
+}
+
+fn place_cast_spell_types_before_noun(description: String, filter: &ObjectFilter) -> String {
+    let card_types = describe_cast_spell_card_types(filter);
+    let subtypes = describe_cast_spell_subtypes(filter);
+
+    match (card_types, subtypes) {
+        (None, Some(subtypes)) => description.replacen(
+            &format!("spell {subtypes}"),
+            &format!("{subtypes} spell"),
+            1,
+        ),
+        (Some(card_types), Some(subtypes)) if filter.type_or_subtype_union => description.replacen(
+            &format!("{card_types} spell or {subtypes}"),
+            &format!("{card_types} or {subtypes} spell"),
+            1,
+        ),
+        (Some(card_types), Some(subtypes)) => {
+            let already_ordered = format!("{subtypes} {card_types} spell");
+            if description.contains(&already_ordered) {
+                description
+            } else {
+                description.replacen(
+                    &format!("{card_types} spell {subtypes}"),
+                    &already_ordered,
+                    1,
+                )
+            }
+        }
+        _ => description,
+    }
+}
+
+fn describe_cast_spell_origin(filter: &ObjectFilter) -> Option<String> {
+    let zone = filter.zone?;
+    let possessive_zone = |zone_name: &str| {
+        filter
+            .owner
+            .as_ref()
+            .map(|owner| {
+                format!(
+                    "from {} {zone_name}",
+                    describe_possessive_player_filter(owner)
+                )
+            })
+            .unwrap_or_else(|| format!("from a {zone_name}"))
+    };
+
+    match zone {
+        Zone::Stack => None,
+        Zone::Battlefield => Some("from the battlefield".to_string()),
+        Zone::Graveyard if filter.single_graveyard && filter.owner.is_none() => {
+            Some("from a single graveyard".to_string())
+        }
+        Zone::Graveyard => Some(possessive_zone("graveyard")),
+        Zone::Hand => Some(possessive_zone("hand")),
+        Zone::Library => Some(possessive_zone("library")),
+        Zone::Exile => Some("from exile".to_string()),
+        Zone::Command => Some("from the command zone".to_string()),
+        Zone::OutsideGame => Some("from outside the game".to_string()),
+    }
+}
+
+pub(super) fn describe_cast_spell_filter(
+    filter: &ObjectFilter,
+    context: CastSpellFilterContext,
+) -> String {
+    let collapsed = collapse_simple_cast_spell_alternatives(filter);
+    let filter = collapsed.as_ref().unwrap_or(filter);
+
     if filter.name.as_deref() == Some("{chosen name}") {
         let mut base = filter.clone();
         base.name = None;
@@ -256,24 +423,59 @@ pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String 
             return "spell with the chosen name".to_string();
         }
     }
-    if filter == &ObjectFilter::default().without_type(CardType::Creature) {
-        return "noncreature spell".to_string();
-    }
-    if filter == &ObjectFilter::default().without_type(CardType::Artifact) {
-        return "nonartifact spell".to_string();
-    }
-    if filter == &ObjectFilter::default().without_subtype(Subtype::Phyrexian) {
-        return "non-Phyrexian spell".to_string();
+    let origin = if context == CastSpellFilterContext::Standalone {
+        describe_cast_spell_origin(filter)
+    } else {
+        None
+    };
+    let mut projected = filter.clone();
+    projected.zone = Some(Zone::Stack);
+    projected.stack_kind = Some(StackObjectKind::Spell);
+    projected
+        .excluded_card_types
+        .retain(|card_type| *card_type != CardType::Land);
+    if context == CastSpellFilterContext::EnclosingPermission || origin.is_some() {
+        projected.owner = None;
+        projected.single_graveyard = false;
     }
 
-    let fallback = filter.description();
-    if fallback.ends_with("spell") || fallback.ends_with("spells") {
-        fallback
-    } else if let Some(rest) = fallback.strip_prefix("spell matching ") {
-        format!("{rest} spell")
-    } else {
-        format!("spell matching {}", strip_leading_article(&fallback))
+    let mut description = place_cast_spell_types_before_noun(projected.description(), &projected);
+    if let Some(origin) = origin {
+        description.push(' ');
+        description.push_str(&origin);
     }
+    strip_leading_article(&description).to_string()
+}
+
+pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String {
+    describe_cast_spell_filter(filter, CastSpellFilterContext::Standalone)
+}
+
+pub(super) fn pluralize_cast_spell_description(description: &str) -> String {
+    let bytes = description.as_bytes();
+    let noun_starts = description
+        .match_indices("spell")
+        .filter_map(|(start, _)| {
+            let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
+            let after = start + "spell".len();
+            let after_is_boundary = after == bytes.len()
+                || (!bytes[after].is_ascii_alphanumeric() && bytes[after] != b'\'');
+            (before_is_boundary && after_is_boundary).then_some(start)
+        })
+        .collect::<Vec<_>>();
+    if noun_starts.is_empty() {
+        return description.to_string();
+    }
+
+    let mut plural = String::with_capacity(description.len() + noun_starts.len());
+    let mut cursor = 0;
+    for noun_start in noun_starts {
+        plural.push_str(&description[cursor..noun_start]);
+        plural.push_str("spells");
+        cursor = noun_start + "spell".len();
+    }
+    plural.push_str(&description[cursor..]);
+    plural
 }
 
 pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {
@@ -287,14 +489,7 @@ pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {
         return "spells of the chosen type".to_string();
     }
 
-    let singular = describe_cast_limit_spell_filter(filter);
-    if singular.ends_with("spells") {
-        singular
-    } else if singular.ends_with("spell") {
-        format!("{singular}s")
-    } else {
-        format!("{singular} spells")
-    }
+    pluralize_cast_spell_description(&describe_cast_limit_spell_filter(filter))
 }
 
 pub(super) fn strip_leading_article(text: &str) -> &str {
@@ -408,6 +603,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Draw"
             | "Exile"
             | "Fight"
+            | "Flip"
             | "Gain"
             | "Lose"
             | "Mill"
@@ -461,6 +657,7 @@ fn should_lowercase_trigger_effect_tail(tail: &str) -> bool {
             | "Draw"
             | "Exile"
             | "Fight"
+            | "Flip"
             | "Gain"
             | "Lose"
             | "Mill"
@@ -493,6 +690,15 @@ pub(super) fn describe_mana_pool_owner(filter: &PlayerFilter) -> String {
 }
 
 pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
+    if matches!(
+        filter,
+        PlayerFilter::DamagedPlayer
+            | PlayerFilter::AliasedTarget(_)
+            | PlayerFilter::AliasedOwnerOf(_)
+            | PlayerFilter::AliasedControllerOf(_)
+    ) {
+        return "their".to_string();
+    }
     let player = describe_player_filter(filter);
     if player == "you" || player == "target you" {
         "your".to_string()
@@ -505,9 +711,10 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
 
 pub(super) fn describe_possessive_graveyard_owner_filter(filter: &PlayerFilter) -> String {
     match filter {
-        PlayerFilter::OwnerOf(_)
+        PlayerFilter::AliasedTarget(_)
         | PlayerFilter::AliasedOwnerOf(_)
-        | PlayerFilter::AliasedControllerOf(_) => "that player's".to_string(),
+        | PlayerFilter::AliasedControllerOf(_) => "their".to_string(),
+        PlayerFilter::OwnerOf(_) => "that player's".to_string(),
         _ => describe_possessive_player_filter(filter),
     }
 }
@@ -665,6 +872,13 @@ pub(super) fn describe_token_color_words(
 }
 
 pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
+    describe_token_blueprint_with_presentation(token, None)
+}
+
+pub(super) fn describe_token_blueprint_with_presentation(
+    token: &CardDefinition,
+    ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
+) -> String {
     let card = &token.card;
     if card.subtypes.contains(&crate::types::Subtype::Role)
         && !card.name.trim().is_empty()
@@ -675,6 +889,14 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     let mut parts = Vec::new();
     let mut creature_name_prefix: Option<String> = None;
     let mut explicit_named_clause: Option<String> = None;
+    let has_characteristic_defining_pt = token.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
+        )
+    });
     let is_named_noncreature_subtype_token = !card.is_creature()
         && !card.name.trim().is_empty()
         && card.name.to_ascii_lowercase() != "token"
@@ -696,7 +918,11 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
         }
     }
 
-    if let Some(pt) = card.power_toughness {
+    if let Some(pt) = card.power_toughness
+        && !(has_characteristic_defining_pt
+            && matches!(pt.power, crate::card::PtValue::Fixed(0))
+            && matches!(pt.toughness, crate::card::PtValue::Fixed(0)))
+    {
         parts.push(format!(
             "{}/{}",
             describe_pt_value(pt.power),
@@ -770,15 +996,15 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 && name_lower != "token"
                 && name_lower != subtype_text.to_ascii_lowercase()
                 && !name_matches_any_subtype;
-            let use_name_for_creature = name_is_distinct
+            let use_name_as_prefix = name_is_distinct
                 && card
                     .supertypes
                     .contains(&crate::types::Supertype::Legendary);
-            if name_is_distinct && !use_name_for_creature {
+            if name_is_distinct && !use_name_as_prefix {
                 explicit_named_clause = Some(card.name.to_string());
             }
             let use_name_for_noncreature = false;
-            if use_name_for_creature {
+            if use_name_as_prefix {
                 creature_name_prefix = Some(card.name.to_string());
                 if !subtype_text.is_empty() {
                     parts.push(subtype_text);
@@ -873,7 +1099,11 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                     describe_inline_ability(ability).as_str(),
                 ));
             }
-            AbilityKind::Activated(_) => {
+            AbilityKind::Activated(activated) => {
+                if let Some(crew) = describe_structural_crew_keyword(activated) {
+                    keyword_texts.push(crew.to_ascii_lowercase());
+                    continue;
+                }
                 extra_ability_texts.push(quote_token_granted_ability_text(
                     describe_inline_ability(ability).as_str(),
                 ));
@@ -884,17 +1114,32 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     keyword_texts.dedup();
     extra_ability_texts.sort();
     extra_ability_texts.dedup();
+    strip_nonfinal_quoted_ability_periods(&mut extra_ability_texts);
     if !keyword_texts.is_empty() {
         text.push_str(" with ");
         text.push_str(&join_with_and(&keyword_texts));
     }
     if !extra_ability_texts.is_empty() {
         if keyword_texts.is_empty() {
-            if token_extra_abilities_prefer_with_clause(&extra_ability_texts) {
-                text.push_str(" with ");
-            } else {
-                text.push_str(". It has ");
+            match ability_presentation {
+                Some(ironsmith_core::TokenAbilityPresentation::InlineWith) => {
+                    text.push_str(" with ");
+                }
+                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence) => {
+                    text.push_str(". It has ");
+                }
+                None if token_extra_abilities_prefer_with_clause(&extra_ability_texts) => {
+                    text.push_str(" with ");
+                }
+                None => {
+                    text.push_str(". It has ");
+                }
             }
+        } else if matches!(
+            ability_presentation,
+            Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence)
+        ) {
+            text.push_str(". It has ");
         } else {
             text.push_str(" and ");
         }
@@ -969,6 +1214,7 @@ fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
             if ability.starts_with("\"Whenever ")
                 || ability.starts_with("\"When ")
                 || ability.starts_with("\"At ")
+                || ability.starts_with("\"This token")
             {
                 return true;
             }
@@ -976,7 +1222,18 @@ fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
                 "\"this token saddles mounts and crews vehicles as though its power were ",
             )
         }
-        _ => false,
+        abilities => abilities.iter().any(|ability| ability.starts_with("\"{")),
+    }
+}
+
+fn strip_nonfinal_quoted_ability_periods(abilities: &mut [String]) {
+    let Some((_, nonfinal)) = abilities.split_last_mut() else {
+        return;
+    };
+    for ability in nonfinal {
+        if let Some(without_period) = ability.strip_suffix(".\"") {
+            *ability = format!("{without_period}\"");
+        }
     }
 }
 
@@ -1164,10 +1421,29 @@ fn normalize_quoted_token_trigger_surface(text: &str) -> String {
     if !(text.starts_with("Whenever ") || text.starts_with("When ") || text.starts_with("At ")) {
         return text.to_string();
     }
-    let Some((trigger, effect)) = text.split_once(": ") else {
-        return text.to_string();
+    let normalize_self_pronoun = |trigger: &str, effect: &str| {
+        let effect = lowercase_first(effect);
+        if !trigger.contains("this token") {
+            return effect;
+        }
+        if let Some(rest) = effect.strip_prefix("that creature ") {
+            return format!("it {rest}");
+        }
+        if let Some(rest) = effect.strip_prefix("that creature's ") {
+            return format!("its {rest}");
+        }
+        effect
     };
-    format!("{trigger}, {}", lowercase_first(effect))
+    if let Some((trigger, effect)) = text.split_once(": ") {
+        return format!("{trigger}, {}", normalize_self_pronoun(trigger, effect));
+    }
+    if let Some((trigger, effect)) = text.split_once(", ")
+        && trigger.contains("this token")
+        && (effect.starts_with("that creature ") || effect.starts_with("that creature's "))
+    {
+        return format!("{trigger}, {}", normalize_self_pronoun(trigger, effect));
+    }
+    text.to_string()
 }
 
 fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
@@ -1289,12 +1565,19 @@ pub(super) fn normalize_third_person_verb_phrase(text: &str) -> String {
         ("lose ", "loses "),
         ("gain ", "gains "),
         ("draw ", "draws "),
+        ("put ", "puts "),
+        ("return ", "returns "),
+        ("move ", "moves "),
+        ("exile ", "exiles "),
         ("discard ", "discards "),
         ("sacrifice ", "sacrifices "),
         ("choose ", "chooses "),
         ("mill ", "mills "),
         ("scry ", "scries "),
         ("surveil ", "surveils "),
+        ("reveal ", "reveals "),
+        ("search ", "searches "),
+        ("shuffle ", "shuffles "),
     ];
     for (from, to) in replacements {
         if text.starts_with(from) {
@@ -2371,6 +2654,18 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
             let exile_tagged = format!("{exile} the tagged object '{tag}'");
             normalized = normalized.replace(&exile_tagged, "exile them");
         }
+        // Explicit destination-player surface hints can make a searched-card
+        // move render as "into your/their hand" rather than the older
+        // rules-level "into its owner's hand". Preserve that destination,
+        // but never leak the internal search tag into compiled text.
+        for put in ["put", "Put"] {
+            let put_tagged_prefix = format!("{put} the tagged object '{tag}' into ");
+            normalized = normalized.replace(&put_tagged_prefix, "put it into ");
+        }
+        for return_verb in ["return", "Return"] {
+            let return_tagged_prefix = format!("{return_verb} the tagged object '{tag}' to ");
+            normalized = normalized.replace(&return_tagged_prefix, "return it to ");
+        }
     }
     if let Some(compact) = compact_multi_zone_named_search_to_battlefield_surface(&normalized) {
         normalized = compact;
@@ -2429,6 +2724,22 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     }
     if let Some(compact) = compact_multi_zone_search_to_hand_surface(&normalized) {
         normalized = compact;
+    }
+    let lower = normalized.to_ascii_lowercase();
+    if (lower.contains("search your library and/or graveyard")
+        || lower.contains("search your library, hand")
+        || lower.contains("search your graveyard, hand"))
+        && lower.contains("if you do, shuffle your library")
+    {
+        normalized = normalized
+            .replace(
+                ". If you do, shuffle your library",
+                ". If you search your library this way, shuffle",
+            )
+            .replace(
+                ". if you do, shuffle your library",
+                ". if you search your library this way, shuffle",
+            );
     }
     normalized = normalized
         .replace(
@@ -2490,7 +2801,7 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
         };
         let name = title_case_card_name_fragment(name.trim());
         return Some(format!(
-            "{prefix}{replacement}{name}, reveal it, then put it into your hand. If you searched your library this way, shuffle."
+            "{prefix}{replacement}{name}, reveal it, and put it into your hand. If you search your library this way, shuffle."
         ));
     }
 
@@ -2516,6 +2827,16 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
         .or_else(|| {
             rest.strip_suffix(
                 ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle.",
+            )
+        })
+        .or_else(|| {
+            rest.strip_suffix(
+                ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library",
+            )
+        })
+        .or_else(|| {
+            rest.strip_suffix(
+                ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library.",
             )
         })
         .or_else(|| {
@@ -2556,6 +2877,16 @@ fn compact_multi_zone_search_to_hand_surface(line: &str) -> Option<String> {
             })
             .or_else(|| {
                 rest.strip_suffix(
+                    ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library",
+                )
+            })
+            .or_else(|| {
+                rest.strip_suffix(
+                    ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library.",
+                )
+            })
+            .or_else(|| {
+                rest.strip_suffix(
                     ". Reveal it. Put it into your hand. If you search your library this way, shuffle",
                 )
             })
@@ -2566,8 +2897,10 @@ fn compact_multi_zone_search_to_hand_surface(line: &str) -> Option<String> {
             })?;
         let mut selection = selection.trim().to_string();
         if !selection.contains(" card") {
-            if let Some(base) = selection.strip_suffix(" you own") {
-                selection = format!("{base} card you own");
+            if let Some(index) = selection.find(" with ") {
+                selection.insert_str(index, " card");
+            } else if let Some(index) = selection.find(" you own") {
+                selection.insert_str(index, " card");
             } else {
                 selection.push_str(" card");
             }
@@ -2636,6 +2969,46 @@ fn normalize_untap_target_creature_gets_and_gains_split(line: &str) -> Option<St
     Some(format!(
         "Untap target creature. It gets {pt_delta} and gains {keyword} until end of turn."
     ))
+}
+
+fn compact_same_subject_pt_then_gain_surface(line: &str) -> Option<String> {
+    let had_period = line.trim_end().ends_with('.');
+    let trimmed = line.trim().trim_end_matches('.');
+    for (pt_verb, gain_verb) in [
+        (" gets ", " gains "),
+        (" get ", " gain "),
+        (" has base power and toughness ", " gains "),
+        (" have base power and toughness ", " gain "),
+    ] {
+        let Some((head, rest)) = trimmed.split_once(pt_verb) else {
+            continue;
+        };
+        let Some((pt_delta, followup)) = rest.split_once(" until end of turn, then ") else {
+            continue;
+        };
+        let Some((followup_subject, keyword)) = followup.split_once(gain_verb) else {
+            continue;
+        };
+        let first_subject = head.rsplit([',', ':']).next()?.trim();
+        let Some((keyword, trailing)) = keyword.split_once(" until end of turn") else {
+            continue;
+        };
+        if !trailing.is_empty() && !trailing.starts_with(". Activate ") {
+            continue;
+        }
+        if pt_delta.is_empty()
+            || keyword.is_empty()
+            || !first_subject.eq_ignore_ascii_case(followup_subject.trim())
+        {
+            continue;
+        }
+        let period = if had_period { "." } else { "" };
+        return Some(format!(
+            "{head}{pt_verb}{pt_delta} and {} {keyword} until end of turn{trailing}{period}",
+            gain_verb.trim()
+        ));
+    }
+    None
 }
 
 fn normalize_this_creature_gets_gains_can_attack_surface(line: &str) -> Option<String> {
@@ -3078,6 +3451,9 @@ fn compact_delirium_exiled_card_same_name_search_exile(line: &str) -> Option<Str
 
 fn compact_count_based_power_boost(line: &str) -> Option<String> {
     let rest = line.strip_prefix("This creature gets +X/+0, where X is the number of ")?;
+    if rest.contains(" as long as ") {
+        return None;
+    }
     let rest = rest
         .trim_end_matches('.')
         .replacen(" cards ", " card ", 1)

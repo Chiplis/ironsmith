@@ -76,6 +76,8 @@ pub(crate) fn move_to_battlefield_with_options(
         return BattlefieldEntryOutcome::Prevented;
     }
 
+    game.add_battlefield_put_with_source_link(ctx.source, new_id);
+
     if let BattlefieldEntryController::Specific(controller) = options.controller {
         game.set_current_controller(new_id, controller);
     }

@@ -1,9 +1,11 @@
-//! Move an object to the top or bottom of its owner's library at its owner's choice.
+//! Move an object to the top or bottom of its owner's library at a specified player's choice.
 
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
+use crate::effects::helpers::{
+    resolve_objects_for_effect, resolve_player_filter, resolve_tagged_object_id,
+};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
@@ -107,7 +109,10 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
             };
             let stable_id = obj.stable_id;
             let from_zone = obj.zone;
-            let chooser = obj.owner;
+            let chooser = match &self.chooser {
+                Some(chooser) => resolve_player_filter(game, chooser, ctx)?,
+                None => obj.owner,
+            };
             let object_name = obj.name.to_string();
             let pre_snapshot =
                 ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
@@ -205,7 +210,7 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
     }
 
     fn target_description(&self) -> &'static str {
-        "target to move to library at its owner's choice"
+        "target to move to a chosen library position"
     }
 }
 
@@ -271,5 +276,27 @@ mod tests {
             game.players[1].library.last().copied(),
             Some(existing_library_card)
         );
+    }
+
+    #[test]
+    fn explicit_you_chooser_uses_effect_controller() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature =
+            game.create_object_from_card(&test_card(3, "Choice Target"), bob, Zone::Battlefield);
+
+        let source = game.new_object_id();
+        let mut dm = BottomChoiceDm { chooser: None };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect =
+            MoveToLibraryTopOrBottomChoiceEffect::new(ChooseSpec::SpecificObject(creature))
+                .with_chooser(crate::target::PlayerFilter::You);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("controller-chosen top-or-bottom move should execute");
+
+        assert_eq!(dm.chooser, Some(alice));
     }
 }

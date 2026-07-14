@@ -5,12 +5,12 @@ use crate::runtime_backend::front_end::lexer::lex_line;
 fn sacrifice_segments_preserve_source_and_choice_shapes() {
     let source = lex_line("sacrifice this creature", 0).unwrap();
     assert_eq!(
-        parse_sacrifice_segment_tokens(&source, |_| false).unwrap(),
-        ActivationCostSegmentCst::SacrificeSelf
+        parse_sacrifice_segment_tokens(&source, |_| None).unwrap(),
+        ActivationCostSegmentCst::SacrificeSelf { surface: None }
     );
     let chosen = lex_line("sacrifice up to two other artifacts", 0).unwrap();
     assert_eq!(
-        parse_sacrifice_segment_tokens(&chosen, |_| false).unwrap(),
+        parse_sacrifice_segment_tokens(&chosen, |_| None).unwrap(),
         ActivationCostSegmentCst::SacrificeChosen {
             count: ChoiceCount::up_to(2),
             filter: ObjectFilter {
@@ -22,15 +22,23 @@ fn sacrifice_segments_preserve_source_and_choice_shapes() {
 
     let dynamic = lex_line("sacrifice X Goats", 0).unwrap();
     let ActivationCostSegmentCst::SacrificeChosen { count, filter } =
-        parse_sacrifice_segment_tokens(&dynamic, |_| false).unwrap()
+        parse_sacrifice_segment_tokens(&dynamic, |_| None).unwrap()
     else {
         panic!("expected a typed dynamic sacrifice cost");
     };
     assert!(count.is_dynamic_x());
     assert_eq!(filter.subtypes, [crate::types::Subtype::Goat]);
 
+    let all = lex_line("sacrifice all lands", 0).unwrap();
+    assert_eq!(
+        parse_sacrifice_segment_tokens(&all, |_| None).unwrap(),
+        ActivationCostSegmentCst::SacrificeAll {
+            filter: ObjectFilter::land(),
+        }
+    );
+
     let missing = lex_line("sacrifice", 0).unwrap();
-    let error = parse_sacrifice_segment_tokens(&missing, |_| false).unwrap_err();
+    let error = parse_sacrifice_segment_tokens(&missing, |_| None).unwrap_err();
     let message = error.to_string().to_ascii_lowercase();
     assert!(message.contains("sacrifice"), "{message}");
     assert!(message.contains("filter"), "{message}");

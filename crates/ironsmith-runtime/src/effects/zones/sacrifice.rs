@@ -810,15 +810,18 @@ impl EffectExecutor for SacrificeTargetEffect {
     }
 
     fn is_sacrifice_source_cost(&self) -> bool {
-        matches!(self.target, ChooseSpec::Source)
+        matches!(self.target.unhinted(), ChooseSpec::Source)
     }
 
     fn cost_description(&self) -> Option<String> {
-        if matches!(self.target, ChooseSpec::Source) {
-            Some("Sacrifice this source".to_string())
-        } else {
-            None
-        }
+        matches!(self.target.unhinted(), ChooseSpec::Source).then(|| {
+            let subject = self
+                .target
+                .source_reference_surface()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this source".to_string());
+            format!("Sacrifice {subject}")
+        })
     }
 }
 
@@ -883,6 +886,22 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn named_source_sacrifice_cost_keeps_exact_source_surface() {
+        let target = ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ShortName("ED-E".to_string()),
+            ),
+        );
+        let sacrifice = SacrificeTargetEffect::new(target);
+
+        assert_eq!(
+            sacrifice.cost_description().as_deref(),
+            Some("Sacrifice ED-E")
+        );
+        assert!(sacrifice.is_sacrifice_source_cost());
     }
 
     fn create_creature_on_battlefield(

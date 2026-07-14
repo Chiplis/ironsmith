@@ -6,6 +6,7 @@ use winnow::token::{literal, rest, take_till};
 use super::super::super::lexer::{OwnedLexToken, TokenWordView};
 use super::super::leaf;
 use super::super::permission_shapes;
+use crate::cards::builders::PlayerAst;
 use crate::effect::Value;
 use crate::target::PlayerFilter;
 use crate::types::CardType;
@@ -360,6 +361,49 @@ pub(crate) fn parse_top_library_source(tokens: &[OwnedLexToken]) -> Option<Count
         &["top", "cards", "of", "their", "libraries"],
     ];
     parse_prefix(&words, PREFIXES)
+}
+
+pub(crate) fn parse_top_library_owner(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+    let words = TokenWordView::new(tokens).word_refs();
+    if find_phrase(
+        &words,
+        &[
+            &["of", "target", "opponent's", "library"],
+            &["of", "target", "opponents'", "library"],
+            &["of", "target", "opponent", "library"],
+            &["of", "target", "opponents", "library"],
+        ],
+    )
+    .is_some()
+    {
+        return Some(PlayerAst::TargetOpponent);
+    }
+    if find_phrase(
+        &words,
+        &[
+            &["of", "target", "player's", "library"],
+            &["of", "target", "players'", "library"],
+            &["of", "target", "player", "library"],
+            &["of", "target", "players", "library"],
+        ],
+    )
+    .is_some()
+    {
+        return Some(PlayerAst::Target);
+    }
+    if find_phrase(
+        &words,
+        &[
+            &["of", "that", "player's", "library"],
+            &["of", "that", "players", "library"],
+            &["of", "their", "library"],
+        ],
+    )
+    .is_some()
+    {
+        return Some(PlayerAst::That);
+    }
+    find_phrase(&words, &[&["of", "your", "library"]]).map(|_| PlayerAst::You)
 }
 
 pub(crate) fn parse_library_tail(tokens: &[OwnedLexToken]) -> Option<CounterWordSpan> {

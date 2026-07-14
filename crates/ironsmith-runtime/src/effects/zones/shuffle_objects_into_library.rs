@@ -8,12 +8,25 @@ use crate::events::ShuffleLibraryEvent;
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
-use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
+use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ShuffleObjectsIntoLibraryEffect;
 
 use super::{finalize_zone_change_move, maybe_prompt_for_split_result_order};
+
+fn uses_affected_object_owner(player: &PlayerFilter) -> bool {
+    matches!(
+        player,
+        PlayerFilter::OwnerOf(_) | PlayerFilter::AliasedOwnerOf(_)
+    )
+}
+
+fn push_unique_player(players: &mut Vec<crate::ids::PlayerId>, player: crate::ids::PlayerId) {
+    if !players.contains(&player) {
+        players.push(player);
+    }
+}
 
 fn expected_zone_for_object(
     target: &ChooseSpec,
@@ -38,20 +51,31 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = if matches!(self.target, ChooseSpec::Source)
-            && matches!(self.player, PlayerFilter::OwnerOf(ObjectRef::Target))
-        {
-            game.object(ctx.source)
-                .map(|object| object.owner)
-                .ok_or(ExecutionError::ObjectNotFound(ctx.source))?
-        } else {
-            resolve_player_filter(game, &self.player, ctx)?
-        };
         let object_ids = match resolve_objects_for_effect(game, ctx, &self.target) {
             Ok(ids) => ids,
             Err(ExecutionError::InvalidTarget) => Vec::new(),
             Err(err) => return Err(err),
         };
+        let shuffle_affected_owners =
+            self.owner_library_destination || uses_affected_object_owner(&self.player);
+        let mut players_to_shuffle = Vec::new();
+        if shuffle_affected_owners {
+            for object_id in &object_ids {
+                if let Some(owner) = game.object(*object_id).map(|object| object.owner) {
+                    push_unique_player(&mut players_to_shuffle, owner);
+                }
+            }
+            if players_to_shuffle.is_empty()
+                && let Ok(player) = resolve_player_filter(game, &self.player, ctx)
+            {
+                push_unique_player(&mut players_to_shuffle, player);
+            }
+        } else {
+            push_unique_player(
+                &mut players_to_shuffle,
+                resolve_player_filter(game, &self.player, ctx)?,
+            );
+        }
 
         let mut moved_ids = Vec::new();
         let additional_effects = ctx.additional_replacement_effects_snapshot();
@@ -119,16 +143,19 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
             }
         }
 
-        game.shuffle_player_library(player_id);
-        let shuffle_event = TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        );
+        let mut shuffle_events = Vec::with_capacity(players_to_shuffle.len());
+        for player_id in players_to_shuffle {
+            game.shuffle_player_library(player_id);
+            shuffle_events.push(TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+                ctx.provenance,
+            ));
+        }
 
         if moved_ids.is_empty() {
-            Ok(EffectOutcome::resolved().with_event(shuffle_event))
+            Ok(EffectOutcome::resolved().with_events(shuffle_events))
         } else {
-            Ok(EffectOutcome::with_objects(moved_ids).with_event(shuffle_event))
+            Ok(EffectOutcome::with_objects(moved_ids).with_events(shuffle_events))
         }
     }
 
@@ -242,5 +269,57 @@ mod tests {
             Zone::Exile,
             "object should remain in its new zone rather than being moved back into library"
         );
+    }
+
+    #[test]
+    fn owner_library_destination_shuffles_each_affected_owner_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        create_card_in_zone(&mut game, alice, Zone::Graveyard, "Alice One");
+        create_card_in_zone(&mut game, alice, Zone::Graveyard, "Alice Two");
+        create_card_in_zone(&mut game, bob, Zone::Graveyard, "Bob One");
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ShuffleObjectsIntoLibraryEffect::new(
+            ChooseSpec::All(ObjectFilter::creature().in_zone(Zone::Graveyard)),
+            PlayerFilter::OwnerOf(crate::target::ObjectRef::Target),
+        )
+        .with_owner_library_destination();
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("owner-library shuffle should resolve");
+
+        let shuffle_players = outcome
+            .events
+            .iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<ShuffleLibraryEvent>()
+                    .map(|shuffle| shuffle.player)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            shuffle_players
+                .iter()
+                .filter(|player| **player == alice)
+                .count(),
+            1,
+            "multiple objects owned by one player should cause one shuffle"
+        );
+        assert_eq!(
+            shuffle_players
+                .iter()
+                .filter(|player| **player == bob)
+                .count(),
+            1,
+            "each affected owner should shuffle their own library"
+        );
+        assert_eq!(shuffle_players.len(), 2);
+        assert_eq!(game.player(alice).expect("Alice").graveyard.len(), 0);
+        assert_eq!(game.player(bob).expect("Bob").graveyard.len(), 0);
+        assert_eq!(game.player(alice).expect("Alice").library.len(), 2);
+        assert_eq!(game.player(bob).expect("Bob").library.len(), 1);
     }
 }

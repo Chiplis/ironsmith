@@ -265,6 +265,7 @@ pub struct GrantObjectAbilityForFilter {
     pub ability: Ability,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
+    pub set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
 }
 
 impl std::fmt::Debug for GrantObjectAbilityForFilter {
@@ -278,6 +279,7 @@ impl std::fmt::Debug for GrantObjectAbilityForFilter {
             )
             .field("display", &self.display)
             .field("condition", &self.condition)
+            .field("set_quantifier_surface", &self.set_quantifier_surface)
             .finish()
     }
 }
@@ -289,11 +291,20 @@ impl GrantObjectAbilityForFilter {
             ability,
             display,
             condition: None,
+            set_quantifier_surface: None,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
         self.condition = Some(condition);
+        self
+    }
+
+    pub fn with_set_quantifier_surface(
+        mut self,
+        surface: Option<ironsmith_core::SetQuantifierSurface>,
+    ) -> Self {
+        self.set_quantifier_surface = surface;
         self
     }
 }
@@ -336,12 +347,14 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             }
             _ => ability_text,
         };
-        let subject = if filter_desc == "Sliver" {
-            "All Slivers".to_string()
+        let (subject, explicitly_singular_subject) = if filter_desc == "Sliver" {
+            ("All Slivers".to_string(), false)
         } else {
-            grant_subject_text(&self.filter)
+            grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface)
         };
-        let verb = if grant_subject_is_plural(&subject) {
+        let verb = if explicitly_singular_subject {
+            "has"
+        } else if grant_subject_is_plural(&subject) {
             "have"
         } else {
             "has"
@@ -430,26 +443,10 @@ fn grant_subject_is_plural(subject: &str) -> bool {
     {
         return false;
     }
-    if lower.starts_with("all ")
-        || lower.starts_with("other ")
-        || lower.starts_with("each ")
-        || lower.starts_with("those ")
-        || lower.ends_with('s')
-    {
-        return true;
-    }
-    [
-        "permanents",
-        "creatures",
-        "artifacts",
-        "enchantments",
-        "lands",
-        "planeswalkers",
-        "battles",
-        "spells",
-        "cards",
-        "tokens",
-    ]
-    .iter()
-    .any(|noun| lower.contains(noun))
+
+    // Filter-backed grant subjects are pluralized before they reach this
+    // helper. Inferring number from a trailing `s` loses scoped subtype
+    // subjects such as "Elves you control" as well as invariant plurals such
+    // as "Merfolk you control".
+    true
 }

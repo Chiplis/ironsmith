@@ -16,14 +16,19 @@ use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
 use super::super::grammar::token_definitions as token_definition_grammar;
 use super::super::keyword_static::parse_value_binding_clause;
-use super::super::lexer::{render_token_slice, token_word_refs};
+use super::super::lexer::{TokenKind, render_token_slice, token_word_refs};
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     parse_target_phrase, parse_value, span_from_tokens, trim_commas, value_contains_unbound_x,
 };
 use super::clause_pattern_helpers::extract_subject_player;
-use super::dispatch_entry::target_references_it;
+use super::dispatch_entry::{target_references_it, with_where_x_surface_hints};
 use creation_grammar::{CreationPhrase as CreatePhrase, CreationWordClass as CreateWord};
+
+fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
+    crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(tokens)
+        .or_else(|| parse_value_binding_clause(tokens))
+}
 
 fn reject_lossy_for_each_fallback(
     tokens: &[OwnedLexToken],
@@ -105,12 +110,187 @@ fn parse_create_equal_to_dynamic_count(
     };
     let mut synthetic_tokens = super::super::lexer::synthetic_word_tokens(["where", "x", "is"]);
     synthetic_tokens.extend_from_slice(spec.value_tokens);
-    Ok(parse_value_binding_clause(&synthetic_tokens).map(|value| {
+    Ok(parse_create_value_binding(&synthetic_tokens).map(|value| {
         (
             value.with_surface_hint(ValueSurfaceHint::EqualTo),
             spec.cut_token,
         )
     }))
+}
+
+fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    let mut bodies = Vec::new();
+    let mut open = None;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Quote {
+            continue;
+        }
+        if let Some(start) = open.take() {
+            if start < idx {
+                bodies.push(&tokens[start..idx]);
+            }
+        } else {
+            open = Some(idx + 1);
+        }
+    }
+    bodies
+}
+
+fn quoted_copy_sacrifice_ability_text(tokens: &[OwnedLexToken]) -> Option<String> {
+    double_quoted_rule_bodies(tokens)
+        .into_iter()
+        .find_map(|body| {
+            token_definition_grammar::parse_token_reminder_facts_tokens(body)
+                .sacrifice_at_next_end_step
+                .then(|| render_token_slice(body))
+        })
+}
+
+fn parse_inline_token_granted_abilities(
+    definition: &crate::runtime_backend::token_definition::TokenDefinitionSpec,
+    tokens: &[OwnedLexToken],
+) -> Vec<GrantedAbilityAst> {
+    let mut abilities = Vec::new();
+    for rule_tokens in double_quoted_rule_bodies(tokens) {
+        let Ok(parsed) =
+            super::parse_granted_abilities_for_token_definition(definition, rule_tokens)
+        else {
+            // Token definitions have a number of older specialized shapes.
+            // An unsupported generic nested rule must leave those paths
+            // available rather than turning an otherwise parseable card into
+            // a hard error.
+            continue;
+        };
+        for ability in parsed {
+            if !abilities.contains(&ability) {
+                abilities.push(ability);
+            }
+        }
+    }
+    abilities
+}
+
+fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<StaticAbility> {
+    let mut abilities = Vec::new();
+    for rule_tokens in double_quoted_rule_bodies(tokens) {
+        if token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens)
+            .sacrifice_at_next_end_step
+        {
+            // Copy-token delayed-sacrifice text has a dedicated AST field and
+            // must not also be installed as an ordinary granted ability.
+            continue;
+        }
+        let clause_words = token_word_refs(rule_tokens);
+        let parsed = crate::runtime_backend::util::with_token_source_reference_context(
+            "Token",
+            &[CardType::Artifact],
+            &[Subtype::Equipment],
+            || super::parse_granted_abilities_for_gain_clause(rule_tokens, &clause_words, false),
+        );
+        let Ok((granted, false)) = parsed else {
+            continue;
+        };
+        let Ok(lowered) =
+            super::super::static_ability_helpers::lower_granted_abilities_ast(&granted)
+        else {
+            continue;
+        };
+        for ability in lowered {
+            if !abilities.contains(&ability) {
+                abilities.push(ability);
+            }
+        }
+    }
+    abilities
+}
+
+fn attach_inline_token_granted_abilities_to_effect(
+    effect: &mut EffectAst,
+    tokens: &[OwnedLexToken],
+) -> bool {
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
+            SubjectVerbActionAst::CreateTokenCopy {
+                sacrifice_at_next_end_step,
+                sacrifice_at_next_end_step_ability_text,
+                granted_abilities,
+                ..
+            }
+            | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                sacrifice_at_next_end_step,
+                sacrifice_at_next_end_step_ability_text,
+                granted_abilities,
+                ..
+            } => {
+                let mut attached = false;
+                if *sacrifice_at_next_end_step && sacrifice_at_next_end_step_ability_text.is_none()
+                {
+                    *sacrifice_at_next_end_step_ability_text =
+                        quoted_copy_sacrifice_ability_text(tokens);
+                    attached |= sacrifice_at_next_end_step_ability_text.is_some();
+                }
+                for ability in parse_inline_copy_granted_abilities(tokens) {
+                    if !granted_abilities.contains(&ability) {
+                        granted_abilities.push(ability);
+                        attached = true;
+                    }
+                }
+                if attached {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::CreateTokenWithMods {
+            definition,
+            granted_abilities,
+            ability_presentation,
+            ..
+        } = &mut subject_verb.action
+    {
+        for ability in parse_inline_token_granted_abilities(definition, tokens) {
+            if !granted_abilities.contains(&ability) {
+                granted_abilities.push(ability);
+            }
+        }
+        if ability_presentation.is_none() {
+            *ability_presentation = Some(ironsmith_core::TokenAbilityPresentation::InlineWith);
+        }
+        return true;
+    }
+
+    let mut found = false;
+    crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects_mut(
+        effect,
+        true,
+        |nested| {
+            if !found {
+                found = attach_inline_token_granted_abilities_to_last_create(nested, tokens);
+            }
+        },
+    );
+    found
+}
+
+/// Production sentence dispatch strips embedded token rules before parsing the
+/// outer create action so quoted colons and verbs cannot win outer dispatch.
+/// Reattach those original quoted bodies to the create AST after that parse.
+pub(crate) fn attach_inline_token_granted_abilities_to_last_create(
+    effects: &mut [EffectAst],
+    tokens: &[OwnedLexToken],
+) -> bool {
+    if double_quoted_rule_bodies(tokens).is_empty() {
+        return false;
+    }
+    for effect in effects.iter_mut().rev() {
+        if attach_inline_token_granted_abilities_to_effect(effect, tokens) {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn parse_create(
@@ -281,6 +461,13 @@ pub(crate) fn parse_create(
     let mut tapped = false;
     let mut attacking = false;
     let mut modifier_tail_words = tail_words.clone();
+    // The `for each` suffix describes the dynamic count, not the token being
+    // created.  In particular, `create a Treasure token for each tapped ...`
+    // must not make the Treasure enter tapped merely because the counted
+    // objects are tapped.
+    if let Some(for_each_idx) = for_each_idx {
+        modifier_tail_words.truncate(for_each_idx);
+    }
     let mut raw_name_override: Option<String> = None;
     let mut rules_text_range: Option<(usize, usize)> = None;
     if let Some(named) = creation_grammar::parse_named_token_clause_tokens(&tail_tokens) {
@@ -343,6 +530,9 @@ pub(crate) fn parse_create(
             }
             let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
                 parse_next_end_step_token_delay_flags(&tail_words);
+            let sacrifice_at_next_end_step_ability_text = sacrifice_at_next_end_step
+                .then(|| quoted_copy_sacrifice_ability_text(&tail_tokens))
+                .flatten();
             if let Some(source_clause) =
                 creation_grammar::parse_copy_source_clause_tokens(&tail_tokens)
             {
@@ -377,6 +567,7 @@ pub(crate) fn parse_create(
                             has_haste,
                             exile_at_end_of_combat: false,
                             sacrifice_at_next_end_step,
+                            sacrifice_at_next_end_step_ability_text,
                             exile_at_next_end_step,
                             next_end_step_player: next_end_step_player.clone(),
                             set_colors,
@@ -409,6 +600,7 @@ pub(crate) fn parse_create(
                     has_haste,
                     exile_at_end_of_combat: false,
                     sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_ability_text,
                     exile_at_next_end_step,
                     next_end_step_player,
                     set_colors,
@@ -503,13 +695,21 @@ pub(crate) fn parse_create(
     }
     let mut dynamic_power_toughness =
         token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&definition_tokens);
-    if let Some((pt_idx, _)) = creation_grammar::first_pt_word(&name_words)
+    if let Some((pt_idx, pt)) = creation_grammar::first_pt_word(&name_words)
         && pt_idx < name_words_primary_len
     {
-        if creation_grammar::CreationWords::new(&name_words[pt_idx..pt_idx + 1])
-            .first_is(CreateWord::PtX)
+        let component_value = |component| match component {
+            creation_grammar::PtComponent::Fixed(value) => Some(Value::Fixed(value)),
+            creation_grammar::PtComponent::X => Some(Value::X),
+            creation_grammar::PtComponent::Star => None,
+        };
+        let contains_x = matches!(pt.power, creation_grammar::PtComponent::X)
+            || matches!(pt.toughness, creation_grammar::PtComponent::X);
+        if contains_x
+            && let (Some(power), Some(toughness)) =
+                (component_value(pt.power), component_value(pt.toughness))
         {
-            dynamic_power_toughness = Some((Value::X, Value::X));
+            dynamic_power_toughness = Some((power, toughness));
             name_words[pt_idx] = "0/0";
         }
         let prefix_words = &name_words[..pt_idx];
@@ -529,7 +729,7 @@ pub(crate) fn parse_create(
         }
     }
     let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
-    let definition =
+    let mut definition =
         token_definition_grammar::parse_token_definition_shape_tokens(&definition_tokens)
             .or_else(|| {
                 parse_prior_created_token_reference_words(&name_words).map(|_| {
@@ -539,6 +739,20 @@ pub(crate) fn parse_create(
             .ok_or_else(|| {
                 CardTextError::ParseError(format!("unsupported token definition '{name}'"))
             })?;
+    // The token-definition slice is intentionally reconstructed and may omit
+    // quoted suffixes that are not needed to identify the token blueprint.
+    // Ability payloads must come from the complete create clause so every
+    // quoted group remains available and in source order.
+    let inline_ability_presentation = (!double_quoted_rule_bodies(tokens).is_empty())
+        .then_some(ironsmith_core::TokenAbilityPresentation::InlineWith);
+    let inline_granted_abilities = parse_inline_token_granted_abilities(&definition, tokens);
+    if dynamic_power_toughness.is_some()
+        && let crate::runtime_backend::token_definition::TokenDefinitionSpec::Vehicle(vehicle) =
+            &mut definition
+        && vehicle.power_toughness.is_none()
+    {
+        vehicle.power_toughness = Some((0, 0));
+    }
 
     let grants_unblockable = tail_surface.has_phrase(CreatePhrase::Unblockable);
 
@@ -553,13 +767,13 @@ pub(crate) fn parse_create(
     }
 
     if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&tail_tokens) {
-        let where_value = parse_value_binding_clause(where_tokens).ok_or_else(|| {
+        let where_value = parse_create_value_binding(where_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported where-x clause in create clause (clause: '{}')",
                 clause_words.join(" ")
             ))
         })?;
-        let where_value = where_value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+        let where_value = with_where_x_surface_hints(where_value, tokens);
         if let Some((power, toughness)) = dynamic_power_toughness.as_mut() {
             if value_contains_unbound_x(power) {
                 *power = where_value.clone();
@@ -584,7 +798,7 @@ pub(crate) fn parse_create(
     }
     let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
-    let mut granted_abilities = Vec::new();
+    let mut granted_abilities = inline_granted_abilities;
     if modifier_surface.has(CreateWord::Decayed) {
         granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Decayed));
     }
@@ -615,6 +829,7 @@ pub(crate) fn parse_create(
             exile_at_next_end_step,
             next_end_step_player,
             granted_abilities,
+            ability_presentation: inline_ability_presentation,
         },
     );
     Ok(wrap_for_each_player_condition(wrap_delayed_create(
@@ -727,7 +942,7 @@ pub(crate) fn parse_investigate(
         && creation_grammar::CreationWords::new(&trailing_words).first_is(CreateWord::Time)
         && let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&trailing)
     {
-        if let Some(where_count) = parse_value_binding_clause(where_tokens) {
+        if let Some(where_count) = parse_create_value_binding(where_tokens) {
             count = where_count;
             return Ok(EffectAst::subject_verb_investigate(player, count));
         }
@@ -780,13 +995,13 @@ pub(crate) fn parse_incubate(
     }
 
     if let Some(where_tokens) = creation_grammar::parse_where_clause_tokens(&trailing) {
-        let Some(where_value) = parse_value_binding_clause(where_tokens) else {
+        let Some(where_value) = parse_create_value_binding(where_tokens) else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing incubate where clause (clause: '{}')",
                 token_word_refs(tokens).join(" ")
             )));
         };
-        let where_value = where_value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+        let where_value = with_where_x_surface_hints(where_value, tokens);
         if value_contains_unbound_x(&amount) {
             amount = where_value;
         } else if value_contains_unbound_x(&count) {
@@ -815,4 +1030,29 @@ pub(crate) fn parse_incubate(
     }
 
     Ok(EffectAst::subject_verb_incubate(player, amount, count))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::lexer::lex_line;
+    use super::*;
+    use crate::static_abilities::StaticAbilityId;
+
+    #[test]
+    fn quoted_copy_exception_lowers_source_relative_equip_cost_reduction() {
+        let tokens = lex_line(
+            "create a token that's a copy of it, except it has \"This Equipment's equip abilities cost {2} less to activate.\"",
+            0,
+        )
+        .expect("copy exception should lex");
+        let abilities = parse_inline_copy_granted_abilities(&tokens);
+        assert!(
+            abilities.iter().any(|ability| {
+                ability.id() == StaticAbilityId::ActivatedAbilityCostReduction
+                    && ability.display()
+                        == "This Equipment's equip abilities cost {2} less to activate"
+            }),
+            "expected typed equip cost reduction, got {abilities:#?}"
+        );
+    }
 }

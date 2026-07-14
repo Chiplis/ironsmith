@@ -223,9 +223,28 @@ pub(crate) fn parse_delayed_timing_marker_shape(
 ) -> Option<DelayedTimingMarkerShape> {
     let patterns: &'static [(&'static [&'static str], DelayedTimingStepShape, PlayerAst)] = &[
         (
-            &["at", "the", "beginning", "of", "your", "next", "upkeep"],
-            DelayedTimingStepShape::Upkeep,
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "your",
+                "next",
+                "end",
+                "step",
+            ],
+            DelayedTimingStepShape::EndStep,
             PlayerAst::You,
+        ),
+        (
+            &["at", "the", "beginning", "of", "the", "next", "end", "step"],
+            DelayedTimingStepShape::EndStep,
+            PlayerAst::Any,
+        ),
+        (
+            &["at", "the", "beginning", "of", "next", "end", "step"],
+            DelayedTimingStepShape::EndStep,
+            PlayerAst::Any,
         ),
         (
             &[
@@ -240,6 +259,35 @@ pub(crate) fn parse_delayed_timing_marker_shape(
             ],
             DelayedTimingStepShape::Upkeep,
             PlayerAst::You,
+        ),
+        (
+            &["at", "the", "beginning", "of", "your", "next", "upkeep"],
+            DelayedTimingStepShape::Upkeep,
+            PlayerAst::You,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "upkeep",
+                "step",
+            ],
+            DelayedTimingStepShape::Upkeep,
+            PlayerAst::Any,
+        ),
+        (
+            &["at", "the", "beginning", "of", "the", "next", "upkeep"],
+            DelayedTimingStepShape::Upkeep,
+            PlayerAst::Any,
+        ),
+        (
+            &["at", "the", "beginning", "of", "next", "upkeep"],
+            DelayedTimingStepShape::Upkeep,
+            PlayerAst::Any,
         ),
         (
             &[
@@ -344,7 +392,10 @@ pub(crate) fn parse_delayed_timing_marker_shape(
         else {
             continue;
         };
-        if best.is_none_or(|(best_start, _, _, _)| token_start < best_start) {
+        if best.is_none_or(|(best_start, best_phrase, _, _)| {
+            token_start < best_start
+                || (token_start == best_start && phrase.len() > best_phrase.len())
+        }) {
             best = Some((token_start, phrase, step, player));
         }
     }

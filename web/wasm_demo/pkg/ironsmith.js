@@ -428,31 +428,19 @@ export class WasmGame {
         }
     }
     /**
-     * @param {any} output
-     * @param {any} binding
+     * @param {number} player
+     * @param {any} directive
      * @returns {any}
      */
-    manabrewCommandFromPromptOutput(output, binding) {
-        const ret = wasm.wasmgame_manabrewCommandFromPromptOutput(this.__wbg_ptr, output, binding);
+    manabrewApplyDirective(player, directive) {
+        const ret = wasm.wasmgame_manabrewApplyDirective(this.__wbg_ptr, player, directive);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * @param {string} prompt_id
-     * @returns {any}
-     */
-    manabrewPrompt(prompt_id) {
-        const ptr0 = passStringToWasm0(prompt_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_manabrewPrompt(this.__wbg_ptr, ptr0, len0);
-        if (ret[2]) {
-            throw takeFromExternrefTable0(ret[1]);
-        }
-        return takeFromExternrefTable0(ret[0]);
-    }
-    /**
+     * Deprecated alias for a spectator-safe typed view.
      * @returns {any}
      */
     manabrewPublicState() {
@@ -463,13 +451,25 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
-     * @param {string} prompt_id
+     * @param {number} player
+     * @param {number} prompt_id
+     * @param {any} output
      * @returns {any}
      */
-    manabrewView(prompt_id) {
-        const ptr0 = passStringToWasm0(prompt_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmgame_manabrewView(this.__wbg_ptr, ptr0, len0);
+    manabrewRespond(player, prompt_id, output) {
+        const ret = wasm.wasmgame_manabrewRespond(this.__wbg_ptr, player, prompt_id, output);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Build a typed player-specific view. Passing no viewer produces a spectator-safe public view.
+     * @param {number | null} [viewer]
+     * @returns {any}
+     */
+    manabrewView(viewer) {
+        const ret = wasm.wasmgame_manabrewView(this.__wbg_ptr, isLikeNone(viewer) ? 0xFFFFFF : viewer);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

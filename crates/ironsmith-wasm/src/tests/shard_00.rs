@@ -332,14 +332,18 @@ pub(super) fn convert_and_validate_targets_rejects_wrong_requirement_order() {
             TargetRequirementContext {
                 description: "first target".to_string(),
                 legal_targets: vec![first],
+                legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
+                distinct_player_group: None,
             },
             TargetRequirementContext {
                 description: "second target".to_string(),
                 legal_targets: vec![second],
+                legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
+                distinct_player_group: None,
             },
         ],
     );
@@ -372,14 +376,18 @@ pub(super) fn convert_and_validate_targets_accepts_unbounded_then_fixed_sequence
             TargetRequirementContext {
                 description: "any number".to_string(),
                 legal_targets: vec![a, b],
+                legal_target_sets: Vec::new(),
                 min_targets: 0,
                 max_targets: None,
+                distinct_player_group: None,
             },
             TargetRequirementContext {
                 description: "last target".to_string(),
                 legal_targets: vec![c],
+                legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
+                distinct_player_group: None,
             },
         ],
     );

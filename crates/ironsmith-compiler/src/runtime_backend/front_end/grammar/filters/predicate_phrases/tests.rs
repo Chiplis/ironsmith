@@ -364,6 +364,43 @@ fn parse_predicate_demonstrative_permanent_card_strips_article() -> Result<(), C
 }
 
 #[test]
+fn parse_predicate_preserves_last_known_copula_and_negation() -> Result<(), CardTextError> {
+    let creature = ObjectFilter::creature();
+    let horror = ObjectFilter::default().with_subtype(Subtype::Horror);
+    let demon = ObjectFilter::default().with_subtype(Subtype::Demon);
+
+    for (text, expected) in [
+        (
+            "If it was a creature",
+            PredicateAst::ItMatchedLastKnown(creature),
+        ),
+        (
+            "If that creature was a Horror",
+            PredicateAst::ItMatchedLastKnown(horror),
+        ),
+        (
+            "If it wasn't a Demon",
+            PredicateAst::Not(Box::new(PredicateAst::ItMatchedLastKnown(demon))),
+        ),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(parsed, expected, "{text}");
+    }
+
+    let tokens = lex_line("If its power was 3 or greater", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::ItMatchedLastKnown(filter) = parsed else {
+        panic!("expected last-known power predicate, got {parsed:?}");
+    };
+    assert_eq!(
+        filter.power,
+        Some(ironsmith_core::FilterComparison::GreaterThanOrEqual(3))
+    );
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_demonstrative_negated_land_card_keeps_it_reference() -> Result<(), CardTextError>
 {
     for text in ["If it isn't a land card", "If it is not a land card"] {
@@ -538,9 +575,10 @@ fn parse_predicate_empty_battlefield_uses_capture_parser() -> Result<(), CardTex
 
         assert_eq!(
             parsed,
-            PredicateAst::PlayerControlsNo {
-                player: PlayerAst::Any,
-                filter: ObjectFilter::creature(),
+            PredicateAst::ValueComparison {
+                left: Value::Count(ObjectFilter::creature().in_zone(Zone::Battlefield)),
+                operator: ValueComparisonOperator::Equal,
+                right: Value::Fixed(0),
             },
             "{text}"
         );
@@ -670,6 +708,16 @@ fn parse_predicate_supports_most_common_color_constraint_clause() -> Result<(), 
 }
 
 #[test]
+fn parse_predicate_preserves_shared_creature_type_with_source() -> Result<(), CardTextError> {
+    let tokens = lex_line("If it shares a creature type with this creature", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let mut expected = ObjectFilter::creature();
+    expected.shares_creature_type_with_source = true;
+    assert_eq!(parsed, PredicateAst::ItMatches(expected));
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_source_counter_or_cards_in_hand_uses_capture_parser() -> Result<(), CardTextError>
 {
     let tokens = lex_line(
@@ -779,6 +827,41 @@ fn parse_predicate_control_conditions_use_shared_capture_parser() -> Result<(), 
 
         assert_eq!(parsed, expected, "{text}");
     }
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_each_global_greatest_power_compares_the_complete_set()
+-> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If you control each creature on the battlefield with the greatest power",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+    let PredicateAst::ValueComparison {
+        left: Value::Count(controlled),
+        operator: ValueComparisonOperator::Equal,
+        right: Value::Count(global),
+    } = parsed
+    else {
+        panic!("expected greatest-power set comparison, got {parsed:?}");
+    };
+    assert_eq!(controlled.controller, Some(PlayerFilter::You));
+    assert_eq!(global.controller, None);
+    assert_eq!(controlled.card_types, vec![CardType::Creature]);
+    assert_eq!(global.card_types, vec![CardType::Creature]);
+    assert_eq!(controlled.zone, Some(Zone::Battlefield));
+    assert_eq!(global.zone, Some(Zone::Battlefield));
+    assert!(matches!(
+        &controlled.power,
+        Some(crate::filter::Comparison::EqualExpr(value))
+            if matches!(value.as_ref(), Value::GreatestPower(filter)
+                if filter.controller.is_none()
+                    && filter.card_types == vec![CardType::Creature]
+                    && filter.zone == Some(Zone::Battlefield))
+    ));
+    assert_eq!(controlled.power, global.power);
     Ok(())
 }
 
@@ -968,6 +1051,35 @@ fn parse_predicate_inherits_it_for_bare_or_descriptor_tail() -> Result<(), CardT
 }
 
 #[test]
+fn parse_predicate_keeps_mana_value_constraint_on_only_its_or_branch() -> Result<(), CardTextError>
+{
+    let tokens = lex_line(
+        "If it's a land card or a creature card with mana value less than or equal to the number of loyalty counters on this planeswalker",
+        0,
+    )?;
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+    let parsed = parse_predicate(&predicate_tokens)?;
+
+    let PredicateAst::Or(left, right) = parsed else {
+        panic!("expected independent disjunctive filters, got {parsed:?}");
+    };
+    assert!(
+        matches!(left.as_ref(), PredicateAst::ItMatches(filter)
+            if filter.card_types == vec![CardType::Land]
+                && filter.mana_value.is_none()),
+        "expected unconstrained land branch, got {left:?}"
+    );
+    assert!(
+        matches!(right.as_ref(), PredicateAst::ItMatches(filter)
+            if filter.card_types == vec![CardType::Creature]
+                && filter.mana_value.is_some()),
+        "expected mana-value-constrained creature branch, got {right:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_keeps_comma_type_list_disjunctive() -> Result<(), CardTextError> {
     let tokens = lex_line(
         "If it's an artifact, creature, enchantment, or land card",
@@ -1138,6 +1250,19 @@ fn parse_predicate_chosen_name_milled_this_way_uses_capture_parser() -> Result<(
         parsed,
         PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter)
     );
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_passive_sacrifice_keeps_event_reference() -> Result<(), CardTextError> {
+    let tokens = lex_line("If a Saproling was sacrificed this way", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+    let PredicateAst::TaggedMatches(tag, filter) = parsed else {
+        panic!("expected tagged sacrifice predicate");
+    };
+    assert_eq!(tag, TagKey::from(THIS_WAY_SACRIFICED_TAG));
+    assert_eq!(filter.subtypes, vec![Subtype::Saproling]);
     Ok(())
 }
 
@@ -1673,6 +1798,27 @@ fn parse_predicate_mana_spent_uses_shared_capture_parser() -> Result<(), CardTex
 }
 
 #[test]
+fn parse_predicate_preserves_mana_source_provenance() -> Result<(), CardTextError> {
+    let tokens = lex_line("If mana from a Treasure was spent to cast it", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::ValueComparison {
+        left:
+            Value::ManaFromSourceSpentToCastThisSpell {
+                source_filter,
+                include_source_noun,
+            },
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    } = parsed
+    else {
+        panic!("expected a typed mana-source predicate, got {parsed:?}");
+    };
+    assert!(!include_source_noun);
+    assert!(source_filter.subtypes.contains(&Subtype::Treasure));
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
         ("If you cast this spell", PredicateAst::SourceWasCast),
@@ -1686,6 +1832,14 @@ fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), Ca
         ),
         (
             "If this spell was cast from anywhere other than your hand",
+            PredicateAst::ThisSpellWasCastFromNonHand,
+        ),
+        (
+            "If you cast it from your hand",
+            PredicateAst::ThisSpellWasCastFromZone(Zone::Hand),
+        ),
+        (
+            "If you cast this spell from anywhere other than your hand",
             PredicateAst::ThisSpellWasCastFromNonHand,
         ),
         (
@@ -1735,6 +1889,26 @@ fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), Ca
 }
 
 #[test]
+fn parse_predicate_conjoins_cast_origin_with_existential_count() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If you cast it from your hand and there are five or more other creatures on the battlefield",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+    assert!(
+        matches!(
+            &parsed,
+            PredicateAst::And(left, right)
+                if matches!(**left, PredicateAst::ThisSpellWasCastFromZone(Zone::Hand))
+                    && matches!(**right, PredicateAst::ValueComparison { .. })
+        ),
+        "{parsed:?}"
+    );
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_combat_turn_uses_shared_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
         (
@@ -1759,6 +1933,33 @@ fn parse_predicate_combat_turn_uses_shared_capture_parser() -> Result<(), CardTe
 
         let parsed = parse_predicate(&predicate_tokens)?;
 
+        assert_eq!(parsed, expected, "{text}");
+    }
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_negative_attack_history_gates() -> Result<(), CardTextError> {
+    for (text, expected) in [
+        (
+            "If this creature didn't attack this turn",
+            PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn)),
+        ),
+        (
+            "If this creature did not attack this turn",
+            PredicateAst::Not(Box::new(PredicateAst::SourceAttackedThisTurn)),
+        ),
+        (
+            "If you didn't attack with a creature this turn",
+            PredicateAst::Not(Box::new(PredicateAst::YouAttackedThisTurn)),
+        ),
+        (
+            "If you did not attack with a creature this turn",
+            PredicateAst::Not(Box::new(PredicateAst::YouAttackedThisTurn)),
+        ),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
         assert_eq!(parsed, expected, "{text}");
     }
     Ok(())
@@ -2036,6 +2237,26 @@ fn parse_predicate_supports_creature_card_put_into_your_graveyard_this_turn()
         parsed,
         PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
     );
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_supports_descended_this_turn() -> Result<(), CardTextError> {
+    for (text, expected_player) in [
+        ("If you descended this turn", PlayerAst::You),
+        ("If that player descended this turn", PlayerAst::That),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        assert_eq!(
+            parse_predicate(&predicate_tokens)?,
+            PredicateAst::PlayerDescendedThisTurn {
+                player: expected_player,
+            },
+            "{text}"
+        );
+    }
     Ok(())
 }
 
@@ -2611,6 +2832,9 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
             PredicateAst::SourceHasCounterAtLeast {
                 counter_type: CounterType::Stun,
                 count: 3,
+                surface: crate::SourceCounterThresholdSurface::ThereAreOn(
+                    crate::target::SourceReferenceSurface::ThisPermanentType("this".to_string()),
+                ),
             },
         ),
         (
@@ -2618,6 +2842,7 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
             PredicateAst::SourceHasCounterAtLeast {
                 counter_type: CounterType::PlusOnePlusOne,
                 count: 1,
+                surface: crate::SourceCounterThresholdSurface::SourceHas,
             },
         ),
         (
@@ -2629,6 +2854,7 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
             PredicateAst::SourceHasCounterAtLeast {
                 counter_type: CounterType::Stun,
                 count: 2,
+                surface: crate::SourceCounterThresholdSurface::SourceHas,
             },
         ),
         (
@@ -2664,6 +2890,7 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
                 PredicateAst::SourceHasCounterAtLeast {
                     counter_type: CounterType::PlusOnePlusOne,
                     count: 1,
+                    surface: crate::SourceCounterThresholdSurface::SourceHas,
                 }
             );
             Ok::<(), CardTextError>(())
@@ -2731,5 +2958,31 @@ fn parse_predicate_supports_player_life_tie_count() -> Result<(), CardTextError>
             right: Value::Fixed(2),
         }
     );
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_compares_object_count_with_source_counter_count() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If the number of attacking creatures is greater than the number of quest counters on this creature",
+        0,
+    )?;
+    let mut attacking_creatures = ObjectFilter::creature();
+    attacking_creatures.attacking = true;
+
+    let PredicateAst::ValueComparison {
+        left,
+        operator,
+        right,
+    } = parse_predicate(&predicate_tokens_after_if(&tokens))?
+    else {
+        panic!("expected a value comparison predicate");
+    };
+    assert_eq!(left, Value::Count(attacking_creatures));
+    assert_eq!(operator, ValueComparisonOperator::GreaterThan);
+    let Value::CountersOn(spec, Some(CounterType::Quest)) = right else {
+        panic!("expected quest counters on the source, got {right:?}");
+    };
+    assert!(matches!(spec.unhinted(), crate::target::ChooseSpec::Source));
     Ok(())
 }

@@ -8,10 +8,12 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
-use crate::value_model::{Restriction, Value, ValueSurfaceHint};
+use crate::value_model::{Restriction, Value};
 use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 
+mod ascend;
 mod mana_damage_and_control;
+pub use ascend::*;
 pub use mana_damage_and_control::*;
 
 /// Identifier for an effect within an effect sequence.
@@ -75,19 +77,26 @@ pub enum ChoiceAggregateMetric {
 }
 
 /// Upper bound on an aggregate characteristic of a group of chosen objects.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChoiceAggregateConstraint {
     pub metric: ChoiceAggregateMetric,
-    pub maximum: i32,
+    pub maximum: Value,
 }
 
 impl ChoiceAggregateConstraint {
-    pub const fn at_most(metric: ChoiceAggregateMetric, maximum: i32) -> Self {
-        Self { metric, maximum }
+    pub fn at_most(metric: ChoiceAggregateMetric, maximum: impl Into<Value>) -> Self {
+        Self {
+            metric,
+            maximum: maximum.into(),
+        }
     }
 
-    pub const fn total_power_at_most(maximum: i32) -> Self {
+    pub fn total_power_at_most(maximum: impl Into<Value>) -> Self {
         Self::at_most(ChoiceAggregateMetric::Power, maximum)
+    }
+
+    pub fn total_mana_value_at_most(maximum: impl Into<Value>) -> Self {
+        Self::at_most(ChoiceAggregateMetric::ManaValue, maximum)
     }
 }
 
@@ -116,6 +125,7 @@ pub enum EffectPredicate {
     SearchedLibrary,
     HappenedNotReplaced,
     ExcessDamageDealt,
+    DealtDamageToPlayer,
     AffectedObjectMatchesCardType { card_type: CardType, negated: bool },
     Value(crate::effect_model::Comparison),
     Chosen,
@@ -126,6 +136,7 @@ pub enum EffectPredicate {
 pub enum GrantPlayTaggedDuration {
     UntilEndOfTurn,
     UntilYourNextTurnEnd,
+    UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
 }
@@ -178,6 +189,9 @@ pub enum DelayedTriggerSpec {
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfEndStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
+    BeginningOfMainPhase(PlayerFilter),
+    BeginningOfPrecombatMainPhase(PlayerFilter),
+    BeginningOfPostcombatMainPhase(PlayerFilter),
     EndOfCombat,
     SourceControllerLosesControl {
         source_description: String,
@@ -211,6 +225,7 @@ pub enum DelayedTriggerSpec {
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
+        first_spell_of_game: bool,
     },
     PlayerPlaysLand {
         player: PlayerFilter,
@@ -297,6 +312,21 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetQuantifierSurface {
+    All,
+    Each,
+}
+
+/// Oracle surface used when a type-changing effect preserves an object's
+/// existing types. Both variants have the same rules meaning, but they render
+/// differently and must remain distinguishable after lowering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeRetentionSurface {
+    InAdditionToOtherTypes,
+    StillALand,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApplyContinuousEffect<
     Target,
@@ -314,6 +344,8 @@ pub struct ApplyContinuousEffect<
     pub condition: Option<Condition>,
     pub source_type: Option<SourceType>,
     pub source_reference_surface: Option<SourceReferenceSurface>,
+    pub set_quantifier_surface: Option<SetQuantifierSurface>,
+    pub type_retention_surface: Option<TypeRetentionSurface>,
     pub lock_filter_at_resolution: bool,
     pub resolve_set_pt_values_at_resolution: bool,
     pub require_creature_target: bool,
@@ -333,6 +365,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             condition: None,
             source_type: None,
             source_reference_surface: None,
+            set_quantifier_surface: None,
+            type_retention_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -350,6 +384,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             condition: None,
             source_type: None,
             source_reference_surface: None,
+            set_quantifier_surface: None,
+            type_retention_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -370,6 +406,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             condition: None,
             source_type: None,
             source_reference_surface: None,
+            set_quantifier_surface: None,
+            type_retention_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -394,6 +432,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             condition: None,
             source_type: None,
             source_reference_surface: None,
+            set_quantifier_surface: None,
+            type_retention_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -425,6 +465,16 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 
     pub fn with_source_reference_surface(mut self, surface: SourceReferenceSurface) -> Self {
         self.source_reference_surface = Some(surface);
+        self
+    }
+
+    pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
+        self.set_quantifier_surface = surface;
+        self
+    }
+
+    pub fn with_type_retention_surface(mut self, surface: Option<TypeRetentionSurface>) -> Self {
+        self.type_retention_surface = surface;
         self
     }
 
@@ -813,11 +863,19 @@ impl CounterEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConditionalSurface {
+    #[default]
+    LeadingIf,
+    TrailingUnless,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConditionalEffect<E> {
     pub condition: crate::value_model::Condition,
     pub if_true: Vec<E>,
     pub if_false: Vec<E>,
+    pub surface: ConditionalSurface,
 }
 
 impl<E> ConditionalEffect<E> {
@@ -830,11 +888,29 @@ impl<E> ConditionalEffect<E> {
             condition,
             if_true,
             if_false,
+            surface: ConditionalSurface::LeadingIf,
         }
     }
 
     pub fn if_only(condition: crate::value_model::Condition, if_true: Vec<E>) -> Self {
         Self::new(condition, if_true, vec![])
+    }
+
+    /// A resolution-time condition printed after its effect as
+    /// "... unless <condition>". The stored condition remains the executable
+    /// gate for `if_true`, so it is the negation of the printed condition.
+    pub fn trailing_unless(condition: crate::value_model::Condition, effects: Vec<E>) -> Self {
+        Self {
+            condition: crate::value_model::Condition::Not(Box::new(condition)),
+            if_true: effects,
+            if_false: vec![],
+            surface: ConditionalSurface::TrailingUnless,
+        }
+    }
+
+    pub fn with_surface(mut self, surface: ConditionalSurface) -> Self {
+        self.surface = surface;
+        self
     }
 }
 
@@ -914,6 +990,10 @@ impl<E> EffectMode<E> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseModeEffect<E> {
     pub modes: Vec<EffectMode<E>>,
+    /// When present, this player makes the mode choice during resolution.
+    /// Ordinary modal spells leave this unset and use their controller's
+    /// casting-time mode selection.
+    pub chooser: Option<PlayerFilter>,
     pub min: Value,
     pub max: Value,
     pub allow_repeat: bool,
@@ -924,6 +1004,8 @@ pub struct ChooseModeEffect<E> {
     pub mode_point_costs: Vec<u32>,
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
+    /// Each chosen mode must declare a player target different from every other chosen mode.
+    pub distinct_player_targets_per_mode: bool,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -933,6 +1015,7 @@ impl<E> ChooseModeEffect<E> {
         let mode_point_costs = vec![1; modes.len()];
         Self {
             modes,
+            chooser: None,
             min,
             max,
             allow_repeat,
@@ -943,11 +1026,17 @@ impl<E> ChooseModeEffect<E> {
             mode_point_costs,
             disallow_previously_chosen_modes: false,
             disallow_previously_chosen_modes_this_turn: false,
+            distinct_player_targets_per_mode: false,
         }
     }
 
     pub fn choose_one(modes: Vec<EffectMode<E>>) -> Self {
         Self::new(modes, Value::Fixed(1), Value::Fixed(1), false)
+    }
+
+    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.chooser = Some(chooser);
+        self
     }
 
     pub fn choose_exactly(count: impl Into<Value>, modes: Vec<EffectMode<E>>) -> Self {
@@ -987,6 +1076,11 @@ impl<E> ChooseModeEffect<E> {
     pub fn with_previously_unchosen_modes_only_this_turn(mut self) -> Self {
         self.disallow_previously_chosen_modes = true;
         self.disallow_previously_chosen_modes_this_turn = true;
+        self
+    }
+
+    pub fn with_distinct_player_targets_per_mode(mut self) -> Self {
+        self.distinct_player_targets_per_mode = true;
         self
     }
 }
@@ -1453,32 +1547,121 @@ impl ShuffleHandAndGraveyardIntoLibraryEffect {
     }
 }
 
+/// Oracle-facing cardinality for a zone move of cards linked to the source
+/// that exiled them. The runtime selection remains a `ChooseSpec`; this only
+/// preserves distinctions that an aggregate selection cannot recover.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExiledWithSourceSubjectSurface {
+    AllCards,
+    EachCard,
+    OneCard,
+    TheExiledCard,
+    TheExiledCards,
+    TheCards,
+}
+
+/// Oracle-facing reference to the object that exiled the moved cards.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExiledWithSourceReferenceSurface {
+    Source(SourceReferenceSurface),
+    It,
+    Omitted,
+}
+
+/// Oracle-facing agreement for an owner-relative zone destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExiledWithSourceDestinationSurface {
+    ContextualPlayer,
+    ItsOwner,
+    TheirOwner,
+    TheirOwners,
+}
+
+/// Presentation metadata for a `put ... exiled with ... into ...` clause.
+/// Object identity, source linkage, and the destination zone continue to live
+/// in the ordinary filter and zone-move fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExiledWithSourceMoveSurface {
+    pub subject: ExiledWithSourceSubjectSurface,
+    pub source: ExiledWithSourceReferenceSurface,
+    pub destination: ExiledWithSourceDestinationSurface,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnToHandEffect {
     pub spec: ChooseSpec,
+    /// Contextual player named by the oracle destination (for example,
+    /// "your hand" or "their hand"). The zone change itself still follows
+    /// the rules and moves the object to its owner's hand.
+    pub destination_player_surface: Option<PlayerFilter>,
+    pub exiled_with_source_surface: Option<ExiledWithSourceMoveSurface>,
+    /// Oracle-facing set agreement for references whose rules target has
+    /// already been lowered to a tag (for example, "return those creatures").
+    pub set_quantifier_surface: Option<SetQuantifierSurface>,
+    /// The corresponding oracle noun phrase when a tag no longer carries it.
+    /// This is presentation metadata only; `spec` remains authoritative.
+    pub set_reference_surface: Option<String>,
 }
 
 impl ReturnToHandEffect {
     pub fn with_spec(spec: ChooseSpec) -> Self {
-        Self { spec }
+        Self {
+            spec,
+            destination_player_surface: None,
+            exiled_with_source_surface: None,
+            set_quantifier_surface: None,
+            set_reference_surface: None,
+        }
     }
 
     pub fn target(spec: ChooseSpec) -> Self {
         Self {
             spec: ChooseSpec::target(spec),
+            destination_player_surface: None,
+            exiled_with_source_surface: None,
+            set_quantifier_surface: None,
+            set_reference_surface: None,
         }
     }
 
     pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             spec: ChooseSpec::target(spec).with_count(count),
+            destination_player_surface: None,
+            exiled_with_source_surface: None,
+            set_quantifier_surface: None,
+            set_reference_surface: None,
         }
     }
 
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             spec: ChooseSpec::all(filter),
+            destination_player_surface: None,
+            exiled_with_source_surface: None,
+            set_quantifier_surface: None,
+            set_reference_surface: None,
         }
+    }
+
+    pub fn with_destination_player_surface(mut self, player: PlayerFilter) -> Self {
+        self.destination_player_surface = Some(player);
+        self
+    }
+
+    pub fn with_exiled_with_source_surface(mut self, surface: ExiledWithSourceMoveSurface) -> Self {
+        self.exiled_with_source_surface = Some(surface);
+        self
+    }
+
+    pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
+        self.set_quantifier_surface = surface;
+        self
+    }
+
+    pub fn with_set_reference_surface(mut self, surface: Option<String>) -> Self {
+        self.set_reference_surface = surface;
+        self
     }
 
     pub fn creature() -> Self {
@@ -1513,11 +1696,21 @@ impl MoveToLibraryNthFromTopEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveToLibraryTopOrBottomChoiceEffect {
     pub target: ChooseSpec,
+    /// `None` means each object's owner chooses, matching the common surface.
+    pub chooser: Option<PlayerFilter>,
 }
 
 impl MoveToLibraryTopOrBottomChoiceEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            chooser: None,
+        }
+    }
+
+    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.chooser = Some(chooser);
+        self
     }
 }
 
@@ -1586,11 +1779,61 @@ pub enum BattlefieldController {
     You,
 }
 
+/// Oracle wording used for a possessive player reference on a zone
+/// destination. This is presentation-only; the associated player filter
+/// remains the semantic destination antecedent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestinationPlayerReferenceSurface {
+    Pronoun,
+    ThatPlayer,
+}
+
+/// Oracle verb retained for a generic zone move.
+///
+/// `Canonical` lets compiled text choose the usual wording from the source and
+/// destination zones. Parser-produced moves use `Put` or `Return` so a tagged
+/// object does not silently change an oracle `put` into `return` (or vice
+/// versa). This is presentation-only; zone-change execution is unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveToZoneVerbSurface {
+    Canonical,
+    Put,
+    Return,
+}
+
+/// How a multi-card move to the top or bottom of a library is ordered.
+///
+/// The choosing player is explicit because the player performing the
+/// instruction is not necessarily the controller of the effect (for example,
+/// "that player puts the cards ... in any order").
+#[derive(Debug, Clone, PartialEq)]
+pub enum LibraryPlacementOrder {
+    Random,
+    ChosenBy(PlayerFilter),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoveToZoneEffect {
     pub target: ChooseSpec,
     pub zone: crate::zone::Zone,
     pub to_top: bool,
+    pub library_order: Option<LibraryPlacementOrder>,
+    pub verb_surface: MoveToZoneVerbSurface,
+    /// Whether the source text refers to the moved tagged result as a set
+    /// (for example, "those cards" or "the exiled cards"). Tagged specs can
+    /// resolve more than one object, but do not otherwise retain that surface.
+    pub target_plural_surface: bool,
+    /// Explicit player who performs the oracle instruction. The rules engine
+    /// still moves the same objects to the same zones; this only preserves
+    /// surfaces such as "that player puts" and "each player puts".
+    pub actor_surface: Option<PlayerFilter>,
+    /// Explicit contextual player named by the oracle destination (for
+    /// example, "your graveyard" or "that player's hand"). Nonbattlefield
+    /// zone changes still follow the rules and use the object's owner; this is
+    /// retained only so compiled text can preserve an equivalent surface.
+    pub destination_player_surface: Option<PlayerFilter>,
+    pub destination_player_reference_surface: Option<DestinationPlayerReferenceSurface>,
+    pub exiled_with_source_surface: Option<ExiledWithSourceMoveSurface>,
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
@@ -1610,6 +1853,13 @@ impl MoveToZoneEffect {
             target,
             zone,
             to_top,
+            library_order: None,
+            verb_surface: MoveToZoneVerbSurface::Canonical,
+            target_plural_surface: false,
+            actor_surface: None,
+            destination_player_surface: None,
+            destination_player_reference_surface: None,
+            exiled_with_source_surface: None,
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
             enters_attacking: false,
@@ -1629,6 +1879,44 @@ impl MoveToZoneEffect {
 
     pub fn to_exile(target: ChooseSpec) -> Self {
         Self::new(target, crate::zone::Zone::Exile, false)
+    }
+
+    pub fn with_library_order(mut self, order: LibraryPlacementOrder) -> Self {
+        self.library_order = Some(order);
+        self
+    }
+
+    pub fn with_verb_surface(mut self, surface: MoveToZoneVerbSurface) -> Self {
+        self.verb_surface = surface;
+        self
+    }
+
+    pub fn with_target_plural_surface(mut self) -> Self {
+        self.target_plural_surface = true;
+        self
+    }
+
+    pub fn with_actor_surface(mut self, actor: PlayerFilter) -> Self {
+        self.actor_surface = Some(actor);
+        self
+    }
+
+    pub fn with_exiled_with_source_surface(mut self, surface: ExiledWithSourceMoveSurface) -> Self {
+        self.exiled_with_source_surface = Some(surface);
+        self
+    }
+
+    pub fn with_destination_player_surface(mut self, player: PlayerFilter) -> Self {
+        self.destination_player_surface = Some(player);
+        self
+    }
+
+    pub fn with_destination_player_reference_surface(
+        mut self,
+        surface: DestinationPlayerReferenceSurface,
+    ) -> Self {
+        self.destination_player_reference_surface = Some(surface);
+        self
     }
 
     pub fn to_graveyard(target: ChooseSpec) -> Self {
@@ -1684,6 +1972,7 @@ pub struct ReturnAllToBattlefieldEffect {
     pub tapped: bool,
     pub face_down: bool,
     pub battlefield_controller: BattlefieldController,
+    pub verb_surface: MoveToZoneVerbSurface,
 }
 
 impl ReturnAllToBattlefieldEffect {
@@ -1693,6 +1982,7 @@ impl ReturnAllToBattlefieldEffect {
             tapped,
             face_down: false,
             battlefield_controller: BattlefieldController::Owner,
+            verb_surface: MoveToZoneVerbSurface::Return,
         }
     }
 
@@ -1708,6 +1998,11 @@ impl ReturnAllToBattlefieldEffect {
 
     pub fn face_down(mut self) -> Self {
         self.face_down = true;
+        self
+    }
+
+    pub fn with_verb_surface(mut self, surface: MoveToZoneVerbSurface) -> Self {
+        self.verb_surface = surface;
         self
     }
 }
@@ -2310,11 +2605,24 @@ impl ManifestDreadEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
+    /// Cloak uses the same face-down/top-card operation as manifest, but the
+    /// resulting 2/2 creature also has ward {2}.
+    pub cloak: bool,
 }
 
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            cloak: false,
+        }
+    }
+
+    pub fn cloak(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            cloak: true,
+        }
     }
 }
 
@@ -2576,6 +2884,17 @@ impl<E> ScheduleEffectsWhenTaggedLeavesEffect<E> {
     }
 }
 
+/// Source-level placement of non-keyword abilities granted to a created token.
+///
+/// Token characteristics alone cannot distinguish `with "..."` from a later
+/// `It has "..."` sentence, so the compiler carries that surface choice to the
+/// renderer explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenAbilityPresentation {
+    InlineWith,
+    SeparateSentence,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTokenEffect<D> {
     pub token: D,
@@ -2583,6 +2902,7 @@ pub struct CreateTokenEffect<D> {
     pub controller: PlayerFilter,
     pub controller_target: Option<ChooseSpec>,
     pub suppress_aura_attachment_choice: bool,
+    pub ability_presentation: Option<TokenAbilityPresentation>,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
     pub exile_at_end_of_combat: bool,
@@ -2594,7 +2914,7 @@ pub struct CreateTokenEffect<D> {
 
 impl<D> CreateTokenEffect<D> {
     pub fn new(token: D, count: impl Into<Value>, controller: PlayerFilter) -> Self {
-        let count = count.into().without_surface_hint(ValueSurfaceHint::ForEach);
+        let count = count.into();
         let controller_target = match &controller {
             PlayerFilter::Target(filter) => {
                 Some(ChooseSpec::target(ChooseSpec::Player((**filter).clone())))
@@ -2607,6 +2927,7 @@ impl<D> CreateTokenEffect<D> {
             controller,
             controller_target,
             suppress_aura_attachment_choice: false,
+            ability_presentation: None,
             enters_tapped: false,
             enters_attacking: false,
             exile_at_end_of_combat: false,
@@ -2637,6 +2958,11 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn suppress_aura_attachment_choice(mut self) -> Self {
         self.suppress_aura_attachment_choice = true;
+        self
+    }
+
+    pub fn with_ability_presentation(mut self, presentation: TokenAbilityPresentation) -> Self {
+        self.ability_presentation = Some(presentation);
         self
     }
 
@@ -2688,7 +3014,7 @@ impl IncubateEffect {
         };
         Self {
             amount: amount.into(),
-            count: count.into().without_surface_hint(ValueSurfaceHint::ForEach),
+            count: count.into(),
             controller,
             controller_target,
         }
@@ -2720,6 +3046,9 @@ pub struct CreateTokenCopyEffect<A> {
     pub attack_target_mode: Option<CopyAttackTargetMode>,
     pub exile_at_end_of_combat: bool,
     pub sacrifice_at_next_end_step: bool,
+    /// Original quoted copiable ability text when the cleanup instruction was
+    /// granted to the token as part of the copy exception.
+    pub sacrifice_at_next_end_step_ability_text: Option<String>,
     pub exile_at_next_end_step: bool,
     pub next_end_step_player: PlayerFilter,
     pub pt_adjustment: Option<CopyPtAdjustment>,
@@ -2746,6 +3075,7 @@ impl<A> CreateTokenCopyEffect<A> {
             attack_target_mode: None,
             exile_at_end_of_combat: false,
             sacrifice_at_next_end_step: false,
+            sacrifice_at_next_end_step_ability_text: None,
             exile_at_next_end_step: false,
             next_end_step_player: PlayerFilter::Any,
             pt_adjustment: None,
@@ -2823,6 +3153,11 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn sacrifice_at_next_end_step(mut self, value: bool) -> Self {
         self.sacrifice_at_next_end_step = value;
+        self
+    }
+
+    pub fn sacrifice_at_next_end_step_ability_text(mut self, text: Option<String>) -> Self {
+        self.sacrifice_at_next_end_step_ability_text = text;
         self
     }
 

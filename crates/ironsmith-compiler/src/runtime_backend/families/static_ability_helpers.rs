@@ -334,6 +334,7 @@ pub(crate) fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                 intervening_if: Some(crate::ConditionExpr::SourceHasCounterAtLeast {
                     counter_type: crate::object::CounterType::Time,
                     count: 1,
+                    surface: crate::SourceCounterThresholdSurface::SourceHas,
                 }),
                 presentation_label: Some(PresentationLabel::Keyword(PresentationKeyword::Suspend)),
             }),
@@ -432,6 +433,11 @@ pub(crate) fn lower_granted_ability_ast_to_object_ability(
     ability: &GrantedAbilityAst,
 ) -> Result<Ability, CardTextError> {
     match ability {
+        GrantedAbilityAst::KeywordAction(KeywordAction::CumulativeUpkeep {
+            total_cost, ..
+        }) => Ok(super::keyword_static::cumulative_upkeep_granted_ability(
+            total_cost.clone(),
+        )),
         GrantedAbilityAst::KeywordAction(action) => {
             let static_ability = lower_keyword_action_or_err(action.clone())?;
             Ok(Ability::static_ability(static_ability))

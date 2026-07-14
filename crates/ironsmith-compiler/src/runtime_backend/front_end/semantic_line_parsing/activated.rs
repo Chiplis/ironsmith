@@ -13,7 +13,7 @@ use super::*;
 use crate::effect::Effect;
 use crate::object::CounterType;
 use crate::runtime_backend::semantic::ParsedManaRestriction;
-use crate::runtime_backend::util::find_first_unattach_cost_choice_tag;
+use crate::runtime_backend::util::activation_cost_reference_imports;
 use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -133,6 +133,8 @@ fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::Mill { count: amount }
             | SubjectVerbActionAst::Draw { count: amount }
@@ -197,6 +199,7 @@ struct SplitRewriteActivatedEffectText {
     effect_parse_tokens: Vec<OwnedLexToken>,
     restrictions: ParsedRestrictions,
     mana_restrictions: Vec<ParsedManaRestriction>,
+    x_cant_be_zero: bool,
 }
 
 fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
@@ -268,6 +271,7 @@ fn finalize_rewrite_activated_effect_sentences(
     let mut effect_sentences = Vec::new();
     let mut effect_sentence_tokens = Vec::new();
     let mut mana_restrictions = Vec::new();
+    let mut x_cant_be_zero = false;
 
     for tokens in sentence_tokens {
         let sentence = render_token_slice(&tokens).trim().to_string();
@@ -284,6 +288,10 @@ fn finalize_rewrite_activated_effect_sentences(
                 | Some(ActivatedRestrictionSentenceKind::WhenSpendThisManaToCast)
         ) {
             mana_restrictions.push(parse_mana_restriction_surface_tokens(&tokens));
+        } else if super::super::grammar::effects::dispatch_entry_shapes::is_x_cant_be_zero_tokens(
+            &tokens,
+        ) {
+            x_cant_be_zero = true;
         } else if is_standalone_x_definition_sentence(&tokens) {
             continue;
         } else if is_any_player_may_activate_sentence_lexed(&tokens) {
@@ -301,6 +309,7 @@ fn finalize_rewrite_activated_effect_sentences(
         effect_parse_tokens: join_sentences_with_period(&effect_sentence_tokens),
         restrictions,
         mana_restrictions,
+        x_cant_be_zero,
     }
 }
 
@@ -408,6 +417,7 @@ pub(crate) fn parse_activated_line(
     effect_parse_tokens: Vec<OwnedLexToken>,
     timing_hint: ActivationTiming,
     is_loyalty_ability: bool,
+    presentation: Option<PresentationLabel>,
     chosen_option: Option<ChosenOptionContext>,
 ) -> Result<ParsedActivatedLine, CardTextError> {
     parse_activated_line_impl(
@@ -419,6 +429,7 @@ pub(crate) fn parse_activated_line(
             presentation_kind: activated_grammar::parse_activated_presentation_kind_tokens(
                 &info.source_tokens,
             ),
+            presentation,
             info,
             cost,
             cost_parse_tokens: cost_parse_tokens.clone(),
@@ -442,6 +453,7 @@ fn parse_activated_line_impl(
         effect_parse_tokens,
         restrictions,
         mana_restrictions,
+        x_cant_be_zero,
     } = split_rewrite_activated_effect_text(original_effect_parse_tokens);
     if effect_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -455,7 +467,7 @@ fn parse_activated_line_impl(
     let original_effect_mentions_where_x =
         activated_grammar::contains_where_x_definition(original_effect_parse_tokens);
     let ability_text = rewrite_activated_display_text(line);
-    let presentation_display = line.presentation_kind.map(|kind| kind.display());
+    let presentation_display = activated_presentation_display(line);
     let mut additional_activation_restrictions = if line.presentation_kind
         == Some(crate::runtime_backend::ir::ActivatedPresentationKind::Exhaust)
     {
@@ -463,8 +475,11 @@ fn parse_activated_line_impl(
     } else {
         Vec::new()
     };
-    if let Some(display) = presentation_display {
+    if let Some(display) = presentation_display.as_deref() {
         additional_activation_restrictions.push(format!("__ironsmith_activation_label:{display}"));
+    }
+    if x_cant_be_zero {
+        additional_activation_restrictions.push("X can't be 0.".to_string());
     }
     if activated_grammar::contains_add_x_mana(&effect_parse_tokens)
         && !has_x_definition_value
@@ -554,11 +569,7 @@ fn parse_activated_line_impl(
             || effects_ast.first().is_some_and(effect_ast_is_mana_effect)
         {
             let functional_zones = infer_rewrite_activated_functional_zones(line)?;
-            let reference_imports = find_first_sacrifice_cost_choice_tag(&normalized_cost)
-                .or_else(|| find_last_exile_cost_choice_tag(&normalized_cost))
-                .or_else(|| find_first_unattach_cost_choice_tag(&normalized_cost))
-                .map(ReferenceImports::with_last_object_tag)
-                .unwrap_or_default();
+            let reference_imports = activation_cost_reference_imports(&normalized_cost);
             let mut parsed = ParsedAbility {
                 ability: Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
@@ -608,11 +619,7 @@ fn parse_activated_line_impl(
         bind_event_amounts_to_cost_x(&mut effects_ast);
     }
     let functional_zones = infer_rewrite_activated_functional_zones(line)?;
-    let reference_imports = find_first_sacrifice_cost_choice_tag(&normalized_cost)
-        .or_else(|| find_last_exile_cost_choice_tag(&normalized_cost))
-        .or_else(|| find_first_unattach_cost_choice_tag(&normalized_cost))
-        .map(ReferenceImports::with_last_object_tag)
-        .unwrap_or_default();
+    let reference_imports = activation_cost_reference_imports(&normalized_cost);
     let mut parsed = ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
@@ -673,12 +680,22 @@ fn apply_chosen_option_condition_to_activated(
 }
 
 fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String> {
-    let display = line.presentation_kind?.display();
+    let display = activated_presentation_display(line)?;
     Some(format!(
         "{display} — {}: {}",
         render_token_slice(&line.cost_parse_tokens).trim(),
         render_token_slice(&line.effect_parse_tokens).trim()
     ))
+}
+
+fn activated_presentation_display(line: &RewriteActivatedLine) -> Option<String> {
+    line.presentation
+        .as_ref()
+        .and_then(PresentationLabel::display_prefix)
+        .or_else(|| {
+            line.presentation_kind
+                .map(|kind| kind.display().to_string())
+        })
 }
 
 fn infer_rewrite_activated_functional_zones(

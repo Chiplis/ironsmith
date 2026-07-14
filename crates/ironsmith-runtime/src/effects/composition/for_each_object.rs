@@ -59,6 +59,8 @@ impl EffectExecutor for ForEachObject {
                 }
             }
             ids
+        } else if let Some(zone) = self.filter.zone {
+            game.zone_ids(zone).collect()
         } else {
             game.battlefield.clone()
         };
@@ -165,13 +167,15 @@ impl EffectExecutor for ForEachObject {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::effects::CounterEffect;
+    use crate::game_state::StackEntry;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::object::Object;
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
-    use crate::target::{ChooseSpec, TaggedObjectConstraint};
+    use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint};
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -348,5 +352,69 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.player(alice).unwrap().life, initial_life + 1);
+    }
+
+    #[test]
+    fn whirlwind_denial_style_loop_visits_opponent_stack_objects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let opponent_spell_card = CardBuilder::new(CardId::new(), "Opponent Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let opponent_spell = game.create_object_from_card(&opponent_spell_card, bob, Zone::Stack);
+        game.push_to_stack(StackEntry::new(opponent_spell, bob));
+
+        let ability_source = create_creature(&mut game, "Opponent Ability Source", bob);
+        game.push_to_stack(StackEntry::ability(
+            ability_source,
+            bob,
+            vec![Effect::draw(1)],
+        ));
+
+        let your_spell_card = CardBuilder::new(CardId::new(), "Your Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let your_spell = game.create_object_from_card(&your_spell_card, alice, Zone::Stack);
+        game.push_to_stack(StackEntry::new(your_spell, alice));
+
+        let mut stack_filter = ObjectFilter::default();
+        stack_filter.zone = Some(Zone::Stack);
+        stack_filter.controller = Some(PlayerFilter::Opponent);
+        let effect = ForEachObject::new(
+            stack_filter,
+            vec![Effect::new(CounterEffect::new(ChooseSpec::Iterated))],
+        );
+        let mut ctx = ExecutionContext::new_default(your_spell, alice);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("stack-zone iteration should resolve");
+
+        assert!(
+            !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == opponent_spell),
+            "the opponent's spell should be countered"
+        );
+        assert!(
+            !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == ability_source),
+            "the opponent's ability should be countered"
+        );
+        assert!(
+            game.stack.iter().any(|entry| entry.object_id == your_spell),
+            "your stack object should remain"
+        );
+        assert_eq!(
+            game.object(ability_source)
+                .expect("the ability source should remain on the battlefield")
+                .zone,
+            Zone::Battlefield
+        );
     }
 }

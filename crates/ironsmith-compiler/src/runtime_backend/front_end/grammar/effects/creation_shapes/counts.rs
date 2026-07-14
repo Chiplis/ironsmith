@@ -141,6 +141,10 @@ fn parse_static_abilities_among(tokens: &[OwnedLexToken]) -> Option<Value> {
 pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
+    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+    {
+        return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
+    }
     if let Some(value) = parse_counter_count(tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
     }
@@ -151,6 +155,10 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let surface = CreationWords::new(&words);
+    if let Some(player) = crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_party_size_player(&words)
+    {
+        return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::ForEach));
+    }
     if surface.starts(CreationPhrase::CardExiledThisWay) {
         return Some(
             Value::PendingEffectMetric {
@@ -344,5 +352,11 @@ mod tests {
             parse_creation_for_each_dynamic_count_tokens(&tokens).map(Value::into_unhinted),
             Some(Value::ColorsOfManaSpentToCastThisSpell)
         ));
+
+        let tokens = lex_line("creature in your party", 0).unwrap();
+        let party = parse_creation_for_each_dynamic_count_tokens(&tokens)
+            .expect("party creation count should parse");
+        assert!(party.has_surface_hint(ValueSurfaceHint::ForEach));
+        assert_eq!(party.into_unhinted(), Value::PartySize(PlayerFilter::You));
     }
 }

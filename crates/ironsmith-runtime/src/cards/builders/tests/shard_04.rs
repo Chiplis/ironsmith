@@ -1331,11 +1331,10 @@ pub(super) fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_co
         .expect("squad should preserve mana cost");
     assert_eq!(mana.to_oracle(), "{2}");
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
-        rendered.contains("squad—{2}"),
+        rendered.lines().any(|line| line == "Squad {2}")
+            && !rendered.contains("optional cost 'Squad' was paid"),
         "expected squad optional-cost line, got {rendered}"
     );
 
@@ -2396,6 +2395,104 @@ pub(super) fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regressio
     assert!(
         !debug.contains("KeywordFallbackText") && !debug.contains("unsupported"),
         "Jhoira should not rely on unsupported fallback text, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn doom_time_platform_exiles_with_time_counters_before_granting_suspend() {
+    assert_oracle_card_parses_strict("Doom's Time Platform");
+
+    let def = parse_oracle_card_definition("Doom's Time Platform");
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Exile")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("counter_type: Time")
+            && debug.contains("amount: Fixed(2)")
+            && debug.contains("alternative_cast: Some(Suspend)"),
+        "expected exile, two time counters, and the conditional suspend grant, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "exile target nonland card from your graveyard with two time counters on it. If it doesn't have suspend, it gains suspend"
+        ),
+        "expected compact exile-with-counters suspend wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Then if not") && !rendered.contains("Suspend —"),
+        "suspend implementation details should stay structural, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn kang_prime_uses_exile_consult_then_counters_and_suspend() {
+    assert_oracle_card_parses_strict("Kang Prime");
+
+    let def = parse_oracle_card_definition("Kang Prime");
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("ConsultTopOfLibraryEffect")
+            && debug.contains("mode: Exile")
+            && debug.contains("excluded_card_types: [Land]")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("counter_type: Time")
+            && debug.contains("amount: Fixed(2)"),
+        "expected exile-until-nonland consult followed by two time counters, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "exile cards from the top of your library until you exile a nonland card. Put two time counters on that card. If it doesn't have suspend, it gains suspend"
+        ),
+        "expected compact consult/counter/suspend wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("exile the top card")
+            && !rendered.contains("Then if not")
+            && !rendered.contains("Suspend —"),
+        "consult and suspend should avoid lossy fallback wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn sibylline_soothsayer_exiles_consult_match_with_time_counters() {
+    assert_oracle_card_parses_strict("Sibylline Soothsayer");
+
+    let def = parse_oracle_card_definition("Sibylline Soothsayer");
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("ConsultTopOfLibraryEffect")
+            && debug.contains("mode: Reveal")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("counter_type: Time")
+            && debug.contains("amount: Fixed(3)")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected reveal consult, exile, three time counters, and random bottoming, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("greater. Exile that card with three time counters on it")
+            && rendered.contains(
+            "Exile that card with three time counters on it. If it doesn't have suspend, it gains suspend"
+        ) && rendered.contains(
+            "Put the rest of the revealed cards on the bottom of your library in a random order"
+        ),
+        "expected compact matched-card suspend setup and revealed remainder wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Then if not")
+            && !rendered.contains("greater, exile that card, and put")
+            && !rendered.contains("remaining tagged cards")
+            && !rendered.contains("Suspend —"),
+        "consult and suspend internals should not leak, got {rendered}"
     );
 }
 

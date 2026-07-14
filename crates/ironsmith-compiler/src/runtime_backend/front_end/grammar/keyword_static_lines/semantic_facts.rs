@@ -5,7 +5,7 @@ use winnow::token::any;
 
 use crate::types::CardType;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken};
+use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind};
 use super::super::primitives;
 use super::nearby_primitives::{
     semantic_all, semantic_finish, semantic_kw, semantic_noise, semantic_phrase,
@@ -32,6 +32,7 @@ pub(crate) enum EarlyStaticMarkerKind {
     CantAttackWithoutCreatureSpell,
     CantAttackWithoutNoncreatureSpell,
     DayNightStartsDay,
+    LivingMetal,
     VehicleRulesMarker,
 }
 
@@ -104,6 +105,10 @@ pub(crate) fn parse_spell_cast_this_turn_player_tokens(
 pub(crate) fn parse_early_static_marker_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EarlyStaticMarkerKind> {
+    if parse_living_metal_tokens(tokens) {
+        return Some(EarlyStaticMarkerKind::LivingMetal);
+    }
+
     let exact = alt((
         semantic_phrase(&[
             "x", "cant", "be", "greater", "than", "number", "of", "players", "in", "game",
@@ -154,6 +159,18 @@ pub(crate) fn parse_early_static_marker_tokens(
         return Some(EarlyStaticMarkerKind::DayNightStartsDay);
     }
     parse_vehicle_prefix_suffix_marker(tokens).then_some(EarlyStaticMarkerKind::VehicleRulesMarker)
+}
+
+fn parse_living_metal_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let Some(((), tail)) = primitives::parse_prefix(tokens, semantic_phrase(&["living", "metal"]))
+    else {
+        return false;
+    };
+
+    tail.is_empty()
+        || tail
+            .first()
+            .is_some_and(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
 }
 
 pub(crate) fn parse_static_text_marker_kind_tokens(
@@ -440,5 +457,16 @@ mod tests {
             parse_early_static_marker_tokens(&tokens),
             Some(EarlyStaticMarkerKind::VehicleRulesMarker)
         );
+
+        for text in [
+            "Living metal",
+            "Living metal (During your turn, this Vehicle is also a creature.)",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_early_static_marker_tokens(&tokens),
+                Some(EarlyStaticMarkerKind::LivingMetal)
+            );
+        }
     }
 }

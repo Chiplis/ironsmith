@@ -8,6 +8,7 @@ use crate::runtime_backend::front_end::grammar::{primitives, values};
 use crate::runtime_backend::front_end::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordView,
 };
+use ironsmith_core::ValueSurfaceHint;
 
 use super::{is_each_opponent_library_shape, parse_exile_library_owner_shape};
 
@@ -92,6 +93,24 @@ pub(crate) fn parse_exile_dynamic_top_library_shape(
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
     let tokens = trim_commas(tokens);
+    if let Some((_, after_cards)) = primitives::parse_prefix(tokens, card_word)
+        && let Some((before_equal, after_equal)) =
+            primitives::split_lexed_once_on_separator(after_cards, || {
+                primitives::phrase(&["equal", "to"]).void()
+            })
+        && let Some((_, position_tokens)) =
+            primitives::parse_prefix(trim_commas(before_equal), primitives::kw("from"))
+        && let Some(owner_tokens) = strip_position_and_of(trim_commas(position_tokens), "top")
+    {
+        let player = library_player(trim_commas(owner_tokens), default_player, false)?;
+        let (count, used) = values::parse_value_prefix_lexed(trim_commas(after_equal))?;
+        if used == trim_commas(after_equal).len() {
+            return Some(ExileLibraryCardsShape {
+                player,
+                count: count.with_surface_hint(ValueSurfaceHint::EqualTo),
+            });
+        }
+    }
     let (count, after_from) = if let Some((_, after_from)) = primitives::parse_prefix(
         tokens,
         (
@@ -191,5 +210,21 @@ mod tests {
             bottom.player,
             ExileLibraryPlayerShape::Player(PlayerAst::Opponent)
         );
+
+        let excess = parse_exile_dynamic_top_library_shape(
+            &lex(
+                "cards from the top of your library equal to the excess damage dealt to that creature this way",
+            ),
+            PlayerAst::Implicit,
+        )
+        .unwrap();
+        assert_eq!(
+            excess.count.unhinted(),
+            &Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            }
+        );
+        assert!(excess.count.has_surface_hint(ValueSurfaceHint::EqualTo));
     }
 }

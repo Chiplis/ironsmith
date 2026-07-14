@@ -1241,9 +1241,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         }
     } else if search_library_prefix_len(count_tokens, THAT_MANY_PREFIX).is_some() {
         count = ChoiceCount::dynamic_x();
-        count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
-            crate::cards::builders::IT_TAG,
-        )));
+        count_value = Some(Value::EventValue(crate::effect::EventValueSpec::Amount));
         count_used = 2;
     } else if search_library_prefix_len(count_tokens, UP_TO_X_PREFIX).is_some() {
         count = ChoiceCount::up_to_dynamic_x();
@@ -1259,9 +1257,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
     {
         count = ChoiceCount::up_to_dynamic_x();
         search_mode = SearchSelectionMode::Optional;
-        count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
-            crate::cards::builders::IT_TAG,
-        )));
+        count_value = Some(Value::EventValue(crate::effect::EventValueSpec::Amount));
         count_used = 4;
     } else if token_slice_first_is(count_tokens, "exactly") {
         if let Some((value, used)) = parse_number(&count_tokens[1..]) {
@@ -1481,7 +1477,9 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         }
         filter.distinct_names |= distinct_names;
         Ok(filter)
-    } else if search_library_words_have_word(&filter_words, "or") {
+    } else if search_library_words_have_word(&filter_words, "or")
+        || search_library_words_have_word(&filter_words, "and/or")
+    {
         let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
             .or_else(|| parse_object_filter(&filter_tokens, false).ok())
             .ok_or_else(|| {
@@ -1773,4 +1771,27 @@ pub(crate) fn search_library_starts_with_search_verb_lexed(
     search_tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(search_tokens, search_library_search_verb).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn prior_or_trigger_amount_drives_that_many_search_counts() {
+        for (surface, expected_used, up_to) in
+            [("that many", 2, false), ("up to that many", 4, true)]
+        {
+            let tokens = lex_line(surface, 0).expect("count surface should lex");
+            let parsed = parse_search_library_count_prefix_lexed(&tokens);
+
+            assert_eq!(parsed.count_used, expected_used);
+            assert_eq!(parsed.count.up_to_x, up_to);
+            assert_eq!(
+                parsed.count_value,
+                Some(Value::EventValue(crate::effect::EventValueSpec::Amount))
+            );
+        }
+    }
 }

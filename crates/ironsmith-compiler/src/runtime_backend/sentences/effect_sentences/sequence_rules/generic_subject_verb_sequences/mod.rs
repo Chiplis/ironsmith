@@ -1,6 +1,7 @@
 use super::SentenceInput;
 
 pub(crate) mod exile_permission_followups;
+pub(crate) mod exiled_collections;
 pub(crate) mod pairs;
 pub(crate) mod quads;
 pub(crate) mod triples;
@@ -275,6 +276,7 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
                     exile_at_next_end_step: false,
                     next_end_step_player: PlayerFilter::Any,
                     granted_abilities: Vec::new(),
+                    ability_presentation: None,
                 },
             )],
         },

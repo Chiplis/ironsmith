@@ -100,19 +100,18 @@ pub(crate) fn parse_counter_reference_value_shape(
         index += 1;
     }
 
-    let mut counter_type = None;
-    if let Some(word) = words.get(index)
-        && let Some(parsed) = parse_counter_type_word(word)
-    {
-        counter_type = Some(parsed);
-        index += 1;
-    }
-    if !permission_shapes::starts_at_words(words, index, &["counter"])
-        && !permission_shapes::starts_at_words(words, index, &["counters"])
-    {
+    let counter_offset = words
+        .get(index..)?
+        .iter()
+        .position(|word| matches!(*word, "counter" | "counters"))?;
+    if counter_offset > 2 {
         return None;
     }
-    index += 1;
+    let counter_idx = index + counter_offset;
+    let counter_type = (counter_idx > index)
+        .then(|| parse_counter_type_words(&words[index..=counter_idx]))
+        .flatten();
+    index = counter_idx + 1;
     if !permission_shapes::starts_at_words(words, index, &["on"]) {
         return None;
     }

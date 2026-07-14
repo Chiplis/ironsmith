@@ -19,7 +19,8 @@ use std::collections::{HashMap, HashSet};
 use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectGroupId, EffectSourceType,
-    EffectTarget, Layer, Modification, PtSublayer,
+    EffectTarget, Layer, Modification, PtSublayer, replace_card_types_and_prune_subtypes,
+    replace_subtypes_in_family,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilterExt;
@@ -373,6 +374,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && filter.ability_markers.is_empty()
         && filter.excluded_ability_markers.is_empty()
         && !filter.uses_power_or_toughness_characteristics()
+        && filter.attached_to_object.is_none()
         && filter.attached_to_player.is_none()
         && filter.alternative_cast.is_none()
 }
@@ -1028,6 +1030,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::IteratedPlayer
             | PlayerFilter::TargetPlayerOrControllerOfTarget
             | PlayerFilter::Target(_)
+            | PlayerFilter::AliasedTarget(_)
             | PlayerFilter::Excluding { .. }
             | PlayerFilter::ControllerOf(_)
             | PlayerFilter::OwnerOf(_)
@@ -1234,7 +1237,11 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             chars.card_types.retain(|t| !types.contains(t));
         }
         Modification::SetCardTypes(types) => {
-            chars.card_types = types.clone().into();
+            replace_card_types_and_prune_subtypes(
+                &mut chars.card_types,
+                &mut chars.subtypes,
+                types,
+            );
         }
         Modification::AddSubtypes(types) => {
             for t in types {
@@ -1247,14 +1254,11 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             chars.subtypes.retain(|t| !types.contains(t));
         }
         Modification::SetSubtypes(types) => {
-            let non_land_subtypes: Vec<_> = chars
-                .subtypes
-                .iter()
-                .filter(|subtype| !subtype.is_land_subtype())
-                .cloned()
-                .collect();
-            chars.subtypes = non_land_subtypes.into();
-            chars.subtypes.extend(types.iter().copied());
+            replace_subtypes_in_family(
+                &mut chars.subtypes,
+                types,
+                crate::types::SubtypeFamily::Land,
+            );
 
             // Setting a land's subtype to basic land types also replaces its
             // abilities with the corresponding intrinsic mana abilities. We
@@ -1507,6 +1511,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorsAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctPowers(_)
+        | Value::TurnHistoryCount(_)
         | Value::CreaturesDiedThisTurn
         | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::PlayersBeingAttacked
@@ -1516,9 +1521,12 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::Devotion { .. }
         | Value::DevotionToChosenColor(_)
         | Value::ManaSpentToCastThisSpell
+        | Value::ManaFromSourceSpentToCastThisSpell { .. }
+        | Value::ManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
+        | Value::ManaSymbolsInManaCostOf { .. }
         | Value::LifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
@@ -1891,7 +1899,10 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                 filter_uses_ability_characteristics(filter)
             }
             Modification::SetName(_) => {
-                filter.name.is_some() || filter.excluded_name.is_some() || filter.distinct_names
+                filter.name.is_some()
+                    || filter.excluded_name.is_some()
+                    || filter.name_originally_printed_in_set.is_some()
+                    || filter.distinct_names
             }
             Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
@@ -2178,70 +2189,77 @@ fn sort_with_dependencies_with_baseline_and_started_groups<'a>(
     }
     game.note_dependency_sort();
 
-    let mut depends_on: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
-
-    // One representative object per characteristic class; probes between
-    // dedup-eligible effects only need to test one object per class.
-    let representatives = chars_class_representatives(baseline, objects, game);
-
-    let mut has_any_dependency = false;
-    for i in 0..effects.len() {
-        for j in 0..effects.len() {
-            if i != j
-                && effect_depends_on_with_baseline_and_started_groups(
-                    effects[i],
-                    effects[j],
-                    baseline,
-                    objects,
-                    game,
-                    started_groups,
-                    Some(&representatives),
-                )
-            {
-                depends_on[i].push(j);
-                has_any_dependency = true;
-            }
-        }
-    }
-
-    if !has_any_dependency {
-        let mut sorted = effects.to_vec();
-        sorted.sort_by_key(|e| e.timestamp);
-        return sorted;
-    }
-
-    if has_cycle(&depends_on) {
-        let mut sorted = effects.to_vec();
-        sorted.sort_by_key(|e| e.timestamp);
-        return sorted;
-    }
-
-    let mut in_degree: Vec<usize> = vec![0; effects.len()];
-    for (i, deps) in depends_on.iter().enumerate() {
-        in_degree[i] = deps.len();
-    }
-
-    let mut depended_by: Vec<Vec<usize>> = vec![Vec::new(); effects.len()];
-    for (i, deps) in depends_on.iter().enumerate() {
-        for &j in deps {
-            depended_by[j].push(i);
-        }
-    }
-
+    // CR 613.8c requires dependency information to be reevaluated after each
+    // effect is applied. A previously independent effect can become dependent
+    // because an earlier effect changed which objects it applies to.
+    let mut remaining: Vec<usize> = (0..effects.len()).collect();
+    let mut current_baseline = baseline.clone();
+    let mut current_started_groups = started_groups.clone();
     let mut result = Vec::with_capacity(effects.len());
-    let mut ready: Vec<usize> = (0..effects.len()).filter(|&i| in_degree[i] == 0).collect();
 
-    ready.sort_by_key(|&i| std::cmp::Reverse(effects[i].timestamp));
+    while !remaining.is_empty() {
+        let representatives = chars_class_representatives(&current_baseline, objects, game);
+        let cda_pending = remaining.iter().any(|&index| {
+            matches!(
+                effects[index].source_type,
+                EffectSourceType::CharacteristicDefining
+            )
+        });
+        let eligible: Vec<usize> = remaining
+            .iter()
+            .copied()
+            .filter(|&index| {
+                !cda_pending
+                    || matches!(
+                        effects[index].source_type,
+                        EffectSourceType::CharacteristicDefining
+                    )
+            })
+            .collect();
 
-    while let Some(idx) = ready.pop() {
-        result.push(effects[idx]);
-        for &dependent in &depended_by[idx] {
-            in_degree[dependent] -= 1;
-            if in_degree[dependent] == 0 {
-                ready.push(dependent);
-            }
+        let mut ready: Vec<usize> = eligible
+            .iter()
+            .copied()
+            .filter(|&index| {
+                !eligible.iter().copied().any(|dependency_index| {
+                    dependency_index != index
+                        && effect_depends_on_with_baseline_and_started_groups(
+                            effects[index],
+                            effects[dependency_index],
+                            &current_baseline,
+                            objects,
+                            game,
+                            &current_started_groups,
+                            Some(&representatives),
+                        )
+                })
+            })
+            .collect();
+
+        // If the remaining effects form a dependency loop, dependencies in
+        // that loop are ignored and the oldest eligible effect is next.
+        if ready.is_empty() {
+            ready = eligible;
         }
-        ready.sort_by_key(|&i| std::cmp::Reverse(effects[i].timestamp));
+        let next = ready
+            .into_iter()
+            .min_by_key(|&index| (effects[index].timestamp, index))
+            .expect("at least one remaining effect must be eligible");
+        let effect = effects[next];
+
+        let starts_group = effect.group.is_some_and(|_| {
+            objects.iter().any(|(id, object)| {
+                current_baseline.get(id).is_some_and(|chars| {
+                    effect_applies_with_chars(effect, object, chars, game)
+                })
+            })
+        });
+        current_baseline = apply_effect_to_baseline(effect, &current_baseline, objects, game);
+        if starts_group && let Some(group) = effect.group {
+            current_started_groups.insert(group);
+        }
+        result.push(effect);
+        remaining.retain(|&index| index != next);
     }
 
     result
@@ -2964,6 +2982,85 @@ mod tests {
 
         let effects = vec![&cda_a, &cda_b];
         assert!(!needs_baseline_dependency_sort(&effects));
+    }
+
+    #[test]
+    fn baseline_sort_rechecks_dependencies_after_each_effect() {
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::object::Object;
+        use crate::zone::Zone;
+        use std::collections::HashMap;
+
+        let card = CardBuilder::new(CardId::from_raw(40), "Dependency Seed")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let object = Object::from_card(
+            ObjectId::from_raw(40),
+            &card,
+            PlayerId::from_index(0),
+            Zone::Battlefield,
+        );
+        let objects = [(object.id, Arc::new(object.clone()))]
+            .into_iter()
+            .collect::<crate::game_state::ObjectMap>();
+        let baseline = HashMap::from([(
+            object.id,
+            CalculatedCharacteristics {
+                name: object.name.clone(),
+                compiled_card_text: object.compiled_card_text.clone(),
+                power: object.base_power.as_ref().map(|power| power.base_value()),
+                toughness: object
+                    .base_toughness
+                    .as_ref()
+                    .map(|toughness| toughness.base_value()),
+                card_types: object.card_types.clone(),
+                subtypes: object.subtypes.clone(),
+                supertypes: object.supertypes.clone(),
+                colors: object.colors(),
+                abilities: object.abilities.clone().into(),
+                static_abilities: Vec::new().into(),
+                aura_attach_filter: object.aura_attach_filter_owned(),
+                controller: object.owner,
+            },
+        )]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+
+        let mut artifact_to_creature = create_test_effect(
+            1,
+            1,
+            Modification::AddCardTypes(vec![CardType::Creature]),
+        );
+        artifact_to_creature.applies_to = EffectTarget::Filter(ObjectFilter::artifact());
+        let mut land_to_enchantment = create_test_effect(
+            2,
+            2,
+            Modification::AddCardTypes(vec![CardType::Enchantment]),
+        );
+        land_to_enchantment.applies_to = EffectTarget::Filter(ObjectFilter::land());
+        let mut creature_to_land =
+            create_test_effect(3, 3, Modification::AddCardTypes(vec![CardType::Land]));
+        creature_to_land.applies_to = EffectTarget::Filter(ObjectFilter::creature());
+
+        let sorted = sort_layer_effects_with_baseline(
+            &[
+                &artifact_to_creature,
+                &land_to_enchantment,
+                &creature_to_land,
+            ],
+            &baseline,
+            &objects,
+            &game,
+        );
+        let ids: Vec<_> = sorted.iter().map(|effect| effect.id).collect();
+        assert_eq!(
+            ids,
+            vec![
+                artifact_to_creature.id,
+                creature_to_land.id,
+                land_to_enchantment.id,
+            ]
+        );
     }
 
     #[test]

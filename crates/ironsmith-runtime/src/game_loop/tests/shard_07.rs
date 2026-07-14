@@ -19,6 +19,179 @@ use super::shard_17::*;
 use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
+struct SelectNamedObjectGroups {
+    groups: std::collections::VecDeque<Vec<&'static str>>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl SelectNamedObjectGroups {
+    fn new(groups: impl IntoIterator<Item = Vec<&'static str>>) -> Self {
+        Self {
+            groups: groups.into_iter().collect(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for SelectNamedObjectGroups {
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let Some(names) = self.groups.pop_front() else {
+            return ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect();
+        };
+        let selected = names
+            .iter()
+            .map(|name| {
+                ctx.candidates
+                    .iter()
+                    .find(|candidate| {
+                        candidate.legal
+                            && game
+                                .object(candidate.id)
+                                .is_some_and(|object| object.name == *name)
+                    })
+                    .unwrap_or_else(|| panic!("missing legal looked-card choice {name}"))
+                    .id
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            selected.len() >= ctx.min && ctx.max.is_none_or(|max| selected.len() <= max),
+            "scripted looked-card choice must satisfy the requested count"
+        );
+        selected
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_partition_library_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    id: u32,
+    name: &str,
+) -> ObjectId {
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        owner,
+        Zone::Library,
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn dark_bargain_moves_two_chosen_looked_cards_and_only_the_remainder_to_graveyard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::from_raw(82_050), "Dark Bargain")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Look at the top three cards of your library. Put two of them into your hand and the other into your graveyard. Dark Bargain deals 2 damage to you.",
+        )
+        .expect("Dark Bargain should parse");
+
+    add_partition_library_card(&mut game, alice, 82_051, "Unseen Sentinel");
+    add_partition_library_card(&mut game, alice, 82_052, "Dark Remainder");
+    add_partition_library_card(&mut game, alice, 82_053, "Dark Hand A");
+    add_partition_library_card(&mut game, alice, 82_054, "Dark Hand B");
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    let mut decisions = SelectNamedObjectGroups::new([vec!["Dark Hand A", "Dark Hand B"]]);
+    resolve_stack_entry_with(&mut game, &mut decisions).expect("Dark Bargain should resolve");
+
+    let player = game.player(alice).expect("Alice should exist");
+    let hand_names = player
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(hand_names.len(), 2);
+    assert!(hand_names.contains(&"Dark Hand A".to_string()));
+    assert!(hand_names.contains(&"Dark Hand B".to_string()));
+    let graveyard_names = player
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
+        .collect::<Vec<_>>();
+    assert!(graveyard_names.contains(&"Dark Remainder".to_string()));
+    assert!(!graveyard_names.contains(&"Dark Hand A".to_string()));
+    assert!(!graveyard_names.contains(&"Dark Hand B".to_string()));
+    assert_eq!(
+        player.library.len(),
+        1,
+        "only the unseen card should remain"
+    );
+    assert_eq!(player.life, 18, "Dark Bargain should still deal its damage");
+    assert!(
+        decisions.groups.is_empty(),
+        "all scripted choices should be used"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn telling_time_preserves_independent_hand_top_and_bottom_choices() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::from_raw(82_060), "Telling Time")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Look at the top three cards of your library. Put one of those cards into your hand, one on top of your library, and one on the bottom of your library.",
+        )
+        .expect("Telling Time should parse");
+
+    add_partition_library_card(&mut game, alice, 82_061, "Unseen Middle Sentinel");
+    add_partition_library_card(&mut game, alice, 82_062, "Chosen Bottom");
+    add_partition_library_card(&mut game, alice, 82_063, "Chosen Top");
+    add_partition_library_card(&mut game, alice, 82_064, "Chosen Hand");
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    let mut decisions = SelectNamedObjectGroups::new([
+        vec!["Chosen Hand"],
+        vec!["Chosen Top"],
+        vec!["Chosen Bottom"],
+    ]);
+    resolve_stack_entry_with(&mut game, &mut decisions).expect("Telling Time should resolve");
+
+    let player = game.player(alice).expect("Alice should exist");
+    let hand_names = player
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(hand_names, vec!["Chosen Hand".to_string()]);
+    let library_names = player
+        .library
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        library_names,
+        vec![
+            "Chosen Bottom".to_string(),
+            "Unseen Middle Sentinel".to_string(),
+            "Chosen Top".to_string(),
+        ],
+        "library vectors are bottom-to-top, so the two chosen placements must remain independent"
+    );
+    assert!(
+        decisions.groups.is_empty(),
+        "all three choices should be used"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn illicit_auction_high_bidder_can_bid_more_life_than_they_have_and_gains_control_indefinitely()
  {

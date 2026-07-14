@@ -170,6 +170,7 @@ pub enum Subtype {
     Artificer,
     Assassin,
     Astartes,
+    Atog,
     Avatar,
     Barbarian,
     Bard,
@@ -385,6 +386,7 @@ pub enum Subtype {
 
     // Artifact subtypes
     Bobblehead,
+    Book,
     Clue,
     Contraption,
     Equipment,
@@ -475,6 +477,7 @@ impl Subtype {
             Subtype::Artificer,
             Subtype::Assassin,
             Subtype::Astartes,
+            Subtype::Atog,
             Subtype::Avatar,
             Subtype::Barbarian,
             Subtype::Bard,
@@ -689,6 +692,7 @@ impl Subtype {
     pub const fn all_artifact_types() -> &'static [Subtype] {
         &[
             Subtype::Bobblehead,
+            Subtype::Book,
             Subtype::Clue,
             Subtype::Contraption,
             Subtype::Equipment,
@@ -818,6 +822,7 @@ impl Subtype {
                 | Subtype::Artificer
                 | Subtype::Assassin
                 | Subtype::Astartes
+                | Subtype::Atog
                 | Subtype::Avatar
                 | Subtype::Barbarian
                 | Subtype::Bard
@@ -1034,6 +1039,7 @@ impl Subtype {
             self,
             Subtype::Clue
                 | Subtype::Bobblehead
+                | Subtype::Book
                 | Subtype::Contraption
                 | Subtype::Equipment
                 | Subtype::Food

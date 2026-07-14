@@ -5,15 +5,18 @@ use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DoubleCounterHolderShape<'a> {
     You,
-    Source(&'a [OwnedLexToken]),
+    Source {
+        tokens: &'a [OwnedLexToken],
+        surface: crate::target::SourceReferenceSurface,
+    },
     Target(&'a [OwnedLexToken]),
     Filter(&'a [OwnedLexToken]),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DoubleCountersShape<'a> {
     pub(crate) counter_type: Option<crate::object::CounterType>,
     pub(crate) holder: DoubleCounterHolderShape<'a>,
@@ -23,6 +26,7 @@ pub(crate) struct DoubleCountersShape<'a> {
 pub(crate) struct CopyTailShape {
     pub(crate) retarget_split: Option<usize>,
     pub(crate) retarget_may: bool,
+    pub(crate) retarget_single_target: bool,
     pub(crate) exception_split: Option<usize>,
     pub(crate) then_split: Option<usize>,
     pub(crate) for_each_split: Option<usize>,
@@ -52,6 +56,7 @@ pub(crate) enum CopyTargetShape<'a> {
 pub(crate) struct CopyRetargetShape {
     pub(crate) may_choose: bool,
     pub(crate) has_new: bool,
+    pub(crate) single_target: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,14 +106,22 @@ fn counter_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn source_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        primitives::kw("it").void(),
-        primitives::kw("this").void(),
-        primitives::phrase(&["this", "creature"]),
-        primitives::phrase(&["this", "permanent"]),
-    ))
-    .parse_next(input)
+fn double_counter_source_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::SourceReferenceSurface> {
+    let words = parser_token_word_refs(tokens);
+    if let Some(anaphor) = leaf::parse_leaf_source_anaphor_words(&words) {
+        return Some(match anaphor {
+            leaf::LeafSourceAnaphor::It => {
+                crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string())
+            }
+            leaf::LeafSourceAnaphor::Its => {
+                crate::target::SourceReferenceSurface::ThisPermanentType("its".to_string())
+            }
+            leaf::LeafSourceAnaphor::This(surface) => surface,
+        });
+    }
+    crate::runtime_backend::util::source_reference_surface_for_words(&words)
 }
 
 fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleCountersShape<'a>> {
@@ -165,14 +178,11 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
                 .take()
                 .parse_next(input)?;
         primitives::sentence_end().parse_next(input)?;
-        if primitives::parse_all(
-            holder_tokens,
-            (source_reference, eof).void(),
-            "double-counter source",
-        )
-        .is_ok()
-        {
-            DoubleCounterHolderShape::Source(holder_tokens)
+        if let Some(surface) = double_counter_source_surface(holder_tokens) {
+            DoubleCounterHolderShape::Source {
+                tokens: holder_tokens,
+                surface,
+            }
         } else if marker_anywhere(
             holder_tokens,
             alt((primitives::kw("target"), primitives::kw("targets"))),

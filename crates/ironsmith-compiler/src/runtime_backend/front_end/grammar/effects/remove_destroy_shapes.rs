@@ -64,6 +64,10 @@ pub(crate) enum DestroyAllShape<'a> {
     DealtDamageThisTurn {
         filter_tokens: &'a [OwnedLexToken],
     },
+    DealtDamageToPlayerThisTurn {
+        filter_tokens: &'a [OwnedLexToken],
+        player_tokens: &'a [OwnedLexToken],
+    },
     AttachedTo {
         filter_tokens: &'a [OwnedLexToken],
         target_tokens: &'a [OwnedLexToken],
@@ -341,22 +345,11 @@ fn has_combat_history_surface(tokens: &[OwnedLexToken]) -> bool {
 fn parse_target_combat_history_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyCombatHistoryShape<'_>> {
-    if let Some((that_idx, (), after_marker)) = primitives::find_prefix(tokens, || {
-        primitives::phrase(&["that", "dealt", "damage", "to"])
-    }) && that_idx > 0
-        && let Some((player_tokens, ())) =
-            primitives::split_lexed_once_before_suffix(after_marker, 1, || {
-                primitives::phrase(&["this", "turn"])
-            })
-    {
-        let target_tokens = trim_lexed_commas(&tokens[..that_idx]);
-        let player_tokens = trim_lexed_commas(player_tokens);
-        if !target_tokens.is_empty() && !player_tokens.is_empty() {
-            return Some(DestroyCombatHistoryShape::DealtDamageToPlayerThisTurn {
-                target_tokens,
-                player_tokens,
-            });
-        }
+    if let Some((target_tokens, player_tokens)) = parse_dealt_damage_to_player_filter(tokens) {
+        return Some(DestroyCombatHistoryShape::DealtDamageToPlayerThisTurn {
+            target_tokens,
+            player_tokens,
+        });
     }
 
     let (target_tokens, ()) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
@@ -365,6 +358,24 @@ fn parse_target_combat_history_shape(
     let target_tokens = trim_lexed_commas(target_tokens);
     (!target_tokens.is_empty())
         .then_some(DestroyCombatHistoryShape::DealtDamageThisTurn { target_tokens })
+}
+
+fn parse_dealt_damage_to_player_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let (that_idx, (), after_marker) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["that", "dealt", "damage", "to"])
+    })?;
+    if that_idx == 0 {
+        return None;
+    }
+    let (player_tokens, ()) = primitives::split_lexed_once_before_suffix(after_marker, 1, || {
+        primitives::phrase(&["this", "turn"])
+    })?;
+    let filter_tokens = trim_lexed_commas(&tokens[..that_idx]);
+    let player_tokens = trim_lexed_commas(player_tokens);
+    (!filter_tokens.is_empty() && !player_tokens.is_empty())
+        .then_some((filter_tokens, player_tokens))
 }
 
 fn parse_dealt_damage_filter(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -452,6 +463,12 @@ fn chosen_this_way_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
+    if let Some((filter_tokens, player_tokens)) = parse_dealt_damage_to_player_filter(tokens) {
+        return DestroyAllShape::DealtDamageToPlayerThisTurn {
+            filter_tokens,
+            player_tokens,
+        };
+    }
     if let Some(filter_tokens) = parse_dealt_damage_filter(tokens) {
         return DestroyAllShape::DealtDamageThisTurn { filter_tokens };
     }
@@ -566,17 +583,20 @@ pub(crate) fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyCla
         DestroyClauseKind::Empty
     } else if timing.is_none() && has_unsupported_delayed_timing(tokens) {
         DestroyClauseKind::UnsupportedDelayedTiming
-    } else if let Some(combat) = parse_target_combat_history_shape(core_tokens) {
-        DestroyClauseKind::CombatHistory(combat)
     } else if let Some(((), all_tokens)) = primitives::parse_prefix(core_tokens, all_or_each_word) {
         let all_shape = parse_destroy_all_shape(trim_lexed_commas(all_tokens));
-        if matches!(all_shape, DestroyAllShape::DealtDamageThisTurn { .. })
-            || !has_combat_history_surface(core_tokens)
+        if matches!(
+            all_shape,
+            DestroyAllShape::DealtDamageThisTurn { .. }
+                | DestroyAllShape::DealtDamageToPlayerThisTurn { .. }
+        ) || !has_combat_history_surface(core_tokens)
         {
             DestroyClauseKind::All(all_shape)
         } else {
             DestroyClauseKind::UnsupportedCombatHistory
         }
+    } else if let Some(combat) = parse_target_combat_history_shape(core_tokens) {
+        DestroyClauseKind::CombatHistory(combat)
     } else if has_combat_history_surface(core_tokens) {
         DestroyClauseKind::UnsupportedCombatHistory
     } else if let Some((target_tokens, unless_tokens)) =

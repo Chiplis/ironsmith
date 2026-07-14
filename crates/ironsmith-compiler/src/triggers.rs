@@ -1,7 +1,7 @@
 pub use ironsmith_core::trigger_model::{
     CompilerTriggerMatcher, CountMode, CounterPutOnTrigger, CounterRemovedFromTrigger,
-    DamageSourceSurface, DamagedBySource, PlayerGetsCountersTrigger, Trigger, TriggerIntroSurface,
-    TriggerKind, ZoneChangeTrigger,
+    DamageSourceSurface, DamagedBySource, EndStepSurface, PlayerGetsCountersTrigger, Trigger,
+    TriggerIntroSurface, TriggerKind, ZoneChangeTrigger,
 };
 
 pub mod zone_changes {

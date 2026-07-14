@@ -30,6 +30,8 @@ pub struct ModalSpec {
     pub allow_repeated_modes: bool,
     /// Point costs for weighted modal choices. Unweighted modes use one point each.
     pub mode_point_costs: Vec<u32>,
+    /// Whether each selected mode must target a different player.
+    pub distinct_player_targets_per_mode: bool,
 }
 
 /// The supported runtime extension categories for effects.
@@ -79,6 +81,7 @@ pub struct ModalEffectSpec<'a> {
     pub mode_point_costs: &'a [u32],
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
+    pub distinct_player_targets_per_mode: bool,
 }
 
 /// Trait for executing effects.

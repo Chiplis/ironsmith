@@ -29,6 +29,31 @@ pub(super) fn rewrite_lowered_for_each_player_choose_uses_controller_as_chooser(
 }
 
 #[test]
+pub(super) fn rewrite_lowered_for_each_player_counted_target_stays_a_cast_target()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Afterlife from the Loam Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "For each player, choose up to one target creature card in that player's graveyard. Put those cards onto the battlefield under your control. They're Zombies in addition to their other types."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("TargetOnlyEffect"), "{debug}");
+    assert!(!debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(compact.contains("owner:Some(IteratedPlayer"), "{debug}");
+    assert!(
+        compact.contains("min:0") && compact.contains("max:Some(1)"),
+        "{debug}"
+    );
+    Ok(())
+}
+
+#[test]
 pub(super) fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanout() {
     let text = "Radiance — Target creature and each other creature that shares a color with it gain haste until end of turn.";
     let lexed =
@@ -293,6 +318,10 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_target_gain_then_get_where_
         debug.contains("Trample") && debug.matches("EndOfTurn").count() >= 2,
         "expected trample and shared end-of-turn duration, got {debug}"
     );
+    assert!(
+        debug.matches("WhereXIs").count() >= 2,
+        "expected the pump values to preserve the where-X surface, got {debug}"
+    );
 }
 
 #[test]
@@ -312,6 +341,168 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_filter_gain_then_get_where_
         debug.contains("Trample") && debug.matches("EndOfTurn").count() >= 2,
         "expected trample and shared end-of-turn duration, got {debug}"
     );
+    assert!(
+        debug.matches("WhereXIs").count() >= 2,
+        "expected the pump-all values to preserve the where-X surface, got {debug}"
+    );
+}
+
+#[test]
+pub(super) fn rewrite_partial_hand_reveal_preserves_direct_and_computed_x_counts() {
+    for (text, expected) in [
+        (
+            "Target player reveals X cards from their hand.",
+            &["RevealCardsFromHand", "dynamic_x: true"][..],
+        ),
+        (
+            "Target player reveals X cards from their hand, where X is the number of Faeries you control.",
+            &[
+                "RevealCardsFromHand",
+                "dynamic_x: true",
+                "WhereXIs",
+                "Faerie",
+            ][..],
+        ),
+        (
+            "Target player reveals a number of cards from their hand equal to one plus the number of creature cards in your graveyard.",
+            &[
+                "RevealCardsFromHand",
+                "dynamic_x: true",
+                "Add",
+                "Fixed(1)",
+                "Graveyard",
+            ][..],
+        ),
+    ] {
+        let lexed = lex_line(text, 0).expect("partial hand-reveal sentence should lex");
+        let parsed = parse_effect_sentence_lexed(&lexed)
+            .expect("partial hand-reveal sentence should preserve its dynamic count");
+        let debug = format!("{parsed:?}");
+        for needle in expected {
+            assert!(debug.contains(needle), "expected {needle:?} in {debug}");
+        }
+    }
+}
+
+#[test]
+pub(super) fn rewrite_full_production_thieving_sprite_preserves_where_x_hand_reveal()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Thieving Sprite")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Faerie, Subtype::Rogue])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 1));
+    let text = "Flying\nWhen this creature enters, target player reveals X cards from their hand, where X is the number of Faeries you control. You choose one of those cards. That player discards that card.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Thieving Sprite should have a triggered ability");
+    let effects = &triggered.effects.segments[0].default_effects;
+    let reveal = effects
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .find(|choose| choose.reveal && choose.count.dynamic_x)
+        .expect("Thieving Sprite should dynamically reveal cards from the target player's hand");
+    let count_value = reveal
+        .count_value
+        .as_ref()
+        .expect("the full production path should carry the where-X value onto the hand reveal");
+    assert!(
+        count_value.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs),
+        "the hand reveal should retain its where-X surface: {count_value:#?}"
+    );
+    let Value::Count(faerie_filter) = count_value.unhinted() else {
+        panic!("expected where-X to count controlled Faeries, got {count_value:#?}");
+    };
+    assert!(faerie_filter.subtypes.contains(&Subtype::Faerie));
+    assert_eq!(
+        faerie_filter.controller,
+        Some(crate::target::PlayerFilter::You)
+    );
+
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_full_production_hollow_specter_keeps_dependent_discard_in_if_branch()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Hollow Specter")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Specter])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2));
+    let text = "Flying\nWhenever this creature deals combat damage to a player, you may pay {X}. If you do, that player reveals X cards from their hand and you choose one of them. That player discards that card.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Hollow Specter should have a triggered ability");
+    let effects = &triggered.effects.segments[0].default_effects;
+    assert!(
+        effects.iter().all(|effect| effect
+            .downcast_ref::<crate::effects::DiscardEffect>()
+            .is_none()),
+        "the dependent discard must not escape the if-you-do branch: {effects:#?}"
+    );
+    let if_effect = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
+        .expect("Hollow Specter should lower its if-you-do clause");
+    let [reveal_effect, choose_effect, discard_effect] = if_effect.then.as_slice() else {
+        panic!(
+            "expected reveal, choose-one, and dependent discard in the if branch: {:#?}",
+            if_effect.then
+        );
+    };
+
+    let reveal = reveal_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("the branch should start by revealing cards from hand");
+    assert!(reveal.reveal && reveal.count.dynamic_x);
+    assert_eq!(reveal.chooser, crate::target::PlayerFilter::DamagedPlayer);
+    assert_eq!(
+        reveal.filter.owner,
+        Some(crate::target::PlayerFilter::DamagedPlayer)
+    );
+
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("the branch should choose one of the revealed cards");
+    assert_eq!(choose.count.min, 1);
+    assert_eq!(choose.count.max, Some(1));
+    assert_eq!(choose.chooser, crate::target::PlayerFilter::You);
+    assert!(choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == reveal.tag
+    }));
+
+    let discard = discard_effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .expect("the branch should end by discarding the chosen card");
+    assert_eq!(discard.player, crate::target::PlayerFilter::DamagedPlayer);
+    let discard_filter = discard
+        .card_filter
+        .as_ref()
+        .expect("the discard should be restricted to the chosen card");
+    assert_eq!(
+        discard_filter.owner,
+        Some(crate::target::PlayerFilter::DamagedPlayer)
+    );
+    assert!(discard_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == choose.tag
+    }));
+
+    Ok(())
 }
 
 #[test]
@@ -1623,6 +1814,7 @@ pub(super) fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets()
                         power,
                         toughness,
                         duration,
+                        ..
                     },
                 ..
             },
@@ -1650,6 +1842,7 @@ pub(super) fn rewrite_hyphenated_broad_pump_subjects_stay_filter_targets()
                         power,
                         toughness,
                         duration,
+                        ..
                     },
                 ..
             },
@@ -1685,6 +1878,7 @@ pub(super) fn rewrite_negated_chosen_type_pump_subject_uses_exclusion_filter()
                         power,
                         toughness,
                         duration,
+                        ..
                     },
                 ..
             },

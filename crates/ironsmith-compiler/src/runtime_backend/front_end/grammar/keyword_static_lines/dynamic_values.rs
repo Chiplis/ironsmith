@@ -49,6 +49,7 @@ pub(crate) struct CounterReferenceSpec<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DynamicCostValueShape<'a> {
     CardsDrawn(DynamicPlayerKind),
+    LifeGained(DynamicPlayerKind),
     KickCount,
     CreaturesDiedThisTurn,
     OpponentsLifeLostThisTurn,
@@ -92,6 +93,28 @@ pub(crate) fn parse_dynamic_cost_value_shape_tokens(
 }
 
 fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_> {
+    if starts_with_any(
+        tokens,
+        &[
+            &["1", "life", "you", "gained", "this", "turn"],
+            &["1", "life", "youve", "gained", "this", "turn"],
+            &["1", "life", "you've", "gained", "this", "turn"],
+            &["one", "life", "you", "gained", "this", "turn"],
+            &["life", "you", "gained", "this", "turn"],
+        ],
+    ) {
+        return DynamicCostValueShape::LifeGained(DynamicPlayerKind::You);
+    }
+    if starts_with_any(
+        tokens,
+        &[
+            &["1", "life", "your", "opponents", "gained", "this", "turn"],
+            &["one", "life", "your", "opponents", "gained", "this", "turn"],
+            &["life", "your", "opponents", "gained", "this", "turn"],
+        ],
+    ) {
+        return DynamicCostValueShape::LifeGained(DynamicPlayerKind::Opponent);
+    }
     if starts_with_any(
         tokens,
         &[

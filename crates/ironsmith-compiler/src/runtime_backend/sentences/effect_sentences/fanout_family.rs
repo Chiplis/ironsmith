@@ -1,7 +1,7 @@
 use super::super::grammar::effects::fanout_shapes as fanout_grammar;
 use super::super::grammar::effects::parse_serial_damage_fanout_tokens;
-use super::super::keyword_static::parse_pt_modifier;
-use super::super::lexer::{OwnedLexToken, find_token_word_sequence_span};
+use super::super::keyword_static::{parse_pt_modifier, parse_pt_modifier_values};
+use super::super::lexer::{OwnedLexToken, TokenKind, find_token_word_sequence_span};
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_source_reference_words, non_article_token_word_refs, parse_target_phrase, span_from_tokens,
@@ -19,6 +19,107 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOp
 use crate::zone::Zone;
 
 const TARGET_WORD: &str = "target";
+
+fn trim_serial_modifier_tokens(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    while tokens.first().is_some_and(|token| {
+        matches!(token.kind, TokenKind::Comma | TokenKind::Period) || token.as_word() == Some("and")
+    }) {
+        tokens = &tokens[1..];
+    }
+    while tokens
+        .last()
+        .is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period))
+    {
+        tokens = &tokens[..tokens.len() - 1];
+    }
+    tokens
+}
+
+/// Parses three-or-more independently targeted P/T modifiers sharing one
+/// leading duration. This is the typed shape used by Blue Dragon rather than
+/// letting generic chain carry collapse multiple targets onto the final one.
+pub(crate) fn parse_serial_target_pt_modifiers_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (duration_phrase, duration_body) = if let Some(prefix) =
+        super::super::grammar::leaf::parse_leaf_turn_duration_prefix_tokens(tokens)
+    {
+        (prefix.duration, prefix.rest)
+    } else if let Some(suffix) =
+        super::super::grammar::leaf::parse_leaf_turn_duration_suffix_tokens(tokens)
+    {
+        // Trigger-body normalization can move a shared leading duration to
+        // the end. Recover the coordinated shape before generic chain carry
+        // merges equivalent target specifications.
+        (suffix.duration, suffix.rest)
+    } else {
+        return Ok(None);
+    };
+    let duration = match duration_phrase {
+        super::super::grammar::leaf::LeafTurnDurationPhrase::ThisTurn
+        | super::super::grammar::leaf::LeafTurnDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
+        super::super::grammar::leaf::LeafTurnDurationPhrase::UntilYourNextTurn => {
+            Until::YourNextTurn
+        }
+        super::super::grammar::leaf::LeafTurnDurationPhrase::UntilYourNextTurnEnd => {
+            Until::YourNextTurnEnd
+        }
+    };
+    let body = trim_serial_modifier_tokens(duration_body);
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    for (idx, token) in body.iter().enumerate() {
+        if matches!(token.kind, TokenKind::Comma) {
+            let segment = trim_serial_modifier_tokens(&body[start..idx]);
+            if !segment.is_empty() {
+                segments.push(segment);
+            }
+            start = idx + 1;
+        }
+    }
+    let tail = trim_serial_modifier_tokens(&body[start..]);
+    if !tail.is_empty() {
+        segments.push(tail);
+    }
+    if segments.len() < 3 {
+        return Ok(None);
+    }
+
+    let mut effects = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let Some(gets_idx) = segment
+            .iter()
+            .position(|token| token.is_any_word(&["get", "gets"]))
+        else {
+            return Ok(None);
+        };
+        let target_tokens = trim_serial_modifier_tokens(&segment[..gets_idx]);
+        let modifier_tokens = trim_serial_modifier_tokens(&segment[gets_idx + 1..]);
+        let Some(modifier_word) = modifier_tokens.first().and_then(OwnedLexToken::as_word) else {
+            return Ok(None);
+        };
+        if modifier_tokens.len() != 1 {
+            return Ok(None);
+        }
+        let (power, toughness) = parse_pt_modifier_values(modifier_word)?;
+        if !matches!(power.unhinted(), Value::Fixed(_))
+            || !matches!(toughness.unhinted(), Value::Fixed(_))
+        {
+            return Ok(None);
+        }
+        effects.push(EffectAst::subject_verb_pump(
+            power,
+            toughness,
+            parse_target_phrase(target_tokens)?,
+            duration.clone(),
+            None,
+        ));
+    }
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: true,
+    }]))
+}
 
 fn fanout_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -556,9 +657,25 @@ fn lower_damage_part_shape(
                 span_from_tokens(&tokens),
             ))))
         }
-        fanout_grammar::DamagePartShape::TargetTokens(tokens) => Ok(Some(
-            CompoundDamagePart::Target(parse_target_phrase(&tokens)?),
-        )),
+        fanout_grammar::DamagePartShape::TargetTokens { tokens, controller } => {
+            let mut target = parse_target_phrase(&tokens)?;
+            if let Some(controller) = controller
+                && let Some(filter) = target_object_filter_mut(&mut target)
+                && filter.controller.is_none()
+            {
+                filter.controller = Some(match controller {
+                    fanout_grammar::ControllerSurface::TargetPlayerOrControllerOfTarget => {
+                        PlayerFilter::TargetPlayerOrControllerOfTarget
+                    }
+                    fanout_grammar::ControllerSurface::ContextualTargetPlayer => {
+                        player_context.unwrap_or_else(PlayerFilter::target_player)
+                    }
+                    fanout_grammar::ControllerSurface::Opponent => PlayerFilter::Opponent,
+                    fanout_grammar::ControllerSurface::You => PlayerFilter::You,
+                });
+            }
+            Ok(Some(CompoundDamagePart::Target(target)))
+        }
     }
 }
 
@@ -639,17 +756,23 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
             return Ok(None);
         }
         let mut effects = Vec::with_capacity(serial.parts.len());
+        let mut player_context = None;
         for part in serial.parts {
             let target_tokens = trim_commas(&part.target_tokens);
             if target_tokens.is_empty() {
                 return Ok(None);
             }
-            effects.push(EffectAst::subject_verb_damage(
-                part.amount,
-                parse_target_phrase(&target_tokens)?,
-            ));
+            let Some(target_part) = parse_damage_part(&target_tokens, player_context.clone())?
+            else {
+                return Ok(None);
+            };
+            player_context = target_context_for_damage_part(&target_part);
+            effects.push(compound_damage_part_to_effect(target_part, part.amount));
         }
-        return Ok(Some(effects));
+        return Ok(Some(vec![EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+        }]));
     }
 
     let Some(shape) = fanout_grammar::parse_compound_damage_shape(tokens) else {
@@ -665,7 +788,10 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
 
     let mut effects = compound_damage_effects(shape.amount, left, right);
     apply_where_x_to_damage_amounts(tokens, &mut effects)?;
-    Ok(Some(effects))
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+    }]))
 }
 
 pub(crate) fn parse_same_name_gets_fanout_sentence(
@@ -737,4 +863,90 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
             Until::EndOfTurn,
         ),
     ]))
+}
+
+#[cfg(test)]
+mod coordinated_target_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn searing_blaze_second_target_keeps_prior_recipient_controller_relation() {
+        let tokens = lex_line(
+            "This spell deals 1 damage to target player or planeswalker and 1 damage to target creature that player or that planeswalker's controller controls.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_compound_damage_fanout_sentence(&tokens)
+            .unwrap()
+            .expect("damage pair");
+        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
+            panic!("expected coordinated damage pair: {parsed:#?}");
+        };
+        let [
+            _,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamage { target, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected two damage effects: {effects:#?}");
+        };
+        let TargetAst::Object(filter, _, _) = target else {
+            panic!("expected creature target: {target:#?}");
+        };
+        assert_eq!(
+            filter.controller,
+            Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        );
+    }
+
+    #[test]
+    fn serial_target_modifiers_keep_all_targets_and_shared_next_turn_duration() {
+        let tokens = lex_line(
+            "Until your next turn, target creature an opponent controls gets -3/-0, up to one other target creature gets -2/-0, and up to one other target creature gets -1/-0.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_serial_target_pt_modifiers_sentence(&tokens)
+            .unwrap()
+            .expect("serial modifiers");
+        let [
+            EffectAst::Coordinated {
+                effects,
+                leading_duration: true,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected coordinated leading-duration modifiers: {parsed:#?}");
+        };
+        assert_eq!(effects.len(), 3);
+        assert!(effects.iter().all(|effect| matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Pump {
+                    duration: Until::YourNextTurn,
+                    ..
+                },
+                ..
+            })
+        )));
+    }
+
+    #[test]
+    fn serial_target_modifiers_recover_a_normalized_trailing_duration() {
+        let tokens = lex_line(
+            "Target creature an opponent controls gets -3/-0, up to one other target creature gets -2/-0, and up to one other target creature gets -1/-0 until your next turn.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_serial_target_pt_modifiers_sentence(&tokens)
+            .unwrap()
+            .expect("serial modifiers");
+        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
+            panic!("expected coordinated modifiers: {parsed:#?}");
+        };
+        assert_eq!(effects.len(), 3);
+    }
 }

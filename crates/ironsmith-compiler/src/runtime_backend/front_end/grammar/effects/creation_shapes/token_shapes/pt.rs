@@ -3,7 +3,8 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PtComponent {
     Fixed(i32),
-    Dynamic,
+    X,
+    Star,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,7 +15,8 @@ pub(crate) struct PtSurface {
 
 fn parse_pt_component(input: &mut &str) -> WResult<PtComponent> {
     alt((
-        alt(("x", "*")).value(PtComponent::Dynamic),
+        "x".value(PtComponent::X),
+        "*".value(PtComponent::Star),
         dec_int.map(PtComponent::Fixed),
     ))
     .parse_next(input)

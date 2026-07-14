@@ -91,6 +91,10 @@ fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> b
     primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some()
 }
 
+fn predicate_candidate_contains_search_action(tokens: &[OwnedLexToken]) -> bool {
+    phrase_occurs(tokens, &["search", "your", "library"])
+}
+
 fn one_of_phrases_occurs(
     tokens: &[OwnedLexToken],
     phrases: &'static [&'static [&'static str]],
@@ -137,6 +141,7 @@ pub(crate) struct ModalHeaderFlags {
     pub(crate) same_mode_more_than_once: bool,
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,
+    pub(crate) distinct_player_targets_per_mode: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +155,7 @@ pub(crate) struct TrailingModalGateSpec<'a> {
 pub(crate) enum MetadataLineKind {
     ManaCost,
     TypeLine,
+    FirstPrintedSet,
     PowerToughness,
     Loyalty,
     Defense,
@@ -265,6 +271,13 @@ pub(crate) fn split_metadata_line_lexed(tokens: &[OwnedLexToken]) -> Option<Meta
     match_metadata_prefix(tokens, &["mana", "cost"], MetadataLineKind::ManaCost)
         .or_else(|| match_metadata_prefix(tokens, &["type", "line"], MetadataLineKind::TypeLine))
         .or_else(|| match_metadata_prefix(tokens, &["type"], MetadataLineKind::TypeLine))
+        .or_else(|| {
+            match_metadata_prefix(
+                tokens,
+                &["first", "printed", "set"],
+                MetadataLineKind::FirstPrintedSet,
+            )
+        })
         .or_else(|| {
             match_metadata_prefix(
                 tokens,
@@ -782,6 +795,10 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         same_mode_more_than_once: phrase_occurs(tokens, &["same", "mode", "more", "than", "once"]),
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
+        distinct_player_targets_per_mode: phrase_occurs(
+            tokens,
+            &["each", "mode", "must", "target", "a", "different", "player"],
+        ),
     }
 }
 
@@ -900,13 +917,22 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
         return None;
     }
 
-    let min = match first.kind {
-        TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
-        _ => return None,
-    };
+    let compact_range = compact_ascii_numeric_range(first);
     let predicate = if pipe_idx == 1 {
-        IfResultPredicate::Value(Comparison::Equal(min))
+        if let Some((min, max)) = compact_range {
+            IfResultPredicate::Value(Comparison::BetweenInclusive(min, max))
+        } else {
+            let min = match first.kind {
+                TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
+                _ => return None,
+            };
+            IfResultPredicate::Value(Comparison::Equal(min))
+        }
     } else {
+        let min = match first.kind {
+            TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
+            _ => return None,
+        };
         let second = tokens.get(1)?;
         let third = tokens.get(2)?;
         if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
@@ -928,6 +954,23 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
     }
 
     Some((predicate, trailing_tokens))
+}
+
+fn compact_ascii_numeric_range(token: &OwnedLexToken) -> Option<(i32, i32)> {
+    if token.kind != TokenKind::Word {
+        return None;
+    }
+    let (min, max) = token.parser_text().split_once('-')?;
+    if min.is_empty()
+        || max.is_empty()
+        || !min.bytes().all(|byte| byte.is_ascii_digit())
+        || !max.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let min = min.parse::<i32>().ok()?;
+    let max = max.parse::<i32>().ok()?;
+    (min <= max).then_some((min, max))
 }
 
 pub(crate) fn split_trailing_if_clause_lexed<'a>(
@@ -1475,6 +1518,13 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
             .first()
             .is_some_and(|token| structure_token_is_any(token, &["and", "then"]))
         {
+            continue;
+        }
+        // Search effects commonly contain follow-up commas. When candidates are
+        // examined from right to left, a later comma can otherwise absorb the
+        // search action into a permissively modeled predicate and leave only a
+        // put/reveal/shuffle follow-up as the effect.
+        if predicate_candidate_contains_search_action(predicate_tokens) {
             continue;
         }
         // A duration following a comma belongs to the effect clause. Reject

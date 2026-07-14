@@ -6,9 +6,40 @@
             idx += 1;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_exile_with_counters_then_gain_suspend(&[
+                filtered[idx].clone(),
+                filtered[idx + 1].clone(),
+                filtered[idx + 2].clone(),
+            ])
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(compact) =
                 describe_source_exile_with_counters_pair(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_put_counters_then_gain_suspend(&[
+                filtered[idx].clone(),
+                filtered[idx + 1].clone(),
+            ])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_return_from_graveyard_with_counters(&[
+                filtered[idx].clone(),
+                filtered[idx + 1].clone(),
+            ])
         {
             parts.push(compact);
             idx += 2;
@@ -193,6 +224,14 @@
             continue;
         }
 
+        if let Some((rendered, consumed)) =
+            describe_self_look_reorder_then_may_shuffle(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
         if let Some((rendered, consumed)) = render_look_reveal_repeated_choices(&filtered[idx..]) {
             parts.push(rendered);
             idx += consumed;
@@ -201,6 +240,64 @@
 
         if let Some((rendered, consumed)) =
             describe_look_choose_reveal_to_hand_rest_bottom(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let [look_effect, choose_effect, move_effect, remainder_effect, ..] = &filtered[idx..]
+            && let Some(look_at_top) =
+                look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(remainder) = remainder_effect
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            && let Some(rendered) = describe_looked_up_to_one_top_rest_bottom(
+                look_at_top,
+                choose,
+                move_effect,
+                remainder,
+            )
+        {
+            parts.push(rendered);
+            idx += 4;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_three_way_looked_card_partition(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_conditional_looked_hand_partition(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_look_may_sacrifice_select_battlefield_rest_bottom(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_look_exile_face_down_rest_graveyard_then_cast(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_looked_card_selected_partition(&filtered[idx..])
         {
             parts.push(rendered);
             idx += consumed;

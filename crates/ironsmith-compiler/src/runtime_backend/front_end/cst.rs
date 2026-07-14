@@ -129,6 +129,7 @@ pub(crate) struct ActivatedLineCst {
     pub(crate) cost: ActivationCostCst,
     pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) presentation: Option<PresentationLabel>,
     pub(crate) chosen_option: Option<ChosenOptionContext>,
 }
 

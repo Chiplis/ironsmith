@@ -2883,10 +2883,30 @@ pub(super) fn test_parse_double_target_creatures_power_until_end_of_turn() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("gets")
-            && (joined.contains("its power") || joined.contains("target creature's power"))
-            && joined.contains("until end of turn"),
+        joined.contains("double target creature's power until end of turn"),
         "expected compiled output to preserve double-power semantics, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_parse_named_source_double_power_preserves_possessive_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Casey Jones, Asphalt Hooligan")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{4}: Double Casey Jones's power until end of turn.")
+        .expect("parse named-source double-power activation");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ShortName(\"Casey Jones\")")
+            && debug.contains("PowerOf")
+            && debug.contains("target: Source"),
+        "expected structured named-source metadata, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "{4}: Double Casey Jones's power until end of turn"
     );
 }
 

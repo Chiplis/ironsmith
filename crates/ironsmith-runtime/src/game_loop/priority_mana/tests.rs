@@ -23,6 +23,44 @@ fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
 }
 
+#[test]
+fn spent_mana_keeps_producing_source_lki_on_the_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let treasure = CardDefinitionBuilder::new(CardId::new(), "Spent Treasure")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Treasure])
+        .build();
+    let treasure_id = game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
+    let snapshot = ObjectSnapshot::from_object(
+        game.object(treasure_id).expect("Treasure should exist"),
+        &game,
+    );
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_unrestricted_mana(ManaSymbol::Red, treasure_id, Some(snapshot));
+    game.move_object_by_effect(treasure_id, Zone::Graveyard)
+        .expect("Treasure should be sacrificed before its mana is spent");
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Painted Creature")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let spell_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+    let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Red, Some(spell_id))
+        .expect("Treasure mana should remain spendable");
+    apply_spent_mana_bonuses(&mut game, Some(spell_id), &spent);
+
+    let spent_sources = game
+        .object(spell_id)
+        .expect("spell should remain on the stack")
+        .cast_tagged_objects
+        .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
+        .expect("spell should remember the source of spent mana");
+    assert_eq!(spent_sources.len(), 1);
+    assert_eq!(spent_sources[0].name, "Spent Treasure");
+    assert!(spent_sources[0].subtypes.contains(&Subtype::Treasure));
+}
+
 fn arena_style_land_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Arena Style Land")
             .card_types(vec![CardType::Land])

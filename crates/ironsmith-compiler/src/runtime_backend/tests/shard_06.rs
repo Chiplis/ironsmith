@@ -224,3 +224,149 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         )
         .expect("typed counter-defined X should survive preparation and lowering");
 }
+
+#[test]
+pub(super) fn arcee_sharpshooter_counter_removal_cost_binds_that_much_damage() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Arcee, Sharpshooter")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(
+            "{1}, Remove one or more +1/+1 counters from Arcee: It deals that much damage to target creature. Convert Arcee.",
+        )
+        .expect("Arcee's counter-removal amount should lower as activation X");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(
+        debug.contains("RemoveAnyCountersAmongEffect")
+            && debug.contains("min_count: 1")
+            && debug.contains("dynamic_count: true"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("DealDamageEffect") && debug.contains("amount: X"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn living_metal_lowers_to_the_reusable_keyword_ability() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Living Metal Vehicle")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Living metal (During your turn, this Vehicle is also a creature.)")
+        .expect("living metal and its reminder text should parse");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("LivingMetal"), "{debug}");
+}
+
+#[test]
+pub(super) fn arcee_acrobatic_coupe_binds_that_many_to_qualifying_spell_targets() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Arcee, Acrobatic Coupe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever you cast a spell that targets one or more creatures or Vehicles you control, put that many +1/+1 counters on Arcee. Convert Arcee.",
+        )
+        .expect("Arcee's spell-target trigger should bind that many to its matching targets");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("SpellCastTrigger"), "{debug}");
+    assert!(debug.contains("targets_object: Some"), "{debug}");
+    assert!(
+        debug.contains("Creature") && debug.contains("Vehicle"),
+        "{debug}"
+    );
+    assert!(debug.contains("type_or_subtype_union: true"), "{debug}");
+    assert!(
+        debug.contains("EventValue") && debug.contains("Amount"),
+        "{debug}"
+    );
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+}
+
+#[test]
+pub(super) fn geistflame_reservoir_counter_removal_cost_binds_that_much_damage() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Geistflame Reservoir")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}{R}, {T}, Remove any number of charge counters from this artifact: It deals that much damage to any target.",
+        )
+        .expect("Geistflame Reservoir's counter-removal amount should lower as activation X");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("RemoveAnyCountersFromSource"), "{debug}");
+    assert!(
+        debug.contains("DealDamageEffect") && debug.contains("amount: X"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn dragonspark_reactor_reuses_first_damage_amount_for_second_target() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Dragonspark Reactor")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{4}, Sacrifice this artifact: It deals damage equal to the number of charge counters on it to target player and that much damage to up to one target creature.",
+        )
+        .expect("Dragonspark Reactor's second damage amount should reuse the first amount");
+    let debug = format!("{:#?}", definition.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(debug.matches("DealDamageEffect").count() >= 2, "{debug}");
+    assert!(
+        debug.contains("Charge") && debug.contains("EffectValue"),
+        "{debug}"
+    );
+    assert_eq!(
+        compact
+            .matches("ExecuteWithSourceEffect{source:SurfaceHinted{spec:Source")
+            .count(),
+        2,
+        "both conjoined damage effects must use the sacrificed artifact as their source: {debug}"
+    );
+    assert!(
+        !compact.contains("zone:Some(Hand)"),
+        "the second damage source must remain the sacrificed artifact, not a card in the damaged player's hand: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn bionic_blow_parses_anaphoric_power_damage_with_optional_other_target() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Bionic Blow")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target creature you control gets +X/+0 until end of turn. Then it deals damage equal to its power to up to one other target creature.",
+        )
+        .expect("Bionic Blow's anaphoric power damage should parse structurally");
+    let debug = format!("{:#?}", definition.spell_effect);
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    assert!(debug.contains("PowerOf"), "{debug}");
+}
+
+#[test]
+pub(super) fn ink_dissolver_kinship_keeps_shared_creature_type_condition() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Ink Dissolver")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Kinship — At the beginning of your upkeep, you may look at the top card of your library. If it shares a creature type with this creature, you may reveal it. If you do, each opponent mills three cards.",
+        )
+        .expect("Ink Dissolver's Kinship condition should parse structurally");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("TaggedObjectMatches"), "{debug}");
+    assert!(
+        debug.contains("shares_creature_type_with_source: true"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn daxos_permission_keeps_exiled_card_and_any_color_mana_suffix() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Daxos of Meletis")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature deals combat damage to a player, exile the top card of that player's library. You gain life equal to that card's mana value. Until end of turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+        )
+        .expect("Daxos's exile, life-gain, and cast-permission chain should parse");
+    let debug = format!("{:#?}", definition.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(debug.contains("GainLifeEffect"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(
+        compact.contains("GrantPlayTaggedEffect{tag:TagKey(\"__sentence_helper_exiled"),
+        "{debug}"
+    );
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}

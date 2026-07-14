@@ -379,6 +379,24 @@ pub(crate) fn compile_if_do_with_player_doesnt(
     Ok(Some((effects, choices)))
 }
 
+fn correlated_choice_result_predicate(
+    requested: IfResultPredicate,
+    antecedent_effects: &[EffectAst],
+) -> IfResultPredicate {
+    if requested == IfResultPredicate::AcceptedChoice
+        && antecedent_effects.last().is_some_and(|effect| {
+            matches!(
+                effect,
+                EffectAst::May { .. } | EffectAst::MayByPlayer { .. }
+            )
+        })
+    {
+        IfResultPredicate::AcceptedChoice
+    } else {
+        IfResultPredicate::Did
+    }
+}
+
 pub(crate) fn compile_if_do_with_opponent_did(
     first: &EffectAst,
     second: &EffectAst,
@@ -387,6 +405,7 @@ pub(crate) fn compile_if_do_with_opponent_did(
     let EffectAst::ForEachOpponentDid {
         effects: second_effects,
         predicate,
+        result_predicate,
     } = second
     else {
         return Ok(None);
@@ -412,9 +431,11 @@ pub(crate) fn compile_if_do_with_opponent_did(
             }
             return Ok(Some((first_effects, choices)));
         }
+        let result_predicate =
+            correlated_choice_result_predicate(*result_predicate, opponent_effects);
         let mut merged_opponent_effects = opponent_effects.clone();
         merged_opponent_effects.push(EffectAst::IfResult {
-            predicate: IfResultPredicate::Did,
+            predicate: result_predicate,
             effects: second_effects.clone(),
         });
 
@@ -463,7 +484,12 @@ pub(crate) fn compile_if_do_with_opponent_did(
         for choice in inner_choices {
             push_choice(&mut choices, choice);
         }
-        let conditional = Effect::if_then(id, EffectPredicate::Happened, inner_effects);
+        let predicate = correlated_choice_result_predicate(*result_predicate, player_effects);
+        let conditional = Effect::if_then(
+            id,
+            effect_predicate_from_if_result(predicate),
+            inner_effects,
+        );
         first_effects.push(Effect::for_each_opponent(vec![conditional]));
         return Ok(Some((first_effects, choices)));
     }
@@ -506,8 +532,9 @@ pub(crate) fn compile_if_do_with_opponent_did(
     };
 
     let mut merged_opponent_effects = opponent_effects.clone();
+    let result_predicate = correlated_choice_result_predicate(*result_predicate, opponent_effects);
     merged_opponent_effects.push(EffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
+        predicate: result_predicate,
         effects: second_effects.clone(),
     });
 
@@ -539,6 +566,7 @@ pub(crate) fn compile_if_do_with_player_did(
     let EffectAst::ForEachPlayerDid {
         effects: second_effects,
         predicate,
+        result_predicate,
     } = second
     else {
         return Ok(None);
@@ -564,9 +592,11 @@ pub(crate) fn compile_if_do_with_player_did(
             }
             return Ok(Some((first_effects, choices)));
         }
+        let result_predicate =
+            correlated_choice_result_predicate(*result_predicate, player_effects);
         let mut merged_player_effects = player_effects.clone();
         merged_player_effects.push(EffectAst::IfResult {
-            predicate: IfResultPredicate::Did,
+            predicate: result_predicate,
             effects: second_effects.clone(),
         });
 
@@ -616,7 +646,10 @@ pub(crate) fn compile_if_do_with_player_did(
         }
         first_effects.push(Effect::if_then(
             id,
-            EffectPredicate::Happened,
+            effect_predicate_from_if_result(correlated_choice_result_predicate(
+                *result_predicate,
+                std::slice::from_ref(first),
+            )),
             inner_effects,
         ));
         return Ok(Some((first_effects, choices)));
@@ -643,8 +676,9 @@ pub(crate) fn compile_if_do_with_player_did(
     };
 
     let mut merged_player_effects = player_effects.clone();
+    let result_predicate = correlated_choice_result_predicate(*result_predicate, player_effects);
     merged_player_effects.push(EffectAst::IfResult {
-        predicate: IfResultPredicate::Did,
+        predicate: result_predicate,
         effects: second_effects.clone(),
     });
 
@@ -668,6 +702,23 @@ pub(crate) fn compile_if_do_with_player_did(
     Ok(Some((effects, choices)))
 }
 
+fn effect_contains_deal_damage(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_some()
+    {
+        return true;
+    }
+
+    let mut contains_damage = false;
+    effect.visit_child_effects(&mut |child| {
+        if !contains_damage && effect_contains_deal_damage(child) {
+            contains_damage = true;
+        }
+    });
+    contains_damage
+}
+
 pub(crate) fn compile_result_followup(
     first: &EffectAst,
     second: &EffectAst,
@@ -689,13 +740,34 @@ pub(crate) fn compile_result_followup(
     }
 
     let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
-    let Some(last) = first_effects.pop() else {
+    if first_effects.is_empty() {
         return Err(CardTextError::ParseError(
             "missing antecedent effect for result follow-up".to_string(),
         ));
-    };
+    }
     let id = ctx.next_effect_id();
-    first_effects.push(Effect::with_id(id.0, last));
+    if predicate == IfResultPredicate::DealtDamageToPlayer {
+        let damage_idx = first_effects
+            .iter()
+            .rposition(effect_contains_deal_damage)
+            .ok_or_else(|| {
+                CardTextError::ParseError(
+                    "damage-to-player result is missing a damage antecedent".to_string(),
+                )
+            })?;
+        let mut antecedent_effects = first_effects.split_off(damage_idx);
+        let antecedent = if antecedent_effects.len() == 1 {
+            antecedent_effects.remove(0)
+        } else {
+            Effect::new(crate::effects::SequenceEffect::new(antecedent_effects))
+        };
+        first_effects.push(Effect::with_id(id.0, antecedent));
+    } else {
+        let last = first_effects
+            .pop()
+            .expect("nonempty antecedent checked above");
+        first_effects.push(Effect::with_id(id.0, last));
+    }
 
     let (inner_effects, inner_choices) = with_preserved_lowering_context(
         ctx,
@@ -772,10 +844,15 @@ pub(crate) fn compile_effects_preserving_last_effect(
 pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPredicate {
     match predicate {
         IfResultPredicate::Did => EffectPredicate::Happened,
+        IfResultPredicate::WonClash => {
+            EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+        }
+        IfResultPredicate::AcceptedChoice => EffectPredicate::Chosen,
         IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
         IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
         IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
+        IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
         IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
             EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
         }

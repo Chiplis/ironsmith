@@ -9,8 +9,8 @@ use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
     CompilationSnapshot, ParseStatus, build_parse_input,
     compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
-    default_cards_path, load_card_by_name, load_card_payloads_by_name,
-    parse_card_definition_with_runtime_builder,
+    default_cards_path, load_card_by_name, load_card_payloads_by_name, load_card_payloads_by_names,
+    normalize_lookup_name, parse_card_definition_with_runtime_builder,
 };
 
 const DEFAULT_PROBE_NAME: &str = "Parser Probe";
@@ -89,6 +89,16 @@ fn metadata_lines_from_definition(definition: &CardDefinition) -> Vec<String> {
     }
     if !type_line.trim().is_empty() {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
+    }
+
+    if let Some(set_name) = definition
+        .card
+        .first_printed_set_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        metadata_lines.push(format!("First printed set: {set_name}"));
     }
 
     if let Some(power_toughness) = definition.card.power_toughness {
@@ -234,10 +244,17 @@ fn compile_jobs_for_name(
     cards_path: &str,
     name: &str,
     input_text: Option<&str>,
+    payload_cache: Option<&std::collections::BTreeMap<String, Vec<ironsmith_tools::CardPayload>>>,
 ) -> Result<Vec<CompileJob>, String> {
     if input_text.is_none() {
-        let payloads =
-            load_card_payloads_by_name(cards_path, name).map_err(|err| err.to_string())?;
+        let payloads = if let Some(payload_cache) = payload_cache {
+            payload_cache
+                .get(&normalize_lookup_name(name))
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            load_card_payloads_by_name(cards_path, name).map_err(|err| err.to_string())?
+        };
         if !payloads.is_empty() {
             return payloads
                 .into_iter()
@@ -357,11 +374,17 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
 
     let display_def = compile_definition_for_job(job)?;
     let compiled_lines = compiled_text_lines(&display_def);
-    let (_, _, similarity, _, semantic_mismatch) = compare_semantics_scored(
-        &job.oracle_text,
-        &compiled_lines,
-        ironsmith::semantic_compare::report_embedding_config(),
-    );
+    let (similarity, semantic_mismatch) =
+        if let Some(snapshot) = job.authoritative_snapshot.as_ref() {
+            (snapshot.similarity_score, snapshot.semantic_mismatch)
+        } else {
+            let (_, _, similarity, _, semantic_mismatch) = compare_semantics_scored(
+                &job.oracle_text,
+                &compiled_lines,
+                ironsmith::semantic_compare::report_embedding_config(),
+            );
+            (similarity, semantic_mismatch)
+        };
 
     outln!("Name: {}", display_def.card.name);
     outln!("Similarity: {:.4}", similarity);
@@ -388,6 +411,9 @@ fn main() -> Result<(), String> {
     let mut raw = false;
     let mut show_definition = DEFAULT_SHOW_DEFINITION;
     let mut compare_text = false;
+    let mut continue_on_error = false;
+    let mut front_face_only = false;
+    let mut output_path: Option<String> = None;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -444,9 +470,21 @@ fn main() -> Result<(), String> {
             "--compare-text" => {
                 compare_text = true;
             }
+            "--continue-on-error" => {
+                continue_on_error = true;
+            }
+            "--front-face-only" => {
+                front_face_only = true;
+            }
+            "--out" => {
+                output_path = Some(
+                    args.next()
+                        .ok_or_else(|| "--out requires a value".to_string())?,
+                );
+            }
             _ => {
                 return Err(format!(
-                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --compare-text, and/or --stacktrace"
+                    "unknown argument '{arg}'. expected --name <value>, --names <path>, --cards <path>, --text <value>, --out <path>, --trace, --allow-unsupported, --detailed, --raw, --show-definition, --compare-text, --continue-on-error, --front-face-only, and/or --stacktrace"
                 ));
             }
         }
@@ -491,45 +529,83 @@ fn main() -> Result<(), String> {
         names.push(DEFAULT_PROBE_NAME.to_string());
     }
 
-    let mut stdout = io::stdout().lock();
+    let payload_cache = if input_text.is_none() && names.len() > 1 {
+        let mut payloads =
+            load_card_payloads_by_names(&cards_path, &names).map_err(|err| err.to_string())?;
+        if front_face_only {
+            for named_payloads in payloads.values_mut() {
+                named_payloads.truncate(1);
+            }
+        }
+        Some(payloads)
+    } else {
+        None
+    };
+
+    let mut output_writer: Box<dyn Write> = match output_path {
+        Some(path) => Box::new(io::BufWriter::new(
+            std::fs::File::create(&path)
+                .map_err(|err| format!("failed to create output file {path}: {err}"))?,
+        )),
+        None => Box::new(io::stdout()),
+    };
     let mut output_idx = 0;
     for name in names.iter() {
         let compile_one = || -> Result<Vec<Vec<u8>>, String> {
             card_parse_trace::event(format!("Trace: {name}"));
-            compile_jobs_for_name(&cards_path, name, input_text.as_deref())?
-                .iter()
-                .map(|job| {
-                    let mut output = Vec::new();
-                    if compare_text {
-                        write_compare_text_job(&mut output, job)?;
-                    } else {
-                        write_compiled_job(&mut output, job, detailed, raw, show_definition)?;
-                    }
-                    Ok(output)
-                })
-                .collect()
+            compile_jobs_for_name(
+                &cards_path,
+                name,
+                input_text.as_deref(),
+                payload_cache.as_ref(),
+            )?
+            .iter()
+            .map(|job| {
+                let mut output = Vec::new();
+                if compare_text {
+                    write_compare_text_job(&mut output, job)?;
+                } else {
+                    write_compiled_job(&mut output, job, detailed, raw, show_definition)?;
+                }
+                Ok(output)
+            })
+            .collect()
         };
 
-        let outputs = if trace {
+        let result = if trace {
             let (result, report) = card_parse_trace::capture(compile_one);
             if !report.is_empty() {
                 eprint!("{}", report.render());
             }
-            result?
+            result
         } else {
-            compile_one()?
+            compile_one()
+        };
+        let outputs = match result {
+            Ok(outputs) => outputs,
+            Err(err) if continue_on_error => {
+                eprintln!("Name: {name}");
+                eprintln!("Error: {err}");
+                continue;
+            }
+            Err(err) => return Err(err),
         };
 
         for output in outputs {
             if output_idx > 0 {
-                writeln!(stdout).map_err(|err| format!("failed to write compile output: {err}"))?;
+                writeln!(output_writer)
+                    .map_err(|err| format!("failed to write compile output: {err}"))?;
             }
-            stdout
+            output_writer
                 .write_all(&output)
                 .map_err(|err| format!("failed to write compile output: {err}"))?;
             output_idx += 1;
         }
     }
+
+    output_writer
+        .flush()
+        .map_err(|err| format!("failed to flush compile output: {err}"))?;
 
     Ok(())
 }

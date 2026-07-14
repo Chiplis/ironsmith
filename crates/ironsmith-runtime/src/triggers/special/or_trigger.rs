@@ -3,8 +3,9 @@
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
-    AbilityActivatedTrigger, AttacksTrigger, CountMode, PermanentBecomesTappedTrigger,
-    PlayerRelation, SpellCastTrigger, ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent,
+    AbilityActivatedTrigger, AttacksTrigger, CountMode, DealsDamageToTrigger, DealsDamageTrigger,
+    PermanentBecomesTappedTrigger, PlayerRelation, SpellCastTrigger, ThisAttacksTrigger,
+    ThisDealsDamageToTrigger, ThisDealsDamageTrigger, TransformsTrigger, Trigger, TriggerEvent,
     ZoneChangeTrigger, ZonePattern,
 };
 use crate::types::{CardType, Subtype};
@@ -70,6 +71,25 @@ fn strip_leading_article(text: &str) -> &str {
         .or_else(|| text.strip_prefix("an "))
         .or_else(|| text.strip_prefix("the "))
         .unwrap_or(text)
+}
+
+fn pluralize_damage_recipient(text: &str) -> String {
+    let text = strip_leading_article(text);
+    if text.ends_with('s') {
+        return text.to_string();
+    }
+    if let Some(stem) = text.strip_suffix("card") {
+        return format!("{stem}cards");
+    }
+    if let Some(stem) = text.strip_suffix('y')
+        && !stem
+            .chars()
+            .last()
+            .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        return format!("{stem}ies");
+    }
+    format!("{text}s")
 }
 
 fn source_or_matching_subject(filter: &ObjectFilter) -> Option<String> {
@@ -305,6 +325,71 @@ impl OrTrigger {
             .unwrap_or(other_description);
         Some(format!(
             "Whenever {this_subject} or another {other_subject} enters"
+        ))
+    }
+
+    fn this_or_another_zone_change_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let first = first.downcast_ref::<ZoneChangeTrigger>()?;
+        let second = second.downcast_ref::<ZoneChangeTrigger>()?;
+
+        let is_source_branch =
+            |trigger: &ZoneChangeTrigger| trigger.this_object || trigger.object_filter.source;
+        let (source_change, another_change) = if is_source_branch(first)
+            && !is_source_branch(second)
+            && second.object_filter.other
+        {
+            (first, second)
+        } else if is_source_branch(second) && !is_source_branch(first) && first.object_filter.other
+        {
+            (second, first)
+        } else {
+            return None;
+        };
+
+        if source_change.from != another_change.from
+            || source_change.to != another_change.to
+            || source_change.player != another_change.player
+            || source_change.cause_filter != another_change.cause_filter
+            || source_change.during_turn != another_change.during_turn
+            || source_change.count_mode != CountMode::Each
+            || another_change.count_mode != CountMode::Each
+        {
+            return None;
+        }
+
+        let source_subject = if source_change.this_object {
+            source_change.this_subject_text("permanent")
+        } else {
+            source_change
+                .object_filter
+                .source_surface
+                .as_ref()?
+                .display_text()
+        };
+
+        let mut explicit_other = another_change.clone();
+        explicit_other.object_filter.other = false;
+        if source_change.this_object
+            && source_change.from == ZonePattern::Specific(Zone::Battlefield)
+            && source_change.to == ZonePattern::Specific(Zone::Graveyard)
+        {
+            let other_subject = explicit_other.object_filter.description();
+            return Some(format!(
+                "Whenever {source_subject} or another {} dies",
+                strip_leading_article(&other_subject)
+            ));
+        }
+        let explicit_display = explicit_other.display();
+        let other_clause = explicit_display
+            .strip_prefix("Whenever ")
+            .or_else(|| explicit_display.strip_prefix("When "))?;
+        let other_clause = strip_leading_article(other_clause);
+
+        Some(format!(
+            "Whenever {source_subject} or another {other_clause}"
         ))
     }
 
@@ -545,6 +630,102 @@ impl OrTrigger {
             "Whenever {source} saddles a Mount or crews a Vehicle{suffix}"
         ))
     }
+
+    fn damage_to_player_or_object_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+
+        if let Some((object, player, player_first)) = (|| {
+            if let (Some(object), Some(player)) = (
+                first.downcast_ref::<DealsDamageToTrigger>(),
+                second.downcast_ref::<DealsDamageTrigger>(),
+            ) {
+                return Some((object, player, false));
+            }
+            if let (Some(player), Some(object)) = (
+                first.downcast_ref::<DealsDamageTrigger>(),
+                second.downcast_ref::<DealsDamageToTrigger>(),
+            ) {
+                return Some((object, player, true));
+            }
+            None
+        })() {
+            if object.combat_only != player.combat_only
+                || player.noncombat_only
+                || object.source_filter != player.filter
+                || object.target_filter.union_connective()
+                    != crate::filter::ObjectFilterUnionConnective::AndOr
+            {
+                return None;
+            }
+            let damaged_player = player.damaged_player.as_ref()?;
+            let object_display = object.display();
+            let (prefix, object_recipient) = object_display.rsplit_once(" to ")?;
+            let player_recipient = damaged_player.description();
+            let one_or_more = object.target_filter.union_is_one_or_more();
+            let object_recipient = if one_or_more {
+                pluralize_damage_recipient(object_recipient)
+            } else {
+                object_recipient.to_string()
+            };
+            let player_recipient = if one_or_more {
+                pluralize_damage_recipient(&player_recipient)
+            } else {
+                player_recipient
+            };
+            let recipients = if player_first {
+                format!("{player_recipient} and/or {object_recipient}")
+            } else {
+                format!("{object_recipient} and/or {player_recipient}")
+            };
+            let quantifier = if one_or_more { "one or more " } else { "" };
+            return Some(format!("{prefix} to {quantifier}{recipients}"));
+        }
+
+        let (object, player, player_first) = if let (Some(object), Some(player)) = (
+            first.downcast_ref::<ThisDealsDamageToTrigger>(),
+            second.downcast_ref::<ThisDealsDamageTrigger>(),
+        ) {
+            (object, player, false)
+        } else if let (Some(player), Some(object)) = (
+            first.downcast_ref::<ThisDealsDamageTrigger>(),
+            second.downcast_ref::<ThisDealsDamageToTrigger>(),
+        ) {
+            (object, player, true)
+        } else {
+            return None;
+        };
+        if object.combat_only != player.combat_only
+            || player.amount.is_some()
+            || object.target_filter.union_connective()
+                != crate::filter::ObjectFilterUnionConnective::AndOr
+        {
+            return None;
+        }
+        let damaged_player = player.damaged_player.as_ref()?;
+        let object_display = object.display();
+        let (prefix, object_recipient) = object_display.rsplit_once(" to ")?;
+        let player_recipient = damaged_player.description();
+        let one_or_more = object.target_filter.union_is_one_or_more();
+        let object_recipient = if one_or_more {
+            pluralize_damage_recipient(object_recipient)
+        } else {
+            object_recipient.to_string()
+        };
+        let player_recipient = if one_or_more {
+            pluralize_damage_recipient(&player_recipient)
+        } else {
+            player_recipient
+        };
+        let recipients = if player_first {
+            format!("{player_recipient} and/or {object_recipient}")
+        } else {
+            format!("{object_recipient} and/or {player_recipient}")
+        };
+        let quantifier = if one_or_more { "one or more " } else { "" };
+        Some(format!("{prefix} to {quantifier}{recipients}"))
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -624,6 +805,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.this_or_another_enters_display() {
             return display;
         }
+        if let Some(display) = self.this_or_another_zone_change_display() {
+            return display;
+        }
         if let Some(display) = self.battlefield_graveyard_or_exile_display() {
             return display;
         }
@@ -637,6 +821,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.source_saddles_mount_or_crews_vehicle_display() {
+            return display;
+        }
+        if let Some(display) = self.damage_to_player_or_object_display() {
             return display;
         }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();
@@ -748,6 +935,98 @@ mod tests {
         let trigger = OrTrigger::two(enters, Trigger::this_dies());
 
         assert_eq!(trigger.display(), "When this creature enters or dies");
+    }
+
+    #[test]
+    fn display_compacts_this_or_another_creature_dies() {
+        let trigger = OrTrigger::two(
+            Trigger::this_dies(),
+            Trigger::new(ZoneChangeTrigger::dies(ObjectFilter::creature().other())),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this creature or another creature dies"
+        );
+    }
+
+    #[test]
+    fn display_compacts_and_or_damage_recipients_without_losing_players() {
+        let source = ObjectFilter::default()
+            .with_colors(crate::color::ColorSet::RED)
+            .controlled_by(PlayerFilter::You);
+        let mut target = ObjectFilter::default().in_zone(Zone::Battlefield);
+        target.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+        target.set_union_one_or_more(true);
+
+        let object_branch = Trigger::deals_damage_to_with_source_surface(
+            source.clone(),
+            target,
+            ironsmith_core::trigger_model::DamageSourceSurface::Source,
+        );
+        let mut player_matcher = DealsDamageTrigger::new(source);
+        player_matcher.damaged_player = Some(PlayerFilter::Any);
+        let trigger = OrTrigger::two(object_branch, Trigger::new(player_matcher));
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever a red source you control deals damage to one or more permanents and/or players"
+        );
+    }
+
+    #[test]
+    fn and_or_damage_recipient_union_matches_the_player_branch() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let mut object_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        object_filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+        let trigger = OrTrigger::two(
+            Trigger::this_deals_damage_to(object_filter),
+            Trigger::this_deals_damage_to_player(PlayerFilter::Any, None),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(
+                source_id,
+                DamageTarget::Player(bob),
+                1,
+                false,
+                crate::events::cause::EventCause::effect(),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn display_compacts_this_or_another_graveyard_from_battlefield() {
+        let source = ObjectFilter::source_with_surface(
+            crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this enchantment".to_string(),
+            ),
+        );
+        let trigger = OrTrigger::two(
+            Trigger::new(
+                ZoneChangeTrigger::new()
+                    .from(Zone::Battlefield)
+                    .to(Zone::Graveyard)
+                    .filter(source),
+            ),
+            Trigger::new(
+                ZoneChangeTrigger::new()
+                    .from(Zone::Battlefield)
+                    .to(Zone::Graveyard)
+                    .filter(ObjectFilter::nonland_permanent().you_control().other()),
+            ),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this enchantment or another nonland permanent you control is put into a graveyard from the battlefield"
+        );
     }
 
     #[test]
@@ -878,6 +1157,39 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(trigger.matches(&damage_event, &ctx));
+    }
+
+    #[test]
+    fn this_or_another_dies_other_branch_excludes_source() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = ObjectId::from_raw(1);
+        let trigger = OrTrigger::two(
+            Trigger::this_dies(),
+            Trigger::new(ZoneChangeTrigger::dies(ObjectFilter::creature().other())),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let mut snapshot = crate::snapshot::ObjectSnapshot::for_testing(source_id, alice, "Source");
+        snapshot.card_types = vec![CardType::Creature];
+        snapshot.zone = Zone::Battlefield;
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                source_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.triggers[0].matches(&event, &ctx));
+        assert!(
+            !trigger.triggers[1].matches(&event, &ctx),
+            "the another-creature branch must not also match the source death"
+        );
+        assert_eq!(trigger.trigger_count_with_context(&event, &ctx), 1);
     }
 
     #[test]

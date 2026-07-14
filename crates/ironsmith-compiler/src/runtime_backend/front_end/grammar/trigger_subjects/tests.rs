@@ -94,10 +94,24 @@ fn typed_damage_source_surface_distinguishes_generic_sources() {
         crate::triggers::DamageSourceSurface::Source
     );
 
+    let qualified_source = lex_line("a red source you control", 0).unwrap();
+    assert_eq!(
+        parse_damage_source_surface(&qualified_source),
+        crate::triggers::DamageSourceSurface::Source
+    );
+
     let creature = lex_line("a creature you control", 0).unwrap();
     assert_eq!(
         parse_damage_source_surface(&creature),
         crate::triggers::DamageSourceSurface::Filter
+    );
+}
+
+#[test]
+fn bare_plural_players_is_an_any_player_trigger_subject() {
+    assert_eq!(
+        parse_trigger_subject_surface_facts(&["players"]).player,
+        Some(TriggerControllerReference::AnyPlayer)
     );
 }
 

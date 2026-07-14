@@ -191,19 +191,38 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
 
-        // Resolve target from spec (supports tagged/spec-specific references)
-        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-        let target_id = *target_ids.first().ok_or(ExecutionError::InvalidTarget)?;
+        // A sacrificed copy source has already left the battlefield. Its tag
+        // carries the calculated snapshot captured while paying the cost, so
+        // use that identity and LKI directly instead of relocating the object
+        // by stable id into its new zone.
+        let sacrificed_snapshot =
+            self.target
+                .sacrificed_object_kind()
+                .and_then(|_| match self.target.base() {
+                    ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
+                    _ => None,
+                });
+        let target_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
+            snapshot.object_id
+        } else {
+            let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+            *target_ids.first().ok_or(ExecutionError::InvalidTarget)?
+        };
 
         // Resolve target object, falling back to stored LKI snapshots when needed.
         let resolved_target_id = target_id;
-        let target_object = game.object(resolved_target_id).cloned();
-        let mut stored_snapshot = None;
+        let target_object = sacrificed_snapshot
+            .is_none()
+            .then(|| game.object(resolved_target_id).cloned())
+            .flatten();
+        let mut stored_snapshot = sacrificed_snapshot;
         if target_object.is_none() {
-            if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
+            if stored_snapshot.is_some() {
+                // Typed sacrificed sources always prefer the cost-time LKI.
+            } else if let Some(snapshot) = ctx.target_snapshots.get(&target_id) {
                 stored_snapshot = Some(snapshot.clone());
             } else {
-                match &self.target {
+                match self.target.base() {
                     ChooseSpec::Tagged(tag) => {
                         if let Some(snapshot) = ctx.get_tagged(tag.as_str()) {
                             stored_snapshot = Some(snapshot.clone());
@@ -217,6 +236,13 @@ impl EffectExecutor for CreateTokenCopyEffect {
                     _ => {}
                 }
             }
+        }
+        if stored_snapshot.is_none()
+            && let Some(target) = target_object.as_ref()
+        {
+            stored_snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+                target, game,
+            ));
         }
         let copy_snapshot = stored_snapshot.as_ref();
         if target_object.is_none() && copy_snapshot.is_none() {
@@ -406,8 +432,10 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::object::ObjectKind;
+    use crate::snapshot::ObjectSnapshot;
     use crate::static_abilities::{StaticAbility, StaticAbilityId};
-    use crate::target::ObjectFilter;
+    use crate::tag::TagKey;
+    use crate::target::{ChooseSpecSurfaceHint, ObjectFilter, SacrificedObjectKind};
     use crate::test_prelude::*;
     use crate::types::{CardType, Subtype};
 
@@ -501,6 +529,45 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn sacrificed_copy_source_uses_cost_time_lki_after_zone_change() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = create_creature(&mut game, "Battlefield Form", alice);
+        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(creature_id).expect("sacrifice source exists"),
+            &game,
+        );
+        let graveyard_id = game
+            .move_object(
+                creature_id,
+                Zone::Graveyard,
+                crate::events::EventCause::effect(),
+            )
+            .expect("sacrifice source moves");
+        game.object_mut(graveyard_id)
+            .expect("moved card exists")
+            .name = "Graveyard Form".into();
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("sacrifice_cost_0", vec![snapshot]);
+        let target = ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0")).with_surface_hint(
+            ChooseSpecSurfaceHint::SacrificedObject(SacrificedObjectKind::Creature),
+        );
+
+        let result = CreateTokenCopyEffect::one(target)
+            .execute(&mut game, &mut ctx)
+            .expect("copy sacrificed creature from LKI");
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected copied token");
+        };
+        assert_eq!(
+            game.object(ids[0]).expect("token exists").name,
+            "Battlefield Form"
+        );
     }
 
     #[test]

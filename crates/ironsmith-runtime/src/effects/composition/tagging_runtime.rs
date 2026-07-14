@@ -58,23 +58,30 @@ pub(crate) fn capture_all_effect_target_snapshots(
         return snapshots;
     }
 
-    let Some(spec) = effect.0.get_target_spec() else {
-        return snapshots;
-    };
-    if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
-        return ctx.get_tagged_all(tag).cloned().unwrap_or_default();
-    }
-    let Ok(object_ids) = resolve_objects_from_spec(game, spec, ctx) else {
-        return snapshots;
-    };
-
     let mut seen = HashSet::new();
-    for object_id in object_ids {
-        if !seen.insert(object_id) {
+    let specs = effect.0.get_target_spec().map_or_else(
+        || effect.0.decision_related_object_specs(),
+        |spec| vec![spec.clone()],
+    );
+    for spec in specs {
+        if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
+            for snapshot in ctx.get_tagged_all(tag).into_iter().flatten() {
+                if seen.insert(snapshot.object_id) {
+                    snapshots.push(snapshot.clone());
+                }
+            }
             continue;
         }
-        if let Some(snapshot) = snapshot_for_object_reference(game, ctx, object_id) {
-            snapshots.push(snapshot);
+        let Ok(object_ids) = resolve_objects_from_spec(game, &spec, ctx) else {
+            continue;
+        };
+        for object_id in object_ids {
+            if !seen.insert(object_id) {
+                continue;
+            }
+            if let Some(snapshot) = snapshot_for_object_reference(game, ctx, object_id) {
+                snapshots.push(snapshot);
+            }
         }
     }
     snapshots
@@ -324,6 +331,35 @@ mod tests {
         assert_eq!(snapshots.len(), 1);
         assert_eq!(snapshots[0].object_id, creature);
         assert_eq!(snapshots[0].stable_id, snapshot.stable_id);
+    }
+
+    #[test]
+    fn test_capture_mass_continuous_filter_as_affected_set() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature(&mut game, alice);
+        let second = create_creature(&mut game, alice);
+        let _opposing = create_creature(&mut game, PlayerId::from_index(1));
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+
+        let mut controlled_creature = crate::target::ObjectFilter::creature();
+        controlled_creature.controller = Some(crate::target::PlayerFilter::You);
+        let effect = Effect::new(crate::effects::ApplyContinuousEffect::new_runtime(
+            crate::continuous::EffectTarget::Filter(controlled_creature),
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power: crate::effect::Value::Fixed(1),
+                toughness: crate::effect::Value::Fixed(1),
+            },
+            crate::effect::Until::EndOfTurn,
+        ));
+        let snapshots = capture_all_effect_target_snapshots(&game, &effect, &ctx);
+        let ids = snapshots
+            .iter()
+            .map(|snapshot| snapshot.object_id)
+            .collect::<HashSet<_>>();
+
+        assert_eq!(ids, HashSet::from([first, second]));
     }
 
     #[test]

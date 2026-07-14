@@ -1630,6 +1630,58 @@ pub(super) fn parse_oracle_future_replacement_followups_register_zone_replacemen
     }
 }
 
+#[test]
+pub(super) fn oracle_fight_and_damage_death_replacements_render_canonically() {
+    for (name, expected) in [
+        (
+            "Faunsbane Troll",
+            "This creature fights target creature you don't control. If that creature would die this turn, exile it instead.",
+        ),
+        (
+            "Mawloc",
+            "it fights up to one target creature an opponent controls. If that creature would die this turn, exile it instead.",
+        ),
+        (
+            "Unnatural Aggression",
+            "Target creature you control fights target creature an opponent controls. If the creature an opponent controls would die this turn, exile it instead.",
+        ),
+        (
+            "Carbonize",
+            "Carbonize deals 3 damage to any target. If it's a creature, it can't be regenerated this turn, and if it would die this turn, exile it instead.",
+        ),
+        (
+            "Disintegrate",
+            "Disintegrate deals X damage to any target. If it's a creature, it can't be regenerated this turn, and if it would die this turn, exile it instead.",
+        ),
+        (
+            "Scorching Lava",
+            "Scorching Lava deals 2 damage to any target. If this spell was kicked, that creature can't be regenerated this turn and if it would die this turn, exile it instead.",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let compiled = compiled_text_lines(&def);
+        let rendered = compiled.join("\n");
+        assert!(
+            rendered.contains(expected),
+            "expected {name} replacement rider to render canonically, got {rendered}"
+        );
+
+        let oracle = oracle_text_by_name()
+            .get(name)
+            .unwrap_or_else(|| panic!("missing oracle text for {name}"));
+        let (_oracle_coverage, _compiled_coverage, similarity, _line_delta, _mismatch) =
+            crate::semantic_compare::compare_semantics_scored(
+                oracle,
+                &compiled,
+                crate::semantic_compare::report_embedding_config(),
+            );
+        assert!(
+            similarity >= 0.99,
+            "expected {name} to clear the strict similarity floor, got {similarity}: {rendered}"
+        );
+    }
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_counter_then_exile_clause_registers_future_zone_replacement() {
@@ -2139,11 +2191,206 @@ pub(super) fn parse_necromantic_summons_spell_mastery_counter_followup() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
-    CardDefinitionBuilder::new(CardId::new(), "Ghost Vacuum Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Ghost Vacuum Variant")
         .parse_text(
             "{6}, {T}, Sacrifice this artifact: Put each creature card exiled with this artifact onto the battlefield under your control with a flying counter on it. Each of them is a 1/1 Spirit in addition to its other types. Activate only as a sorcery.",
         )
         .expect("implicit tagged base-pt followup should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    assert!(debug.contains("TagAllEffect"), "{debug}");
+    assert!(debug.contains("target: All("), "{debug}");
+    assert!(
+        debug.contains("card_types: [") && debug.contains("Creature"),
+        "{debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_mass_library_placement_preserves_all_objects() {
+    for (name, text, expected) in [
+        (
+            "Hallowed Burial Variant",
+            "Put all creatures on the bottom of their owners' libraries.",
+            "Put all creatures on the bottom of their owners' libraries",
+        ),
+        (
+            "Harmonic Convergence Variant",
+            "Put all enchantments on top of their owners' libraries.",
+            "Put all enchantments on top of their owners' libraries",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .expect("mass library placement should parse");
+        let debug = format!("{def:#?}");
+        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+        assert!(debug.contains("target: All("), "{debug}");
+        assert!(
+            debug.contains("destination_player_surface: None"),
+            "an explicit owners' destination must not be rebound to a contextual player: {debug}"
+        );
+        assert!(
+            debug.contains("destination_player_reference_surface: None"),
+            "the pronoun modifying owners must not become the library owner: {debug}"
+        );
+        assert_eq!(
+            crate::compiled_text::unprocessed_compiled_lines(&def),
+            vec![expected.to_string()],
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn selected_hand_discard_surfaces_keep_the_choice_bound_to_those_cards() {
+    for (name, text, expected) in [
+        (
+            "Abandon Hope Effect Variant",
+            "Look at target opponent's hand and choose X cards from it. That player discards those cards.",
+            "Look at target opponent's hand and choose X cards from it. That player discards those cards",
+        ),
+        (
+            "Discordant Dirge Effect Variant",
+            "Look at target opponent's hand and choose up to X cards from it, where X is the number of verse counters on this enchantment. That player discards those cards.",
+            "Look at target opponent's hand and choose up to X cards from it, where X is the number of verse counters on this enchantment. That player discards those cards",
+        ),
+        (
+            "Extortion Effect Variant",
+            "Look at target player's hand and choose up to two cards from it. That player discards those cards.",
+            "Look at target player's hand and choose up to two cards from it. That player discards those cards",
+        ),
+        (
+            "Mind Warp Effect Variant",
+            "Look at target player's hand and choose X cards from it. That player discards those cards.",
+            "Look at target player's hand and choose X cards from it. That player discards those cards",
+        ),
+        (
+            "Noggin Whack Effect Variant",
+            "Target player reveals three cards from their hand. You choose two of them. That player discards those cards.",
+            "Target player reveals three cards from their hand. You choose two of them. That player discards those cards",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .expect("selected-hand discard surface should parse");
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+        assert_eq!(rendered, expected, "{name}: {def:#?}");
+        let debug = format!("{def:#?}");
+        assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+        assert!(debug.contains("DiscardEffect"), "{debug}");
+        assert!(debug.contains("IsTaggedObject"), "{debug}");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn selected_hand_discard_preserves_two_distinct_mana_value_filters() {
+    let text = "When you cast this spell, target opponent reveals their hand. You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater. That player discards those cards.";
+    let expected = "When you cast this spell, target opponent reveals their hand. You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater. That player discards those cards";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Double Filter Hand Choice Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("double-filter selected-hand discard should parse");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(rendered, expected, "{def:#?}");
+
+    let debug = format!("{def:#?}");
+    assert_eq!(debug.matches("ChooseObjectsEffect").count(), 2, "{debug}");
+    assert!(
+        debug.contains("LessThanOrEqual(\n") && debug.contains("3"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("GreaterThanOrEqual(\n") && debug.contains("4"),
+        "{debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_all_sacrifice_activation_cost_preserves_set_cardinality() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tomb of Urami Variant")
+        .card_types(vec![CardType::Land])
+        .parse_text(
+            "{2}{B}{B}, {T}, Sacrifice all lands: Create Urami, a legendary 5/5 black Demon Spirit creature token with flying.",
+        )
+        .expect("all-object sacrifice cost should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("SacrificePlayerEffect"), "{debug}");
+    assert!(debug.contains("Count("), "{debug}");
+    assert!(
+        crate::compiled_text::compiled_text_lines(&def)
+            .join(" ")
+            .contains("Sacrifice all lands"),
+        "{}",
+        crate::compiled_text::compiled_text_lines(&def).join(" ")
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn multi_target_connive_renders_each_selected_creature() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Change of Plans Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Each of X target creatures you control connive. You may have any number of them phase out.",
+        )
+        .expect("multi-target connive should parse");
+    let compiled = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Each of X target creatures you control connive"),
+        "{compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shuffle_all_from_target_graveyard_preserves_set_and_owner() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Repopulate Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Shuffle all creature cards from target player's graveyard into that player's library.",
+        )
+        .expect("mass graveyard shuffle should parse");
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ShuffleObjectsIntoLibraryEffect"), "{debug}");
+    assert!(debug.contains("target: All("), "{debug}");
+    assert!(debug.contains("player: Target("), "{debug}");
+    let compiled = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Shuffle all creature cards"),
+        "{compiled}"
+    );
+    assert!(compiled.contains("target player's"), "{compiled}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn destroy_all_with_combat_history_stays_mass_destruction() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Retaliate Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Destroy all creatures that dealt damage to you this turn.")
+        .expect("mass combat-history destroy should parse");
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("DestroyEffect"), "{debug}");
+    assert!(debug.contains("spec: All("), "{debug}");
+    assert!(
+        debug.contains("dealt_damage_to_player_this_turn: Some(You)"),
+        "{debug}"
+    );
+    assert!(
+        crate::compiled_text::compiled_text_lines(&def)
+            .join(" ")
+            .contains("Destroy all creatures that dealt damage to you this turn"),
+        "{}",
+        crate::compiled_text::compiled_text_lines(&def).join(" ")
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2184,22 +2431,27 @@ At the beginning of your end step, if a player controls no creatures, sacrifice 
 #[test]
 pub(super) fn parse_enduring_curiosity_type_removal_followup() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Enduring Curiosity Variant")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
         .parse_text(
             "When this creature dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment. (It's not a creature.)",
         )
-        .expect("enduring return line should parse with type-removal followup support");
+        .expect("enduring return line should strictly parse with a typed return followup");
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
-    assert!(
-        rendered.contains("it's an enchantment") || rendered.contains("becomes an enchantment"),
-        "expected enduring followup to keep enchantment-return text, got {rendered}"
+    assert_eq!(
+        compiled_text_lines(&def).join(" "),
+        "When this creature dies, if it was a creature, return it to the battlefield under its owner's control. It's an enchantment.",
+        "expected the typed return and exact enchantment reset to retain their two-sentence surface"
     );
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("RemoveCardTypes"),
-        "expected enduring followup to lower creature-type removal, got {debug}"
+        debug.contains("TaggedObjectMatchedLastKnown")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Battlefield")
+            && debug.contains("battlefield_controller: Owner")
+            && debug.contains("SetCardTypes")
+            && debug.contains("Enchantment")
+            && debug.contains("RemoveCardTypes"),
+        "expected last-known creature semantics, a graveyard return, and an exact enchantment type reset, got {debug}"
     );
 }
 
@@ -2262,6 +2514,95 @@ pub(super) fn parse_screaming_nemesis_any_other_target() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn enduring_curiosity_returns_as_a_new_enchantment_object() {
+    let def = parse_oracle_card_definition("Enduring Curiosity");
+    let death_trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:?}", triggered.effects).contains("MoveToZoneEffect") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Enduring Curiosity should have its graveyard-return trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let battlefield_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let battlefield_snapshot =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(battlefield_id)
+                .expect("Enduring Curiosity should exist on the battlefield"),
+            &game,
+        );
+    let stable_id = battlefield_snapshot.stable_id;
+    let graveyard_id = game
+        .move_object_by_sba(battlefield_id, Zone::Graveyard)
+        .expect("Enduring Curiosity should move to its owner's graveyard");
+    assert_ne!(
+        graveyard_id, battlefield_id,
+        "the death zone change should create a new object"
+    );
+
+    let trigger_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            battlefield_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_sba(),
+            Some(battlefield_snapshot.clone()),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(graveyard_id, alice, &mut dm)
+        .with_source_snapshot(battlefield_snapshot)
+        .with_triggering_event(trigger_event);
+
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        graveyard_id,
+        &death_trigger.effects,
+        None,
+        &[],
+    )
+    .expect("Enduring Curiosity's death trigger should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("Enduring Curiosity should return to the battlefield");
+    assert_ne!(
+        returned_id, graveyard_id,
+        "the return must create another new object"
+    );
+    assert_eq!(
+        game.object(returned_id).map(|object| object.zone),
+        Some(Zone::Battlefield)
+    );
+    assert!(
+        ctx.tagged_objects.iter().any(|(tag, snapshots)| {
+            tag.as_str().starts_with("returned_")
+                && snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == returned_id)
+        }),
+        "the return-result tag must carry the battlefield object's new identity: {:?}",
+        ctx.tagged_objects
+    );
+    assert_eq!(
+        game.current_card_types(returned_id),
+        Some(vec![CardType::Enchantment]),
+        "the returned permanent should be an enchantment and not a creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_burst_lightning_kicker_instead_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Burst Lightning Variant")
         .card_types(vec![CardType::Instant])
@@ -2273,6 +2614,11 @@ pub(super) fn parse_burst_lightning_kicker_instead_clause() {
     let program = def.spell_effect.as_ref().expect("spell effect");
     assert_eq!(program.segments.len(), 1);
     assert_eq!(program.segments[0].self_replacements.len(), 1);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("If this spell was kicked, it deals 4 damage instead"),
+        "non-shuffle self-replacements should keep suffix 'instead': {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2354,6 +2700,40 @@ pub(super) fn parse_aangs_journey_kicked_search_slots_as_self_replacement() {
             && debug.contains("ThisSpellWasKicked")
             && debug.contains("SearchLibrarySlotsEffect"),
         "expected kicked search-slot override to lower as self-replacement, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "If this spell was kicked, instead search your library for a basic land card and a Shrine card"
+        ),
+        "shared terminal shuffle should put 'instead' before the replacement search: {rendered}"
+    );
+    assert!(
+        !rendered.contains("shuffle instead"),
+        "shared terminal shuffle must not absorb the replacement marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_entish_restoration_shared_shuffle_places_instead_before_search() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Entish Restoration Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Sacrifice a land. Search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle. If you control a creature with power 4 or greater, instead search your library for up to three basic land cards, put them onto the battlefield tapped, then shuffle.",
+        )
+        .expect("shared-shuffle conditional search should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "If you control a creature with power 4 or greater, instead search your library for up to three basic land cards"
+        ),
+        "multi-effect replacement should put 'instead' before the search: {rendered}"
+    );
+    assert!(
+        !rendered.contains("shuffle instead"),
+        "shared terminal shuffle must not absorb the replacement marker: {rendered}"
     );
 }
 
@@ -3052,6 +3432,70 @@ pub(super) fn parse_oracle_garruk_unleashed_compacts_pump_and_trample() {
         !rendered.contains("get +3/+3 until end of turn. it gains Trample"),
         "expected Garruk Unleashed +1 not to split tagged trample grant, got {rendered}"
     );
+}
+
+#[test]
+pub(super) fn mandatory_pump_trample_spells_keep_mandatory_target_surface() {
+    for name in [
+        "Awaken the Bear",
+        "Blitzball Shot",
+        "Crash the Ramparts",
+        "Fanatical Strength",
+        "Predator's Strike",
+        "Staggering Size",
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = debug_compiled_lines(&def).join("\n");
+
+        assert!(
+            rendered.contains("Target creature gets +3/+3 and gains trample until end of turn"),
+            "{name} should retain its mandatory target surface, got {rendered}"
+        );
+        assert!(
+            !rendered.contains(
+                "Up to one target creature gets +3/+3 and gains trample until end of turn"
+            ),
+            "{name} must not be rewritten as an optional-target spell, got {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn pump_trample_target_requirements_distinguish_mandatory_and_up_to_one() {
+    let mandatory = CardDefinitionBuilder::new(CardId::new(), "Mandatory Pump Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets +3/+3 and gains trample until end of turn.")
+        .expect("mandatory pump/trample spell should parse");
+    let optional = CardDefinitionBuilder::new(CardId::new(), "Optional Pump Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Up to one target creature gets +3/+3 and gains trample until end of turn.")
+        .expect("optional pump/trample spell should parse");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+
+    for (definition, expected_min) in [(&mandatory, 1usize), (&optional, 0usize)] {
+        let source = game.create_object_from_definition(definition, alice, Zone::Stack);
+        let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+            &game,
+            definition
+                .spell_effect
+                .as_ref()
+                .expect("pump/trample spell should have a resolution program"),
+            alice,
+            Some(source),
+            None,
+        );
+
+        assert_eq!(requirements.len(), 1, "{definition:#?}");
+        assert_eq!(requirements[0].min_targets, expected_min, "{definition:#?}");
+        assert_eq!(requirements[0].max_targets, Some(1), "{definition:#?}");
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

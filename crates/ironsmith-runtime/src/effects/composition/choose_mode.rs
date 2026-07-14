@@ -33,16 +33,23 @@ impl EffectExecutor for ChooseModeEffect {
     }
 
     fn get_modal_spec(&self) -> Option<ModalSpec> {
+        if self.chooser.is_some() {
+            return None;
+        }
         Some(ModalSpec {
             mode_descriptions: self.modes.iter().map(|m| m.source_text.clone()).collect(),
             max_modes: self.choose_count.clone(),
             min_modes: self.min_choose_count.clone(),
             allow_repeated_modes: self.allow_repeated_modes,
             mode_point_costs: self.mode_point_costs.clone(),
+            distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
         })
     }
 
     fn modal_effect_spec(&self) -> Option<ModalEffectSpec<'_>> {
+        if self.chooser.is_some() {
+            return None;
+        }
         Some(ModalEffectSpec {
             modes: &self.modes,
             max_modes: &self.choose_count,
@@ -52,6 +59,7 @@ impl EffectExecutor for ChooseModeEffect {
             disallow_previously_chosen_modes: self.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: self
                 .disallow_previously_chosen_modes_this_turn,
+            distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
         })
     }
 }

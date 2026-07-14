@@ -17,6 +17,19 @@ pub(crate) enum TargetPlayerChoiceActor {
     Voter,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PossessiveObjectChoiceActor {
+    You,
+    SubjectPlayer,
+    ObjectController,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PossessiveObjectChoiceShape {
+    pub(crate) actor: PossessiveObjectChoiceActor,
+    pub(crate) object_tokens: Vec<OwnedLexToken>,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ChoiceObjectFilterFacts {
     pub(crate) bare_card: bool,
@@ -69,6 +82,53 @@ pub(crate) fn parse_target_player_choice_tokens(
         filter_facts: parse_choice_object_filter_facts_words(&filter_words),
         filter_is_player_target: parse_player_target_prefix_words(&filter_words),
     }))
+}
+
+/// Remove an embedded choice-owner phrase while retaining the complete object
+/// and zone description around it, e.g. `a creature card of their choice from
+/// their graveyard` -> `a creature card from their graveyard`.
+pub(crate) fn parse_possessive_object_choice_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PossessiveObjectChoiceShape> {
+    for (phrase, actor) in [
+        (
+            &["of", "its", "controller's", "choice"][..],
+            PossessiveObjectChoiceActor::ObjectController,
+        ),
+        (
+            &["of", "its", "controllers", "choice"][..],
+            PossessiveObjectChoiceActor::ObjectController,
+        ),
+        (
+            &["of", "his", "or", "her", "choice"][..],
+            PossessiveObjectChoiceActor::SubjectPlayer,
+        ),
+        (
+            &["of", "their", "choice"][..],
+            PossessiveObjectChoiceActor::SubjectPlayer,
+        ),
+        (
+            &["of", "your", "choice"][..],
+            PossessiveObjectChoiceActor::You,
+        ),
+    ] {
+        let Some((first, _, rest)) =
+            primitives::find_prefix(tokens, || primitives::phrase(phrase).void())
+        else {
+            continue;
+        };
+        let mut object_tokens = Vec::with_capacity(first + rest.len());
+        object_tokens.extend_from_slice(tokens.get(..first)?);
+        object_tokens.extend_from_slice(rest);
+        let object_tokens = trim_punctuation_edges(&object_tokens).to_vec();
+        if !object_tokens.is_empty() {
+            return Some(PossessiveObjectChoiceShape {
+                actor,
+                object_tokens,
+            });
+        }
+    }
+    None
 }
 
 pub(crate) fn parse_choice_object_filter_facts_words(words: &[&str]) -> ChoiceObjectFilterFacts {
@@ -232,5 +292,17 @@ mod tests {
         assert!(!facts.bare_card);
 
         assert!(parse_choice_object_filter_facts_words(&["cards"]).bare_card);
+    }
+
+    #[test]
+    fn possessive_choice_keeps_zone_tail_and_choice_owner() {
+        let tokens = lex("a creature card of their choice from their graveyard");
+        let parsed = parse_possessive_object_choice_tokens(&tokens).unwrap();
+
+        assert_eq!(parsed.actor, PossessiveObjectChoiceActor::SubjectPlayer);
+        assert_eq!(
+            TokenWordView::new(&parsed.object_tokens).word_refs(),
+            vec!["a", "creature", "card", "from", "their", "graveyard"]
+        );
     }
 }

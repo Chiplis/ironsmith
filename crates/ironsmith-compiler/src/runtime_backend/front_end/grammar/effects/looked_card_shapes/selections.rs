@@ -177,6 +177,18 @@ pub(crate) fn parse_revealed_card_choice_shape(
         .ok()
 }
 
+pub(crate) fn is_one_looked_card_into_hand_shape(tokens: &[OwnedLexToken]) -> bool {
+    let mut input = LexStream::new(trim_lexed_commas(tokens));
+    if looked_one_reference.parse_next(&mut input).is_err() {
+        return false;
+    }
+    if looked_card_destination.parse_next(&mut input).ok() != Some(LookedCardDestinationShape::Hand)
+    {
+        return false;
+    }
+    opt(primitives::period()).parse_next(&mut input).is_ok() && input.is_empty()
+}
+
 pub(crate) fn parse_chosen_card_move_followup_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChosenCardMoveFollowupShape> {

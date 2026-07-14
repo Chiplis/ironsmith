@@ -308,11 +308,13 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::Wither
                 | StaticAbilityId::Infect
                 | StaticAbilityId::Changeling
+                | StaticAbilityId::LivingMetal
                 | StaticAbilityId::Partner
                 | StaticAbilityId::PartnerWith
                 | StaticAbilityId::StartYourEngines
                 | StaticAbilityId::DoctorsCompanion
                 | StaticAbilityId::Assist
+                | StaticAbilityId::Ascend
                 | StaticAbilityId::SplitSecond
                 | StaticAbilityId::Rebound
                 | StaticAbilityId::Cascade
@@ -543,9 +545,17 @@ impl StaticAbilityModelInterpreter {
 
     fn cached_cost_reduction(model: &CompiledStaticAbility) -> Option<super::CostReduction> {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => Some(
-                super::CostReduction::new(reduction.filter.clone(), reduction.amount.clone()),
-            ),
+            ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => {
+                let mut parsed =
+                    super::CostReduction::new(reduction.filter.clone(), reduction.amount.clone());
+                if let Some(condition) = reduction.condition.clone() {
+                    parsed = parsed.with_condition(condition);
+                }
+                if reduction.per_target {
+                    parsed = parsed.with_per_target();
+                }
+                Some(parsed)
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_cost_reduction(ability)
                     .map(|reduction| reduction.with_condition(condition.clone()))
@@ -660,6 +670,9 @@ impl StaticAbilityModelInterpreter {
                 if let Some(condition) = increase.condition.clone() {
                     parsed = parsed.with_condition(condition);
                 }
+                if increase.per_target {
+                    parsed = parsed.with_per_target();
+                }
                 Some(parsed)
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
@@ -681,6 +694,12 @@ impl StaticAbilityModelInterpreter {
                 );
                 runtime.optional_life_additional_cost =
                     reduction.optional_life_additional_cost.clone();
+                if let Some(condition) = reduction.condition.clone() {
+                    runtime = runtime.with_condition(condition);
+                }
+                if reduction.per_target {
+                    runtime = runtime.with_per_target();
+                }
                 Some(runtime)
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
@@ -695,9 +714,19 @@ impl StaticAbilityModelInterpreter {
         model: &CompiledStaticAbility,
     ) -> Option<super::CostIncreaseManaCost> {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase) => Some(
-                super::CostIncreaseManaCost::new(increase.filter.clone(), increase.cost.clone()),
-            ),
+            ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase) => {
+                let mut runtime = super::CostIncreaseManaCost::new(
+                    increase.filter.clone(),
+                    increase.cost.clone(),
+                );
+                if let Some(condition) = increase.condition.clone() {
+                    runtime = runtime.with_condition(condition);
+                }
+                if increase.per_target {
+                    runtime = runtime.with_per_target();
+                }
+                Some(runtime)
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_cost_increase_mana_cost(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
@@ -732,8 +761,13 @@ impl StaticAbilityModelInterpreter {
                     reduction.condition.clone(),
                 ))
                 .map(|runtime| {
-                    if let Some(filter) = &reduction.affinity_filter {
+                    let runtime = if let Some(filter) = &reduction.affinity_filter {
                         runtime.with_affinity_filter(filter.clone())
+                    } else {
+                        runtime
+                    };
+                    if let Some(kind) = reduction.alternative_cast {
+                        runtime.with_alternative_cast(kind)
                     } else {
                         runtime
                     }
@@ -870,7 +904,8 @@ impl StaticAbilityModelInterpreter {
                     None => crate::static_abilities::Anthem::for_source(0, 0)
                         .with_values(anthem.power.clone(), anthem.toughness.clone()),
                 }
-                .with_count_uses_where_x(anthem.count_uses_where_x);
+                .with_count_uses_where_x(anthem.count_uses_where_x)
+                .with_set_quantifier_surface(anthem.set_quantifier_surface);
                 if let Some(surface) = anthem.replacement_surface {
                     converted = converted
                         .with_replacement_surface(surface.power, surface.toughness);
@@ -896,6 +931,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PlayersSkipUpkeep { player } => {
                 StaticAbility::players_skip_upkeep_for(player.clone())
             }
+            ironsmith_core::StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
+                StaticAbility::player_skips_draw_step(player.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
                 StaticAbility::conditional_spell_keyword(*spec)
             }
@@ -912,7 +950,8 @@ impl StaticAbilityModelInterpreter {
                 let mut converted = crate::static_abilities::GrantAbility::new(
                     grant.filter.clone(),
                     Self::static_ability_from_ability_model(&grant.ability)?,
-                );
+                )
+                .with_set_quantifier_surface(grant.set_quantifier_surface);
                 if let Some(condition) = &grant.condition {
                     converted = converted.with_condition(condition.clone());
                 }
@@ -923,7 +962,8 @@ impl StaticAbilityModelInterpreter {
                     grant.filter.clone(),
                     Self::ability_from_model(&grant.ability),
                     grant.display.clone(),
-                );
+                )
+                .with_set_quantifier_surface(grant.set_quantifier_surface);
                 if let Some(condition) = &grant.condition {
                     converted = converted.with_condition(condition.clone());
                 }
@@ -980,10 +1020,24 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::RuleRestriction {
                 restriction,
+                additional_restrictions,
                 display,
-            } => StaticAbility::restriction(restriction.clone(), display.clone()),
-            ironsmith_core::StaticAbilityPayload::PregameAction { kind, text } => {
-                StaticAbility::pregame_action(kind.clone(), text.clone())
+            } => StaticAbility::restrictions(
+                std::iter::once(restriction.clone())
+                    .chain(additional_restrictions.iter().cloned())
+                    .collect(),
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::PregameAction {
+                kind,
+                text,
+                effects,
+            } => {
+                StaticAbility::pregame_action_with_effects(
+                    kind.clone(),
+                    text.clone(),
+                    effects.clone(),
+                )
             }
             ironsmith_core::StaticAbilityPayload::Ward(cost) => StaticAbility::ward(cost.clone()),
             ironsmith_core::StaticAbilityPayload::Morph(cost) => StaticAbility::morph(cost.clone()),
@@ -1264,6 +1318,9 @@ impl StaticAbilityModelInterpreter {
             }
             ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbility::note_life_total_as_enters(display.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::DiscardHandAsEnters(display) => {
+                StaticAbility::discard_hand_as_enters(display.clone())
             }
             ironsmith_core::StaticAbilityPayload::RevealFromHandAsEnters {
                 filter,
@@ -1692,9 +1749,21 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.model.id.unwrap_or(StaticAbilityId::RuleFallbackText)
     }
 
+    fn prefers_card_name_subject(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(StaticAbility::prefers_card_name_subject)
+    }
+
     fn display(&self) -> String {
         if self.model.label == "Aftermath" {
             return "Aftermath".to_string();
+        }
+        if let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } =
+            &self.model.payload
+            && self.model.label != ability.label
+        {
+            let body = StaticAbility::from_model((**ability).clone()).display();
+            return format!("{} — {body}", self.model.label);
         }
         if let Some(ability) = self.leaf_static_ability() {
             return ability.display();
@@ -1735,6 +1804,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.leaf_static_ability()?.life_total_note_as_enters()
     }
 
+    fn rule_restriction_parts(
+        &self,
+    ) -> Option<(
+        &crate::effect::Restriction,
+        &str,
+        Option<&crate::ConditionExpr>,
+    )> {
+        self.leaf_static_ability()?.rule_restriction_parts()
+    }
+
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         if let Some(reduction) = &self.activated_ability_cost_reduction {
             return Some(StaticAbility::new(
@@ -1767,6 +1846,21 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ));
         }
         self.leaf_static_ability()?.with_condition(condition)
+    }
+
+    fn labeled_static_condition(&self) -> Option<(String, StaticAbility, crate::ConditionExpr)> {
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+            &self.model.payload
+        else {
+            return None;
+        };
+        (self.model.label != ability.label).then(|| {
+            (
+                self.model.label.clone(),
+                StaticAbility::from_model((**ability).clone()),
+                condition.clone(),
+            )
+        })
     }
 
     fn generate_effects(
@@ -1808,6 +1902,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        if let Some(reduction) = &self.cost_reduction {
+            return reduction.is_active(game, source);
+        }
+        if let Some(reduction) = &self.cost_reduction_mana_cost {
+            return reduction.is_active(game, source);
+        }
+        if let Some(increase) = &self.cost_increase {
+            return increase.is_active(game, source);
+        }
+        if let Some(increase) = &self.cost_increase_mana_cost {
+            return increase.is_active(game, source);
+        }
         self.leaf_static_ability()
             .map(|ability| ability.is_active(game, source))
             .unwrap_or(true)
@@ -1822,6 +1928,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     ) -> bool {
         self.leaf_static_ability().is_some_and(|ability| {
             ability.skips_upkeep_for_player(game, source, controller, player)
+        })
+    }
+
+    fn skips_draw_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.leaf_static_ability().is_some_and(|ability| {
+            ability.skips_draw_step_for_player(game, source, controller, player)
         })
     }
 
@@ -2158,6 +2276,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     fn pregame_action_kind(&self) -> Option<super::PregameActionKind> {
         match self.payload() {
             ironsmith_core::StaticAbilityPayload::PregameAction { kind, .. } => Some(kind.clone()),
+            _ => None,
+        }
+    }
+
+    fn pregame_action_effects(&self) -> Option<&[crate::effect::Effect]> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::PregameAction { effects, .. } => Some(effects),
             _ => None,
         }
     }

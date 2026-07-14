@@ -82,15 +82,20 @@ fn effect_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         ))
         .void(),
         alt((
-            primitives::kw("shuffle"),
-            primitives::kw("pay"),
-            primitives::kw("detain"),
-            primitives::kw("goad"),
-            primitives::kw("suspect"),
-            primitives::kw("note"),
-            primitives::kw("look"),
-            primitives::kw("roll"),
-            primitives::kw("end"),
+            alt((
+                primitives::kw("shuffle"),
+                primitives::kw("pay"),
+                primitives::kw("detain"),
+                primitives::kw("goad"),
+                primitives::kw("suspect"),
+                primitives::kw("note"),
+                primitives::kw("look"),
+            )),
+            alt((
+                primitives::kw("roll"),
+                primitives::kw("flip"),
+                primitives::kw("end"),
+            )),
         ))
         .void(),
     ))
@@ -523,5 +528,8 @@ mod tests {
         )
         .unwrap();
         assert!(parse_choose_target_prelude_shape_tokens(&compound).is_none());
+
+        let coin_flip = lex_line("Choose target spell, then flip a coin.", 0).unwrap();
+        assert!(parse_choose_target_prelude_shape_tokens(&coin_flip).is_none());
     }
 }

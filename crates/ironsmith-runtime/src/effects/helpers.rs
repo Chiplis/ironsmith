@@ -281,6 +281,14 @@ fn resolve_effect_metric(
             .events_of_type::<DamageEvent>()
             .map(|event| event.amount as i32)
             .sum(),
+        EffectMetric::ExcessDamage => outcome
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::ExcessDamage(value) => Some(*value as i32),
+                _ => None,
+            })
+            .sum(),
         EffectMetric::DamagePrevented => 0,
         EffectMetric::FirstPower => object_memory()
             .into_iter()
@@ -980,6 +988,12 @@ pub fn resolve_value(
             }
             Ok(seen.len() as i32)
         }
+        Value::TurnHistoryCount(query) => Ok(crate::turn_history::resolve_turn_history_count(
+            game,
+            query,
+            &ctx.filter_context(game),
+            ctx.triggering_event.as_ref(),
+        )),
         Value::CreaturesDiedThisTurn => Ok(game
             .turn_store
             .turn_history
@@ -1017,28 +1031,7 @@ pub fn resolve_value(
         }
         Value::PartySize(player_filter) => {
             let player_id = resolve_player_filter(game, player_filter, ctx)?;
-            let has_role = |role: crate::types::Subtype| {
-                game.battlefield.iter().copied().any(|id| {
-                    game.current_controller(id) == Some(player_id)
-                        && game.current_has_card_type(id, crate::types::CardType::Creature)
-                        && game.current_has_subtype(id, role)
-                })
-            };
-
-            let mut size = 0i32;
-            if has_role(crate::types::Subtype::Cleric) {
-                size += 1;
-            }
-            if has_role(crate::types::Subtype::Rogue) {
-                size += 1;
-            }
-            if has_role(crate::types::Subtype::Warrior) {
-                size += 1;
-            }
-            if has_role(crate::types::Subtype::Wizard) {
-                size += 1;
-            }
-            Ok(size)
+            Ok(crate::party::party_size(game, player_id))
         }
 
         Value::SourcePower => {
@@ -1084,7 +1077,7 @@ pub fn resolve_value(
         Value::PowerOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
-            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.as_ref() {
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.base() {
                 ctx.get_tagged(tag)
             } else {
                 None
@@ -1129,7 +1122,7 @@ pub fn resolve_value(
         Value::ToughnessOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
-            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.as_ref() {
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.base() {
                 ctx.get_tagged(tag)
             } else {
                 None
@@ -1174,7 +1167,7 @@ pub fn resolve_value(
         Value::ManaValueOf(target_spec) => {
             let target_id =
                 resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
-            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.as_ref() {
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.base() {
                 ctx.get_tagged(tag)
             } else {
                 None
@@ -1224,6 +1217,81 @@ pub fn resolve_value(
                     .map(|cost| cost.mana_value() as i32)
                     .ok_or_else(|| {
                         ExecutionError::UnresolvableValue("Target had no mana value".to_string())
+                    })
+            } else {
+                Err(ExecutionError::ObjectNotFound(target_id))
+            }
+        }
+
+        Value::ManaSymbolsInManaCostOf {
+            spec: target_spec,
+            color,
+        } => {
+            let target_id =
+                resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.base() {
+                ctx.get_tagged(tag)
+            } else {
+                None
+            };
+            let count_symbols = |cost: &crate::mana::ManaCost| {
+                let symbol = crate::mana::ManaSymbol::from_color(*color);
+                cost.pips()
+                    .iter()
+                    .filter(|pip| pip.contains(&symbol))
+                    .count() as i32
+            };
+
+            if matches!(target_spec.base(), ChooseSpec::Source)
+                && let Some(snapshot) = source_lki_for_moved_current_object(game, ctx)
+            {
+                snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(count_symbols)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue(
+                            "Target had no printed mana cost".to_string(),
+                        )
+                    })
+            } else if let Some(snapshot) = tagged_snapshot
+                && game
+                    .object(snapshot.object_id)
+                    .is_none_or(|object| object.zone != snapshot.zone)
+            {
+                latest_tagged_lki_snapshot(game, snapshot)
+                    .unwrap_or(snapshot)
+                    .mana_cost
+                    .as_ref()
+                    .map(count_symbols)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue(
+                            "Target had no printed mana cost".to_string(),
+                        )
+                    })
+            } else if let Some(obj) = game.object(target_id) {
+                obj.mana_cost.as_deref().map(count_symbols).ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("Target has no printed mana cost".to_string())
+                })
+            } else if let Some(snapshot) = tagged_snapshot {
+                snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(count_symbols)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue(
+                            "Target had no printed mana cost".to_string(),
+                        )
+                    })
+            } else if let Some(snapshot) = object_lki_snapshot(ctx, target_id) {
+                snapshot
+                    .mana_cost
+                    .as_ref()
+                    .map(count_symbols)
+                    .ok_or_else(|| {
+                        ExecutionError::UnresolvableValue(
+                            "Target had no printed mana cost".to_string(),
+                        )
                     })
             } else {
                 Err(ExecutionError::ObjectNotFound(target_id))
@@ -1593,6 +1661,40 @@ pub fn resolve_value(
                 return Ok(0);
             };
             Ok(source_obj.mana_spent_to_cast.total() as i32)
+        }
+
+        Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
+            let tag = ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG;
+            let snapshots = ctx.get_tagged_all(tag).map(Vec::as_slice).or_else(|| {
+                game.object(ctx.source)
+                    .and_then(|source_obj| source_obj.cast_tagged_objects.get(tag))
+                    .map(Vec::as_slice)
+            });
+            let Some(snapshots) = snapshots else {
+                return Ok(0);
+            };
+            let filter_ctx = ctx.filter_context(game);
+            Ok(snapshots
+                .iter()
+                .filter(|snapshot| source_filter.matches_snapshot(snapshot, &filter_ctx, game))
+                .count() as i32)
+        }
+
+        Value::ManaSpentToCastTriggeringObject => {
+            let Some(triggering_event) = &ctx.triggering_event else {
+                return Ok(0);
+            };
+            let Some(spell_cast) = triggering_event.downcast::<crate::events::SpellCastEvent>()
+            else {
+                return Ok(0);
+            };
+            if let Some(snapshot) = spell_cast.snapshot.as_ref() {
+                return Ok(snapshot.mana_spent_to_cast.total() as i32);
+            }
+            Ok(game
+                .object(spell_cast.spell)
+                .map(|object| object.mana_spent_to_cast.total() as i32)
+                .unwrap_or(0))
         }
 
         Value::UnspentMana(player) => {
@@ -2339,7 +2441,7 @@ pub fn resolve_player_filter(
             };
             Ok(player_id)
         }
-        PlayerFilter::Target(_) => {
+        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
             for target in &ctx.targets {
                 if let ResolvedTarget::Player(id) = target {
                     return Ok(*id);
@@ -3458,7 +3560,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .filter(|player| player.is_in_game())
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::Target(_) => {
+        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
             let players = ctx
                 .targets
                 .iter()
@@ -3959,6 +4061,65 @@ mod tests {
                 &ctx,
             )
             .unwrap(),
+            5
+        );
+    }
+
+    #[test]
+    fn effect_metric_sums_numeric_excess_damage_facts() {
+        let game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = ObjectId(998);
+        let effect_id = crate::effect::EffectId(20);
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.store_outcome(
+            effect_id,
+            EffectOutcome::resolved()
+                .with_execution_fact(crate::effect::ExecutionFact::ExcessDamage(2))
+                .with_execution_fact(crate::effect::ExecutionFact::ExcessDamage(3)),
+        );
+
+        assert_eq!(
+            resolve_value(
+                &game,
+                &metric_value(
+                    effect_id,
+                    EffectMetricSource::Outcome,
+                    EffectMetric::ExcessDamage,
+                ),
+                &ctx,
+            )
+            .unwrap(),
+            5
+        );
+    }
+
+    #[test]
+    fn triggering_object_mana_spent_prefers_spell_cast_snapshot() {
+        use crate::events::spells::SpellCastEvent;
+        use crate::player::ManaPool;
+        use crate::provenance::ProvNodeId;
+        use crate::triggers::TriggerEvent;
+
+        let game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = ObjectId(997);
+        let spell_id = ObjectId(996);
+        let mut snapshot = ObjectSnapshot::for_testing(spell_id, alice, "Triggered Spell");
+        snapshot.mana_spent_to_cast = ManaPool {
+            blue: 2,
+            red: 1,
+            colorless: 2,
+            ..ManaPool::default()
+        };
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new_with_snapshot(spell_id, alice, Zone::Hand, snapshot),
+            ProvNodeId::default(),
+        );
+        let ctx = ExecutionContext::new_default(source_id, alice).with_triggering_event(event);
+
+        assert_eq!(
+            resolve_value(&game, &Value::ManaSpentToCastTriggeringObject, &ctx).unwrap(),
             5
         );
     }

@@ -1,6 +1,7 @@
 use crate::color::ColorSet;
 use crate::effect::Value;
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, parser_token_word_refs};
+use ironsmith_core::ValueSurfaceHint;
 use winnow::combinator::alt;
 use winnow::prelude::*;
 
@@ -46,6 +47,7 @@ pub(crate) enum DiscardShapeError {
 #[derive(Debug, Clone)]
 pub(crate) enum DiscardClauseShape<'a> {
     Hand,
+    AllCardsInHand,
     TaggedOne,
     TaggedAll,
     EqualCount {
@@ -105,7 +107,10 @@ fn discard_value_from_choice_count(count: crate::effect::ChoiceCount) -> Option<
     if count.min == 0
         && let Some(max) = count.max
     {
-        return Some((Value::Fixed(max as i32), false));
+        // `up to N` is represented by the bounded value plus the optional
+        // selection flag. The runtime uses the value as the maximum, while a
+        // zero value continues to mean an unbounded "any number" choice.
+        return Some((Value::Fixed(max as i32), true));
     }
     if count.min == count.max? {
         return Some((Value::Fixed(count.min as i32), false));
@@ -121,11 +126,29 @@ fn equal_count_shape(tokens: &[OwnedLexToken]) -> Option<DiscardClauseShape<'_>>
         };
         let (count, used) = crate::runtime_backend::util::parse_value(rest)?;
         return Some(DiscardClauseShape::EqualCount {
-            count,
+            count: count.with_surface_hint(ValueSurfaceHint::EqualTo),
             trailing_tokens: rest.get(used..)?,
         });
     }
     None
+}
+
+fn is_full_hand_discard(words: &[&str]) -> bool {
+    let Some(rest) = words.strip_prefix(&["all"]) else {
+        return false;
+    };
+    let rest = rest.strip_prefix(&["the"]).unwrap_or(rest);
+    let Some(rest) = rest
+        .strip_prefix(&["cards"])
+        .or_else(|| rest.strip_prefix(&["card"]))
+    else {
+        return false;
+    };
+    let rest = rest
+        .strip_prefix(&["in"])
+        .or_else(|| rest.strip_prefix(&["from"]))
+        .unwrap_or(rest);
+    common::exact_any(rest, HAND_REFERENCES)
 }
 
 pub(crate) fn parse_discard_clause_shape(
@@ -134,6 +157,9 @@ pub(crate) fn parse_discard_clause_shape(
     let words = parser_token_word_refs(tokens);
     if common::exact_any(&words, HAND_REFERENCES) {
         return Ok(DiscardClauseShape::Hand);
+    }
+    if is_full_hand_discard(&words) {
+        return Ok(DiscardClauseShape::AllCardsInHand);
     }
     if common::exact_any(&words, TAGGED_REFERENCES) {
         return Ok(DiscardClauseShape::TaggedOne);
@@ -316,6 +342,37 @@ mod tests {
     }
 
     #[test]
+    fn discard_clause_preserves_up_to_as_an_optional_bounded_choice() {
+        let tokens = lex_line("up to two cards", 0).unwrap();
+        let shape = parse_discard_clause_shape(&tokens).unwrap();
+        let DiscardClauseShape::Cards(cards) = shape else {
+            panic!("expected counted cards shape");
+        };
+        assert_eq!(cards.count, Value::Fixed(2));
+        assert!(cards.any_number);
+    }
+
+    #[test]
+    fn discard_clause_recognizes_all_cards_in_players_hand_as_discard_hand() {
+        for text in [
+            "all the cards in their hand",
+            "all cards in your hand",
+            "all the cards from that player's hand",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(matches!(
+                parse_discard_clause_shape(&tokens),
+                Ok(DiscardClauseShape::AllCardsInHand)
+            ));
+        }
+        let direct = lex_line("your hand", 0).unwrap();
+        assert!(matches!(
+            parse_discard_clause_shape(&direct),
+            Ok(DiscardClauseShape::Hand)
+        ));
+    }
+
+    #[test]
     fn discard_clause_preserves_equal_count_and_same_mana_reference() {
         let tokens = lex_line(
             "a number of cards equal to the damage dealt with the same mana value as that spell",
@@ -323,7 +380,10 @@ mod tests {
         )
         .unwrap();
         let shape = parse_discard_clause_shape(&tokens).unwrap();
-        assert!(matches!(shape, DiscardClauseShape::EqualCount { .. }));
+        let DiscardClauseShape::EqualCount { count, .. } = shape else {
+            panic!("expected equal-count discard shape");
+        };
+        assert!(count.has_surface_hint(ValueSurfaceHint::EqualTo));
 
         let trailing = lex_line("with the same mana value as that spell", 0).unwrap();
         assert_eq!(

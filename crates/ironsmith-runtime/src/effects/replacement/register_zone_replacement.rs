@@ -5,7 +5,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 /// Registers a concrete zone-change replacement effect for the currently resolved object(s).
@@ -15,6 +15,7 @@ pub struct RegisterZoneReplacementEffect {
     pub from_zone: Option<Zone>,
     pub to_zone: Option<Zone>,
     pub replacement_zone: Zone,
+    pub library_placement: Option<ironsmith_core::ZoneReplacementLibraryPlacement>,
     pub mode: ReplacementApplyMode,
     pub optional: bool,
     pub choice_description: Option<String>,
@@ -34,6 +35,7 @@ impl RegisterZoneReplacementEffect {
             from_zone,
             to_zone,
             replacement_zone,
+            library_placement: None,
             mode,
             optional: false,
             choice_description: None,
@@ -52,6 +54,14 @@ impl RegisterZoneReplacementEffect {
         self
     }
 
+    pub fn with_library_placement(
+        mut self,
+        placement: ironsmith_core::ZoneReplacementLibraryPlacement,
+    ) -> Self {
+        self.library_placement = Some(placement);
+        self
+    }
+
     pub fn resolve_replacements(
         &self,
         game: &mut GameState,
@@ -66,8 +76,10 @@ impl RegisterZoneReplacementEffect {
             .into_iter()
             .map(|object_id| {
                 let replacement = zone_replacement_action(
+                    object_id,
                     self.to_zone,
                     self.replacement_zone,
+                    self.library_placement,
                     self.optional,
                     self.choice_description.clone(),
                     self.counters.clone(),
@@ -88,8 +100,10 @@ impl RegisterZoneReplacementEffect {
 }
 
 pub(crate) fn zone_replacement_action(
+    object_id: crate::ids::ObjectId,
     original_zone: Option<Zone>,
     replacement_zone: Zone,
+    library_placement: Option<ironsmith_core::ZoneReplacementLibraryPlacement>,
     optional: bool,
     choice_description: Option<String>,
     counters: Vec<(CounterType, u32)>,
@@ -113,6 +127,27 @@ pub(crate) fn zone_replacement_action(
             zone: replacement_zone,
             counters,
         };
+    }
+
+    if replacement_zone == Zone::Library
+        && let Some(placement) = library_placement
+    {
+        let target = ChooseSpec::SpecificObject(object_id);
+        let move_effect = match placement {
+            ironsmith_core::ZoneReplacementLibraryPlacement::Top => {
+                crate::effect::Effect::move_to_zone(target, Zone::Library, true)
+            }
+            ironsmith_core::ZoneReplacementLibraryPlacement::Bottom => {
+                crate::effect::Effect::move_to_zone(target, Zone::Library, false)
+            }
+            ironsmith_core::ZoneReplacementLibraryPlacement::TopOrBottom => {
+                crate::effect::Effect::new(
+                    crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(target)
+                        .with_chooser(PlayerFilter::You),
+                )
+            }
+        };
+        return ReplacementAction::Instead(vec![move_effect]);
     }
 
     ReplacementAction::ChangeDestination(replacement_zone)
@@ -332,5 +367,103 @@ mod tests {
                 .zone,
             Zone::Hand
         );
+    }
+
+    #[test]
+    fn persistent_leave_battlefield_replacement_survives_cleanup_and_exiles_any_destination() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice, Zone::Battlefield);
+        let stable_id = game
+            .object(creature)
+            .expect("creature should exist")
+            .stable_id;
+
+        let effect = RegisterZoneReplacementEffect::new(
+            ChooseSpec::SpecificObject(creature),
+            Some(Zone::Battlefield),
+            None,
+            Zone::Exile,
+            ReplacementApplyMode::Resolution,
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(creature, alice, &mut dm);
+        execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+            .expect("persistent replacement registration should succeed");
+
+        crate::turn::execute_cleanup_step(&mut game);
+
+        execute_effect(
+            &mut game,
+            &crate::effect::Effect::move_to_zone(
+                ChooseSpec::SpecificObject(creature),
+                Zone::Hand,
+                false,
+            ),
+            &mut ctx,
+        )
+        .expect("move effect should resolve through the replacement");
+
+        let exiled_id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("creature should remain findable after the replacement");
+        assert_eq!(
+            game.object(exiled_id)
+                .expect("replaced creature should exist")
+                .zone,
+            Zone::Exile,
+            "leave-battlefield replacement must survive cleanup and replace a move to hand"
+        );
+    }
+
+    #[test]
+    fn library_destination_replacement_honors_top_and_bottom_placement() {
+        for (placement, expect_top) in [
+            (ironsmith_core::ZoneReplacementLibraryPlacement::Top, true),
+            (
+                ironsmith_core::ZoneReplacementLibraryPlacement::Bottom,
+                false,
+            ),
+        ] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let _sentinel = create_creature(&mut game, alice, Zone::Library);
+            let moving = create_creature(&mut game, alice, Zone::Graveyard);
+            let stable_id = game.object(moving).expect("moving card").stable_id;
+
+            let effect = RegisterZoneReplacementEffect::new(
+                ChooseSpec::SpecificObject(moving),
+                Some(Zone::Graveyard),
+                Some(Zone::Hand),
+                Zone::Library,
+                ReplacementApplyMode::OneShot,
+            )
+            .with_library_placement(placement);
+            let mut dm = SelectFirstDecisionMaker;
+            let mut ctx = ExecutionContext::new(moving, alice, &mut dm);
+            execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+                .expect("library replacement registration");
+            execute_effect(
+                &mut game,
+                &crate::effect::Effect::move_to_zone(
+                    ChooseSpec::SpecificObject(moving),
+                    Zone::Hand,
+                    false,
+                ),
+                &mut ctx,
+            )
+            .expect("move through library replacement");
+
+            let moved = game
+                .find_object_by_stable_id(stable_id)
+                .expect("moved card remains findable");
+            let library = &game.player(alice).expect("player").library;
+            let expected = if expect_top {
+                library.last()
+            } else {
+                library.first()
+            };
+            assert_eq!(expected, Some(&moved));
+        }
     }
 }

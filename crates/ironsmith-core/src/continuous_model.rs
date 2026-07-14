@@ -28,6 +28,7 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     RemoveAbility(Ability),
     AddCardTypes(Vec<CardType>),
     RemoveCardTypes(Vec<CardType>),
+    SetCardTypes(Vec<CardType>),
     AddSubtypes(Vec<Subtype>),
     AddAllSubtypesOfFamily(SubtypeFamily),
     RemoveAllSubtypesOfFamily(SubtypeFamily),

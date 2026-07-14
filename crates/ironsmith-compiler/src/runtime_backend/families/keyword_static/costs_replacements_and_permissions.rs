@@ -1,20 +1,103 @@
 use super::*;
 
+fn cost_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    words
+        .windows(phrase.len())
+        .any(|candidate| candidate == phrase)
+}
+
+fn is_exact_per_target_cost_modifier(words: &[&str]) -> bool {
+    words.iter().enumerate().any(|(idx, word)| {
+        *word == "for"
+            && words.get(idx + 1) == Some(&"each")
+            && words.get(idx + 2) == Some(&"target")
+            && words.get(idx + 3) != Some(&"beyond")
+    })
+}
+
+fn apply_anywhere_other_than_hand_origin(filter: &mut ObjectFilter) {
+    filter.any_of = [
+        (Zone::Hand, Some(PlayerFilter::NotYou)),
+        (Zone::Library, None),
+        (Zone::Battlefield, None),
+        (Zone::Graveyard, None),
+        (Zone::Exile, None),
+        (Zone::Command, None),
+        (Zone::OutsideGame, None),
+    ]
+    .into_iter()
+    .map(|(zone, owner)| {
+        let mut branch = ObjectFilter::default();
+        branch.zone = Some(zone);
+        branch.owner = owner;
+        branch
+    })
+    .collect();
+}
+
+fn apply_this_spell_cost_increase_condition(
+    filter: &mut ObjectFilter,
+    condition: crate::static_abilities::ThisSpellCostCondition,
+    clause_words: &[&str],
+) -> Result<Option<crate::ConditionExpr>, CardTextError> {
+    use crate::static_abilities::ThisSpellCostCondition;
+
+    match condition {
+        ThisSpellCostCondition::Always => Ok(None),
+        ThisSpellCostCondition::YourTurn => Ok(Some(crate::ConditionExpr::YourTurn)),
+        ThisSpellCostCondition::NotYourTurn => Ok(Some(crate::ConditionExpr::Not(Box::new(
+            crate::ConditionExpr::YourTurn,
+        )))),
+        ThisSpellCostCondition::ConditionExpr { condition, .. } => Ok(Some(condition)),
+        ThisSpellCostCondition::TargetsPlayer(player) => {
+            filter.targets_player = Some(player);
+            Ok(None)
+        }
+        ThisSpellCostCondition::TargetsObject(object) => {
+            filter.targets_object = Some(Box::new(object));
+            Ok(None)
+        }
+        other => Err(CardTextError::ParseError(format!(
+            "unsupported self-only cost-increase condition (clause: '{}'; condition: {other:?})",
+            clause_words.join(" ")
+        ))),
+    }
+}
+
 pub(crate) fn parse_cost_modifier_target_spec(
     target_tokens: &[OwnedLexToken],
-) -> Result<(Option<PlayerFilter>, Option<Box<ObjectFilter>>), CardTextError> {
-    match static_mid_facts::parse_cost_modifier_target_fact(target_tokens) {
-        Some(static_mid_facts::CostTargetFact::You) => Ok((Some(PlayerFilter::You), None)),
-        Some(static_mid_facts::CostTargetFact::Opponent) => {
-            Ok((Some(PlayerFilter::Opponent), None))
+) -> Result<(Option<PlayerFilter>, Option<Box<ObjectFilter>>, bool), CardTextError> {
+    let alternatives =
+        crate::runtime_backend::grammar::primitives::split_lexed_slices_on_or(target_tokens);
+    if let [left, right] = alternatives.as_slice() {
+        let (left_player, left_object, left_any_of) = parse_cost_modifier_target_spec(left)?;
+        let (right_player, right_object, right_any_of) = parse_cost_modifier_target_spec(right)?;
+        if !left_any_of && !right_any_of {
+            match (left_player, left_object, right_player, right_object) {
+                (Some(player), None, None, Some(object))
+                | (None, Some(object), Some(player), None) => {
+                    return Ok((Some(player), Some(object), true));
+                }
+                _ => {}
+            }
         }
-        Some(static_mid_facts::CostTargetFact::AnyPlayer) => Ok((Some(PlayerFilter::Any), None)),
+    }
+
+    match static_mid_facts::parse_cost_modifier_target_fact(target_tokens) {
+        Some(static_mid_facts::CostTargetFact::You) => Ok((Some(PlayerFilter::You), None, false)),
+        Some(static_mid_facts::CostTargetFact::Opponent) => {
+            Ok((Some(PlayerFilter::Opponent), None, false))
+        }
+        Some(static_mid_facts::CostTargetFact::AnyPlayer) => {
+            Ok((Some(PlayerFilter::Any), None, false))
+        }
         Some(static_mid_facts::CostTargetFact::Object(filter)) => {
-            Ok((None, Some(Box::new(filter))))
+            Ok((None, Some(Box::new(filter)), false))
         }
         None => Ok((
             None,
             Some(Box::new(parse_object_filter(target_tokens, false)?)),
+            false,
         )),
     }
 }
@@ -192,6 +275,7 @@ pub(crate) fn parse_spells_cost_modifier_line(
     let between_tokens = &tokens[spells_token_idx + 1..cost_token_idx];
     if !is_this_spell {
         let between_fact = static_mid_facts::parse_spell_cost_between_fact(between_tokens);
+        let between_words = crate::runtime_backend::token_word_refs(between_tokens);
         for descriptor_tokens in between_fact.descriptor_segments {
             let extra_filter = parse_spell_filter_with_grammar_entrypoint(
                 strip_relative_target_clause(&descriptor_tokens),
@@ -219,10 +303,25 @@ pub(crate) fn parse_spells_cost_modifier_line(
             filter.zone = Some(Zone::Graveyard);
             filter.owner = Some(PlayerFilter::You);
         }
+        if cost_words_contain_phrase(
+            &between_words,
+            &["from", "anywhere", "other", "than", "your", "hand"],
+        ) {
+            filter.zone = None;
+            filter.owner = None;
+            apply_anywhere_other_than_hand_origin(&mut filter);
+        }
+        if cost_words_contain_phrase(&between_words, &["but", "don't", "own"])
+            || cost_words_contain_phrase(&between_words, &["but", "dont", "own"])
+        {
+            filter.owner = Some(PlayerFilter::NotYou);
+        }
         if let Some(target_tokens) = between_fact.target_tokens {
-            let (target_player, target_object) = parse_cost_modifier_target_spec(target_tokens)?;
+            let (target_player, target_object, targets_any_of) =
+                parse_cost_modifier_target_spec(target_tokens)?;
             filter.targets_player = target_player;
             filter.targets_object = target_object;
+            filter.targets_any_of = targets_any_of;
         }
     }
 
@@ -253,8 +352,15 @@ pub(crate) fn parse_spells_cost_modifier_line(
     else {
         return Ok(None);
     };
+    let is_life_cost_modifier = remaining_words.iter().any(|word| *word == "life");
+    let per_target = !is_life_cost_modifier && is_exact_per_target_cost_modifier(&remaining_words);
+    let per_additional_target = cost_words_contain_phrase(
+        &remaining_words,
+        &["for", "each", "target", "beyond", "the", "first"],
+    );
 
-    if let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
+    if !per_target && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)?
+    {
         if parsed_mana_cost.is_some() && is_this_spell {
             parsed_mana_cost_repetitions = Some(dynamic_value);
         } else {
@@ -364,28 +470,54 @@ pub(crate) fn parse_spells_cost_modifier_line(
         }
         if let Some((cost, _)) = parsed_mana_cost {
             let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost);
+            if per_target {
+                ability = ability.with_per_target();
+            }
             if let Some(condition) = non_this_condition.clone() {
                 ability = ability.with_condition(condition);
             }
             return Ok(Some(StaticAbility::new(ability)));
         }
         let mut ability = crate::static_abilities::CostReduction::new(filter, amount_value);
+        if per_target {
+            ability = ability.with_per_target();
+        }
         if let Some(condition) = non_this_condition.clone() {
             ability = ability.with_condition(condition);
         }
         return Ok(Some(StaticAbility::new(ability)));
     }
 
+    let source_only_increase = is_this_spell && !is_life_cost_modifier && !per_additional_target;
+    let mut source_only_condition = None;
+    if source_only_increase {
+        filter = ObjectFilter::source();
+        source_only_condition = apply_this_spell_cost_increase_condition(
+            &mut filter,
+            this_spell_condition,
+            &clause_words,
+        )?;
+    }
+
     if let Some((cost, _)) = parsed_mana_cost {
         let mut ability = crate::static_abilities::CostIncreaseManaCost::new(filter, cost);
-        if let Some(condition) = non_this_condition.clone() {
+        if per_target {
+            ability = ability.with_per_target();
+        }
+        if let Some(condition) = source_only_condition
+            .clone()
+            .or_else(|| non_this_condition.clone())
+        {
             ability = ability.with_condition(condition);
         }
         return Ok(Some(StaticAbility::new(ability)));
     }
 
     let mut ability = crate::static_abilities::CostIncrease::new(filter, amount_value);
-    if let Some(condition) = non_this_condition.clone() {
+    if per_target {
+        ability = ability.with_per_target();
+    }
+    if let Some(condition) = source_only_condition.or_else(|| non_this_condition.clone()) {
         ability = ability.with_condition(condition);
     }
     Ok(Some(StaticAbility::new(ability)))
@@ -570,9 +702,11 @@ pub(crate) fn parse_trailing_targets_condition_in_cost_modifier(
         )));
     }
 
-    let (targets_player, targets_object) = parse_cost_modifier_target_spec(fact.target_tokens)?;
+    let (targets_player, targets_object, targets_any_of) =
+        parse_cost_modifier_target_spec(fact.target_tokens)?;
     filter.targets_player = targets_player;
     filter.targets_object = targets_object;
+    filter.targets_any_of = targets_any_of;
     Ok(())
 }
 
@@ -659,7 +793,11 @@ pub(crate) fn parse_equip_cost_modifier_line(
         return Ok(None);
     };
 
-    let mut filter = ObjectFilter::default().with_ability_marker("equip");
+    let mut filter = if head.source_relative_equipment {
+        ObjectFilter::source().with_ability_marker("equip")
+    } else {
+        ObjectFilter::default().with_ability_marker("equip")
+    };
     match head.payer {
         keyword_static_lines::EquipCostPayer::You => filter.controller = Some(PlayerFilter::You),
         keyword_static_lines::EquipCostPayer::Opponent => {
@@ -670,7 +808,9 @@ pub(crate) fn parse_equip_cost_modifier_line(
 
     if direction == CostModifierDirection::Less {
         let amount_text = format!("{{{amount}}}");
-        let display = if filter.controller == Some(PlayerFilter::Opponent) {
+        let display = if head.source_relative_equipment {
+            format!("This Equipment's equip abilities cost {amount_text} less to activate")
+        } else if filter.controller == Some(PlayerFilter::Opponent) {
             format!("Equip costs your opponents pay cost {amount_text} less")
         } else {
             format!("Equip costs you pay cost {amount_text} less")
@@ -793,8 +933,29 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         SpellCastDynamicKind,
     };
 
-    let Some(shape) = keyword_static_lines::parse_dynamic_cost_value_shape_tokens(tokens) else {
+    let for_each_value_tokens = static_keyword_cost_shapes::parse_dynamic_cost_each_word(tokens)
+        .and_then(|boundary| tokens.get(boundary.token.saturating_add(1)..));
+    let history_tokens = for_each_value_tokens.unwrap_or(tokens);
+    let parsed_shape = keyword_static_lines::parse_dynamic_cost_value_shape_tokens(tokens);
+    if parsed_shape.is_none()
+        && let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(history_tokens)
+    {
+        return Ok(Some(if for_each_value_tokens.is_some() {
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+        } else {
+            value
+        }));
+    }
+
+    let Some(shape) = parsed_shape else {
         return Ok(None);
+    };
+    let with_for_each_surface = |value: Value| {
+        if for_each_value_tokens.is_some() {
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+        } else {
+            value
+        }
     };
     let player_filter = |player| match player {
         DynamicPlayerKind::You => PlayerFilter::You,
@@ -803,7 +964,10 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     };
     let value = match shape {
         DynamicCostValueShape::CardsDrawn(player) => {
-            Value::MaxCardsDrawnThisTurn(player_filter(player))
+            with_for_each_surface(Value::MaxCardsDrawnThisTurn(player_filter(player)))
+        }
+        DynamicCostValueShape::LifeGained(player) => {
+            with_for_each_surface(Value::LifeGainedThisTurn(player_filter(player)))
         }
         DynamicCostValueShape::KickCount => Value::KickCount,
         DynamicCostValueShape::CreaturesDiedThisTurn => Value::CreaturesDiedThisTurn,
@@ -875,7 +1039,9 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
                 parser_token_word_refs(tokens).join(" ")
             )));
         }
-        DynamicCostValueShape::CountersRemovedThisWay => Value::X,
+        DynamicCostValueShape::CountersRemovedThisWay => {
+            Value::X.with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
+        }
         DynamicCostValueShape::PlayerCounters(counter_type) => {
             Value::PlayerCounters(PlayerFilter::You, counter_type)
         }
@@ -909,7 +1075,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
         DynamicCostValueShape::CounterReference(reference) => {
             let counter_type = reference.counter_type;
-            match reference.reference_kind {
+            let value = match reference.reference_kind {
                 CounterReferenceKind::Source => match counter_type {
                     Some(counter_type) => Value::CountersOnSource(counter_type),
                     None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
@@ -928,7 +1094,8 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
                         counter_type,
                     )
                 }
-            }
+            };
+            with_for_each_surface(value)
         }
         DynamicCostValueShape::UnsupportedThisWay => {
             return Err(CardTextError::ParseError(format!(
@@ -937,7 +1104,10 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             )));
         }
         DynamicCostValueShape::Other { filter_tokens } => {
-            if let Some(player) = parse_commander_cast_count_player(filter_tokens) {
+            if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(filter_tokens)
+            {
+                with_for_each_surface(value)
+            } else if let Some(player) = parse_commander_cast_count_player(filter_tokens) {
                 Value::CommanderCastCount(player)
             } else if let Ok(filter) = parse_object_filter(filter_tokens, false) {
                 Value::Count(filter)
@@ -981,6 +1151,17 @@ pub(crate) fn parse_players_skip_upkeep_line(
     }
     if is_players_skip_upkeep_line_lexed(tokens) {
         return Ok(Some(StaticAbility::players_skip_upkeep()));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_skip_your_draw_step_static_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_skip_your_draw_step_line_lexed(tokens) {
+        return Ok(Some(StaticAbility::player_skips_draw_step(
+            crate::target::PlayerFilter::You,
+        )));
     }
     Ok(None)
 }
@@ -3241,7 +3422,7 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
                     ))
                 })?;
             (
-                crate::effect::ManaSpendPermission::any_color_for_casting_matching(
+                crate::effect::ManaSpendPermission::any_type_for_casting_matching(
                     PlayerFilter::You,
                     filter,
                 ),
@@ -3356,5 +3537,170 @@ mod tests {
                 )),
             "expected static line parser to preserve keyword-action replacement, got {parsed:?}"
         );
+    }
+
+    #[test]
+    fn dynamic_cost_other_shapes_prefer_typed_turn_history_counts() {
+        for (text, expected_query) in [
+            (
+                "less to cast for each opponent who was dealt damage this turn.",
+                "PlayersDealtDamage",
+            ),
+            (
+                "less to cast for each card you've cycled or discarded this turn.",
+                "DiscardedOrCycled",
+            ),
+            (
+                "less to cast for each creature you attacked with this turn.",
+                "CreaturesAttackedWith",
+            ),
+        ] {
+            let tokens = lex_line(text, 0).expect("dynamic cost text should lex");
+            let value = parse_dynamic_cost_modifier_value(&tokens)
+                .expect("dynamic cost should not hard-error")
+                .expect("dynamic cost should produce a value");
+            let debug = format!("{value:?}");
+            assert!(
+                debug.contains("TurnHistoryCount")
+                    && debug.contains(expected_query)
+                    && debug.contains("ForEach"),
+                "expected typed for-each turn-history value for {text}, got {debug}"
+            );
+        }
+    }
+
+    #[test]
+    fn specialized_card_types_among_cost_value_precedes_history_fallback() {
+        let tokens = lex_line(
+            "less to cast for each card type among permanents you've sacrificed this turn.",
+            0,
+        )
+        .expect("card-types-among cost text should lex");
+        let value = parse_dynamic_cost_modifier_value(&tokens)
+            .expect("dynamic cost should not hard-error")
+            .expect("dynamic cost should produce a value");
+        assert!(
+            matches!(value.unhinted(), Value::CardTypesAmong(_)),
+            "expected specialized card-types-among value, got {value:?}"
+        );
+    }
+
+    fn parsed_spell_cost_filter(line: &str) -> ObjectFilter {
+        let tokens = lex_line(line, 0).expect("spell-cost line should lex");
+        let ability = parse_spells_cost_modifier_line(&tokens)
+            .expect("spell-cost parser should not hard-error")
+            .expect("spell-cost line should be recognized");
+        match ability.payload {
+            ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => reduction.filter,
+            ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction) => {
+                reduction.filter
+            }
+            other => panic!("expected a shared spell-cost reduction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn chosen_type_spell_cost_filters_survive_actor_word_order_variants() {
+        for (line, creature_only) in [
+            (
+                "Spells you cast of the chosen type cost {1} less to cast.",
+                false,
+            ),
+            (
+                "Creature spells you cast of the chosen type cost {1} less to cast.",
+                true,
+            ),
+            (
+                "Spells of the chosen type you cast cost {W}{U}{B}{R}{G} less to cast.",
+                false,
+            ),
+            (
+                "Creature spells of the chosen type cost {2} less to cast.",
+                true,
+            ),
+        ] {
+            let filter = parsed_spell_cost_filter(line);
+            assert!(filter.chosen_creature_type, "{line}: {filter:#?}");
+            assert_eq!(
+                filter.card_types.contains(&CardType::Creature),
+                creature_only,
+                "{line}: {filter:#?}"
+            );
+            if line.contains("you cast") {
+                assert_eq!(filter.cast_by, Some(PlayerFilter::You), "{line}");
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_chosen_card_type_cost_filter_and_unrestricted_control_stay_distinct() {
+        let chosen = parsed_spell_cost_filter(
+            "Spells of the chosen card type you cast cost {1} less to cast.",
+        );
+        assert!(chosen.chosen_card_type, "{chosen:#?}");
+        assert_eq!(chosen.cast_by, Some(PlayerFilter::You));
+
+        let unrestricted =
+            parsed_spell_cost_filter("Creature spells you cast cost {1} less to cast.");
+        assert!(!unrestricted.chosen_creature_type, "{unrestricted:#?}");
+        assert!(!unrestricted.chosen_card_type, "{unrestricted:#?}");
+        assert_eq!(unrestricted.card_types, vec![CardType::Creature]);
+        assert_eq!(unrestricted.cast_by, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn colored_spell_cost_modifiers_preserve_exact_per_target_scaling() {
+        let reduction_tokens =
+            lex_line("Spells you cast cost {W} less to cast for each target.", 0)
+                .expect("colored reduction should lex");
+        let reduction = parse_spells_cost_modifier_line(&reduction_tokens)
+            .expect("colored reduction should not hard-error")
+            .expect("colored reduction should parse");
+        let reduction = match reduction.payload {
+            ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction) => reduction,
+            other => panic!("expected a mana-symbol reduction, got {other:?}"),
+        };
+        assert!(reduction.per_target);
+        assert_eq!(reduction.cost.to_oracle(), "{W}");
+
+        let increase_tokens = lex_line(
+            "Spells your opponents cast cost {U} more to cast for each target.",
+            0,
+        )
+        .expect("colored increase should lex");
+        let increase = parse_spells_cost_modifier_line(&increase_tokens)
+            .expect("colored increase should not hard-error")
+            .expect("colored increase should parse");
+        let increase = match increase.payload {
+            ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase) => increase,
+            other => panic!("expected a mana-symbol increase, got {other:?}"),
+        };
+        assert!(increase.per_target);
+        assert_eq!(increase.cost.to_oracle(), "{U}");
+    }
+
+    #[test]
+    fn non_hand_origin_filter_includes_cards_owned_by_another_player_in_hand() {
+        let filter = parsed_spell_cost_filter(
+            "Spells you cast from anywhere other than your hand cost {1} less to cast.",
+        );
+
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.zone == Some(Zone::Hand) && branch.owner == Some(PlayerFilter::NotYou)
+        }));
+    }
+
+    #[test]
+    fn cost_modifier_target_spec_preserves_player_or_controlled_permanent_union() {
+        let tokens =
+            lex_line("you or a permanent you control", 0).expect("cost-modifier target should lex");
+        let (player, object, targets_any_of) =
+            parse_cost_modifier_target_spec(&tokens).expect("cost-modifier target should parse");
+
+        assert_eq!(player, Some(PlayerFilter::You));
+        assert!(targets_any_of);
+        let object = object.expect("permanent target branch should be retained");
+        assert_eq!(object.zone, Some(Zone::Battlefield));
+        assert_eq!(object.controller, Some(PlayerFilter::You));
     }
 }

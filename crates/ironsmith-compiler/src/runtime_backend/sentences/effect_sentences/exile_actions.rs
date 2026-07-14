@@ -1,15 +1,61 @@
 use super::*;
+use crate::CardType;
 use crate::runtime_backend::front_end::grammar::effects as effect_grammar;
 use crate::runtime_backend::lexer::LexedClause;
 
 pub(crate) fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
+    if let Some(shape) =
+        effect_grammar::parse_each_player_exile_counted_hand_permanent_shape(tokens)
+    {
+        let effects = exile_iterated_hand_cards_and_permanents(
+            tokens,
+            crate::effect::ChoiceCount::dynamic_x(),
+            Some(Value::X),
+        );
+        return Some(match shape.group {
+            effect_grammar::EachPlayerExileGroup::Player => {
+                EffectAst::ForEachPlayer { effects }
+            }
+            effect_grammar::EachPlayerExileGroup::Opponent => {
+                EffectAst::ForEachOpponent { effects }
+            }
+        });
+    }
+
     let shape = effect_grammar::parse_each_opponent_exile_choice_shape(tokens)?;
     parse_exile_card_from_their_hand_or_permanent_they_control(
         &shape.choice,
         Some(SubjectAst::Player(PlayerAst::Opponent)),
     )
+}
+
+fn exile_iterated_hand_cards_and_permanents(
+    tokens: &[OwnedLexToken],
+    count: crate::effect::ChoiceCount,
+    count_value: Option<Value>,
+) -> Vec<EffectAst> {
+    let mut hand_card = ObjectFilter::default().in_zone(Zone::Hand);
+    hand_card.owner = Some(PlayerFilter::IteratedPlayer);
+    let mut permanent = ObjectFilter::permanent_card().in_zone(Zone::Battlefield);
+    permanent.controller = Some(PlayerFilter::IteratedPlayer);
+
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![hand_card, permanent];
+    let tag = helper_tag_for_tokens(tokens, "exiled");
+    vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            count_value,
+            player: PlayerAst::That,
+            tag: tag.clone(),
+            zones: vec![Zone::Hand, Zone::Battlefield],
+            search_mode: None,
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+    ]
 }
 
 fn parse_exile_card_from_their_hand_or_permanent_they_control(
@@ -27,26 +73,14 @@ fn parse_exile_card_from_their_hand_or_permanent_they_control(
         _ => return None,
     };
 
-    let mut hand_card = ObjectFilter::default().in_zone(Zone::Hand);
-    hand_card.owner = Some(PlayerFilter::IteratedPlayer);
-    let mut permanent = ObjectFilter::permanent_card().in_zone(Zone::Battlefield);
-    permanent.controller = Some(PlayerFilter::IteratedPlayer);
-
-    let mut filter = ObjectFilter::default();
-    filter.any_of = vec![hand_card, permanent];
-    let tag = helper_tag_for_tokens(tokens, "exiled");
-    let effects = vec![
-        EffectAst::ChooseObjectsAcrossZones {
-            filter,
-            count: crate::effect::ChoiceCount::exactly(1),
-            count_value: None,
-            player: chooser,
-            tag: tag.clone(),
-            zones: vec![Zone::Hand, Zone::Battlefield],
-            search_mode: None,
-        },
-        EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
-    ];
+    let mut effects = exile_iterated_hand_cards_and_permanents(
+        tokens,
+        crate::effect::ChoiceCount::exactly(1),
+        None,
+    );
+    if let Some(EffectAst::ChooseObjectsAcrossZones { player, .. }) = effects.first_mut() {
+        *player = chooser;
+    }
 
     Some(if wrap_for_each_opponent {
         EffectAst::ForEachOpponent { effects }
@@ -94,6 +128,11 @@ pub(crate) fn parse_exile(
         && !until_source_leaves
         && let Some(effect) =
             parse_exile_card_from_their_hand_or_permanent_they_control(tokens, subject)
+    {
+        return Ok(effect);
+    }
+    if let Some(effect) =
+        parse_battlefield_graveyard_exile_all_pair(tokens, subject, until_source_leaves, face_down)?
     {
         return Ok(effect);
     }
@@ -323,6 +362,59 @@ fn split_exile_all_list_tail_segment(tokens: Vec<OwnedLexToken>) -> Vec<Vec<Owne
         parts.push(part);
     }
     parts
+}
+
+fn parse_battlefield_graveyard_exile_all_pair(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+    until_source_leaves: bool,
+    face_down: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let segments = split_exile_all_list_tail_segment(tokens.to_vec());
+    let [first, second] = segments.as_slice() else {
+        return Ok(None);
+    };
+    let mut filters = Vec::with_capacity(2);
+    for segment in [first, second] {
+        let Some(filter_tokens) = effect_grammar::strip_exile_all_or_each_shape(segment) else {
+            return Ok(None);
+        };
+        let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+        apply_exile_subject_owner_context(&mut filter, subject.clone());
+        filters.push(filter);
+    }
+
+    let is_creature_planeswalker_limit = |filter: &ObjectFilter| {
+        filter.card_types.len() == 2
+            && filter.card_types.contains(&CardType::Creature)
+            && filter.card_types.contains(&CardType::Planeswalker)
+            && filter.mana_value.is_some()
+    };
+    if !filters.iter().all(is_creature_planeswalker_limit)
+        || !matches!(
+            (filters[0].zone, filters[1].zone),
+            (Some(Zone::Battlefield), Some(Zone::Graveyard))
+                | (Some(Zone::Graveyard), Some(Zone::Battlefield))
+        )
+        || filters[0].mana_value != filters[1].mana_value
+    {
+        return Ok(None);
+    }
+
+    let effects = filters
+        .into_iter()
+        .map(|filter| {
+            if until_source_leaves {
+                EffectAst::subject_verb_exile_all_until_source_leaves(
+                    TargetAst::Object(filter, None, None),
+                    face_down,
+                )
+            } else {
+                EffectAst::subject_verb_exile_all(filter, face_down)
+            }
+        })
+        .collect();
+    Ok(Some(EffectAst::Sequence { effects }))
 }
 
 fn parse_mixed_target_and_all_exile_list(

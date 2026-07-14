@@ -2794,6 +2794,144 @@ pub(super) fn consuming_tide_regression_draws_for_each_opponent_who_is_ahead_on_
 }
 
 #[test]
+pub(super) fn participant_choice_cluster_preserves_the_chooser_and_selected_set() {
+    for (name, choice_text, result_text) in [
+        (
+            "Consuming Tide",
+            "each player chooses a nonland permanent they control",
+            "return all nonland permanents not chosen this way",
+        ),
+        (
+            "Divine Reckoning",
+            "each player chooses a creature they control",
+            "destroy the rest",
+        ),
+        (
+            "Fatal Grudge",
+            "each opponent chooses a permanent they control",
+            "and sacrifices it",
+        ),
+        (
+            "Summon: Valefor",
+            "each opponent chooses a creature with the greatest mana value among creatures they control",
+            "return those creatures to their owners' hands",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        let debug = format!("{:#?}", def.abilities);
+
+        assert!(
+            rendered.contains(choice_text),
+            "expected {name} choice, got {rendered}"
+        );
+        assert!(
+            rendered.contains(result_text),
+            "expected {name} result, got {rendered}"
+        );
+        assert!(
+            debug.contains("ChooseObjectsEffect") && debug.contains("chooser: IteratedPlayer"),
+            "expected {name}'s participant to own the choice, got {debug}"
+        );
+        assert!(
+            debug.contains("TaggedObject"),
+            "expected {name}'s follow-up to reference the selected set, got {debug}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn generated_sacrifice_choice_cluster_compacts_the_selected_set() {
+    for (name, expected) in [
+        (
+            "Nicol Bolas, Planeswalker",
+            "sacrifices seven permanents of their choice",
+        ),
+        (
+            "Shimatsu the Bloodcloaked",
+            "sacrifice any number of permanents",
+        ),
+        ("Torrent of Stone", "sacrifice two mountains"),
+        ("Wood Elemental", "sacrifice any number of untapped forests"),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        let debug = format!("{:#?}", def.abilities);
+
+        assert!(
+            rendered.contains(expected),
+            "expected {name}'s chosen sacrifice set to compact, got {rendered}"
+        );
+        assert!(
+            debug.contains("ChooseObjectsEffect")
+                && debug.contains("SacrificePlayerEffect")
+                && debug.contains("TaggedObject")
+                && debug.contains("Count("),
+            "expected {name} to retain its tagged chosen-set sacrifice, got {debug}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn noncontroller_choice_regressions_keep_resolution_time_ownership() {
+    let visions = parse_oracle_card_definition("Visions of Dread");
+    let rendered = unprocessed_compiled_lines(&visions)
+        .join(" ")
+        .to_ascii_lowercase();
+    let debug = format!("{:#?}", visions.abilities);
+    assert!(
+        rendered.contains(
+            "target opponent puts a creature card of their choice from their graveyard onto the battlefield under your control"
+        ),
+        "expected Visions of Dread to preserve the opponent's choice, got {rendered}"
+    );
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("chooser: Target(")
+            && debug.contains("Opponent"),
+        "expected Visions of Dread to choose before moving the tagged card, got {debug}"
+    );
+
+    let obliterator = parse_oracle_card_definition("Phyrexian Obliterator");
+    let rendered = unprocessed_compiled_lines(&obliterator)
+        .join(" ")
+        .to_ascii_lowercase();
+    let debug = format!("{:#?}", obliterator.abilities);
+    assert!(
+        rendered.contains("controller sacrifices that many permanents of their choice"),
+        "expected Phyrexian Obliterator's damage controller choice, got {rendered}"
+    );
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("ControllerOf(")
+            && debug.contains("EventValue")
+            && debug.contains("TaggedObject"),
+        "expected Phyrexian Obliterator to sacrifice only the chosen set, got {debug}"
+    );
+
+    let wayfarer = parse_oracle_card_definition("Pale Wayfarer");
+    let rendered = unprocessed_compiled_lines(&wayfarer)
+        .join(" ")
+        .to_ascii_lowercase();
+    let debug = format!("{:#?}", wayfarer.abilities);
+    assert!(
+        rendered.contains("protection from the color of its controller's choice until end of turn"),
+        "expected Pale Wayfarer's target controller to choose the color, got {rendered}"
+    );
+    assert!(
+        debug.contains("ChooseModeEffect")
+            && debug.contains("chooser: Some(")
+            && debug.contains("ControllerOf(")
+            && debug.contains("Target"),
+        "expected Pale Wayfarer's target controller to choose during resolution, got {debug}"
+    );
+}
+
+#[test]
 pub(super) fn thundering_raiju_regression_keeps_each_opponent_damage_target() {
     let def = parse_oracle_card_definition("Thundering Raiju");
     let rendered = unprocessed_compiled_lines(&def)
@@ -3448,5 +3586,31 @@ pub(super) fn mob_verdict_runtime_votes_you_received_draw_cards_without_opponent
         game.damage_on(charlie_creature),
         2,
         "Charlie's creature should be damaged for Charlie's received vote"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn and_or_union_representative_cards_preserve_surface_and_recipient_domains() {
+    let aatchik =
+        compiled_text_lines(&parse_oracle_card_definition("Aatchik, Emerald Radian")).join(" ");
+    assert!(
+        aatchik.contains("artifact and/or creature card in your graveyard"),
+        "Aatchik must retain the inclusive artifact/creature graveyard union: {aatchik}"
+    );
+
+    let dargo =
+        compiled_text_lines(&parse_oracle_card_definition("Dargo, the Shipwrecker")).join(" ");
+    assert!(
+        dargo.contains("sacrifice any number of artifacts and/or creatures"),
+        "Dargo's additional cost must retain both sacrifice object classes: {dargo}"
+    );
+
+    let red_terror = compiled_text_lines(&parse_oracle_card_definition("The Red Terror")).join(" ");
+    assert!(
+        red_terror.contains(
+            "a red source you control deals damage to one or more permanents and/or players"
+        ),
+        "The Red Terror must retain both permanent and player damage recipients: {red_terror}"
     );
 }

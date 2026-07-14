@@ -39,7 +39,6 @@ use crate::target::{
 };
 use crate::types::CardType;
 use crate::zone::Zone;
-use ironsmith_core::ValueSurfaceHint;
 
 include!("sentence_shape_predicates.rs");
 include!("generic_subject_verb_programs.rs");
@@ -47,3 +46,6 @@ include!("labeled_prefixes.rs");
 include!("copy_and_next_spell_shapes.rs");
 include!("replacement_and_prevention_shapes.rs");
 include!("unsupported_shape_diagnostics.rs");
+
+#[cfg(test)]
+mod must_be_blocked_composition_tests;

@@ -106,6 +106,7 @@ fn apply_level_range_activation_condition(
     let min_condition = crate::ConditionExpr::SourceHasCounterAtLeast {
         counter_type: crate::CounterType::Level,
         count: min_level,
+        surface: crate::SourceCounterThresholdSurface::SourceHas,
     };
     let level_condition = if let Some(max_level) = max_level {
         crate::ConditionExpr::And(
@@ -141,7 +142,21 @@ pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -
             | crate::static_abilities::StaticAbilityId::ThisSpellXMaximum
             | crate::static_abilities::StaticAbilityId::ThisSpellCostReduction
             | crate::static_abilities::StaticAbilityId::ThisSpellCostReductionManaCost
-    )
+            | crate::static_abilities::StaticAbilityId::CostIncreasePerAdditionalTarget
+            | crate::static_abilities::StaticAbilityId::CostIncreaseManaCostPerAdditionalTarget
+    ) || matches!(
+        &static_ability.payload,
+        ironsmith_core::StaticAbilityPayload::CostIncrease(increase) if increase.filter.source
+    ) || matches!(
+        &static_ability.payload,
+        ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase)
+            if increase.filter.source
+    ) || match &static_ability.payload {
+        ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+            uses_spell_only_functional_zones(ability)
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn uses_referenced_ability_functional_zones(
@@ -163,6 +178,17 @@ pub(crate) fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
             effect_target_uses_it_reference(inner)
         }
         _ => false,
+    }
+}
+
+fn replacement_choose_spec_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => replacement_choose_spec_object_filter(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+        _ => None,
     }
 }
 
@@ -194,6 +220,9 @@ pub(crate) fn extract_previous_replacement_target(
     if let Some(continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
         if let Some(target_spec) = &continuous.target_spec {
             return Some(target_spec.clone());
+        }
+        if let crate::continuous::EffectTarget::Filter(filter) = &continuous.target {
+            return Some(ChooseSpec::Object(filter.clone()));
         }
     }
     None
@@ -244,6 +273,25 @@ pub(crate) fn rewrite_replacement_effect_target(
         return Some(crate::effect::Effect::new(
             crate::effects::DestroyNoRegenerationEffect::with_spec(previous_target.clone()),
         ));
+    }
+    if let Some(continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && let crate::continuous::EffectTarget::Filter(replacement_filter) = &continuous.target
+        && let Some(previous_filter) = replacement_choose_spec_object_filter(previous_target)
+    {
+        // A separately lowered "those creatures get ... instead" branch can
+        // lose the antecedent's controller while keeping the same typed set.
+        // Restore only that exact provenance loss; an explicitly different
+        // replacement filter remains untouched.
+        let mut previous_without_controller = previous_filter.clone();
+        previous_without_controller.controller = None;
+        if &previous_without_controller == replacement_filter
+            && previous_filter.controller.is_some()
+            && replacement_filter.controller.is_none()
+        {
+            let mut rewritten = continuous.clone();
+            rewritten.target = crate::continuous::EffectTarget::Filter(previous_filter.clone());
+            return Some(crate::effect::Effect::new(rewritten));
+        }
     }
     None
 }
@@ -358,4 +406,36 @@ pub(crate) fn rewrite_lower_line_ast(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spell_only_functional_zones_include_target_based_cost_increases() {
+        let generic = StaticAbility::cost_increase_per_target_beyond_first(1);
+        let colored = StaticAbility::cost_increase_mana_cost_per_target_beyond_first(
+            crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::White]),
+        );
+
+        assert!(uses_spell_only_functional_zones(&generic));
+        assert!(uses_spell_only_functional_zones(&colored));
+    }
+
+    #[test]
+    fn spell_only_functional_zones_recurse_through_conditionals() {
+        let conditional = StaticAbility::new(crate::static_abilities::CostIncreaseManaCost::new(
+            ObjectFilter::source(),
+            crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::White]),
+        ))
+        .with_condition(ironsmith_core::Condition::YourTurn);
+
+        assert!(matches!(
+            &conditional.payload,
+            ironsmith_core::StaticAbilityPayload::Conditional { .. }
+        ));
+
+        assert!(uses_spell_only_functional_zones(&conditional));
+    }
 }

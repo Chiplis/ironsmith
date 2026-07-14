@@ -1,5 +1,6 @@
 use std::any::Any;
 
+use crate::effect::SetQuantifierSurface;
 use crate::{
     Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType,
     ChoiceCount, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
@@ -55,6 +56,7 @@ pub enum PregameActionKind {
     BeginOnBattlefield(PregameBeginOnBattlefieldSpec),
     MulliganExileHandDrawSameCount,
     ChooseColor,
+    RevealFromOpeningHand(PregameRevealFromOpeningHandSpec),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +64,13 @@ pub struct PregameBeginOnBattlefieldSpec {
     pub require_not_starting_player: bool,
     pub counters: Vec<(CounterType, u32)>,
     pub exile_cards_from_hand: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PregameRevealFromOpeningHandSpec {
+    /// Oracle places the consequence before its timing clause (for example,
+    /// "scry 3 at the beginning of your first upkeep").
+    pub effect_before_timing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,11 +247,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     PreventAllNoncombatDamageToPermanentsMatching(ObjectFilter),
     RuleRestriction {
         restriction: Restriction,
+        additional_restrictions: Vec<Restriction>,
         display: String,
     },
     PregameAction {
         kind: PregameActionKind,
         text: String,
+        effects: Vec<E>,
     },
     Ward(TotalCost<C>),
     Morph(TotalCost<C>),
@@ -411,6 +422,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     PlayersSkipUpkeep {
         player: PlayerFilter,
     },
+    PlayerSkipsDrawStep {
+        player: PlayerFilter,
+    },
     ActivatedAbilityCostReduction {
         filter: ObjectFilter,
         reduction: u32,
@@ -430,6 +444,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ChoosePlayerAsEnters(String),
     NoteLifeTotalAsEnters(String),
+    DiscardHandAsEnters(String),
     RevealFromHandAsEnters {
         filter: ObjectFilter,
         count: ChoiceCount,
@@ -901,6 +916,9 @@ where
             StaticAbilityPayload::PlayersSkipUpkeep { player } => {
                 StaticAbilityPayload::PlayersSkipUpkeep { player }
             }
+            StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
+                StaticAbilityPayload::PlayerSkipsDrawStep { player }
+            }
             StaticAbilityPayload::Anthem(anthem) => StaticAbilityPayload::Anthem(anthem),
             StaticAbilityPayload::AttachedAbilityGrant(grant) => {
                 let grant = *grant;
@@ -930,6 +948,7 @@ where
                     filter: grant.filter,
                     ability: map_ability(grant.ability, map_trigger, map_effect, map_cost)?,
                     condition: grant.condition,
+                    set_quantifier_surface: grant.set_quantifier_surface,
                 }))
             }
             StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
@@ -945,6 +964,7 @@ where
                         )?,
                         display: grant.display,
                         condition: grant.condition,
+                        set_quantifier_surface: grant.set_quantifier_surface,
                     },
                 ))
             }
@@ -1012,13 +1032,27 @@ where
             }
             StaticAbilityPayload::RuleRestriction {
                 restriction,
+                additional_restrictions,
                 display,
             } => StaticAbilityPayload::RuleRestriction {
                 restriction,
+                additional_restrictions,
                 display,
             },
-            StaticAbilityPayload::PregameAction { kind, text } => {
-                StaticAbilityPayload::PregameAction { kind, text }
+            StaticAbilityPayload::PregameAction {
+                kind,
+                text,
+                effects,
+            } => {
+                let mut mapped_effects = Vec::with_capacity(effects.len());
+                for effect in effects {
+                    mapped_effects.push(map_effect(effect)?);
+                }
+                StaticAbilityPayload::PregameAction {
+                    kind,
+                    text,
+                    effects: mapped_effects,
+                }
             }
             StaticAbilityPayload::Ward(cost) => {
                 StaticAbilityPayload::Ward(map_total_cost(cost, map_cost)?)
@@ -1319,6 +1353,9 @@ where
             }
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
+            }
+            StaticAbilityPayload::DiscardHandAsEnters(display) => {
+                StaticAbilityPayload::DiscardHandAsEnters(display)
             }
             StaticAbilityPayload::RevealFromHandAsEnters {
                 filter,
@@ -2087,12 +2124,25 @@ impl<
     }
 
     pub fn restriction(restriction: Restriction, detail: impl std::fmt::Debug) -> Self {
+        Self::restrictions(vec![restriction], detail)
+    }
+
+    /// A single static rule surface which applies several independent typed
+    /// restrictions. Compound Oracle sentences use this to avoid manufacturing
+    /// multiple abilities with duplicate display text.
+    pub fn restrictions(restrictions: Vec<Restriction>, detail: impl std::fmt::Debug) -> Self {
+        let mut restrictions = restrictions.into_iter();
+        let restriction = restrictions
+            .next()
+            .expect("a rule-restriction ability requires at least one restriction");
+        let additional_restrictions = restrictions.collect();
         let display = format!("{detail:?}").trim_matches('"').to_string();
         Self {
             id: Some(StaticAbilityId::RuleRestriction),
             label: display.clone(),
             payload: StaticAbilityPayload::RuleRestriction {
                 restriction,
+                additional_restrictions,
                 display,
             },
         }
@@ -2259,6 +2309,10 @@ impl<
 
     pub fn changeling() -> Self {
         Self::identified(StaticAbilityId::Changeling, "changeling")
+    }
+
+    pub fn living_metal() -> Self {
+        Self::identified(StaticAbilityId::LivingMetal, "living metal")
     }
 
     pub fn ward(amount: impl Into<TotalCost<C>>) -> Self {
@@ -2559,6 +2613,24 @@ impl<
             }
         }
     }
+
+    /// Wrap this ability in a condition while preserving the Oracle label that
+    /// presented that condition (for example, `Max speed`).
+    ///
+    /// The label belongs to the wrapper rather than the underlying ability so
+    /// runtime behavior remains entirely driven by `condition`.
+    pub fn with_labeled_condition(self, condition: Condition, label: impl Into<String>) -> Self {
+        let id = self.id;
+        Self {
+            id,
+            label: label.into(),
+            payload: StaticAbilityPayload::Conditional {
+                ability: Box::new(self),
+                condition,
+            },
+        }
+    }
+
     pub fn unwrap_or(self, _fallback: Self) -> Self {
         self
     }
@@ -2629,6 +2701,9 @@ impl<
     }
     pub fn assist() -> Self {
         Self::identified(StaticAbilityId::Assist, "assist")
+    }
+    pub fn ascend() -> Self {
+        Self::identified(StaticAbilityId::Ascend, "ascend")
     }
     pub fn split_second() -> Self {
         Self::identified(StaticAbilityId::SplitSecond, "split second")
@@ -2916,7 +2991,27 @@ impl<
         Self {
             id: Some(StaticAbilityId::PregameAction),
             label: text.clone(),
-            payload: StaticAbilityPayload::PregameAction { kind, text },
+            payload: StaticAbilityPayload::PregameAction {
+                kind,
+                text,
+                effects: Vec::new(),
+            },
+        }
+    }
+    pub fn pregame_action_with_effects(
+        kind: PregameActionKind,
+        display: impl Into<String>,
+        effects: Vec<E>,
+    ) -> Self {
+        let text = display.into();
+        Self {
+            id: Some(StaticAbilityId::PregameAction),
+            label: text.clone(),
+            payload: StaticAbilityPayload::PregameAction {
+                kind,
+                text,
+                effects,
+            },
         }
     }
     pub fn reduce_maximum_hand_size(player: PlayerFilter, by: u32) -> Self {
@@ -3538,6 +3633,14 @@ impl<
             payload: StaticAbilityPayload::NoteLifeTotalAsEnters(display),
         }
     }
+    pub fn discard_hand_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DiscardHandAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DiscardHandAsEnters(display),
+        }
+    }
     pub fn reveal_from_hand_as_enters(
         filter: ObjectFilter,
         count: ChoiceCount,
@@ -3691,6 +3794,13 @@ impl<
             id: Some(StaticAbilityId::PlayersSkipUpkeep),
             label: "players skip upkeep".into(),
             payload: StaticAbilityPayload::PlayersSkipUpkeep { player },
+        }
+    }
+    pub fn player_skips_draw_step(player: PlayerFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PlayerSkipsDrawStep),
+            label: "skip your draw step".into(),
+            payload: StaticAbilityPayload::PlayerSkipsDrawStep { player },
         }
     }
     pub fn legend_rule_doesnt_apply() -> Self {

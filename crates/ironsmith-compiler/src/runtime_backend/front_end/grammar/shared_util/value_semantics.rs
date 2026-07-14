@@ -3,6 +3,7 @@ use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::{ObjectFilter, Zone};
 use ironsmith_core::EffectMetric;
+use ironsmith_core::TurnHistoryCount;
 use ironsmith_core::ValueSurfaceHint;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
@@ -139,10 +140,10 @@ pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Opt
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
-        AggregateValueMetric::Counters => Some(Value::CountersOn(
-            Box::new(crate::target::ChooseSpec::All(filter)),
-            None,
-        )),
+        AggregateValueMetric::Counters => Some(
+            Value::CountersOn(Box::new(crate::target::ChooseSpec::All(filter)), None)
+                .with_surface_hint(ValueSurfaceHint::CountersAmong),
+        ),
     }
 }
 
@@ -223,6 +224,562 @@ fn source_linked_exiled_mana_value(object_words: &[&str]) -> Option<Value> {
     None
 }
 
+fn history_filter_from_word_prefix(
+    tokens: &[OwnedLexToken],
+    words: &TokenWordView<'_>,
+    end_word: usize,
+) -> Option<ObjectFilter> {
+    let range = words.token_span_for_words(0, end_word)?;
+    let mut filter = parse_object_filter(&trim_edge_punctuation(&tokens[range]), false).ok()?;
+    // Historical values match the event snapshot, not the object's current
+    // zone.  Zone transitions are carried by the query variant itself.
+    filter.zone = None;
+    // A bare `spell` noun is represented by the stack-kind discriminator.
+    // The general object-filter parser also supplies `has_mana_cost`, but that
+    // would incorrectly exclude spells without mana costs from cast history.
+    // Keep the spell discriminator as structured surface/semantic metadata and
+    // remove only the accidental mana-cost restriction.
+    if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
+        filter.has_mana_cost = false;
+    }
+    Some(filter)
+}
+
+fn suffix_start(words: &[&str], suffix: &[&str]) -> Option<usize> {
+    words
+        .ends_with(suffix)
+        .then_some(words.len().saturating_sub(suffix.len()))
+}
+
+fn parse_spell_cast_history_count(
+    tokens: &[OwnedLexToken],
+    word_view: &TokenWordView<'_>,
+    words: &[&str],
+) -> Option<Value> {
+    let suffixes: &[(&[&str], PlayerFilter, bool)] = &[
+        (
+            &["youve", "cast", "before", "it", "this", "turn"],
+            PlayerFilter::You,
+            true,
+        ),
+        (
+            &["you've", "cast", "before", "it", "this", "turn"],
+            PlayerFilter::You,
+            true,
+        ),
+        (
+            &["you", "have", "cast", "before", "it", "this", "turn"],
+            PlayerFilter::You,
+            true,
+        ),
+        (
+            &["cast", "before", "that", "spell", "this", "turn"],
+            PlayerFilter::Any,
+            true,
+        ),
+        (
+            &["cast", "before", "this", "spell", "this", "turn"],
+            PlayerFilter::Any,
+            true,
+        ),
+        (
+            &["cast", "before", "it", "this", "turn"],
+            PlayerFilter::Any,
+            true,
+        ),
+        (&["youve", "cast", "this", "turn"], PlayerFilter::You, false),
+        (
+            &["you've", "cast", "this", "turn"],
+            PlayerFilter::You,
+            false,
+        ),
+        (
+            &["you", "have", "cast", "this", "turn"],
+            PlayerFilter::You,
+            false,
+        ),
+        (&["you", "cast", "this", "turn"], PlayerFilter::You, false),
+        (&["cast", "this", "turn"], PlayerFilter::Any, false),
+    ];
+
+    for (suffix, player, before_triggering_spell) in suffixes {
+        let Some(end) = suffix_start(words, suffix) else {
+            continue;
+        };
+        if end == 0 {
+            continue;
+        }
+        let prefix_words = &words[..end];
+        if !prefix_words
+            .iter()
+            .any(|word| matches!(*word, "spell" | "spells"))
+        {
+            continue;
+        }
+        let mut filter = history_filter_from_word_prefix(tokens, word_view, end)?;
+        let exclude_source = filter.other || prefix_words.contains(&"other");
+        // `other` is relative to the cast being evaluated, not to the source
+        // permanent of a triggered ability. Keep that relation in the query.
+        filter.other = false;
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+            player: player.clone(),
+            filter,
+            from_zone: None,
+            from_outside_hand: false,
+            exclude_source,
+            before_triggering_spell: *before_triggering_spell,
+        }));
+    }
+    None
+}
+
+/// Parse noun phrases whose numeric meaning comes from retained turn events.
+/// Callers may pass either the bare noun phrase or a leading "for each".
+pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let mut tokens = trim_edge_punctuation(tokens);
+    let leading = TokenWordView::new(&tokens);
+    let leading_words = leading.to_word_refs();
+    if leading_words.starts_with(&["for", "each"])
+        && let Some(range) = leading.token_span_for_words(2, leading.len())
+    {
+        tokens = trim_edge_punctuation(&tokens[range]);
+    }
+
+    let word_view = TokenWordView::new(&tokens);
+    let words = word_view.to_word_refs();
+    if words.is_empty() {
+        return None;
+    }
+
+    // This composite value ends with the same `spells you've cast this turn`
+    // suffix as an ordinary spell-history count. Recognize the whole phrase
+    // first so the generic suffix parser does not reinterpret
+    // `colors among permanents you control and spells` as an object filter.
+    if words
+        == [
+            "colors",
+            "among",
+            "permanents",
+            "you",
+            "control",
+            "and",
+            "spells",
+            "youve",
+            "cast",
+            "this",
+            "turn",
+        ]
+        || words
+            == [
+                "colors",
+                "among",
+                "permanents",
+                "you",
+                "control",
+                "and",
+                "spells",
+                "you've",
+                "cast",
+                "this",
+                "turn",
+            ]
+    {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(PlayerFilter::You),
+        ));
+    }
+
+    if let Some(value) = parse_spell_cast_history_count(&tokens, &word_view, &words) {
+        return Some(value);
+    }
+
+    for (suffix, controller) in [
+        (&["that", "died", "this", "turn"][..], None),
+        (
+            &["that", "died", "under", "your", "control", "this", "turn"][..],
+            Some(PlayerFilter::You),
+        ),
+    ] {
+        if let Some(end) = suffix_start(&words, suffix) {
+            let mut filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            if controller.is_some() {
+                filter.controller = controller;
+            }
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::Died(filter)));
+        }
+    }
+
+    for suffix in [
+        &[
+            "that",
+            "entered",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn",
+        ][..],
+        &[
+            "you",
+            "had",
+            "enter",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn",
+        ][..],
+        &[
+            "you",
+            "had",
+            "entered",
+            "the",
+            "battlefield",
+            "under",
+            "your",
+            "control",
+            "this",
+            "turn",
+        ][..],
+    ] {
+        if let Some(end) = suffix_start(&words, suffix) {
+            let mut filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            filter.controller = Some(PlayerFilter::You);
+            return Some(Value::TurnHistoryCount(
+                TurnHistoryCount::EnteredBattlefield(filter),
+            ));
+        }
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["token" | "tokens", "you", "created", "this", "turn"]
+            | [
+                "token" | "tokens",
+                "youve" | "you've",
+                "created",
+                "this",
+                "turn"
+            ]
+    ) {
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::TokensCreated(
+            PlayerFilter::You,
+        )));
+    }
+
+    if matches!(
+        words.as_slice(),
+        [
+            "card" | "cards",
+            "youve" | "you've",
+            "cycled",
+            "or",
+            "discarded",
+            "this",
+            "turn"
+        ] | [
+            "card" | "cards",
+            "you",
+            "have",
+            "cycled",
+            "or",
+            "discarded",
+            "this",
+            "turn"
+        ] | [
+            "card" | "cards",
+            "youve" | "you've",
+            "discarded",
+            "or",
+            "cycled",
+            "this",
+            "turn"
+        ] | [
+            "card" | "cards",
+            "you",
+            "have",
+            "discarded",
+            "or",
+            "cycled",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::DiscardedOrCycled(PlayerFilter::You),
+        ));
+    }
+
+    let graveyard_put = words.iter().position(|word| *word == "put");
+    let graveyard_prefix = graveyard_put.and_then(|put| words.get(..put));
+    let graveyard_tail = graveyard_put.and_then(|put| words.get(put..));
+    let valid_graveyard_card_prefix = matches!(
+        graveyard_prefix,
+        Some(["card" | "cards"] | ["card" | "cards", "that", "were"])
+    );
+    if valid_graveyard_card_prefix
+        && matches!(
+            graveyard_tail,
+            Some([
+                "put",
+                "into",
+                "your",
+                "graveyard",
+                "from",
+                "your",
+                "hand",
+                "or",
+                "library",
+                "this",
+                "turn"
+            ])
+        )
+    {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PutIntoGraveyard {
+                owner: PlayerFilter::You,
+                from: vec![Zone::Hand, Zone::Library],
+            },
+        ));
+    }
+    if valid_graveyard_card_prefix
+        && matches!(
+            graveyard_tail,
+            Some([
+                "put",
+                "into",
+                "their",
+                "graveyard",
+                "from",
+                "anywhere",
+                "this",
+                "turn"
+            ])
+        )
+    {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PutIntoGraveyard {
+                owner: PlayerFilter::IteratedPlayer,
+                from: Vec::new(),
+            },
+        ));
+    }
+
+    for suffix in [
+        &["youve", "sacrificed", "this", "turn"][..],
+        &["you've", "sacrificed", "this", "turn"][..],
+        &["you", "have", "sacrificed", "this", "turn"][..],
+    ] {
+        if let Some(end) = suffix_start(&words, suffix) {
+            let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::Sacrificed {
+                player: PlayerFilter::You,
+                filter,
+            }));
+        }
+    }
+
+    if matches!(
+        words.as_slice(),
+        ["opponent" | "opponents", "you", "attacked", "this", "turn"]
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::OpponentsAttacked(PlayerFilter::You),
+        ));
+    }
+
+    if let Some(end) = suffix_start(&words, &["you", "attacked", "with", "this", "turn"]) {
+        let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::CreaturesAttackedWith {
+                player: PlayerFilter::You,
+                filter,
+            },
+        ));
+    }
+
+    if matches!(
+        words.as_slice(),
+        [
+            "player" | "players",
+            "who",
+            "discarded",
+            "a",
+            "card",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::PlayersDiscarded(
+            PlayerFilter::Any,
+        )));
+    }
+    if matches!(
+        words.as_slice(),
+        [
+            "opponent" | "opponents",
+            "who",
+            "was" | "were",
+            "dealt",
+            "damage",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PlayersDealtDamage(PlayerFilter::Opponent),
+        ));
+    }
+    if matches!(
+        words.as_slice(),
+        [
+            "opponent" | "opponents",
+            "who",
+            "lost",
+            "life",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(
+            PlayerFilter::Opponent,
+        )));
+    }
+
+    if words.starts_with(&[
+        "your",
+        "opponents",
+        "who",
+        "were",
+        "dealt",
+        "combat",
+        "damage",
+        "by",
+    ]) && words.ends_with(&["this", "turn"])
+    {
+        let start = 8;
+        let end = words.len().saturating_sub(2);
+        let range = word_view.token_span_for_words(start, end)?;
+        let sources = parse_object_filter(&trim_edge_punctuation(&tokens[range]), false).ok()?;
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PlayersDealtCombatDamageBy {
+                players: PlayerFilter::Opponent,
+                sources,
+            },
+        ));
+    }
+
+    let outside_hand_suffixes: &[&[&str]] = &[
+        &[
+            "youve", "cast", "from", "anywhere", "other", "than", "your", "hand", "this", "turn",
+        ],
+        &[
+            "you've", "cast", "from", "anywhere", "other", "than", "your", "hand", "this", "turn",
+        ],
+        &[
+            "you", "have", "cast", "from", "anywhere", "other", "than", "your", "hand", "this",
+            "turn",
+        ],
+        &[
+            "youve", "cast", "this", "turn", "from", "anywhere", "other", "than", "your", "hand",
+        ],
+        &[
+            "you've", "cast", "this", "turn", "from", "anywhere", "other", "than", "your", "hand",
+        ],
+        &[
+            "you", "have", "cast", "this", "turn", "from", "anywhere", "other", "than", "your",
+            "hand",
+        ],
+    ];
+    for suffix in outside_hand_suffixes {
+        if let Some(end) = suffix_start(&words, suffix) {
+            let filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+                player: PlayerFilter::You,
+                filter,
+                from_zone: None,
+                from_outside_hand: true,
+                exclude_source: false,
+                before_triggering_spell: false,
+            }));
+        }
+    }
+
+    if words.len() >= 8
+        && matches!(words.first(), Some(&"+1/+1"))
+        && matches!(words.get(1), Some(&"counter") | Some(&"counters"))
+        && words.ends_with(&["under", "your", "control", "this", "turn"])
+        && let Some(put_on) = words.windows(2).position(|window| window == ["put", "on"])
+    {
+        let start = put_on + 2;
+        let end = words.len().saturating_sub(5);
+        let range = word_view.token_span_for_words(start, end)?;
+        let mut filter = parse_object_filter(&trim_edge_punctuation(&tokens[range]), false).ok()?;
+        filter.zone = None;
+        filter.controller = Some(PlayerFilter::You);
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+            counter_type: Some(crate::object::CounterType::PlusOnePlusOne),
+            filter,
+        }));
+    }
+
+    None
+}
+
+/// Parse a complete `where X is ...` binding whose value is backed by turn
+/// history. This deliberately runs before generic object-count parsing: words
+/// such as `graveyard`, `hand`, and `battlefield` describe event provenance in
+/// these clauses, not the current zones of objects to count.
+pub(crate) fn parse_turn_history_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trim_edge_punctuation(tokens);
+    let word_view = TokenWordView::new(&tokens);
+    let words = word_view.to_word_refs();
+    if !words.starts_with(&["where", "x", "is"]) {
+        return None;
+    }
+
+    let body_range = word_view.token_span_for_words(3, word_view.len())?;
+    let body_tokens = trim_edge_punctuation(&tokens[body_range]);
+    let body_view = TokenWordView::new(&body_tokens);
+    let body_words = body_view.to_word_refs();
+
+    for prefix in [
+        &["the", "number", "of"][..],
+        &["number", "of"][..],
+        &["equal", "to", "the", "number", "of"][..],
+    ] {
+        if body_words.starts_with(prefix) {
+            let history_range = body_view.token_span_for_words(prefix.len(), body_view.len())?;
+            return parse_turn_history_count_value(&body_tokens[history_range]);
+        }
+    }
+
+    let plus_word = body_words.iter().position(|word| *word == "plus")?;
+    let history_prefix = body_words.get(plus_word..plus_word + 4)?;
+    if history_prefix != ["plus", "the", "number", "of"] {
+        return None;
+    }
+
+    let fixed_range = body_view.token_span_for_words(0, plus_word)?;
+    let fixed_tokens = trim_edge_punctuation(&body_tokens[fixed_range]);
+    let (fixed, used) = parse_number_prefix_lexed(&fixed_tokens)?;
+    if used != fixed_tokens.len() {
+        return None;
+    }
+
+    let history_range =
+        body_view.token_span_for_words(plus_word + history_prefix.len(), body_view.len())?;
+    let history = parse_turn_history_count_value(&body_tokens[history_range])?;
+    Some(Value::Add(
+        Box::new(Value::Fixed(fixed as i32)),
+        Box::new(history),
+    ))
+}
+
 fn parse_spells_cast_this_turn_matching_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
     let filter_words = word_view.to_word_refs();
@@ -267,37 +824,52 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
 
     let value_range = word_view.token_span_for_words(number_word_idx, word_view.len())?;
     let value_tokens = trim_edge_punctuation(&tokens[value_range]);
-    if let Some((value, used)) = value_expr::parse_value_expr_tokens(&value_tokens)
-        && TokenWordView::new(&value_tokens[used..]).is_empty()
-    {
-        return Some(value);
-    }
-
     let filter_start_word_idx = number_word_idx + 2;
     let filter_range = word_view.token_span_for_words(filter_start_word_idx, word_view.len())?;
     let filter_tokens = trim_edge_punctuation(&tokens[filter_range]);
     let filter_word_view = TokenWordView::new(&filter_tokens);
     let filter_words = filter_word_view.to_word_refs();
+    if let Some(value) = parse_turn_history_count_value(&filter_tokens) {
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
+    }
     if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
-        return Some(value);
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(value) = parse_cards_discarded_this_turn_count_value(&filter_tokens) {
-        return Some(value);
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(player) = value_helper_shapes::parse_cards_in_hand_player(&filter_words) {
-        return Some(Value::CardsInHand(player));
+        return Some(Value::CardsInHand(player).with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
-        return Some(value);
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(player) = value_helper_shapes::parse_party_size_player(&filter_words) {
-        return Some(Value::PartySize(player));
+        return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(value) = parse_aggregate_scope_value_lexed(&filter_tokens) {
-        return Some(value);
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
+    }
+    if let Some(distinct_filter_tokens) =
+        primitives::parse_word_sequence_prefix(&filter_words, &["differently", "named"]).and_then(
+            |remaining| {
+                let consumed = filter_words.len().saturating_sub(remaining.len());
+                filter_word_view
+                    .token_span_for_words(consumed, filter_word_view.len())
+                    .map(|range| &filter_tokens[range])
+            },
+        )
+    {
+        let filter = parse_object_filter(distinct_filter_tokens, false).ok()?;
+        return Some(Value::DistinctNames(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
+    }
+    if let Some((value, used)) = value_expr::parse_value_expr_tokens(&value_tokens)
+        && TokenWordView::new(&value_tokens[used..]).is_empty()
+    {
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     let filter = parse_object_filter(&filter_tokens, false).ok()?;
-    Some(Value::Count(filter))
+    Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
@@ -318,11 +890,16 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 
     let filter_range = word_view.token_span_for_words(filter_start_word_idx, operator_word_idx)?;
     let filter_tokens = trim_commas(&tokens[filter_range]);
-    let base_value = if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens)
-    {
+    let base_value = if let Some(value) = parse_turn_history_count_value(&filter_tokens) {
+        value
+    } else if let Some(value) = parse_creatures_died_this_turn_count_value(&filter_tokens) {
         value
     } else if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
         value
+    } else if let Some(player) = value_helper_shapes::parse_party_size_player(
+        &TokenWordView::new(&filter_tokens).to_word_refs(),
+    ) {
+        Value::PartySize(player)
     } else {
         Value::Count(parse_object_filter(&filter_tokens, false).ok()?)
     };
@@ -340,10 +917,10 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
     } else {
         offset_value as i32
     };
-    Some(Value::Add(
-        Box::new(base_value),
-        Box::new(Value::Fixed(signed_offset)),
-    ))
+    Some(
+        Value::Add(Box::new(base_value), Box::new(Value::Fixed(signed_offset)))
+            .with_surface_hint(ValueSurfaceHint::EqualTo),
+    )
 }
 
 pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
@@ -352,7 +929,10 @@ pub(crate) fn parse_equal_to_number_of_opponents_you_have_value(
     let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
     if value_helper_shapes::starts_equal_to_opponents_you_have(&clause_refs) {
-        return Some(Value::CountPlayers(PlayerFilter::Opponent));
+        return Some(
+            Value::CountPlayers(PlayerFilter::Opponent)
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
     }
     None
 }
@@ -362,7 +942,7 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
 ) -> Option<Value> {
     let words = TokenWordView::new(tokens).to_word_refs();
     let shape = value_helper_shapes::parse_counter_reference_value_shape(&words)?;
-    Some(counter_reference_shape_value(shape))
+    Some(counter_reference_shape_value(shape).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
 pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -404,7 +984,10 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
 
-    Some(aggregate_filter_value(aggregate, value_kind, filter))
+    Some(
+        aggregate_filter_value(aggregate, value_kind, filter)
+            .with_surface_hint(ValueSurfaceHint::EqualTo),
+    )
 }
 
 pub(crate) fn parse_where_x_greatest_commander_mana_value(
@@ -462,6 +1045,25 @@ pub(crate) fn parse_spells_cast_this_turn_matching_count_value_lexed(
         filter,
         exclude_source: surface.exclude_source,
     })
+}
+
+pub(crate) fn starts_explicit_ordered_comparison(
+    tokens: &[&str],
+    operator: ValueComparisonOperator,
+) -> bool {
+    match operator {
+        ValueComparisonOperator::LessThanOrEqual => matches!(
+            tokens,
+            ["less", "than", "or", "equal", "to", ..]
+                | ["is", "less", "than", "or", "equal", "to", ..]
+        ),
+        ValueComparisonOperator::GreaterThanOrEqual => matches!(
+            tokens,
+            ["greater", "than", "or", "equal", "to", ..]
+                | ["is", "greater", "than", "or", "equal", "to", ..]
+        ),
+        _ => false,
+    }
 }
 
 pub(crate) fn parse_filter_comparison_tokens(
@@ -585,6 +1187,13 @@ pub(crate) fn parse_filter_comparison_tokens(
                     clause_words.join(" ")
                 ))
             })?;
+        let operand = if starts_explicit_ordered_comparison(tokens, operator)
+            && !matches!(operand.unhinted(), Value::Fixed(_))
+        {
+            operand.with_surface_hint(ValueSurfaceHint::ExplicitComparison)
+        } else {
+            operand
+        };
         let consumed = consumed_base + used;
         return Ok(Some((to_comparison(operator, operand), consumed)));
     }
@@ -639,6 +1248,45 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_filter_comparisons_preserve_prefix_vs_postfix_surface() {
+        let prefix = ["less", "than", "or", "equal", "to", "your", "life", "total"];
+        let (prefix_comparison, prefix_used) =
+            parse_filter_comparison_tokens("power", &prefix, &prefix)
+                .expect("comparison parse should succeed")
+                .expect("explicit comparison should parse");
+        let crate::filter::Comparison::LessThanOrEqualExpr(prefix_value) = prefix_comparison else {
+            panic!("expected dynamic less-than-or-equal comparison");
+        };
+        assert_eq!(prefix_used, prefix.len());
+        assert!(prefix_value.has_surface_hint(ValueSurfaceHint::ExplicitComparison));
+
+        let postfix = ["your", "life", "total", "or", "less"];
+        let (postfix_comparison, postfix_used) =
+            parse_filter_comparison_tokens("power", &postfix, &postfix)
+                .expect("comparison parse should succeed")
+                .expect("postfix comparison should parse");
+        let crate::filter::Comparison::LessThanOrEqualExpr(postfix_value) = postfix_comparison
+        else {
+            panic!("expected dynamic less-than-or-equal comparison");
+        };
+        assert_eq!(postfix_used, postfix.len());
+        assert!(!postfix_value.has_surface_hint(ValueSurfaceHint::ExplicitComparison));
+
+        let greater_prefix = [
+            "is", "greater", "than", "or", "equal", "to", "your", "life", "total",
+        ];
+        let (greater_comparison, _) =
+            parse_filter_comparison_tokens("power", &greater_prefix, &greater_prefix)
+                .expect("comparison parse should succeed")
+                .expect("explicit greater-than comparison should parse");
+        let crate::filter::Comparison::GreaterThanOrEqualExpr(greater_value) = greater_comparison
+        else {
+            panic!("expected dynamic greater-than-or-equal comparison");
+        };
+        assert!(greater_value.has_surface_hint(ValueSurfaceHint::ExplicitComparison));
+    }
+
+    #[test]
     fn parse_aggregate_scope_value_lexed_uses_captured_metric_and_scope() {
         let color_tokens = lex_words("colors among creatures you control");
         let color_value = parse_aggregate_scope_value_lexed(&color_tokens)
@@ -678,6 +1326,246 @@ mod tests {
         assert_eq!(
             filter.stack_kind,
             Some(crate::filter::StackObjectKind::Spell)
+        );
+    }
+
+    #[test]
+    fn turn_history_counts_keep_event_metric_and_typed_filters() {
+        let cases = [
+            ("Zubera that died this turn", "Died"),
+            (
+                "nontoken creatures that died under your control this turn",
+                "Died",
+            ),
+            ("tokens you created this turn", "TokensCreated"),
+            (
+                "lands that entered the battlefield under your control this turn",
+                "EnteredBattlefield",
+            ),
+            (
+                "cards that were put into your graveyard from your hand or library this turn",
+                "PutIntoGraveyard",
+            ),
+            (
+                "spells you've cast from anywhere other than your hand this turn",
+                "SpellsCast",
+            ),
+            (
+                "instant and sorcery spells you've cast this turn",
+                "SpellsCast",
+            ),
+            (
+                "instant and sorcery spells cast before that spell this turn",
+                "SpellsCast",
+            ),
+            (
+                "colors among permanents you control and spells you've cast this turn",
+                "ColorsAmongPermanentsAndSpellsCast",
+            ),
+            (
+                "+1/+1 counters you've put on creatures under your control this turn",
+                "CountersPutOn",
+            ),
+        ];
+
+        for (text, expected) in cases {
+            let value = parse_turn_history_count_value(&lex_words(text))
+                .unwrap_or_else(|| panic!("history count should parse: {text}"));
+            let debug = format!("{value:?}");
+            assert!(
+                debug.contains("TurnHistoryCount") && debug.contains(expected),
+                "{text}: {debug}"
+            );
+        }
+    }
+
+    #[test]
+    fn spell_cast_history_distinguishes_turn_counts_from_trigger_boundaries() {
+        let cases = [
+            (
+                "instant and sorcery spells you've cast this turn",
+                PlayerFilter::You,
+                false,
+                false,
+            ),
+            (
+                "other spells you've cast this turn",
+                PlayerFilter::You,
+                true,
+                false,
+            ),
+            (
+                "instant and sorcery spells cast before that spell this turn",
+                PlayerFilter::Any,
+                false,
+                true,
+            ),
+            (
+                "other instant and sorcery spells you've cast before it this turn",
+                PlayerFilter::You,
+                true,
+                true,
+            ),
+        ];
+
+        for (text, expected_player, expected_other, expected_boundary) in cases {
+            let value = parse_turn_history_count_value(&lex_words(text))
+                .unwrap_or_else(|| panic!("spell history should parse: {text}"));
+            let Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+                player,
+                filter,
+                exclude_source,
+                before_triggering_spell,
+                ..
+            }) = value
+            else {
+                panic!("expected spell-cast history for {text}: {value:?}");
+            };
+            assert_eq!(player, expected_player, "{text}");
+            assert_eq!(exclude_source, expected_other, "{text}");
+            assert_eq!(before_triggering_spell, expected_boundary, "{text}");
+            assert!(!filter.other, "other belongs to the history query: {text}");
+            assert_eq!(
+                filter.stack_kind,
+                Some(crate::filter::StackObjectKind::Spell),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn fixed_plus_spell_history_bindings_cover_rionya_and_thunder_surfaces() {
+        for (text, expected_fixed, expected_other) in [
+            (
+                "where X is one plus the number of instant and sorcery spells you've cast this turn",
+                1,
+                false,
+            ),
+            (
+                "where X is 2 plus the number of other spells you've cast this turn",
+                2,
+                true,
+            ),
+        ] {
+            let parsed = parse_turn_history_value_binding(&lex_words(text))
+                .unwrap_or_else(|| panic!("fixed-plus cast history should parse: {text}"));
+            let Value::Add(fixed, history) = parsed else {
+                panic!("expected fixed-plus value for {text}: {parsed:?}");
+            };
+            assert_eq!(*fixed, Value::Fixed(expected_fixed));
+            assert!(matches!(
+                *history,
+                Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+                    player: PlayerFilter::You,
+                    exclude_source,
+                    before_triggering_spell: false,
+                    ..
+                }) if exclude_source == expected_other
+            ));
+        }
+    }
+
+    #[test]
+    fn turn_history_where_bindings_precede_current_zone_counts() {
+        let graveyard = parse_turn_history_value_binding(&lex_words(
+            "where X is the number of cards put into their graveyard from anywhere this turn",
+        ))
+        .expect("graveyard provenance count should parse");
+        let Value::TurnHistoryCount(TurnHistoryCount::PutIntoGraveyard { owner, from }) = graveyard
+        else {
+            panic!("expected graveyard-history value, got {graveyard:?}");
+        };
+        assert_eq!(owner, PlayerFilter::IteratedPlayer);
+        assert!(from.is_empty());
+
+        let spells = parse_turn_history_value_binding(&lex_words(
+            "where X is 1 plus the number of spells you've cast from anywhere other than your hand this turn",
+        ))
+        .expect("fixed-plus spell provenance count should parse");
+        let Value::Add(fixed, history) = spells else {
+            panic!("expected fixed-plus history value, got {spells:?}");
+        };
+        assert_eq!(*fixed, Value::Fixed(1));
+        let Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+            player,
+            filter,
+            from_outside_hand,
+            ..
+        }) = *history
+        else {
+            panic!("expected spell-cast history value, got {history:?}");
+        };
+        assert_eq!(player, PlayerFilter::You);
+        assert!(from_outside_hand);
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        );
+        assert!(!filter.has_mana_cost);
+    }
+
+    #[test]
+    fn turn_history_values_require_complete_supported_provenance_surfaces() {
+        assert!(
+            parse_turn_history_count_value(&lex_words(
+                "Zubera that died this turn among creatures you control"
+            ))
+            .is_none()
+        );
+        assert!(
+            parse_turn_history_count_value(&lex_words(
+                "cards with flying put into your graveyard from your hand or library this turn"
+            ))
+            .is_none()
+        );
+        assert!(
+            parse_turn_history_value_binding(&lex_words(
+                "where X is the number of cards put into their graveyard from anywhere this turn plus one"
+            ))
+            .is_none()
+        );
+        assert!(
+            parse_turn_history_count_value(&lex_words("Treasure tokens you created this turn"))
+                .is_none(),
+            "typed created-token counts require a token-filter/creator-aware model"
+        );
+    }
+
+    #[test]
+    fn equal_to_number_of_differently_named_objects_keeps_distinctness() {
+        let tokens =
+            lex_words("equal to the number of differently named creature tokens you control");
+        let value = parse_equal_to_number_of_filter_value(&tokens)
+            .expect("Audience with Trostani count should parse");
+        let Value::SurfaceHinted { value, hints } = value else {
+            panic!("expected equal-to surface hint");
+        };
+        assert_eq!(hints, vec![ValueSurfaceHint::EqualTo]);
+        let Value::DistinctNames(filter) = *value else {
+            panic!("expected a distinct-name count");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.token);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.name, None);
+    }
+
+    #[test]
+    fn equal_to_party_count_plus_fixed_keeps_typed_party_value() {
+        let value = parse_equal_to_number_of_filter_plus_or_minus_fixed_value(&lex_words(
+            "equal to the number of creatures in your party plus two",
+        ))
+        .expect("equal-to party offset should parse");
+        let Value::SurfaceHinted { value, hints } = value else {
+            panic!("expected equal-to surface hint");
+        };
+        assert_eq!(hints, vec![ValueSurfaceHint::EqualTo]);
+        assert_eq!(
+            *value,
+            Value::Add(
+                Box::new(Value::PartySize(PlayerFilter::You)),
+                Box::new(Value::Fixed(2)),
+            )
         );
     }
 }

@@ -145,6 +145,37 @@ pub(crate) fn parse_sacrifice(
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if let Some(half) = sacrifice_discard_grammar::parse_sacrifice_half_rounded_up_shape(tokens) {
+        let mut filter = parse_object_filter_lexed(half.filter_tokens, false)?;
+        filter.zone = Some(Zone::Battlefield);
+        let count_value = Value::HalfRoundedDown(Box::new(Value::Add(
+            Box::new(Value::Count(filter.clone())),
+            Box::new(Value::Fixed(1)),
+        )));
+        let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens,
+            "sacrificed",
+        );
+        return Ok(wrap_unless_escaped(
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ChooseObjects {
+                        filter,
+                        count: crate::effect::ChoiceCount::dynamic_x(),
+                        count_value: Some(count_value),
+                        player,
+                        tag: tag.clone(),
+                    },
+                    EffectAst::subject_verb_sacrifice_all(
+                        PlayerAst::That,
+                        ObjectFilter::tagged(tag),
+                    ),
+                ],
+            },
+            unless_escaped,
+        ));
+    }
+
     if let Some((choice_count, used)) =
         crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(tokens)
         && !choice_count.is_single()
@@ -171,7 +202,10 @@ pub(crate) fn parse_sacrifice(
                         player,
                         tag: tag.clone(),
                     },
-                    EffectAst::subject_verb_sacrifice_all(player, ObjectFilter::tagged(tag)),
+                    EffectAst::subject_verb_sacrifice_all(
+                        PlayerAst::That,
+                        ObjectFilter::tagged(tag),
+                    ),
                 ],
             },
             unless_escaped,
@@ -203,7 +237,7 @@ pub(crate) fn parse_sacrifice(
                                 tag: tag.clone(),
                             },
                             EffectAst::subject_verb_sacrifice_all(
-                                player,
+                                PlayerAst::That,
                                 ObjectFilter::tagged(tag),
                             ),
                         ],
@@ -334,13 +368,16 @@ pub(crate) fn parse_sacrifice(
 
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
     // e.g. "sacrifices a land for each card in your hand".
-    let effect = if let Some(Value::Count(fe_filter)) = for_each_filter {
-        EffectAst::ForEachObject {
+    let effect = match for_each_filter {
+        Some(Value::Count(fe_filter)) => EffectAst::ForEachObject {
             filter: fe_filter,
             effects: vec![sacrifice],
-        }
-    } else {
-        sacrifice
+        },
+        Some(count) => EffectAst::RepeatEffects {
+            count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            effects: vec![sacrifice],
+        },
+        None => sacrifice,
     };
     Ok(wrap_unless_escaped(effect, unless_escaped))
 }
@@ -368,6 +405,38 @@ pub(crate) fn parse_discard(
     let cards_shape = match clause_shape {
         sacrifice_discard_grammar::DiscardClauseShape::Hand => {
             return Ok(EffectAst::subject_verb_discard_hand(player));
+        }
+        sacrifice_discard_grammar::DiscardClauseShape::AllCardsInHand => {
+            let owner = if clause_words
+                .windows(2)
+                .any(|words| words == ["your", "hand"])
+            {
+                PlayerFilter::You
+            } else if clause_words
+                .windows(2)
+                .any(|words| words == ["their", "hand"])
+                || clause_words
+                    .windows(3)
+                    .any(|words| words == ["that", "players", "hand"])
+            {
+                PlayerFilter::IteratedPlayer
+            } else {
+                discard_subject_owner_filter(subject).ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "missing full-hand discard owner (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?
+            };
+            return Ok(EffectAst::subject_verb_discard(
+                player,
+                Value::CardsInHand(owner)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::AllCardsInHand),
+                false,
+                false,
+                None,
+                None,
+            ));
         }
         sacrifice_discard_grammar::DiscardClauseShape::TaggedOne => {
             let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
@@ -457,7 +526,7 @@ pub(crate) fn parse_discard(
         trim_trailing_discard_alternative_action(cards_shape.trailing_tokens);
     let trailing_tokens = trailing_tokens_storage.as_slice();
     if let Some(dynamic_count) = parse_get_for_each_count_value(trailing_tokens)? {
-        count = dynamic_count;
+        count = dynamic_count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
         return Ok(EffectAst::subject_verb_discard(
             player,
             count,
@@ -554,5 +623,29 @@ pub(crate) fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Optio
         Some(SubjectAst::Player(PlayerAst::That)) => Some(PlayerFilter::IteratedPlayer),
         Some(SubjectAst::Player(PlayerAst::You)) => Some(PlayerFilter::You),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod selected_sacrifice_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn chooser_sacrifices_only_the_selected_set() {
+        let tokens = lex_line("Sacrifices that many permanents of their choice.", 0)
+            .expect("sacrifice clause should lex");
+        let parsed = parse_sacrifice(
+            &tokens,
+            Some(SubjectAst::Player(PlayerAst::ItsController)),
+            None,
+        )
+        .expect("sacrifice choice should parse");
+        let debug = format!("{parsed:#?}");
+
+        assert!(debug.contains("ChooseObjects"), "{debug}");
+        assert!(debug.contains("player: ItsController"), "{debug}");
+        assert!(debug.contains("player: That"), "{debug}");
+        assert!(debug.contains("IsTaggedObject"), "{debug}");
     }
 }

@@ -114,6 +114,7 @@ fn enters_with_counters_where_x_value(count: &Value) -> Option<String> {
         Value::Fixed(_)
             | Value::X
             | Value::ManaSpentToCastThisSpell
+            | Value::ManaFromSourceSpentToCastThisSpell { .. }
             | Value::ColorsOfManaSpentToCastThisSpell
     ) {
         return None;
@@ -139,6 +140,258 @@ fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
     } else {
         value
     }
+}
+
+fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) -> Option<String> {
+    fn repeated_add_term(value: &Value) -> Option<(&Value, i32)> {
+        fn collect_terms<'a>(value: &'a Value, terms: &mut Vec<&'a Value>) {
+            match value.unhinted() {
+                Value::Add(left, right) => {
+                    collect_terms(left, terms);
+                    collect_terms(right, terms);
+                }
+                term => terms.push(term),
+            }
+        }
+
+        if !matches!(value.unhinted(), Value::Add(_, _)) {
+            return None;
+        }
+        let mut terms = Vec::new();
+        collect_terms(value, &mut terms);
+        let first = *terms.first()?;
+        if !terms.iter().all(|term| *term == first) {
+            return None;
+        }
+        Some((first, i32::try_from(terms.len()).ok()?))
+    }
+
+    fn basis(value: &Value) -> Option<(i32, String)> {
+        if let Some((term, multiplier)) = repeated_add_term(value) {
+            let (inner_multiplier, description) = basis(term)?;
+            return Some((inner_multiplier.checked_mul(multiplier)?, description));
+        }
+        if let Some(mana_basis) = describe_mana_source_spent_for_each_basis(value, "it") {
+            return Some(mana_basis);
+        }
+        if let Some(history_basis) = describe_turn_history_for_each_basis(value) {
+            return Some(history_basis);
+        }
+
+        match value.unhinted() {
+            Value::KickCount => Some((1, "time it was kicked".to_string())),
+            Value::CommanderCastCount(PlayerFilter::You) => Some((
+                1,
+                "time you've cast your commander from the command zone this game".to_string(),
+            )),
+            Value::CreaturesDiedThisTurn => Some((1, "creature that died this turn".to_string())),
+            Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You) => {
+                Some((1, "creature you controlled that died this turn".to_string()))
+            }
+            Value::ColorsOfManaSpentToCastThisSpell => {
+                Some((1, "color of mana spent to cast it".to_string()))
+            }
+            Value::Count(filter) => {
+                let description = filter.description();
+                let description = description
+                    .strip_prefix("an ")
+                    .or_else(|| description.strip_prefix("a "))
+                    .unwrap_or(&description)
+                    .to_string();
+                Some((1, description))
+            }
+            Value::CountScaled(filter, multiplier) => {
+                let (_, description) = basis(&Value::Count(filter.clone()))?;
+                Some((*multiplier, description))
+            }
+            Value::CountersOn(spec, counter_type) => {
+                let object = match spec.unhinted() {
+                    ChooseSpec::All(filter) => pluralize_filter_description(&filter.description()),
+                    _ => return None,
+                };
+                let counter = counter_type
+                    .as_ref()
+                    .map(|counter_type| format!("{} counter", counter_type.description()))
+                    .unwrap_or_else(|| "counter".to_string());
+                Some((1, format!("{counter} on {object}")))
+            }
+            Value::Scaled(inner, multiplier) => {
+                let (inner_multiplier, description) = basis(inner)?;
+                Some((inner_multiplier * *multiplier, description))
+            }
+            _ => None,
+        }
+    }
+
+    let (multiplier, basis) = basis(count)?;
+    if multiplier <= 0 {
+        return None;
+    }
+    let counter_phrase = if multiplier == 1 {
+        format!("{} {counter} counter", counter_indefinite_article(counter))
+    } else {
+        let amount = u32::try_from(multiplier)
+            .ok()
+            .and_then(number_word_u32)
+            .unwrap_or_else(|| multiplier.to_string());
+        format!("{amount} {counter} counters")
+    };
+    Some(format!(
+        "Enters the battlefield with {counter_phrase} on it for each {basis}"
+    ))
+}
+
+fn describe_mana_source_spent_for_each_basis(
+    value: &Value,
+    object_pronoun: &str,
+) -> Option<(i32, String)> {
+    match value.unhinted() {
+        Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+        } => {
+            let mut source = source_filter.description();
+            if *include_source_noun {
+                source.push_str(" source");
+            }
+            Some((
+                1,
+                format!("mana from {source} spent to cast {object_pronoun}"),
+            ))
+        }
+        Value::Scaled(inner, multiplier) => {
+            let (inner_multiplier, description) =
+                describe_mana_source_spent_for_each_basis(inner, object_pronoun)?;
+            Some((inner_multiplier.checked_mul(*multiplier)?, description))
+        }
+        Value::Add(left, right) => {
+            let (left_multiplier, left_description) =
+                describe_mana_source_spent_for_each_basis(left, object_pronoun)?;
+            let (right_multiplier, right_description) =
+                describe_mana_source_spent_for_each_basis(right, object_pronoun)?;
+            (left_description == right_description).then(|| {
+                (
+                    left_multiplier.saturating_add(right_multiplier),
+                    left_description,
+                )
+            })
+        }
+        _ => None,
+    }
+}
+
+fn describe_turn_history_for_each_filter(filter: &ObjectFilter, event: &str) -> Option<String> {
+    let mut subject_filter = filter.clone();
+    let controller = subject_filter.controller.take();
+    subject_filter.zone = None;
+    let description = subject_filter.description();
+    let subject = description
+        .strip_prefix("an ")
+        .or_else(|| description.strip_prefix("a "))
+        .unwrap_or(&description);
+    let controller = match controller {
+        Some(PlayerFilter::You) => " under your control",
+        Some(PlayerFilter::Opponent) => " under an opponent's control",
+        Some(PlayerFilter::Any) | None => "",
+        _ => return None,
+    };
+    Some(format!("{subject} {event}{controller} this turn"))
+}
+
+fn describe_turn_history_for_each_basis(count: &Value) -> Option<(i32, String)> {
+    if let Some(basis) = crate::compiled_text::describe_turn_history_for_each_basis(count) {
+        return Some((1, basis));
+    }
+
+    fn collect_terms<'a>(value: &'a Value, terms: &mut Vec<&'a Value>) {
+        match value.unhinted() {
+            Value::Add(left, right) => {
+                collect_terms(left, terms);
+                collect_terms(right, terms);
+            }
+            term => terms.push(term),
+        }
+    }
+
+    if matches!(count.unhinted(), Value::Add(_, _)) {
+        let mut terms = Vec::new();
+        collect_terms(count, &mut terms);
+        let first = *terms.first()?;
+        if !terms.iter().all(|term| *term == first) {
+            return None;
+        }
+        let (_, basis) = describe_turn_history_for_each_basis(first)?;
+        return Some((i32::try_from(terms.len()).ok()?, basis));
+    }
+
+    match count.unhinted() {
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::EnteredBattlefield(filter)) => {
+            Some((
+                1,
+                describe_turn_history_for_each_filter(filter, "that entered the battlefield")?,
+            ))
+        }
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(filter)) => Some((
+            1,
+            describe_turn_history_for_each_filter(filter, "that died")?,
+        )),
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersLostLife(player)) => {
+            let subject = match player {
+                PlayerFilter::Opponent => "opponent who lost life this turn",
+                PlayerFilter::Any => "player who lost life this turn",
+                _ => return None,
+            };
+            Some((1, subject.to_string()))
+        }
+        _ => None,
+    }
+}
+
+fn describe_filtered_enters_with_counters_subject(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    if let Some(rest) = description.strip_prefix("another ") {
+        return format!("Other {}", pluralize_filter_description(rest));
+    }
+    if filter.nontoken || filter.token {
+        return capitalize_first(&pluralize_filter_description(&description));
+    }
+    if let Some(rest) = description
+        .strip_prefix("an ")
+        .or_else(|| description.strip_prefix("a "))
+    {
+        return format!("Each {rest}");
+    }
+    if description.starts_with("each ")
+        || description.starts_with("this ")
+        || description.starts_with("that ")
+    {
+        return capitalize_first(&description);
+    }
+    capitalize_first(&pluralize_filter_description(&description))
+}
+
+fn describe_filtered_enters_with_counters_for_each_clause(
+    count: &Value,
+    counter: &str,
+    object_pronoun: &str,
+) -> Option<String> {
+    let (multiplier, basis) = describe_mana_source_spent_for_each_basis(count, object_pronoun)
+        .or_else(|| describe_turn_history_for_each_basis(count))?;
+    if multiplier <= 0 {
+        return None;
+    }
+    if multiplier == 1 {
+        return Some(format!(
+            "with an additional {counter} counter on {object_pronoun} for each {basis}"
+        ));
+    }
+    let amount = u32::try_from(multiplier)
+        .ok()
+        .and_then(number_word_u32)
+        .unwrap_or_else(|| multiplier.to_string());
+    Some(format!(
+        "with {amount} additional {counter} counters on {object_pronoun} for each {basis}"
+    ))
 }
 
 fn is_revealed_this_way_count_filter(filter: &ObjectFilter) -> bool {
@@ -1248,6 +1501,11 @@ impl StaticAbilityKind for EntersWithCounters {
         StaticAbilityId::EnterWithCounters
     }
 
+    fn prefers_card_name_subject(&self) -> bool {
+        self.count
+            .has_surface_hint(ValueSurfaceHint::SourceNameSubject)
+    }
+
     fn display(&self) -> String {
         let counter = self.counter_type.description().into_owned();
         if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
@@ -1260,6 +1518,11 @@ impl StaticAbilityKind for EntersWithCounters {
                 "Enters the battlefield with a number of {counter} counters on it equal to {}",
                 describe_enters_with_counters_equal_to_value(&self.count)
             );
+        }
+        if self.count.has_surface_hint(ValueSurfaceHint::ForEach)
+            && let Some(text) = describe_enters_with_counters_for_each_value(&self.count, &counter)
+        {
+            return text;
         }
 
         match &self.count {
@@ -1782,6 +2045,28 @@ impl StaticAbilityKind for NoteLifeTotalAsEnters {
 
     fn life_total_note_as_enters(&self) -> Option<NoteLifeTotalAsEntersSpec> {
         Some(NoteLifeTotalAsEntersSpec)
+    }
+}
+
+/// "As this enters, discard your hand."
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiscardHandAsEnters {
+    pub display: String,
+}
+
+impl DiscardHandAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for DiscardHandAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DiscardHandAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
     }
 }
 
@@ -3004,37 +3289,46 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
             return text;
         }
 
-        let mut subject = self.filter.description();
-        if subject.starts_with("another ") {
-            subject = subject.replacen("another ", "Each other ", 1);
-        } else {
-            subject = capitalize_first(&subject);
-        }
-        let enters = if matches!(
+        let subject = describe_filtered_enters_with_counters_subject(&self.filter);
+        let singular_subject = matches!(
             subject.split_whitespace().next(),
             Some("A" | "An" | "This" | "That" | "Each")
-        ) {
-            "enters"
+        );
+        let (enters, object_pronoun) = if singular_subject {
+            ("enters", "it")
         } else {
-            "enter"
+            ("enter", "them")
         };
 
         let counter = self.counter_type.description().into_owned();
-        let counter_clause = match &self.count {
-            Value::Fixed(1) => {
-                format!("with an additional {counter} counter on it")
+        let counter_clause = if self.count.has_surface_hint(ValueSurfaceHint::ForEach)
+            && let Some(for_each_clause) = describe_filtered_enters_with_counters_for_each_clause(
+                &self.count,
+                &counter,
+                object_pronoun,
+            ) {
+            for_each_clause
+        } else if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
+            format!(
+                "with an additional X {counter} counters on {object_pronoun}, where X is {where_x_value}"
+            )
+        } else {
+            match &self.count {
+                Value::Fixed(1) => {
+                    format!("with an additional {counter} counter on {object_pronoun}")
+                }
+                Value::Fixed(v) => {
+                    let rendered = u32::try_from(*v)
+                        .ok()
+                        .and_then(number_word_u32)
+                        .unwrap_or_else(|| v.to_string());
+                    format!("with {rendered} additional {counter} counters on {object_pronoun}")
+                }
+                value => format!(
+                    "with a number of additional {counter} counters on {object_pronoun} equal to {}",
+                    describe_value(value)
+                ),
             }
-            Value::Fixed(v) => {
-                let rendered = u32::try_from(*v)
-                    .ok()
-                    .and_then(number_word_u32)
-                    .unwrap_or_else(|| v.to_string());
-                format!("with {rendered} additional {counter} counters on it")
-            }
-            value => format!(
-                "with a number of additional {counter} counters on it equal to {}",
-                describe_value(value)
-            ),
         };
 
         let subtype_clause = if self.added_subtypes.is_empty() {
@@ -3410,6 +3704,44 @@ impl StaticAbilityKind for PlayersSkipUpkeep {
             && self
                 .player
                 .matches_player(player, &game.filter_context_for(controller, Some(source)))
+    }
+}
+
+/// The matching player skips each draw step while this ability is active.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerSkipsDrawStep {
+    pub player: PlayerFilter,
+}
+
+impl PlayerSkipsDrawStep {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+impl StaticAbilityKind for PlayerSkipsDrawStep {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PlayerSkipsDrawStep
+    }
+
+    fn display(&self) -> String {
+        match self.player {
+            PlayerFilter::You => "Skip your draw step".to_string(),
+            PlayerFilter::Opponent => "Each opponent skips their draw step".to_string(),
+            PlayerFilter::Any => "Players skip their draw steps".to_string(),
+            _ => "Matching players skip their draw steps".to_string(),
+        }
+    }
+
+    fn skips_draw_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.player
+            .matches_player(player, &game.filter_context_for(controller, Some(source)))
     }
 }
 

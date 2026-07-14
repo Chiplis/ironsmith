@@ -57,6 +57,19 @@ pub(crate) fn wrap_chosen_option_static_chunk(
         return Ok(chunk);
     };
     let condition = condition_for_chosen_option(context);
+    let wrap_static_ast = |ability| match context {
+        ChosenOptionContext::MaxSpeed => {
+            crate::cards::builders::StaticAbilityAst::LabeledConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition: condition.clone(),
+                label: "Max speed".to_string(),
+            }
+        }
+        _ => crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ability),
+            condition: condition.clone(),
+        },
+    };
     Ok(match chunk {
         LineAst::Multiple(chunks) => LineAst::Multiple(
             chunks
@@ -64,45 +77,42 @@ pub(crate) fn wrap_chosen_option_static_chunk(
                 .map(|chunk| wrap_chosen_option_static_chunk(chunk, chosen_option))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
-        LineAst::StaticAbility(ability) => LineAst::StaticAbility(
-            crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
-                ability: Box::new(ability),
-                condition,
-            },
-        ),
-        LineAst::StaticAbilities(abilities) => LineAst::StaticAbilities(
-            abilities
-                .into_iter()
-                .map(
-                    |ability| crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
-                        ability: Box::new(ability),
-                        condition: condition.clone(),
-                    },
-                )
-                .collect(),
-        ),
+        LineAst::StaticAbility(ability) => LineAst::StaticAbility(wrap_static_ast(ability)),
+        LineAst::StaticAbilities(abilities) => {
+            LineAst::StaticAbilities(abilities.into_iter().map(wrap_static_ast).collect())
+        }
         LineAst::Abilities(actions) => LineAst::StaticAbilities(
             actions
                 .into_iter()
-                .map(
-                    |action| crate::cards::builders::StaticAbilityAst::ConditionalKeywordAction {
+                .map(|action| match context {
+                    ChosenOptionContext::MaxSpeed => wrap_static_ast(
+                        crate::cards::builders::StaticAbilityAst::KeywordAction(action),
+                    ),
+                    _ => crate::cards::builders::StaticAbilityAst::ConditionalKeywordAction {
                         action,
                         condition: condition.clone(),
                     },
-                )
+                })
                 .collect(),
         ),
         LineAst::Ability(mut parsed) => {
             if let AbilityKind::Static(static_ability) = parsed.kind_mut() {
-                *static_ability = static_ability
-                    .clone()
-                    .with_condition(condition.clone())
-                    .unwrap_or_else(|| {
-                        crate::static_abilities::StaticAbility::new(
-                            crate::static_abilities::GrantAbility::source(static_ability.clone())
+                *static_ability = match context {
+                    ChosenOptionContext::MaxSpeed => static_ability
+                        .clone()
+                        .with_labeled_condition(condition.clone(), "Max speed"),
+                    _ => static_ability
+                        .clone()
+                        .with_condition(condition.clone())
+                        .unwrap_or_else(|| {
+                            crate::static_abilities::StaticAbility::new(
+                                crate::static_abilities::GrantAbility::source(
+                                    static_ability.clone(),
+                                )
                                 .with_condition(condition.clone()),
-                        )
-                    });
+                            )
+                        }),
+                };
             }
             LineAst::Ability(parsed)
         }

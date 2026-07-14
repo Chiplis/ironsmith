@@ -276,6 +276,16 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::Did);
     }
+    if (starts_with_phrase(&normalized, &["you", "reveal"])
+        || starts_with_phrase(&normalized, &["you", "revealed"])
+        || starts_with_phrase(&normalized, &["they", "reveal"])
+        || starts_with_phrase(&normalized, &["they", "revealed"])
+        || starts_with_phrase(&normalized, &["that", "player", "reveals"])
+        || starts_with_phrase(&normalized, &["that", "player", "revealed"]))
+        && ends_with_phrase(&normalized, &["this", "way"])
+    {
+        return Some(IfResultPredicate::Did);
+    }
     if primitives::parse_all(
         &normalized,
         parse_searched_library_result,
@@ -303,7 +313,39 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
         &normalized,
         &["player", "is", "dealt", "damage", "this", "way"],
     ) {
-        return Some(IfResultPredicate::Did);
+        return Some(IfResultPredicate::DealtDamageToPlayer);
+    }
+    // A typed object affected by the immediately preceding zone move is a
+    // reflexive-result predicate, not a new trigger subject.  This covers
+    // surfaces such as "When a creature is put onto the battlefield this
+    // way" while retaining the affected object for the follow-up effects.
+    let card_type_idx = usize::from(
+        words
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an" | "the")),
+    );
+    let affected_card_type = words.get(card_type_idx).and_then(|word| match *word {
+        "artifact" => Some(crate::types::CardType::Artifact),
+        "battle" => Some(crate::types::CardType::Battle),
+        "creature" => Some(crate::types::CardType::Creature),
+        "enchantment" => Some(crate::types::CardType::Enchantment),
+        "land" => Some(crate::types::CardType::Land),
+        "planeswalker" => Some(crate::types::CardType::Planeswalker),
+        _ => None,
+    });
+    if let Some(card_type) = affected_card_type
+        && words
+            .get(card_type_idx + 1)
+            .is_some_and(|word| matches!(*word, "is" | "was"))
+        && words
+            .get(card_type_idx + 2)
+            .is_some_and(|word| matches!(*word, "put" | "moved" | "returned"))
+        && ends_with_phrase(&normalized, &["this", "way"])
+    {
+        return Some(IfResultPredicate::AffectedObjectMatchesCardType {
+            card_type,
+            negated: false,
+        });
     }
     let one_or_more_result = word_count >= 6
         && starts_with_phrase(&normalized, &["one", "or", "more"])
@@ -477,11 +519,15 @@ mod tests {
                 "one or more cards are exiled this way",
                 IfResultPredicate::Did,
             ),
-            ("a player is dealt damage this way", IfResultPredicate::Did),
+            (
+                "a player is dealt damage this way",
+                IfResultPredicate::DealtDamageToPlayer,
+            ),
             ("you lost the flip", IfResultPredicate::DidNot),
             ("that player doesn't", IfResultPredicate::DidNot),
             ("its power becomes 3 this way", IfResultPredicate::Did),
             ("you milled a card this way", IfResultPredicate::Did),
+            ("you reveal a nonland card this way", IfResultPredicate::Did),
         ] {
             let tokens = lex_line(raw, 0).unwrap();
             assert_eq!(

@@ -3,7 +3,8 @@ use crate::runtime_backend::front_end::lexer::{
     LexStream, OwnedLexToken, lex_line, parser_token_word_refs,
 };
 use crate::runtime_backend::token_definition::{
-    ArtifactTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape, CreatureTokenRulesShape,
+    ArtifactTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape,
+    ConstructArtifactScalingShape, ConstructTokenShape, CreatureTokenRulesShape,
     CreatureTokenShape, ShapeshifterTokenShape, TokenCombatRestrictionShape, TokenDefinitionSpec,
     TokenKeywordShape, TokenPowerAsThoughGreaterShape, VehicleTokenShape,
 };
@@ -201,13 +202,22 @@ pub(super) fn creature_rules(
     .then(|| referenced_card_name.clone())
     .flatten();
     let cant_attack_or_block = all(&["cant", "attack", "or", "block"]);
+    let qualified_cant_be_blocked = common::phrase_present(words, &["cant", "be", "blocked", "by"])
+        || common::phrase_present(words, &["cant", "be", "blocked", "except", "by"]);
+    let coordinated_cant_block_and_be_blocked =
+        common::phrase_present(words, &["cant", "block", "or", "be", "blocked"]);
     let combat_restriction = if cant_attack_or_block && common::word_present(words, "alone") {
         Some(TokenCombatRestrictionShape::CantAttackOrBlockAlone)
     } else if cant_attack_or_block {
         Some(TokenCombatRestrictionShape::CantAttackOrBlock)
-    } else if all(&["cant", "be", "blocked"]) {
+    // A qualified restriction ("can't be blocked by ...") is not the
+    // unconditional unblockable ability. The quoted-rule parser lowers the
+    // qualifier structurally; adding Unblockable here would both duplicate
+    // that rule and make the token impossible to block by otherwise-legal
+    // creatures.
+    } else if all(&["cant", "be", "blocked"]) && !qualified_cant_be_blocked {
         Some(TokenCombatRestrictionShape::Unblockable)
-    } else if all(&["cant", "block"]) {
+    } else if all(&["cant", "block"]) && !coordinated_cant_block_and_be_blocked {
         Some(TokenCombatRestrictionShape::CantBlock)
     } else {
         None
@@ -317,7 +327,7 @@ pub(crate) fn parse_token_definition_shape_tokens(
     let has = |word| common::word_present(&words, word);
     let all = |expected: &[&str]| common::all_words_present(&words, expected);
     let pt = token_pt(&words);
-    let named_card = names::named_card_name(tokens);
+    let named_card = names::named_card_name(tokens).or_else(|| names::leading_comma_name(tokens));
 
     let builtin = if has("treasure") && !has("creature") {
         Some(BuiltinTokenShape::Treasure)
@@ -370,6 +380,7 @@ pub(crate) fn parse_token_definition_shape_tokens(
         return Some(TokenDefinitionSpec::Vehicle(VehicleTokenShape {
             name: names::vehicle_surface_name(&words, named_card.as_deref()),
             power_toughness: pt,
+            colorless: has("colorless"),
             flying: has("flying"),
             crew_amount: rules::parse_token_crew_shape_words(&words).map(|shape| shape.amount),
         }));
@@ -394,6 +405,7 @@ pub(crate) fn parse_token_definition_shape_tokens(
             subtypes: artifact_subtypes(&words),
             legendary: has("legendary"),
             colorless: has("colorless"),
+            colors: token_colors(&words),
             equipment_rules: equipment::parse_equipment_rules_tokens(tokens),
             token_rules: rules::parse_token_rules_surfaces_tokens(tokens),
             leaves_damage_any_target: leaves_damage,
@@ -437,7 +449,17 @@ pub(crate) fn parse_token_definition_shape_tokens(
         && !named_non_construct
         && (pt.is_none() || construct_cda || construct_plus || all(&["construct", "0/0"]))
     {
-        return Some(TokenDefinitionSpec::Construct);
+        let artifact_scaling = if construct_plus {
+            Some(ConstructArtifactScalingShape::GetsPlusOnePerArtifact)
+        } else if construct_cda || pt.is_none() {
+            Some(ConstructArtifactScalingShape::CharacteristicDefining)
+        } else {
+            None
+        };
+        return Some(TokenDefinitionSpec::Construct(ConstructTokenShape {
+            power_toughness: pt.unwrap_or((0, 0)),
+            artifact_scaling,
+        }));
     }
 
     if has("shapeshifter") && !has("creature") {
@@ -492,6 +514,7 @@ mod tests {
             TokenDefinitionSpec::Vehicle(VehicleTokenShape {
                 name,
                 power_toughness: Some((3, 3)),
+                colorless: true,
                 flying: true,
                 crew_amount: Some(2),
             }) if name == "Airship"
@@ -523,6 +546,51 @@ mod tests {
         assert_eq!(creature.subtypes, vec![Subtype::Zombie, Subtype::Employee]);
         assert_eq!(creature.colors, ColorSet::BLACK);
         assert_eq!(creature.keywords, vec![TokenKeywordShape::Flying]);
+    }
+
+    #[test]
+    fn leading_artifact_token_name_preserves_apostrophe_and_subtype() {
+        let shape = parse_token_definition_shape_text(
+            "Tamiyo's Notebook, a legendary colorless Book artifact token with \"{T}: Draw a card.\"",
+        )
+        .expect("leading named artifact token should parse");
+        let TokenDefinitionSpec::Artifact(artifact) = shape else {
+            panic!("expected artifact token shape");
+        };
+        assert_eq!(artifact.name, "Tamiyo's Notebook");
+        assert_eq!(artifact.subtypes, vec![Subtype::Book]);
+        assert!(artifact.legendary);
+    }
+
+    #[test]
+    fn appositive_artifact_token_name_preserves_internal_comma_and_color() {
+        let shape = parse_token_definition_shape_text(
+            "Icingdeath, Frost Tongue, a legendary white Equipment artifact token",
+        )
+        .expect("appositive named artifact token should parse");
+        let TokenDefinitionSpec::Artifact(artifact) = shape else {
+            panic!("expected artifact token shape");
+        };
+        assert_eq!(artifact.name, "Icingdeath, Frost Tongue");
+        assert_eq!(artifact.subtypes, vec![Subtype::Equipment]);
+        assert_eq!(artifact.colors, ColorSet::WHITE);
+        assert!(artifact.legendary);
+    }
+
+    #[test]
+    fn appositive_creature_token_name_can_start_with_the_and_contain_subtypes() {
+        let shape = parse_token_definition_shape_text(
+            "The Tiger God, a legendary 4/4 green Cat God creature token",
+        )
+        .expect("article-prefixed appositive named creature token should parse");
+        let TokenDefinitionSpec::Creature(creature) = shape else {
+            panic!("expected creature token shape");
+        };
+        assert_eq!(creature.name, "The Tiger God");
+        assert_eq!(creature.subtypes, vec![Subtype::Cat, Subtype::God]);
+        assert_eq!(creature.power_toughness, (4, 4));
+        assert_eq!(creature.colors, ColorSet::GREEN);
+        assert!(creature.legendary);
     }
 
     #[test]
@@ -560,6 +628,45 @@ mod tests {
                 count: 1,
             }]
         );
+    }
+
+    #[test]
+    fn qualified_blocking_rule_is_typed_without_unconditional_fallbacks() {
+        let shape = parse_token_definition_shape_text(
+            "a 1/1 colorless Spirit creature token with \"This token can't block or be blocked by non-Spirit creatures.\"",
+        )
+        .expect("qualified Spirit blocking token should parse");
+        let TokenDefinitionSpec::Creature(creature) = shape else {
+            panic!("expected creature token shape");
+        };
+
+        assert_eq!(creature.rules.combat_restriction, None);
+        assert_eq!(
+            creature.rules.token_rules.embedded_rules,
+            vec![
+                crate::runtime_backend::token_definition::TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
+                    subtype: Subtype::Spirit,
+                }
+            ]
+        );
+
+        for (text, expected) in [
+            (
+                "a 1/1 creature token with \"This token can't block.\"",
+                TokenCombatRestrictionShape::CantBlock,
+            ),
+            (
+                "a 1/1 creature token with \"This token can't be blocked.\"",
+                TokenCombatRestrictionShape::Unblockable,
+            ),
+        ] {
+            let shape = parse_token_definition_shape_text(text)
+                .expect("ordinary unconditional blocking rule should parse");
+            let TokenDefinitionSpec::Creature(creature) = shape else {
+                panic!("expected creature token shape");
+            };
+            assert_eq!(creature.rules.combat_restriction, Some(expected));
+        }
     }
 
     #[test]

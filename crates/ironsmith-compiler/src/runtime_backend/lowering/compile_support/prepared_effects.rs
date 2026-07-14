@@ -45,6 +45,8 @@ pub(crate) fn materialize_prepared_statement_effects(
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = normalize_targeted_conditional_action_then_fight(compiled);
+    let compiled = normalize_two_target_conditional_then_fight(compiled);
     let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
@@ -71,6 +73,8 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
     ctx.apply_reference_env(&prepared.initial_env);
     let (compiled, choices) =
         compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = normalize_targeted_conditional_action_then_fight(compiled);
+    let compiled = normalize_two_target_conditional_then_fight(compiled);
     let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
@@ -141,8 +145,22 @@ fn materialize_trailing_self_replacement(
             .effects
             .flattened_default_effects()
             .to_vec();
-        let replacement_effects =
+        let mut replacement_effects =
             strip_duplicate_self_replacement_prelude(&default_effects, replacement_effects);
+        if let Some(previous_target) = default_effects.iter().rev().find_map(|effect| {
+            crate::runtime_backend::lower::extract_previous_replacement_target(effect)
+        }) {
+            replacement_effects = replacement_effects
+                .into_iter()
+                .map(|effect| {
+                    crate::runtime_backend::lower::rewrite_replacement_effect_target(
+                        &effect,
+                        &previous_target,
+                    )
+                    .unwrap_or(effect)
+                })
+                .collect();
+        }
         let replacement_effects = if let Some(antecedent) = default_effects
             .iter()
             .rev()
@@ -225,6 +243,7 @@ fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
         PredicateAst::ItIsLandCard
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
+        | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::TargetMatches(_) => true,
         PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
@@ -556,6 +575,288 @@ fn normalize_two_target_counter_then_fight(effects: Vec<Effect>) -> Vec<Effect> 
     rewritten
 }
 
+fn normalize_two_target_conditional_then_fight(effects: Vec<Effect>) -> Vec<Effect> {
+    // A conditional modifier exports its auto-generated result tag. Without this
+    // repair, a following "those creatures fight each other" can resolve both
+    // fighters to that one result instead of the two explicit target slots.
+    let mut rewritten = Vec::with_capacity(effects.len());
+    let mut idx = 0;
+    while idx < effects.len() {
+        if idx + 3 < effects.len()
+            && let Some((first_tag, first_target)) = tagged_target_only(&effects[idx])
+            && let Some((second_tag, second_target)) = tagged_target_only(&effects[idx + 1])
+            && first_tag != second_tag
+            && let Some(first_filter) = explicit_target_object_filter(first_target)
+            && let Some(second_filter) = explicit_target_object_filter(second_target)
+            && is_controlled_creature_fight_pair(first_filter, second_filter)
+            && let Some(conditional) =
+                effects[idx + 2].downcast_ref::<crate::effects::ConditionalEffect>()
+            && conditional.if_false.is_empty()
+            && !conditional.if_true.is_empty()
+            && let Some(fight) = effects[idx + 3].downcast_ref::<crate::effects::FightEffect>()
+            && conditional_result_is_both_fighters(conditional, fight)
+            && let Some(fixed_branch) =
+                normalize_conditional_branch_target(&conditional.if_true, first_tag, first_filter)
+        {
+            let rebind_condition = single_conditional_result_is_continuous(conditional);
+            let fixed_condition = if rebind_condition {
+                rebind_tagged_condition(&conditional.condition, second_tag, first_tag)
+            } else {
+                conditional.condition.clone()
+            };
+            rewritten.push(effects[idx].clone());
+            rewritten.push(effects[idx + 1].clone());
+            rewritten.push(Effect::conditional(
+                fixed_condition,
+                fixed_branch,
+                Vec::new(),
+            ));
+            rewritten.push(Effect::fight(
+                ChooseSpec::Tagged(first_tag.clone()),
+                ChooseSpec::Tagged(second_tag.clone()),
+            ));
+            idx += 4;
+            continue;
+        }
+
+        rewritten.push(effects[idx].clone());
+        idx += 1;
+    }
+    rewritten
+}
+
+fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec<Effect> {
+    let mut rewritten = Vec::with_capacity(effects.len());
+    let mut idx = 0;
+    while idx < effects.len() {
+        if idx + 3 < effects.len()
+            && let Some(opposing_target) = untagged_target_only(&effects[idx])
+            && let Some((friendly_tag, friendly_target)) = tagged_target_only(&effects[idx + 1])
+            && let Some(opposing_filter) = explicit_target_object_filter(opposing_target)
+            && let Some(friendly_filter) = explicit_target_object_filter(friendly_target)
+            && is_opposing_then_friendly_creature_pair(opposing_filter, friendly_filter)
+            && let Some(conditional) =
+                effects[idx + 2].downcast_ref::<crate::effects::ConditionalEffect>()
+            && conditional.if_false.is_empty()
+            && matches!(
+                &conditional.condition,
+                Condition::TaggedObjectMatches(tag, _) if tag == friendly_tag
+            )
+            && let [branch_effect] = conditional.if_true.as_slice()
+            && effect_outer_tag(branch_effect) == Some(friendly_tag)
+            && let Some(fight) = effects[idx + 3].downcast_ref::<crate::effects::FightEffect>()
+            && matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag == friendly_tag)
+            && &fight.creature2 == opposing_target
+            && let Some(fixed_branch) = normalize_conditional_branch_target(
+                &conditional.if_true,
+                friendly_tag,
+                friendly_filter,
+            )
+        {
+            let opposing_tag = TagKey::from(format!("{}_opposing_target", friendly_tag.as_str()));
+            rewritten.push(
+                Effect::new(crate::effects::TargetOnlyEffect::new(
+                    opposing_target.clone(),
+                ))
+                .tag(opposing_tag.as_str()),
+            );
+            rewritten.push(effects[idx + 1].clone());
+            rewritten.push(Effect::conditional(
+                conditional.condition.clone(),
+                fixed_branch,
+                Vec::new(),
+            ));
+            rewritten.push(Effect::fight(
+                ChooseSpec::Tagged(friendly_tag.clone()),
+                ChooseSpec::Tagged(opposing_tag),
+            ));
+            idx += 4;
+            continue;
+        }
+
+        rewritten.push(effects[idx].clone());
+        idx += 1;
+    }
+    rewritten
+}
+
+fn untagged_target_only(effect: &Effect) -> Option<&ChooseSpec> {
+    effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        .map(|target_only| &target_only.target)
+}
+
+fn explicit_target_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+    let ChooseSpec::Target(inner) = spec else {
+        return None;
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return None;
+    };
+    Some(filter)
+}
+
+fn is_controlled_creature_fight_pair(first: &ObjectFilter, second: &ObjectFilter) -> bool {
+    first.zone == Some(crate::zone::Zone::Battlefield)
+        && second.zone == Some(crate::zone::Zone::Battlefield)
+        && first.card_types.as_slice() == [crate::types::CardType::Creature]
+        && second.card_types.as_slice() == [crate::types::CardType::Creature]
+        && first.controller == Some(crate::target::PlayerFilter::You)
+        && second.controller == Some(crate::target::PlayerFilter::NotYou)
+}
+
+fn is_opposing_then_friendly_creature_pair(
+    opposing: &ObjectFilter,
+    friendly: &ObjectFilter,
+) -> bool {
+    opposing.zone == Some(crate::zone::Zone::Battlefield)
+        && friendly.zone == Some(crate::zone::Zone::Battlefield)
+        && opposing.card_types.as_slice() == [crate::types::CardType::Creature]
+        && friendly.card_types.as_slice() == [crate::types::CardType::Creature]
+        && matches!(
+            &opposing.controller,
+            Some(crate::target::PlayerFilter::NotYou) | Some(crate::target::PlayerFilter::Opponent)
+        )
+        && friendly.controller == Some(crate::target::PlayerFilter::You)
+}
+
+fn object_filters_match_ignoring_reference_tags(left: &ObjectFilter, right: &ObjectFilter) -> bool {
+    let mut left = left.clone();
+    let mut right = right.clone();
+    left.tagged_constraints.clear();
+    right.tagged_constraints.clear();
+    left == right
+}
+
+fn choose_spec_is_first_target(
+    spec: &ChooseSpec,
+    first_tag: &TagKey,
+    first_filter: &ObjectFilter,
+) -> bool {
+    match spec {
+        ChooseSpec::Tagged(tag) => tag == first_tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            object_filters_match_ignoring_reference_tags(filter, first_filter)
+        }
+        ChooseSpec::Target(inner) => choose_spec_is_first_target(inner, first_tag, first_filter),
+        _ => false,
+    }
+}
+
+fn normalize_conditional_branch_target(
+    effects: &[Effect],
+    first_tag: &TagKey,
+    first_filter: &ObjectFilter,
+) -> Option<Vec<Effect>> {
+    effects
+        .iter()
+        .map(|effect| normalize_conditional_action_target(effect, first_tag, first_filter))
+        .collect()
+}
+
+fn normalize_conditional_action_target(
+    effect: &Effect,
+    first_tag: &TagKey,
+    first_filter: &ObjectFilter,
+) -> Option<Effect> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return normalize_conditional_action_target(&tagged.effect, first_tag, first_filter)
+            .map(|effect| effect.tag(tagged.tag.as_str()));
+    }
+
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut fixed = sequence.clone();
+        fixed.effects =
+            normalize_conditional_branch_target(&sequence.effects, first_tag, first_filter)?;
+        return Some(Effect::new(fixed));
+    }
+
+    if let Some(counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+        if !choose_spec_is_first_target(&counters.target, first_tag, first_filter) {
+            return None;
+        }
+        let mut fixed = counters.clone();
+        fixed.target = ChooseSpec::Tagged(first_tag.clone());
+        return Some(Effect::new(fixed));
+    }
+
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
+        let targets_first = apply
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| choose_spec_is_first_target(spec, first_tag, first_filter))
+            || matches!(
+                &apply.target,
+                crate::continuous::EffectTarget::Filter(filter)
+                    if object_filters_match_ignoring_reference_tags(filter, first_filter)
+            );
+        if !targets_first {
+            return None;
+        }
+        let mut fixed = apply.clone();
+        fixed.target_spec = Some(ChooseSpec::Tagged(first_tag.clone()));
+        return Some(Effect::new(fixed));
+    }
+
+    None
+}
+
+fn effect_outer_tag(effect: &Effect) -> Option<&TagKey> {
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| &tagged.tag)
+}
+
+fn single_effect_result_tag(effect: &Effect) -> Option<&TagKey> {
+    if let Some(tag) = effect_outer_tag(effect) {
+        return Some(tag);
+    }
+
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let mut tags = sequence.effects.iter().filter_map(single_effect_result_tag);
+    let first = tags.next()?;
+    tags.all(|tag| tag == first).then_some(first)
+}
+
+fn conditional_result_is_both_fighters(
+    conditional: &crate::effects::ConditionalEffect,
+    fight: &crate::effects::FightEffect,
+) -> bool {
+    let [effect] = conditional.if_true.as_slice() else {
+        return false;
+    };
+    let Some(tag) = single_effect_result_tag(effect) else {
+        return false;
+    };
+    choose_spec_references_tag(&fight.creature1, tag.as_str())
+        && choose_spec_references_tag(&fight.creature2, tag.as_str())
+}
+
+fn single_conditional_result_is_continuous(
+    conditional: &crate::effects::ConditionalEffect,
+) -> bool {
+    let [effect] = conditional.if_true.as_slice() else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .and_then(|tagged| {
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        })
+        .is_some()
+}
+
+fn rebind_tagged_condition(condition: &Condition, from_tag: &TagKey, to_tag: &TagKey) -> Condition {
+    match condition {
+        Condition::TaggedObjectMatches(tag, filter) if tag == from_tag => {
+            Condition::TaggedObjectMatches(to_tag.clone(), filter.clone())
+        }
+        _ => condition.clone(),
+    }
+}
+
 fn tagged_target_only(effect: &Effect) -> Option<(&TagKey, &ChooseSpec)> {
     let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
     let target_only = tagged
@@ -657,9 +958,10 @@ fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag),
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
-            choose_spec_references_tag(inner, tag)
-        }
+        ChooseSpec::SurfaceHinted { spec: inner, .. }
+        | ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => choose_spec_references_tag(inner, tag),
         _ => false,
     }
 }

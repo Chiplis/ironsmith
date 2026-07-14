@@ -1,5 +1,6 @@
 use crate::runtime_backend::effect_sentences::{
     SubjectVerbPrimitiveClause, parse_sentence_delayed_next_step_unless_pays,
+    parse_sentence_delayed_timing_suffix,
     parse_sentence_each_player_return_with_additional_counter,
     parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard,
 };
@@ -68,6 +69,107 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
         EffectAst::subject_verb_damage_equal_to_power(source_ref.clone(), first_target),
         EffectAst::subject_verb_damage_equal_to_power(source_ref.clone(), source_ref),
     ]))
+}
+
+fn parse_conjoined_must_be_blocked_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Conditional sentences own their effect payload and recursively dispatch
+    // it after the predicate has been removed. Do not treat a condition's
+    // gain/get verb as the shared subject action.
+    if token_slice_first_is(tokens, "if") {
+        return Ok(None);
+    }
+    let Some(shape) =
+        effect_grammar::clause_primitive_shapes::parse_combat_requirement_shape(tokens)
+    else {
+        return Ok(None);
+    };
+    if shape.kind != effect_grammar::clause_primitive_shapes::CombatRequirementKind::MustBeBlocked {
+        return Ok(None);
+    }
+
+    let subject_and_action = trim_edge_punctuation(shape.subject_tokens);
+    let Some(and_token_idx) = subject_and_action
+        .iter()
+        .rposition(|token| token.as_word() == Some("and"))
+    else {
+        return Ok(None);
+    };
+    if subject_and_action[and_token_idx + 1..]
+        .iter()
+        .any(|token| token.as_word().is_some())
+    {
+        return Ok(None);
+    }
+
+    let action_tokens = trim_edge_punctuation(&subject_and_action[..and_token_idx]);
+    let Some((verb, verb_word_idx)) = super::lex_chain_helpers::find_verb_lexed(&action_tokens)
+    else {
+        return Ok(None);
+    };
+    if !matches!(verb, super::Verb::Get | super::Verb::Gain) {
+        return Ok(None);
+    }
+    let action_words = TokenWordView::new(&action_tokens);
+    let Some(subject_end_token_idx) = action_words.token_boundary_for_word_or_end(verb_word_idx)
+    else {
+        return Ok(None);
+    };
+    let shared_subject_tokens = trim_edge_punctuation(&action_tokens[..subject_end_token_idx]);
+    if shared_subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let restriction_filter = if starts_with_target_indicator(&shared_subject_tokens) {
+        ObjectFilter::tagged(TagKey::from(IT_TAG))
+    } else {
+        let target = parse_target_phrase(&shared_subject_tokens)?;
+        target_ast_to_object_filter(target).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported shared subject in conjoined must-be-blocked clause (clause: '{}')",
+                render_token_slice(tokens)
+            ))
+        })?
+    };
+
+    // Parse the isolated get/gain head through the normal subject-verb route
+    // without recursively re-entering this sentence dispatcher.
+    let mut parsed_head =
+        if let Some((_, effects)) = parse_top_level_subject_verb_recognition(&action_tokens)? {
+            effects
+        } else {
+            parse_effect_sentence_inner_lexed(&action_tokens)?
+        };
+    if let Some(surface) = parse_set_quantifier_surface(&action_tokens) {
+        set_first_continuous_set_quantifier(&mut parsed_head, surface);
+    }
+    if parsed_head.is_empty() {
+        return Ok(None);
+    }
+    let mut leading_duration = false;
+    if parsed_head.len() == 1 && matches!(parsed_head.first(), Some(EffectAst::Coordinated { .. }))
+    {
+        let EffectAst::Coordinated {
+            effects,
+            leading_duration: nested_leading_duration,
+        } = parsed_head.remove(0)
+        else {
+            unreachable!("coordinated head was checked before removal")
+        };
+        parsed_head = effects;
+        leading_duration = nested_leading_duration;
+    }
+    parsed_head.push(EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_be_blocked(restriction_filter),
+        Until::EndOfTurn,
+        None,
+    ));
+
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects: parsed_head,
+        leading_duration,
+    }]))
 }
 
 pub(crate) fn lower_where_x_shape(
@@ -553,12 +655,168 @@ fn parse_it_is_aura_enchantment_sentence_lexed(
     Ok(Some(effects))
 }
 
+fn parse_set_quantifier_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::SetQuantifierSurface> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let verb = words.iter().position(|word| {
+        matches!(
+            *word,
+            "get"
+                | "gets"
+                | "gain"
+                | "gains"
+                | "lose"
+                | "loses"
+                | "have"
+                | "has"
+                | "attack"
+                | "attacks"
+                | "block"
+                | "blocks"
+                | "return"
+                | "returns"
+        )
+    })?;
+    let subject = if matches!(words[verb], "return" | "returns") {
+        let object_end = words[verb + 1..]
+            .iter()
+            .position(|word| matches!(*word, "to" | "from"))
+            .map_or(words.len(), |offset| verb + 1 + offset);
+        &words[verb + 1..object_end]
+    } else {
+        &words[..verb]
+    };
+    if subject.contains(&"all") {
+        Some(ironsmith_core::SetQuantifierSurface::All)
+    } else if subject.contains(&"each") || subject.contains(&"those") {
+        Some(ironsmith_core::SetQuantifierSurface::Each)
+    } else {
+        None
+    }
+}
+
+fn parse_return_set_reference_surface(tokens: &[OwnedLexToken]) -> Option<String> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let verb = words
+        .iter()
+        .position(|word| matches!(*word, "return" | "returns"))?;
+    let object_end = words[verb + 1..]
+        .iter()
+        .position(|word| matches!(*word, "to" | "from"))
+        .map_or(words.len(), |offset| verb + 1 + offset);
+    let object = &words[verb + 1..object_end];
+    let quantifier = object
+        .iter()
+        .position(|word| matches!(*word, "each" | "those"))?;
+    Some(object[quantifier..].join(" "))
+}
+
+fn set_first_continuous_set_quantifier(
+    effects: &mut [EffectAst],
+    surface: ironsmith_core::SetQuantifierSurface,
+) -> bool {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect {
+            let slot = match action {
+                SubjectVerbActionAst::Pump {
+                    set_quantifier_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::PumpAll {
+                    set_quantifier_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantAbilitiesAll {
+                    set_quantifier_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    set_quantifier_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::RemoveAbilitiesAll {
+                    set_quantifier_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::SetBasePowerToughness {
+                    set_quantifier_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::ReturnToHand {
+                    set_quantifier_surface,
+                    ..
+                } => Some(set_quantifier_surface),
+                _ => None,
+            };
+            if let Some(slot) = slot {
+                *slot = Some(surface);
+                return true;
+            }
+        }
+
+        let mut found = false;
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| {
+                if !found {
+                    found = set_first_continuous_set_quantifier(nested, surface);
+                }
+            },
+        );
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
+fn set_first_return_set_reference_surface(effects: &mut [EffectAst], surface: &str) -> bool {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ReturnToHand {
+                    set_reference_surface,
+                    ..
+                },
+            ..
+        }) = effect
+        {
+            *set_reference_surface = Some(surface.to_string());
+            return true;
+        }
+
+        let mut found = false;
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| {
+                if !found {
+                    found = set_first_return_set_reference_surface(nested, surface);
+                }
+            },
+        );
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+    let mut effects = stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         parse_effect_sentence_lexed_inner(tokens)
-    })
+    })?;
+    if let Some(surface) = parse_set_quantifier_surface(tokens) {
+        set_first_continuous_set_quantifier(&mut effects, surface);
+    }
+    if let Some(surface) = parse_return_set_reference_surface(tokens) {
+        set_first_return_set_reference_surface(&mut effects, &surface);
+    }
+    Ok(effects)
 }
 
 fn has_unrecognized_leading_effect_label(tokens: &[OwnedLexToken]) -> bool {
@@ -615,6 +873,55 @@ fn parse_effect_sentence_lexed_inner(
                 }
             }
         }
+    }
+
+    if let Some(schedule) =
+        effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
+        && schedule.step == effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::MainPhase
+    {
+        let effects = parse_effect_sentence_lexed_inner(schedule.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(
+                "delayed main-phase sentence missing effect payload".to_string(),
+            ));
+        }
+        let player = match schedule.player {
+            PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            PlayerAst::Target => PlayerFilter::target_player(),
+            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            _ => PlayerFilter::Any,
+        };
+        return Ok(vec![EffectAst::DelayedUntilNextMainPhase {
+            player,
+            effects,
+        }]);
+    }
+
+    if let Some(effects) =
+        parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(tokens))?
+    {
+        return Ok(effects);
+    }
+
+    if let Some(effects) =
+        super::optional_companion_fanout::parse_optional_companion_fanout_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+
+    if let Some(clauses) =
+        super::player_subject_sequences::split_quantified_opponent_then_controller_clauses(tokens)
+    {
+        let mut effects = Vec::new();
+        for clause in clauses {
+            effects.extend(parse_effect_sentence_lexed_inner(clause)?);
+        }
+        return Ok(effects);
+    }
+
+    if let Some(effects) = parse_conjoined_must_be_blocked_sentence(tokens)? {
+        return Ok(effects);
     }
 
     if let Some(effects) =
@@ -705,6 +1012,27 @@ fn parse_effect_sentence_lexed_inner(
             render_token_slice(shape.source_tokens).trim(),
             render_token_slice(shape.effect_tokens).trim()
         )));
+    }
+    if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
+    {
+        let mut count_words = vec!["for", "each"];
+        count_words.extend(crate::runtime_backend::token_word_refs(shape.filter_tokens));
+        if let Some((count, used)) =
+            crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
+            && used == count_words.len()
+            && !matches!(count.unhinted(), Value::Count(_))
+        {
+            let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "for-each scalar sentence missing effect payload".to_string(),
+                ));
+            }
+            return Ok(vec![EffectAst::RepeatEffects {
+                count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                effects,
+            }]);
+        }
     }
     if let Some(shape) =
         effect_grammar::for_each_shapes::parse_for_each_dynamic_target_effect_shape(tokens)
@@ -963,7 +1291,40 @@ fn parse_effect_sentence_with_where_x_lexed(
     }
 
     fn bind_dynamic_target_count(target: &mut TargetAst, replacement: &Value) {
+        fn bind_comparison_x(
+            comparison: &mut Option<crate::filter::Comparison>,
+            replacement: &Value,
+        ) {
+            let Some(
+                crate::filter::Comparison::EqualExpr(value)
+                | crate::filter::Comparison::NotEqualExpr(value)
+                | crate::filter::Comparison::LessThanExpr(value)
+                | crate::filter::Comparison::LessThanOrEqualExpr(value)
+                | crate::filter::Comparison::GreaterThanExpr(value)
+                | crate::filter::Comparison::GreaterThanOrEqualExpr(value),
+            ) = comparison
+            else {
+                return;
+            };
+            if matches!(value.as_ref(), Value::X) {
+                **value = replacement.clone();
+            }
+        }
+
+        fn bind_filter_x(filter: &mut crate::target::ObjectFilter, replacement: &Value) {
+            bind_comparison_x(&mut filter.power, replacement);
+            bind_comparison_x(&mut filter.toughness, replacement);
+            bind_comparison_x(&mut filter.mana_value, replacement);
+            if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+                bind_filter_x(attached_to, replacement);
+            }
+            for branch in &mut filter.any_of {
+                bind_filter_x(branch, replacement);
+            }
+        }
+
         match target {
+            TargetAst::Object(filter, _, _) => bind_filter_x(filter, replacement),
             TargetAst::WithCount(inner, count) => {
                 bind_dynamic_target_count(inner, replacement);
                 if count.is_dynamic_x() {
@@ -1008,6 +1369,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::PumpForEach { target, .. }
             | SubjectVerbActionAst::PumpByLastEffect { target, .. }
             | SubjectVerbActionAst::AddCardTypes { target, .. }
+            | SubjectVerbActionAst::SetCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
             | SubjectVerbActionAst::AddColors { target, .. }
@@ -1032,6 +1394,10 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::DealDistributedDamage { target, .. }
             | SubjectVerbActionAst::Tap { target }
             | SubjectVerbActionAst::Untap { target } => {
+                bind_dynamic_target_count(target, replacement)
+            }
+            SubjectVerbActionAst::Destroy { target, .. }
+            | SubjectVerbActionAst::PutCounters { target, .. } => {
                 bind_dynamic_target_count(target, replacement)
             }
             SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
@@ -1078,11 +1444,15 @@ fn parse_effect_sentence_with_where_x_lexed(
     let Some(where_shape) = sentence_shapes::parse_where_x_sentence_tokens(tokens) else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
+    let turn_history_where = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+        where_shape.where_tokens,
+    );
     let full_where_is_count_value = !where_shape.comma_tail_has_effect_clause
-        && crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
-            where_shape.where_tokens,
-        )
-        .is_some();
+        && (turn_history_where.is_some()
+            || crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
+                where_shape.where_tokens,
+            )
+            .is_some());
     let layout = where_shape.layout(full_where_is_count_value);
     let primary_where_tokens = layout.primary_where_tokens;
     let trailing_after_where = layout.trailing_after_where;
@@ -1102,14 +1472,21 @@ fn parse_effect_sentence_with_where_x_lexed(
     // binding that is followed by another effect clause. The follow-up is
     // dispatched independently; it must not cause the primary clause's
     // contextual `its` value to be promoted to a new target choice.
-    let typed_where_references_target =
-        where_shape.stripped_references_target && !where_shape.comma_tail_has_effect_clause;
-    let typed_where_value = sentence_shapes::parse_where_x_value_shape_tokens(
-        primary_where_tokens,
-        typed_where_references_target,
-    )
-    .and_then(lower_where_x_shape);
-    let where_value = if let Some((prelude, value)) = typed_where_value {
+    let typed_where_references_target = where_shape.stripped_references_target
+        && !where_shape.comma_tail_has_effect_clause
+        && !sentence_shapes::starts_with_source_deals_x_tokens(&stripped);
+    let typed_where_value = if turn_history_where.is_none() {
+        sentence_shapes::parse_where_x_value_shape_tokens(
+            primary_where_tokens,
+            typed_where_references_target,
+        )
+        .and_then(lower_where_x_shape)
+    } else {
+        None
+    };
+    let where_value = if let Some(value) = turn_history_where {
+        value
+    } else if let Some((prelude, value)) = typed_where_value {
         if let Some(prelude) = prelude {
             prelude_effects.push(prelude);
         }
@@ -1160,8 +1537,12 @@ fn parse_effect_sentence_with_where_x_lexed(
                 ))
             })?
         }
-    }
-    .with_surface_hint(ValueSurfaceHint::WhereXIs);
+    };
+    let where_value =
+        crate::runtime_backend::effect_sentences::dispatch_entry::with_where_x_surface_hints(
+            where_value,
+            primary_where_tokens,
+        );
 
     let search_like = where_shape.stripped_starts_search;
     let mut effects = if search_like && !trailing_after_where.is_empty() {

@@ -78,7 +78,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 pub use ironsmith_core::{
     ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, GraveyardCountMetric,
-    PregameActionKind, PregameBeginOnBattlefieldSpec,
+    PregameActionKind, PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec,
 };
 
 /// Extra condition for "Cast this spell only ..." restrictions.
@@ -291,9 +291,21 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Examples: "Flying", "Protection from red", "Creatures you control get +1/+1"
     fn display(&self) -> String;
 
+    /// Whether compiled Oracle text should use the card's authored name as
+    /// this ability's subject instead of the generic "this permanent" form.
+    fn prefers_card_name_subject(&self) -> bool {
+        false
+    }
+
     /// Clone this ability while attaching a static condition, when the concrete
     /// ability kind supports native conditional evaluation.
     fn with_static_condition(&self, _condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        None
+    }
+
+    /// Presentation metadata for a static ability whose Oracle line used an
+    /// ability-word label to express an otherwise ordinary runtime condition.
+    fn labeled_static_condition(&self) -> Option<(String, StaticAbility, crate::ConditionExpr)> {
         None
     }
 
@@ -348,6 +360,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     }
 
     fn skips_upkeep_for_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _player: PlayerId,
+    ) -> bool {
+        false
+    }
+
+    fn skips_draw_step_for_player(
         &self,
         _game: &GameState,
         _source: ObjectId,
@@ -689,6 +711,18 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns the typed rule restriction, its source display, and any runtime
+    /// condition when this is a generic rule-restriction ability.
+    fn rule_restriction_parts(
+        &self,
+    ) -> Option<(
+        &crate::effect::Restriction,
+        &str,
+        Option<&crate::ConditionExpr>,
+    )> {
+        None
+    }
+
     /// Returns true if this grants indestructible.
     fn has_indestructible(&self) -> bool {
         false
@@ -963,6 +997,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Return the typed consequence program for a pregame action, if any.
+    fn pregame_action_effects(&self) -> Option<&[crate::effect::Effect]> {
+        None
+    }
+
     /// Return a draw-reveal descriptor, if this ability reveals one of the cards you draw.
     fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         None
@@ -1229,6 +1268,16 @@ impl StaticAbility {
         self.0.granted_inline_ability()
     }
 
+    pub fn rule_restriction_parts(
+        &self,
+    ) -> Option<(
+        &crate::effect::Restriction,
+        &str,
+        Option<&crate::ConditionExpr>,
+    )> {
+        self.0.rule_restriction_parts()
+    }
+
     pub fn conditional_spell_keyword_spec(&self) -> Option<ConditionalSpellKeywordSpec> {
         self.0.conditional_spell_keyword_spec()
     }
@@ -1257,6 +1306,10 @@ impl StaticAbility {
         self.0.pregame_action_kind()
     }
 
+    pub fn pregame_action_effects(&self) -> Option<&[crate::effect::Effect]> {
+        self.0.pregame_action_effects()
+    }
+
     pub fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         self.0.reveal_drawn_card_spec()
     }
@@ -1274,6 +1327,10 @@ impl StaticAbility {
     /// Get the display text for this ability.
     pub fn display(&self) -> String {
         self.0.display()
+    }
+
+    pub fn prefers_card_name_subject(&self) -> bool {
+        self.0.prefers_card_name_subject()
     }
 
     pub fn with_condition(&self, condition: crate::ConditionExpr) -> Option<Self> {
@@ -1311,6 +1368,17 @@ impl StaticAbility {
             .skips_upkeep_for_player(game, source, controller, player)
     }
 
+    pub fn skips_draw_step_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.0
+            .skips_draw_step_for_player(game, source, controller, player)
+    }
+
     /// Generate a replacement effect for this ability.
     pub fn generate_replacement_effect(
         &self,
@@ -1326,6 +1394,12 @@ impl StaticAbility {
 
     pub fn is_keyword(&self) -> bool {
         self.0.is_keyword()
+    }
+
+    pub fn labeled_static_condition(
+        &self,
+    ) -> Option<(String, StaticAbility, crate::ConditionExpr)> {
+        self.0.labeled_static_condition()
     }
 
     pub fn grants_evasion(&self) -> bool {
@@ -1826,6 +1900,10 @@ impl StaticAbility {
         Self::new(Changeling)
     }
 
+    pub fn living_metal() -> Self {
+        Self::new(LivingMetal)
+    }
+
     pub fn partner() -> Self {
         Self::new(Partner)
     }
@@ -1848,6 +1926,10 @@ impl StaticAbility {
 
     pub fn assist() -> Self {
         Self::new(Assist)
+    }
+
+    pub fn ascend() -> Self {
+        Self::new(Ascend)
     }
 
     pub fn split_second() -> Self {
@@ -2854,6 +2936,10 @@ impl StaticAbility {
         Self::new(NoteLifeTotalAsEnters::new(display))
     }
 
+    pub fn discard_hand_as_enters(display: String) -> Self {
+        Self::new(DiscardHandAsEnters::new(display))
+    }
+
     pub fn reveal_from_hand_as_enters(
         filter: crate::target::ObjectFilter,
         count: crate::ChoiceCount,
@@ -2967,6 +3053,10 @@ impl StaticAbility {
 
     pub fn players_skip_upkeep_for(player: crate::target::PlayerFilter) -> Self {
         Self::new(PlayersSkipUpkeep::new(player))
+    }
+
+    pub fn player_skips_draw_step(player: crate::target::PlayerFilter) -> Self {
+        Self::new(PlayerSkipsDrawStep::new(player))
     }
 
     pub fn starting_life_bonus(amount: i32) -> Self {
@@ -3399,6 +3489,10 @@ impl StaticAbility {
         Self::new(RuleRestriction::new(restriction, display))
     }
 
+    pub fn restrictions(restrictions: Vec<crate::effect::Restriction>, display: String) -> Self {
+        Self::new(RuleRestriction::new_many(restrictions, display))
+    }
+
     pub fn untap_during_each_other_players_untap_step(
         filter: crate::target::ObjectFilter,
         display: String,
@@ -3519,6 +3613,14 @@ impl StaticAbility {
 
     pub fn pregame_action(kind: PregameActionKind, text: impl Into<String>) -> Self {
         Self::new(PregameAction::new(kind, text))
+    }
+
+    pub fn pregame_action_with_effects(
+        kind: PregameActionKind,
+        text: impl Into<String>,
+        effects: Vec<crate::effect::Effect>,
+    ) -> Self {
+        Self::new(PregameAction::with_effects(kind, text, effects))
     }
 
     pub fn cant_be_countered_ability() -> Self {

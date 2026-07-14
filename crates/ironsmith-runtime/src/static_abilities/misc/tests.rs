@@ -1758,3 +1758,203 @@ fn test_umbra_armor_replaces_lethal_damage_state_based_destruction() {
         "umbra armor aura should be in the graveyard after replacing lethal damage"
     );
 }
+
+fn creatures_you_control_filter() -> ObjectFilter {
+    let mut filter = ObjectFilter::creature();
+    filter.controller = Some(PlayerFilter::You);
+    filter
+}
+
+#[test]
+fn filtered_enters_counters_render_for_each_land_entered_this_turn() {
+    let mut lands = ObjectFilter::land();
+    lands.controller = Some(PlayerFilter::You);
+    let count =
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::EnteredBattlefield(lands))
+            .with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EnterWithCountersForFilter::new(
+        creatures_you_control_filter(),
+        CounterType::PlusOnePlusOne,
+        count,
+    );
+
+    assert_eq!(
+        ability.display(),
+        "Each creature you control enters with an additional +1/+1 counter on it for each land that entered the battlefield under your control this turn"
+    );
+}
+
+#[test]
+fn filtered_enters_counters_keep_each_other_subject_and_lost_life_basis() {
+    let mut subject = creatures_you_control_filter();
+    subject.other = true;
+    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersLostLife(
+        PlayerFilter::Opponent,
+    ))
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count);
+
+    assert_eq!(
+        ability.display(),
+        "Other creatures you control enter with an additional +1/+1 counter on them for each opponent who lost life this turn"
+    );
+}
+
+#[test]
+fn filtered_enters_counters_render_mana_source_provenance_basis() {
+    let coin_count = Value::ManaFromSourceSpentToCastThisSpell {
+        source_filter: ObjectFilter::artifact(),
+        include_source_noun: true,
+    }
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let coin = EnterWithCountersForFilter::new(
+        creatures_you_control_filter(),
+        CounterType::PlusOnePlusOne,
+        coin_count,
+    );
+    assert_eq!(
+        coin.display(),
+        "Each creature you control enters with an additional +1/+1 counter on it for each mana from an artifact source spent to cast it"
+    );
+
+    let mut other_creatures = creatures_you_control_filter();
+    other_creatures.other = true;
+    let kalain_count = Value::ManaFromSourceSpentToCastThisSpell {
+        source_filter: ObjectFilter::artifact().with_subtype(Subtype::Treasure),
+        include_source_noun: false,
+    }
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let kalain =
+        EnterWithCountersForFilter::new(other_creatures, CounterType::PlusOnePlusOne, kalain_count);
+    assert_eq!(
+        kalain.display(),
+        "Other creatures you control enter with an additional +1/+1 counter on them for each mana from a Treasure spent to cast them"
+    );
+}
+
+#[test]
+fn filtered_enters_counters_count_matching_mana_source_snapshots_on_entering_spell() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let count = Value::ManaFromSourceSpentToCastThisSpell {
+        source_filter: ObjectFilter::artifact(),
+        include_source_noun: true,
+    }
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let coin = CardDefinitionBuilder::new(CardId::from_raw(6200), "Coin")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            EnterWithCountersForFilter::new(
+                creatures_you_control_filter(),
+                CounterType::PlusOnePlusOne,
+                count,
+            ),
+        )))
+        .build();
+    game.create_object_from_definition(&coin, alice, Zone::Battlefield);
+
+    let artifact = CardDefinitionBuilder::new(CardId::from_raw(6201), "Mana Rock")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
+    let artifact_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(artifact_id)
+            .expect("artifact source should exist"),
+        &game,
+    );
+    let land = CardDefinitionBuilder::new(CardId::from_raw(6202), "Mana Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+    let land_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(land_id).expect("land source should exist"),
+        &game,
+    );
+
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(6203), "Coin Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(2)))
+        .build();
+    let creature_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+    game.object_mut(creature_id)
+        .expect("creature spell should exist")
+        .cast_tagged_objects
+        .insert(
+            crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG),
+            vec![artifact_snapshot.clone(), artifact_snapshot, land_snapshot],
+        );
+
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(
+            creature_id,
+            Zone::Battlefield,
+            &mut decision_maker,
+        )
+        .expect("creature should enter");
+    assert_eq!(
+        game.object(result.new_id)
+            .expect("creature should be on the battlefield")
+            .counters
+            .get(&CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(2),
+        "only the two artifact-produced mana units should add counters"
+    );
+}
+
+#[test]
+fn filtered_enters_counters_pluralize_nontoken_subject_and_died_basis() {
+    let mut subject = creatures_you_control_filter();
+    subject.nontoken = true;
+    let mut creatures = ObjectFilter::creature();
+    creatures.controller = Some(PlayerFilter::You);
+    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(creatures))
+        .with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count);
+
+    assert_eq!(
+        ability.display(),
+        "Nontoken creatures you control enter with an additional +1/+1 counter on them for each creature that died under your control this turn"
+    );
+}
+
+#[test]
+fn filtered_enters_counters_scale_repeated_turn_history_basis() {
+    let history = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersLostLife(
+        PlayerFilter::Opponent,
+    ));
+    let count = Value::Add(Box::new(history.clone()), Box::new(history))
+        .with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EnterWithCountersForFilter::new(
+        creatures_you_control_filter(),
+        CounterType::PlusOnePlusOne,
+        count,
+    );
+
+    assert_eq!(
+        ability.display(),
+        "Each creature you control enters with two additional +1/+1 counters on it for each opponent who lost life this turn"
+    );
+}
+
+#[test]
+fn enters_counters_render_for_each_other_spell_cast_this_turn() {
+    let mut spells = ObjectFilter::default();
+    spells.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast {
+        player: PlayerFilter::Any,
+        filter: spells,
+        from_zone: None,
+        from_outside_hand: false,
+        exclude_source: true,
+        before_triggering_spell: false,
+    })
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EntersWithCounters::new(CounterType::PlusOnePlusOne, count);
+
+    assert_eq!(
+        ability.display(),
+        "Enters the battlefield with a +1/+1 counter on it for each other spell cast this turn"
+    );
+}

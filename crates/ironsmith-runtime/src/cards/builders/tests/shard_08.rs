@@ -261,6 +261,27 @@ pub(super) fn parse_put_target_creature_on_top_of_owner_library() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_controlled_creature_to_owner_library_does_not_infer_your_destination() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Nulltread Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, put a creature you control on top of its owner's library.",
+        )
+        .expect("owner-library placement should parse");
+    let joined = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{def:#?}");
+    assert!(
+        joined.contains("put a creature you control on top of its owner's library"),
+        "expected owner-library destination wording, got {joined}"
+    );
+    assert!(
+        debug.contains("destination_player_surface: None"),
+        "target-side 'you control' must not become a destination player: {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_draw_then_put_source_on_top_of_library() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sensei Top Variant")
         .card_types(vec![CardType::Artifact])
@@ -536,13 +557,15 @@ pub(super) fn parse_triggered_put_into_graveyard_from_anywhere() {
     let joined = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
+    let debug = format!("{def:#?}");
     assert!(
         joined.contains("is put into a graveyard from anywhere")
-            && (joined.contains("shuffle it into its owner's library")
-                || joined.contains("shuffle it into your library")
-                || (joined.contains("put it on the bottom of its owner's library")
-                    && joined.contains("shuffle your library"))),
+            && joined.contains("shuffle it into its owner's library"),
         "expected graveyard-from-anywhere trigger wording, got {joined}"
+    );
+    assert!(
+        debug.contains("owner_library_destination: true") && debug.contains("player: OwnerOf("),
+        "expected structural owner-library relation, got {debug}"
     );
 }
 
@@ -3261,6 +3284,50 @@ pub(super) fn moira_and_teshar_regression_keeps_leave_battlefield_instead_marker
     assert!(
         rendered.contains("if it would leave the battlefield, exile it instead"),
         "expected leave-battlefield replacement text to keep 'instead', got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn isareth_lowers_returned_creature_leave_replacement_to_persistent_engine_effect() {
+    let def = parse_oracle_card_definition("Isareth the Awakener");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Isareth should have an attack trigger");
+    let reflexive = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>())
+        .expect("Isareth's when-you-do clause should lower as a reflexive trigger");
+    let replacement = reflexive
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>())
+        .expect("the leave-battlefield replacement must resolve inside the reflexive trigger");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(replacement.from_zone, Some(Zone::Battlefield));
+    assert_eq!(replacement.to_zone, None);
+    assert_eq!(replacement.replacement_zone, Zone::Exile);
+    assert_eq!(
+        replacement.mode,
+        crate::effects::ReplacementApplyMode::Resolution
+    );
+    assert!(
+        matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag.as_str().starts_with("moved_")),
+        "expected Isareth's persistent replacement to follow the object returned inside the reflexive trigger, got {:?}",
+        replacement.target
+    );
+    assert!(
+        rendered
+            .to_ascii_lowercase()
+            .contains("would leave the battlefield, exile it instead of putting it anywhere else"),
+        "expected Isareth's leave-battlefield replacement to render from the engine effect, got {rendered}"
     );
 }
 

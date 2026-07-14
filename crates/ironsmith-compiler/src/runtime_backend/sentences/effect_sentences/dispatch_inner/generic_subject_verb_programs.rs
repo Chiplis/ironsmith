@@ -71,7 +71,7 @@ impl GenericChoiceComplementProgram {
             effects.push(EffectAst::ChooseObjectsWithAggregateConstraint {
                 filter: self.base_filter.clone().not_tagged(self.keep_tag.clone()),
                 count: self.keep_count,
-                player: PlayerAst::Implicit,
+                player: PlayerAst::That,
                 tag: self.keep_tag.clone(),
                 constraint,
             });
@@ -83,13 +83,13 @@ impl GenericChoiceComplementProgram {
                     filter,
                     count: self.keep_count,
                     count_value: None,
-                    player: PlayerAst::Implicit,
+                    player: PlayerAst::That,
                     tag: self.keep_tag.clone(),
                 });
             }
         }
         effects.push(EffectAst::subject_verb_sacrifice_all(
-            PlayerAst::Implicit,
+            PlayerAst::That,
             self.base_filter.not_tagged(self.keep_tag),
         ));
         match self.chooser_scope {
@@ -3263,7 +3263,7 @@ mod generic_subject_verb_program_tests {
             "{debug}"
         );
         assert!(
-            debug.contains("Power") && debug.contains("maximum: 4"),
+            debug.contains("Power") && debug.contains("maximum: Fixed(\n                    4"),
             "{debug}"
         );
         assert!(debug.contains("SacrificeAll"), "{debug}");

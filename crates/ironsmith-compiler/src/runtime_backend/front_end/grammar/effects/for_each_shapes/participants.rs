@@ -21,6 +21,10 @@ pub(crate) enum ForEachParticipantScope {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ForEachParticipantClauseShape<'a> {
     pub(crate) scope: ForEachParticipantScope,
+    /// `Each player/opponent <verbs>` names the iterated participant as the
+    /// actor. `For each player/opponent, <imperative>` keeps the ability's
+    /// controller as the implicit actor.
+    pub(crate) participant_is_actor: bool,
     pub(crate) inner_tokens: &'a [OwnedLexToken],
 }
 
@@ -166,6 +170,8 @@ pub(crate) fn parse_participant_clause_shape(
     let tokens = primitives::parse_prefix(tokens, opt(primitives::kw("then")).void())
         .map(|(_, rest)| trim(rest))
         .unwrap_or(tokens);
+    let participant_is_actor =
+        primitives::parse_prefix(tokens, primitives::kw("each").void()).is_some();
     if let Some((_, rest)) = primitives::parse_prefix(tokens, opponent_prefix) {
         let mut scope = ForEachParticipantScope::Opponent;
         let mut inner_tokens = trim(rest);
@@ -178,6 +184,7 @@ pub(crate) fn parse_participant_clause_shape(
         }
         return Some(ForEachParticipantClauseShape {
             scope,
+            participant_is_actor,
             inner_tokens,
         });
     }
@@ -192,6 +199,7 @@ pub(crate) fn parse_participant_clause_shape(
     }
     Some(ForEachParticipantClauseShape {
         scope,
+        participant_is_actor,
         inner_tokens,
     })
 }
@@ -459,6 +467,7 @@ mod tests {
         )
         .unwrap();
         let outer = parse_participant_clause_shape(&clause).unwrap();
+        assert!(!outer.participant_is_actor);
         assert_eq!(
             outer.scope,
             ForEachParticipantScope::OpponentExceptDefending
@@ -471,6 +480,23 @@ mod tests {
         assert_eq!(
             TokenWordView::new(effect_tokens).to_word_refs(),
             vec!["draw", "a", "card"]
+        );
+    }
+
+    #[test]
+    fn distinguishes_participant_subjects_from_controller_imperatives() {
+        let subject = lex_line("Each opponent chooses a creature", 0).unwrap();
+        let imperative = lex_line("For each opponent, choose a creature", 0).unwrap();
+
+        assert!(
+            parse_participant_clause_shape(&subject)
+                .unwrap()
+                .participant_is_actor
+        );
+        assert!(
+            !parse_participant_clause_shape(&imperative)
+                .unwrap()
+                .participant_is_actor
         );
     }
 

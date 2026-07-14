@@ -1,5 +1,15 @@
 use super::*;
 
+fn choose_spec_may_hold_multiple_objects(spec: &ChooseSpec) -> bool {
+    match spec.unhinted() {
+        ChooseSpec::WithCount(_, count) | ChooseSpec::WithCountValue(_, count, _) => {
+            count.max != Some(1)
+        }
+        ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
+        _ => false,
+    }
+}
+
 pub(super) fn compile_subject_verb_middle(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -51,13 +61,20 @@ pub(super) fn compile_subject_verb_middle(
         }
         SubjectVerbActionAst::CopySpell {
             target,
+            all_matches,
             count,
             player,
             may_choose_new_targets,
+            choose_new_target_singular,
             removed_supertypes,
         } => {
-            let (spec, choices) =
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *all_matches
+                && let ChooseSpec::Object(filter) = &spec
+            {
+                spec = ChooseSpec::All(filter.clone());
+            }
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             if !matches!(*player, PlayerAst::Implicit) {
@@ -78,10 +95,16 @@ pub(super) fn compile_subject_verb_middle(
             )
             .tag(COPIED_STACK_OBJECT_TAG);
             let retarget_effect = if *may_choose_new_targets {
-                Some(Effect::may_choose_new_targets_player(
+                let retarget = crate::effects::ChooseNewTargetsEffect::may_for_player(
                     id,
                     player_filter.clone(),
-                ))
+                );
+                let retarget = if *choose_new_target_singular {
+                    retarget.with_single_target_surface()
+                } else {
+                    retarget
+                };
+                Some(Effect::new(retarget))
             } else {
                 None
             };
@@ -162,8 +185,6 @@ pub(super) fn compile_subject_verb_middle(
             order,
             player,
         } => {
-            let subject = LoweredSubject::resolve_library_owner(*player, ctx, true, true, true)?;
-            let player_filter = subject.clone_player_filter();
             let current_refs = current_reference_env(ctx);
             let (resolved_tag, inferred_keep_tagged) = if tag.as_str() == IT_TAG
                 && let Some(revealed_tag) = ctx.last_revealed_tag.clone()
@@ -192,6 +213,20 @@ pub(super) fn compile_subject_verb_middle(
                 .map(|tag| resolve_it_tag_key(tag, &current_refs))
                 .transpose()?
                 .or(inferred_keep_tagged);
+            // A chooser can intervene between a player's reveal/look and
+            // "that player puts the rest ...". Resolve the disposition's
+            // library owner from the tagged revealed collection instead of
+            // letting that intervening chooser replace the antecedent.
+            let subject = if *player == PlayerAst::That
+                && ctx.last_revealed_tag.as_deref() == Some(resolved_tag.as_str())
+                && let Some(revealed_player) = ctx.last_revealed_player_filter.clone()
+            {
+                LoweredSubject::from_resolved(as_followup_player_alias(revealed_player), Vec::new())
+                    .as_role(SubjectRole::LibraryOwner)
+            } else {
+                LoweredSubject::resolve_library_owner(*player, ctx, true, true, true)?
+            };
+            let player_filter = subject.clone_player_filter();
             let resolved_order = match order {
                 crate::cards::builders::LibraryBottomOrderAst::Random => {
                     crate::effects::consult_helpers::LibraryBottomOrder::Random
@@ -361,6 +396,7 @@ pub(super) fn compile_subject_verb_middle(
             player,
             allow_land,
             allow_any_color_for_cast,
+            until_next_end_step,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -383,7 +419,11 @@ pub(super) fn compile_subject_verb_middle(
             let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter,
-                crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
+                if *until_next_end_step {
+                    crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
+                } else {
+                    crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+                },
                 *allow_land,
                 *allow_any_color_for_cast,
             );
@@ -514,6 +554,7 @@ pub(super) fn compile_subject_verb_middle(
             controller,
             count_value,
             as_aura,
+            top_only,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -535,12 +576,16 @@ pub(super) fn compile_subject_verb_middle(
                     {
                         let tag = ctx.next_tag("chosen_return");
                         ctx.last_object_tag = Some(tag.clone());
-                        effects.push(Effect::choose_objects(
+                        let mut choose = crate::effects::ChooseObjectsEffect::new(
                             filter.clone(),
                             1usize,
                             implicit_chooser.clone(),
                             tag.clone(),
-                        ));
+                        );
+                        if *top_only {
+                            choose = choose.top_only();
+                        }
+                        effects.push(Effect::new(choose));
                         ChooseSpec::tagged(tag)
                     }
                     ChooseSpec::WithCount(inner, count)
@@ -552,14 +597,17 @@ pub(super) fn compile_subject_verb_middle(
                         };
                         let tag = ctx.next_tag("chosen_return");
                         ctx.last_object_tag = Some(tag.clone());
+                        let mut choose = crate::effects::ChooseObjectsEffect::new(
+                            filter.clone(),
+                            *count,
+                            implicit_chooser.clone(),
+                            tag.clone(),
+                        );
+                        if *top_only {
+                            choose = choose.top_only();
+                        }
                         effects.push(Effect::new(
-                            crate::effects::ChooseObjectsEffect::new(
-                                filter.clone(),
-                                *count,
-                                implicit_chooser.clone(),
-                                tag.clone(),
-                            )
-                            .with_count_value_opt(count_value.clone()),
+                            choose.with_count_value_opt(count_value.clone()),
                         ));
                         ChooseSpec::tagged(tag)
                     }
@@ -580,80 +628,69 @@ pub(super) fn compile_subject_verb_middle(
             };
 
             let mut aura_grant_effects = Vec::new();
-            let mut effect = tag_object_target_effect(
-                if use_move_to_zone {
-                    let move_back = crate::effects::MoveToZoneEffect::new(
-                        resolved_spec.clone(),
-                        Zone::Battlefield,
-                        false,
-                    );
-                    let move_back = if *tapped {
-                        move_back.tapped()
-                    } else {
-                        move_back
-                    };
-                    let move_back = match controller {
-                        ReturnControllerAst::Preserve => move_back,
-                        ReturnControllerAst::Owner => move_back.under_owner_control(),
-                        ReturnControllerAst::You => move_back.under_you_control(),
-                    };
-                    Effect::new(move_back)
+            let mut effect = if use_move_to_zone {
+                let move_back = crate::effects::MoveToZoneEffect::new(
+                    resolved_spec.clone(),
+                    Zone::Battlefield,
+                    false,
+                );
+                let move_back = if *tapped {
+                    move_back.tapped()
                 } else {
-                    let mut effect = Effect::return_from_graveyard_to_battlefield(
-                        resolved_spec.clone(),
-                        *tapped,
-                    );
-                    if let Some(as_aura) = as_aura {
-                        let mut attachment_filter = as_aura.attachment_filter.clone();
-                        if !as_aura.granted_abilities.is_empty() {
-                            let attachment_tag = TagKey::from("enchanted");
-                            effects.push(Effect::choose_objects(
-                                as_aura.attachment_filter.clone(),
-                                1usize,
-                                PlayerFilter::You,
-                                attachment_tag.clone(),
+                    move_back
+                };
+                let move_back = match controller {
+                    ReturnControllerAst::Preserve => move_back,
+                    ReturnControllerAst::Owner => move_back.under_owner_control(),
+                    ReturnControllerAst::You => move_back.under_you_control(),
+                };
+                Effect::new(move_back)
+            } else {
+                let mut effect =
+                    Effect::return_from_graveyard_to_battlefield(resolved_spec.clone(), *tapped);
+                if let Some(as_aura) = as_aura {
+                    let mut attachment_filter = as_aura.attachment_filter.clone();
+                    if !as_aura.granted_abilities.is_empty() {
+                        let attachment_tag = TagKey::from("enchanted");
+                        effects.push(Effect::choose_objects(
+                            as_aura.attachment_filter.clone(),
+                            1usize,
+                            PlayerFilter::You,
+                            attachment_tag.clone(),
+                        ));
+                        attachment_filter = ObjectFilter::tagged(attachment_tag.clone());
+                        let grant_target_filter = as_aura.attachment_filter.clone().match_tagged(
+                            attachment_tag.clone(),
+                            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                        );
+                        for modification in
+                            lower_granted_ability_grant_modifications(&as_aura.granted_abilities)?
+                        {
+                            aura_grant_effects.push(Effect::new(
+                                crate::effects::ApplyContinuousEffect::with_spec(
+                                    ChooseSpec::Object(grant_target_filter.clone()),
+                                    modification,
+                                    Until::Forever,
+                                ),
                             ));
-                            attachment_filter = ObjectFilter::tagged(attachment_tag.clone());
-                            let grant_target_filter =
-                                as_aura.attachment_filter.clone().match_tagged(
-                                    attachment_tag.clone(),
-                                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-                                );
-                            for modification in lower_granted_ability_grant_modifications(
-                                &as_aura.granted_abilities,
-                            )? {
-                                aura_grant_effects.push(Effect::new(
-                                    crate::effects::ApplyContinuousEffect::with_spec(
-                                        ChooseSpec::Object(grant_target_filter.clone()),
-                                        modification,
-                                        Until::Forever,
-                                    ),
-                                ));
-                            }
                         }
-                        let mut return_effect =
-                            crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
-                                resolved_spec.clone(),
-                                *tapped,
-                            )
-                            .as_aura(attachment_filter.clone());
-                        if as_aura.remove_all_abilities {
-                            return_effect =
-                                return_effect.as_aura_removing_all_abilities(attachment_filter);
-                        }
-                        effect = Effect::new(return_effect);
                     }
-                    effect
-                },
-                &resolved_spec,
-                ctx,
-                "returned",
-            );
-            if ctx.auto_tag_object_targets
-                && !resolved_spec.is_target()
-                && choose_spec_targets_object(&resolved_spec)
-            {
-                let tag = ctx.next_tag("returned");
+                    let mut return_effect =
+                        crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+                            resolved_spec.clone(),
+                            *tapped,
+                        )
+                        .as_aura(attachment_filter.clone());
+                    if as_aura.remove_all_abilities {
+                        return_effect =
+                            return_effect.as_aura_removing_all_abilities(attachment_filter);
+                    }
+                    effect = Effect::new(return_effect);
+                }
+                effect
+            };
+            if ctx.auto_tag_object_targets && choose_spec_targets_object(&resolved_spec) {
+                let tag = reserved_or_next_object_tag(ctx, "returned");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }
@@ -682,11 +719,13 @@ pub(super) fn compile_subject_verb_middle(
             tapped,
             face_down,
             controller,
+            verb_surface,
         } => {
             let return_all = crate::effects::ReturnAllToBattlefieldEffect::new(
                 resolve_it_tag(filter, &current_reference_env(ctx))?,
                 *tapped,
-            );
+            )
+            .with_verb_surface(*verb_surface);
             let return_all = if *face_down {
                 return_all.face_down()
             } else {
@@ -710,6 +749,13 @@ pub(super) fn compile_subject_verb_middle(
             target,
             zone,
             to_top,
+            library_order,
+            library_order_chooser,
+            verb_surface,
+            target_plural_surface,
+            destination_player_surface,
+            destination_player_reference_surface,
+            exiled_with_source_surface,
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
@@ -720,6 +766,48 @@ pub(super) fn compile_subject_verb_middle(
         } => {
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let resolved_library_order = match library_order {
+                None => None,
+                Some(crate::cards::builders::LibraryBottomOrderAst::Random) => {
+                    Some(crate::effects::LibraryPlacementOrder::Random)
+                }
+                Some(crate::cards::builders::LibraryBottomOrderAst::ChooserChooses) => {
+                    Some(crate::effects::LibraryPlacementOrder::ChosenBy(
+                        resolve_non_target_player_filter(
+                            *library_order_chooser,
+                            &current_reference_env(ctx),
+                        )?,
+                    ))
+                }
+            };
+            let actor_surface = if matches!(player, PlayerAst::Implicit) {
+                None
+            } else if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+                None
+            } else {
+                Some(resolve_non_target_player_filter(
+                    player,
+                    &current_reference_env(ctx),
+                )?)
+            };
+            let with_move_surfaces = |move_effect: crate::effects::MoveToZoneEffect| {
+                let move_effect = if let Some(order) = resolved_library_order.clone() {
+                    move_effect.with_library_order(order)
+                } else {
+                    move_effect
+                };
+                let move_effect = move_effect.with_verb_surface(*verb_surface);
+                let move_effect = if *target_plural_surface {
+                    move_effect.with_target_plural_surface()
+                } else {
+                    move_effect
+                };
+                if let Some(actor) = actor_surface.clone() {
+                    move_effect.with_actor_surface(actor)
+                } else {
+                    move_effect
+                }
+            };
             if *all && let ChooseSpec::Object(filter) = spec {
                 spec = ChooseSpec::All(filter);
             }
@@ -773,8 +861,11 @@ pub(super) fn compile_subject_verb_middle(
                     .replace_tagged_objects(),
                 );
                 let spec = ChooseSpec::tagged(chosen_tag);
-                let move_effect =
-                    crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
+                let move_effect = with_move_surfaces(crate::effects::MoveToZoneEffect::new(
+                    spec.clone(),
+                    *zone,
+                    *to_top,
+                ));
                 let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
                     move_effect.tapped()
                 } else {
@@ -830,8 +921,11 @@ pub(super) fn compile_subject_verb_middle(
                     })
                 });
                 let Some(remainder_tag) = remainder_tag else {
-                    let move_effect =
-                        crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
+                    let move_effect = with_move_surfaces(crate::effects::MoveToZoneEffect::new(
+                        spec.clone(),
+                        *zone,
+                        *to_top,
+                    ));
                     let move_effect = match battlefield_controller {
                         ReturnControllerAst::Preserve => move_effect,
                         ReturnControllerAst::Owner => move_effect.under_owner_control(),
@@ -885,7 +979,29 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 };
             }
-            let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
+            let move_effect = with_move_surfaces(crate::effects::MoveToZoneEffect::new(
+                spec.clone(),
+                *zone,
+                *to_top,
+            ));
+            let move_effect = if let Some(surface) = exiled_with_source_surface {
+                move_effect.with_exiled_with_source_surface(surface.clone())
+            } else {
+                move_effect
+            };
+            let move_effect = if let Some(destination_player) = destination_player_surface {
+                move_effect.with_destination_player_surface(resolve_non_target_player_filter(
+                    *destination_player,
+                    &current_reference_env(ctx),
+                )?)
+            } else {
+                move_effect
+            };
+            let move_effect = if let Some(surface) = destination_player_reference_surface {
+                move_effect.with_destination_player_reference_surface(*surface)
+            } else {
+                move_effect
+            };
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
                 move_effect.tapped()
             } else {
@@ -918,13 +1034,23 @@ pub(super) fn compile_subject_verb_middle(
             };
             let mut effect = Effect::new(move_effect);
             let mut moved_tag: Option<String> = None;
-            let should_tag = choose_spec_targets_object(&spec)
+            let moves_all_objects = matches!(spec.base(), ChooseSpec::All(_));
+            let should_tag = (choose_spec_targets_object(&spec) || moves_all_objects)
                 && (ctx.auto_tag_object_targets || attached_to.is_some());
             if should_tag {
                 let tag = reserved_or_next_object_tag(ctx, "moved");
                 moved_tag = Some(tag.clone());
                 ctx.last_object_tag = Some(tag.clone());
-                effect = effect.tag(tag);
+                if *zone == Zone::Exile {
+                    ctx.last_exiled_collection_tag = Some(tag.clone());
+                    ctx.last_exiled_collection_is_plural =
+                        choose_spec_may_hold_multiple_objects(&spec);
+                }
+                effect = if moves_all_objects {
+                    effect.tag_all(tag)
+                } else {
+                    effect.tag(tag)
+                };
             }
 
             if let Some(attach_spec) = resolved_attach_spec {
@@ -947,7 +1073,20 @@ pub(super) fn compile_subject_verb_middle(
         SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let mut effect = Effect::move_to_library_top_or_bottom_choice(spec.clone());
+            let chooser = match player {
+                PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,
+                PlayerAst::Target => PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+                PlayerAst::TargetOpponent => PlayerFilter::Target(Box::new(PlayerFilter::Opponent)),
+                PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
+                PlayerAst::ItsController => {
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+                }
+                other => resolve_non_target_player_filter(other, &current_reference_env(ctx))?,
+            };
+            let mut effect = Effect::new(
+                crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(spec.clone())
+                    .with_chooser(chooser),
+            );
             if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("moved");
                 ctx.last_object_tag = Some(tag.clone());
@@ -986,6 +1125,7 @@ pub(super) fn compile_subject_verb_middle(
             target,
             duration,
             condition,
+            set_quantifier_surface,
         } => {
             let resolved_power = resolve_value_it_tag(power, &current_reference_env(ctx))?;
             let resolved_toughness = resolve_value_it_tag(toughness, &current_reference_env(ctx))?;
@@ -998,7 +1138,8 @@ pub(super) fn compile_subject_verb_middle(
                     },
                     duration.clone(),
                 )
-                .require_creature_target();
+                .require_creature_target()
+                .with_set_quantifier_surface(*set_quantifier_surface);
                 if let Some(condition) = condition {
                     apply = apply.with_condition(condition.clone());
                 }
@@ -1010,6 +1151,7 @@ pub(super) fn compile_subject_verb_middle(
             toughness,
             target,
             duration,
+            set_quantifier_surface,
         } => compile_tagged_effect_for_target(target, ctx, "set_base_pt", |spec| {
             let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
             let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
@@ -1024,6 +1166,7 @@ pub(super) fn compile_subject_verb_middle(
                     duration.clone(),
                 )
                 .require_creature_target()
+                .with_set_quantifier_surface(*set_quantifier_surface)
                 .resolve_set_pt_values_at_resolution(),
             )
         }),
@@ -1037,6 +1180,8 @@ pub(super) fn compile_subject_verb_middle(
             colors,
             abilities,
             granted_abilities,
+            preserve_other_types,
+            type_retention_surface,
             duration,
         } => {
             let granted_modifications =
@@ -1044,11 +1189,22 @@ pub(super) fn compile_subject_verb_middle(
             compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
                 let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
                 let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
+                // CR 205.1b gives "artifact creature" an implicit preservation
+                // exception even without an "in addition" clause.
+                let implicitly_preserves_card_types = card_types.contains(&CardType::Artifact)
+                    && card_types.contains(&CardType::Creature);
+                let type_modification = if *preserve_other_types || implicitly_preserves_card_types
+                {
+                    crate::continuous::Modification::AddCardTypes(card_types.clone())
+                } else {
+                    crate::continuous::Modification::SetCardTypes(card_types.clone())
+                };
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
-                    crate::continuous::Modification::AddCardTypes(card_types.clone()),
+                    type_modification,
                     duration.clone(),
                 )
+                .with_type_retention_surface(*type_retention_surface)
                 .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
                     power: resolved_power,
                     toughness: resolved_toughness,
@@ -1061,6 +1217,13 @@ pub(super) fn compile_subject_verb_middle(
                     );
                 }
                 if !subtypes.is_empty() {
+                    if !preserve_other_types {
+                        apply = apply.with_additional_modification(
+                            crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                                crate::types::SubtypeFamily::Creature,
+                            ),
+                        );
+                    }
                     apply = apply.with_additional_modification(
                         crate::continuous::Modification::AddSubtypes(subtypes.clone()),
                     );
@@ -1142,6 +1305,7 @@ pub(super) fn compile_subject_verb_middle(
             power,
             toughness,
             duration,
+            set_quantifier_surface,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let tag = ctx.next_tag("pumped");
@@ -1154,6 +1318,7 @@ pub(super) fn compile_subject_verb_middle(
                     },
                     duration.clone(),
                 )
+                .with_set_quantifier_surface(*set_quantifier_surface)
                 .lock_filter_at_resolution(),
             )
             .tag_all(tag.clone());
@@ -1196,6 +1361,17 @@ pub(super) fn compile_subject_verb_middle(
             Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
                 spec,
                 crate::continuous::Modification::AddCardTypes(card_types.clone()),
+                duration.clone(),
+            ))
+        }),
+        SubjectVerbActionAst::SetCardTypes {
+            target,
+            card_types,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "typed", |spec| {
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                spec,
+                crate::continuous::Modification::SetCardTypes(card_types.clone()),
                 duration.clone(),
             ))
         }),
@@ -1387,6 +1563,7 @@ pub(super) fn compile_subject_verb_middle(
             let refs = current_reference_env(ctx);
             let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
             let (source_spec, source_choices) = resolve_target_spec_with_choices(source, &refs)?;
+            let source_spec = with_target_reference_surface_hint(source_spec, source);
             for choice in source_choices {
                 push_choice(&mut choices, choice);
             }
@@ -1410,6 +1587,7 @@ pub(super) fn compile_subject_verb_middle(
             abilities,
             duration,
             condition,
+            set_quantifier_surface,
         } => {
             let modifications = lower_granted_ability_grant_modifications(abilities)?;
             if modifications.is_empty() {
@@ -1429,6 +1607,7 @@ pub(super) fn compile_subject_verb_middle(
                 modifications[0].clone(),
                 duration.clone(),
             )
+            .with_set_quantifier_surface(*set_quantifier_surface)
             .lock_filter_at_resolution();
 
             for modification in modifications.iter().skip(1) {
@@ -1444,6 +1623,7 @@ pub(super) fn compile_subject_verb_middle(
             filter,
             abilities,
             duration,
+            set_quantifier_surface,
         } => {
             let abilities = lower_granted_abilities_ast(abilities)?;
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -1455,6 +1635,7 @@ pub(super) fn compile_subject_verb_middle(
                             crate::effects::continuous::RuntimeModification::RemoveAllAbilities,
                             duration.clone(),
                         )
+                        .with_set_quantifier_surface(*set_quantifier_surface)
                         .lock_filter_at_resolution(),
                     )],
                     Vec::new(),
@@ -1465,6 +1646,7 @@ pub(super) fn compile_subject_verb_middle(
                     crate::continuous::Modification::RemoveAbility(abilities[0].clone().into()),
                     duration.clone(),
                 )
+                .with_set_quantifier_surface(*set_quantifier_surface)
                 .lock_filter_at_resolution();
 
                 for ability in abilities.iter().skip(1) {
@@ -1510,6 +1692,7 @@ pub(super) fn compile_subject_verb_middle(
             abilities,
             duration,
             condition,
+            set_quantifier_surface,
         } => {
             let modifications = lower_granted_ability_grant_modifications(abilities)?;
             let Some(first_modification) = modifications.first() else {
@@ -1534,7 +1717,8 @@ pub(super) fn compile_subject_verb_middle(
                     effect_spec,
                     first_modification.clone(),
                     duration.clone(),
-                );
+                )
+                .with_set_quantifier_surface(*set_quantifier_surface);
 
                 for modification in modifications.iter().skip(1) {
                     apply = apply.with_additional_modification(modification.clone());
@@ -1701,6 +1885,11 @@ pub(super) fn compile_subject_verb_middle(
                     crate::effects::consult_helpers::LibraryConsultMode::Exile
                 }
             };
+            if matches!(mode, crate::cards::builders::LibraryConsultModeAst::Reveal) {
+                ctx.last_revealed_tag = Some(resolved_all_tag.as_str().to_string());
+                ctx.last_revealed_zone = Some(Zone::Library);
+                ctx.last_revealed_player_filter = Some(player_filter.clone());
+            }
             ctx.last_object_tag = Some(resolved_match_tag.as_str().to_string());
             ctx.last_player_filter = Some(player_filter.clone());
             let mut consult = crate::effects::ConsultTopOfLibraryEffect::new(
@@ -1882,14 +2071,15 @@ pub(super) fn compile_subject_verb_middle(
             exile_at_next_end_step,
             next_end_step_player,
             granted_abilities,
+            ability_presentation,
         } => {
             let mut token = lower_token_definition_shape(definition.clone())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-            token
-                .abilities
-                .extend(lower_granted_abilities_ast_to_object_abilities(
-                    granted_abilities,
-                )?);
+            for ability in lower_granted_abilities_ast_to_object_abilities(granted_abilities)? {
+                if !token.abilities.contains(&ability) {
+                    token.abilities.push(ability);
+                }
+            }
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.clone_player_filter();
@@ -1900,6 +2090,9 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 crate::effects::CreateTokenEffect::new(token, count.clone(), player_filter.clone())
             };
+            if let Some(presentation) = ability_presentation {
+                effect = effect.with_ability_presentation(*presentation);
+            }
             if *tapped {
                 effect = effect.tapped();
             }
@@ -2004,6 +2197,7 @@ pub(super) fn compile_subject_verb_middle(
             has_haste,
             exile_at_end_of_combat,
             sacrifice_at_next_end_step,
+            sacrifice_at_next_end_step_ability_text,
             exile_at_next_end_step,
             next_end_step_player,
             set_colors,
@@ -2050,6 +2244,9 @@ pub(super) fn compile_subject_verb_middle(
             if *sacrifice_at_next_end_step {
                 effect = effect.sacrifice_at_next_end_step(true);
             }
+            effect = effect.sacrifice_at_next_end_step_ability_text(
+                sacrifice_at_next_end_step_ability_text.clone(),
+            );
             if *exile_at_next_end_step {
                 effect = effect.exile_at_next_end_step(true);
             }
@@ -2097,6 +2294,7 @@ pub(super) fn compile_subject_verb_middle(
             has_haste,
             exile_at_end_of_combat,
             sacrifice_at_next_end_step,
+            sacrifice_at_next_end_step_ability_text,
             exile_at_next_end_step,
             next_end_step_player,
             set_colors,
@@ -2128,6 +2326,7 @@ pub(super) fn compile_subject_verb_middle(
             {
                 source_spec = ChooseSpec::Tagged(TagKey::from(last_tag));
             }
+            source_spec = with_target_reference_surface_hint(source_spec, source);
             let mut effect =
                 crate::effects::CreateTokenCopyEffect::new(source_spec, count, player_filter);
             if *enters_tapped {
@@ -2154,6 +2353,9 @@ pub(super) fn compile_subject_verb_middle(
             if *sacrifice_at_next_end_step {
                 effect = effect.sacrifice_at_next_end_step(true);
             }
+            effect = effect.sacrifice_at_next_end_step_ability_text(
+                sacrifice_at_next_end_step_ability_text.clone(),
+            );
             if *exile_at_next_end_step {
                 effect = effect.exile_at_next_end_step(true);
             }

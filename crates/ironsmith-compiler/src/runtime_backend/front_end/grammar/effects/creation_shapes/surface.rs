@@ -35,7 +35,6 @@ pub(crate) enum CreationWordClass {
     PreserveRulesTail,
     Power,
     Put,
-    PtX,
     RulesTextStart,
     Soulbond,
     SourceCounterLeading,
@@ -100,7 +99,6 @@ impl CreationWordClass {
             ],
             Self::Power => &["power"],
             Self::Put => &["put"],
-            Self::PtX => &["x/x"],
             Self::RulesTextStart => &[
                 "when",
                 "whenever",

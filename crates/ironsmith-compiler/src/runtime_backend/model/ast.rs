@@ -13,10 +13,11 @@ use crate::zone::Zone;
 
 use super::super::{
     ClashOpponentAst, ControlDurationAst, DamageBySpec, ExchangeValueAst, ExtraTurnAnchorAst,
-    IfResultPredicate, KeywordAction, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst, PreventNextTimeDamageSourceAst,
-    PreventNextTimeDamageTargetAst, RetargetModeAst, ReturnControllerAst, SearchLibrarySlotAst,
-    SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
+    FutureZoneReplacementCausePolicyAst, IfResultPredicate, KeywordAction, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
+    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
+    ZoneReplacementDurationAst,
 };
 use super::semantic::ParsedAbility;
 use crate::runtime_backend::GrantedAbilityAst;
@@ -29,13 +30,30 @@ pub(crate) use effects::*;
 pub(crate) enum StaticAbilityAst {
     Static(StaticAbility),
     KeywordAction(KeywordAction),
+    PregameRevealFromOpeningHand {
+        trigger: TriggerSpec,
+        effects: Vec<EffectAst>,
+        one_shot: bool,
+        first_spell_of_game: bool,
+        effect_before_timing: bool,
+        display: String,
+    },
     ConditionalStaticAbility {
         ability: Box<StaticAbilityAst>,
         condition: ConditionExpr,
     },
+    LabeledConditionalStaticAbility {
+        ability: Box<StaticAbilityAst>,
+        condition: ConditionExpr,
+        label: String,
+    },
     ConditionalKeywordAction {
         action: KeywordAction,
         condition: ConditionExpr,
+    },
+    WithSetQuantifierSurface {
+        ability: Box<StaticAbilityAst>,
+        surface: ironsmith_core::SetQuantifierSurface,
     },
     GrantStaticAbility {
         filter: ObjectFilter,
@@ -270,6 +288,10 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         card_number: u32,
     },
+    PlayerDrawsNumberedCardsEachTurn {
+        player: PlayerFilter,
+        card_numbers: Vec<u32>,
+    },
     PlayerDiscardsCard {
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
@@ -285,6 +307,7 @@ pub(crate) enum TriggerSpec {
     PlayerSacrifices {
         player: PlayerFilter,
         filter: ObjectFilter,
+        one_or_more: bool,
     },
     TokensCreated {
         player: PlayerFilter,
@@ -377,6 +400,7 @@ pub(crate) enum TriggerSpec {
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
     BeginningOfEndStep(PlayerFilter),
+    BeginningOfTheEndStep,
     BeginningOfPrecombatMain(PlayerFilter),
     BeginningOfPostcombatMain(PlayerFilter),
     DayNightChanged,
@@ -443,6 +467,12 @@ pub(crate) enum PredicateAst {
     ItIsSoulbondPaired,
     SourceChosenOption(String),
     ItMatches(ObjectFilter),
+    /// The implicit object matched this filter immediately before its zone change.
+    ///
+    /// This is distinct from `ItMatches`: phrases such as "if it was a creature"
+    /// use last-known information and must not become true from the object's
+    /// characteristics in its new zone.
+    ItMatchedLastKnown(ObjectFilter),
     TargetMatches(ObjectFilter),
     TaggedMatches(TagKey, ObjectFilter),
     TaggedWasCast(TagKey),
@@ -563,6 +593,9 @@ pub(crate) enum PredicateAst {
     PlayerHadLandEnterBattlefieldThisTurn {
         player: PlayerAst,
     },
+    PlayerDescendedThisTurn {
+        player: PlayerAst,
+    },
     PlayerControlsBasicLandTypesAmongLandsOrMore {
         player: PlayerAst,
         count: u32,
@@ -635,6 +668,9 @@ pub(crate) enum PredicateAst {
         filter: ObjectFilter,
     },
     SourceMatches(ObjectFilter),
+    /// The battlefield object this Aura or Equipment source is attached to
+    /// matches the filter at the time the trigger is checked.
+    AttachedToSourceMatches(ObjectFilter),
     TriggeringObjectHadToAttackThisCombat,
 
     SourceHasNoCounter(CounterType),
@@ -646,6 +682,7 @@ pub(crate) enum PredicateAst {
     SourceHasCounterAtLeast {
         counter_type: CounterType,
         count: u32,
+        surface: crate::SourceCounterThresholdSurface,
     },
     SourceHasCountersAtLeast(u32),
     SourceHasAttachmentsMatching {
@@ -737,6 +774,7 @@ impl PredicateAst {
             | PredicateAst::SourceIsSaddled
             | PredicateAst::SourceCrewedByExactly { .. }
             | PredicateAst::SourceMatches(_)
+            | PredicateAst::AttachedToSourceMatches(_)
             | PredicateAst::SourceHasNoCounter(_)
             | PredicateAst::SourceHasCounterAtLeast { .. }
             | PredicateAst::SourceHasCountersAtLeast(_)
@@ -897,6 +935,7 @@ pub(crate) enum SubjectVerbActionAst {
     ConniveIterated,
     OpenAttraction,
     ManifestTopCardOfLibrary,
+    CloakTopCardOfLibrary,
     ManifestCardFromHand,
     ManifestDread,
     Earthbend {
@@ -982,6 +1021,7 @@ pub(crate) enum SubjectVerbActionAst {
         land_filter: ObjectFilter,
         allow_colorless: bool,
         same_type: bool,
+        mana_type_source: crate::effects::ManaTypeSource,
     },
     AddManaColorsAmong {
         filter: ObjectFilter,
@@ -1037,6 +1077,7 @@ pub(crate) enum SubjectVerbActionAst {
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
         replacement_zone: Zone,
+        library_placement: Option<ironsmith_core::ZoneReplacementLibraryPlacement>,
         duration: ZoneReplacementDurationAst,
         optional: bool,
         choice_description: Option<String>,
@@ -1048,6 +1089,8 @@ pub(crate) enum SubjectVerbActionAst {
         to_zone: Option<Zone>,
         replacement_zone: Zone,
         duration: ZoneReplacementDurationAst,
+        cause_policy: FutureZoneReplacementCausePolicyAst,
+        link_exiled_to_source: bool,
     },
     RegisterDrawReplacement {
         player: PlayerFilter,
@@ -1116,9 +1159,6 @@ pub(crate) enum SubjectVerbActionAst {
     LookAtTarget {
         target: TargetAst,
     },
-    PutIntoHand {
-        object: ObjectRefAst,
-    },
     MayMoveToZone {
         target: TargetAst,
         zone: Zone,
@@ -1130,10 +1170,6 @@ pub(crate) enum SubjectVerbActionAst {
     ExtraTurnAfterTurn {
         anchor: ExtraTurnAnchorAst,
     },
-    RearrangeLookedCardsInLibrary {
-        tag: TagKey,
-        count: ChoiceCount,
-    },
     ReorderTopOfLibrary {
         tag: TagKey,
     },
@@ -1141,13 +1177,20 @@ pub(crate) enum SubjectVerbActionAst {
     ShuffleLibrary,
     ShuffleObjectsIntoLibrary {
         target: TargetAst,
+        all: bool,
+        owner_library_destination: bool,
     },
     GrantProtectionChoice {
         target: TargetAst,
+        chooser: PlayerAst,
         allow_colorless: bool,
         allow_artifacts: bool,
     },
     PreventAllCombatDamage {
+        duration: Until,
+    },
+    AssignNoCombatDamage {
+        source: TargetAst,
         duration: Until,
     },
     PreventAllCombatDamageFromSource {
@@ -1205,9 +1248,17 @@ pub(crate) enum SubjectVerbActionAst {
     },
     CopySpell {
         target: TargetAst,
+        /// Copy every matching stack object instead of choosing one match.
+        ///
+        /// This is intentionally part of the typed action rather than inferred
+        /// from the target filter: `copy target spell` and `copy all spells`
+        /// may otherwise lower to the same `ObjectFilter` and lose the printed
+        /// set quantifier before runtime execution.
+        all_matches: bool,
         count: Value,
         player: PlayerAst,
         may_choose_new_targets: bool,
+        choose_new_target_singular: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
     },
     CopySpellForEachTarget {
@@ -1252,7 +1303,7 @@ pub(crate) enum SubjectVerbActionAst {
         player: PlayerAst,
         allow_land: bool,
         without_paying_mana_cost: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         while_on_top_of_library: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
@@ -1263,21 +1314,22 @@ pub(crate) enum SubjectVerbActionAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
+        until_next_end_step: bool,
     },
     GrantPlayTaggedForAsLongAsExiled {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
         without_paying_mana_cost: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         filter: Option<ObjectFilter>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
     },
     ReturnToBattlefield {
         target: TargetAst,
@@ -1287,12 +1339,14 @@ pub(crate) enum SubjectVerbActionAst {
         controller: ReturnControllerAst,
         count_value: Option<Value>,
         as_aura: Option<ReturnAsAuraAst>,
+        top_only: bool,
     },
     ReturnAllToBattlefield {
         filter: ObjectFilter,
         tapped: bool,
         face_down: bool,
         controller: ReturnControllerAst,
+        verb_surface: ironsmith_core::MoveToZoneVerbSurface,
     },
     ExileUntilSourceLeaves {
         target: TargetAst,
@@ -1303,6 +1357,14 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         zone: Zone,
         to_top: bool,
+        library_order: Option<LibraryBottomOrderAst>,
+        library_order_chooser: PlayerAst,
+        verb_surface: ironsmith_core::MoveToZoneVerbSurface,
+        target_plural_surface: bool,
+        destination_player_surface: Option<PlayerAst>,
+        destination_player_reference_surface:
+            Option<ironsmith_core::DestinationPlayerReferenceSurface>,
+        exiled_with_source_surface: Option<ironsmith_core::ExiledWithSourceMoveSurface>,
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
@@ -1328,12 +1390,14 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
         condition: Option<crate::ConditionExpr>,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     SetBasePowerToughness {
         power: Value,
         toughness: Value,
         target: TargetAst,
         duration: Until,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     BecomeBasePtCreature {
         power: Value,
@@ -1345,6 +1409,8 @@ pub(crate) enum SubjectVerbActionAst {
         colors: Option<ColorSet>,
         abilities: Vec<StaticAbility>,
         granted_abilities: Vec<GrantedAbilityAst>,
+        preserve_other_types: bool,
+        type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
         duration: Until,
     },
     SetBasePower {
@@ -1364,6 +1430,7 @@ pub(crate) enum SubjectVerbActionAst {
         power: Value,
         toughness: Value,
         duration: Until,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     PumpByLastEffect {
         power: i32,
@@ -1372,6 +1439,11 @@ pub(crate) enum SubjectVerbActionAst {
         duration: Until,
     },
     AddCardTypes {
+        target: TargetAst,
+        card_types: Vec<CardType>,
+        duration: Until,
+    },
+    SetCardTypes {
         target: TargetAst,
         card_types: Vec<CardType>,
         duration: Until,
@@ -1458,11 +1530,13 @@ pub(crate) enum SubjectVerbActionAst {
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
         condition: Option<crate::ConditionExpr>,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     RemoveAbilitiesAll {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     GrantAbilitiesChoiceAll {
         filter: ObjectFilter,
@@ -1474,6 +1548,7 @@ pub(crate) enum SubjectVerbActionAst {
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
         condition: Option<crate::ConditionExpr>,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     GrantToTarget {
         target: TargetAst,
@@ -1533,6 +1608,7 @@ pub(crate) enum SubjectVerbActionAst {
         has_haste: bool,
         exile_at_end_of_combat: bool,
         sacrifice_at_next_end_step: bool,
+        sacrifice_at_next_end_step_ability_text: Option<String>,
         exile_at_next_end_step: bool,
         next_end_step_player: PlayerFilter,
         set_colors: Option<ColorSet>,
@@ -1555,6 +1631,7 @@ pub(crate) enum SubjectVerbActionAst {
         has_haste: bool,
         exile_at_end_of_combat: bool,
         sacrifice_at_next_end_step: bool,
+        sacrifice_at_next_end_step_ability_text: Option<String>,
         exile_at_next_end_step: bool,
         next_end_step_player: PlayerFilter,
         set_colors: Option<ColorSet>,
@@ -1581,6 +1658,7 @@ pub(crate) enum SubjectVerbActionAst {
         exile_at_next_end_step: bool,
         next_end_step_player: PlayerFilter,
         granted_abilities: Vec<GrantedAbilityAst>,
+        ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
     },
     RedirectNextDamageFromSourceToTarget {
         amount: Value,
@@ -1643,6 +1721,8 @@ pub(crate) enum SubjectVerbActionAst {
     DealDistributedDamage {
         amount: Value,
         target: TargetAst,
+        source: TargetAst,
+        chooser: PlayerFilter,
     },
     Tap {
         target: TargetAst,
@@ -1776,9 +1856,15 @@ pub(crate) enum SubjectVerbActionAst {
     ReturnToHand {
         target: TargetAst,
         random: bool,
+        destination_player_surface: Option<PlayerAst>,
+        exiled_with_source_surface: Option<ironsmith_core::ExiledWithSourceMoveSurface>,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
+        set_reference_surface: Option<String>,
     },
     ReturnAllToHand {
         filter: ObjectFilter,
+        destination_player_surface: Option<PlayerAst>,
+        exiled_with_source_surface: Option<ironsmith_core::ExiledWithSourceMoveSurface>,
     },
     ReturnAllToHandOfChosenColor {
         filter: ObjectFilter,
@@ -2012,6 +2098,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ConniveIterated => f.write_str("ConniveIterated"),
             Self::OpenAttraction => f.write_str("OpenAttraction"),
             Self::ManifestTopCardOfLibrary => f.write_str("ManifestTopCardOfLibrary"),
+            Self::CloakTopCardOfLibrary => f.write_str("CloakTopCardOfLibrary"),
             Self::ManifestCardFromHand => f.write_str("ManifestCardFromHand"),
             Self::ManifestDread => f.write_str("ManifestDread"),
             Self::Earthbend { counters } => f.debug_tuple("Earthbend").field(counters).finish(),
@@ -2133,12 +2220,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 land_filter,
                 allow_colorless,
                 same_type,
+                mana_type_source,
             } => f
                 .debug_struct("AddManaFromLandCouldProduce")
                 .field("amount", amount)
                 .field("land_filter", land_filter)
                 .field("allow_colorless", allow_colorless)
                 .field("same_type", same_type)
+                .field("mana_type_source", mana_type_source)
                 .finish(),
             Self::AddManaColorsAmong { filter } => f
                 .debug_struct("AddManaColorsAmong")
@@ -2215,6 +2304,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 from_zone,
                 to_zone,
                 replacement_zone,
+                library_placement,
                 duration,
                 optional,
                 choice_description,
@@ -2225,6 +2315,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from_zone", from_zone)
                 .field("to_zone", to_zone)
                 .field("replacement_zone", replacement_zone)
+                .field("library_placement", library_placement)
                 .field("duration", duration)
                 .field("optional", optional)
                 .field("choice_description", choice_description)
@@ -2236,6 +2327,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 to_zone,
                 replacement_zone,
                 duration,
+                cause_policy,
+                link_exiled_to_source,
             } => f
                 .debug_struct("RegisterFutureZoneReplacement")
                 .field("filter", filter)
@@ -2243,6 +2336,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("to_zone", to_zone)
                 .field("replacement_zone", replacement_zone)
                 .field("duration", duration)
+                .field("cause_policy", cause_policy)
+                .field("link_exiled_to_source", link_exiled_to_source)
                 .finish(),
             Self::RegisterDrawReplacement {
                 player,
@@ -2349,7 +2444,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("filter", filter)
                 .finish(),
             Self::LookAtTarget { target } => f.debug_tuple("LookAtTarget").field(target).finish(),
-            Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
                 .debug_struct("MayMoveToZone")
                 .field("target", target)
@@ -2363,32 +2457,40 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ExtraTurnAfterTurn { anchor } => {
                 f.debug_tuple("ExtraTurnAfterTurn").field(anchor).finish()
             }
-            Self::RearrangeLookedCardsInLibrary { tag, count } => f
-                .debug_struct("RearrangeLookedCardsInLibrary")
-                .field("tag", tag)
-                .field("count", count)
-                .finish(),
             Self::ReorderTopOfLibrary { tag } => {
                 f.debug_tuple("ReorderTopOfLibrary").field(tag).finish()
             }
             Self::AddManaImprintedColors => f.write_str("AddManaImprintedColors"),
             Self::ShuffleLibrary => f.write_str("ShuffleLibrary"),
-            Self::ShuffleObjectsIntoLibrary { target } => f
-                .debug_tuple("ShuffleObjectsIntoLibrary")
-                .field(target)
+            Self::ShuffleObjectsIntoLibrary {
+                target,
+                all,
+                owner_library_destination,
+            } => f
+                .debug_struct("ShuffleObjectsIntoLibrary")
+                .field("target", target)
+                .field("all", all)
+                .field("owner_library_destination", owner_library_destination)
                 .finish(),
             Self::GrantProtectionChoice {
                 target,
+                chooser,
                 allow_colorless,
                 allow_artifacts,
             } => f
                 .debug_struct("GrantProtectionChoice")
                 .field("target", target)
+                .field("chooser", chooser)
                 .field("allow_colorless", allow_colorless)
                 .field("allow_artifacts", allow_artifacts)
                 .finish(),
             Self::PreventAllCombatDamage { duration } => f
                 .debug_struct("PreventAllCombatDamage")
+                .field("duration", duration)
+                .finish(),
+            Self::AssignNoCombatDamage { source, duration } => f
+                .debug_struct("AssignNoCombatDamage")
+                .field("source", source)
                 .field("duration", duration)
                 .finish(),
             Self::PreventAllCombatDamageFromSource { duration, source } => f
@@ -2492,16 +2594,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::CopySpell {
                 target,
+                all_matches,
                 count,
                 player,
                 may_choose_new_targets,
+                choose_new_target_singular,
                 removed_supertypes,
             } => f
                 .debug_struct("CopySpell")
                 .field("target", target)
+                .field("all_matches", all_matches)
                 .field("count", count)
                 .field("player", player)
                 .field("may_choose_new_targets", may_choose_new_targets)
+                .field("choose_new_target_singular", choose_new_target_singular)
                 .field("removed_supertypes", removed_supertypes)
                 .finish(),
             Self::CopySpellForEachTarget {
@@ -2592,12 +2698,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                until_next_end_step,
             } => f
                 .debug_struct("GrantPlayTaggedUntilYourNextTurn")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("until_next_end_step", until_next_end_step)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsExiled {
                 tag,
@@ -2635,6 +2743,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 controller,
                 count_value,
                 as_aura,
+                top_only,
             } => f
                 .debug_struct("ReturnToBattlefield")
                 .field("target", target)
@@ -2644,18 +2753,21 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("controller", controller)
                 .field("count_value", count_value)
                 .field("as_aura", as_aura)
+                .field("top_only", top_only)
                 .finish(),
             Self::ReturnAllToBattlefield {
                 filter,
                 tapped,
                 face_down,
                 controller,
+                verb_surface,
             } => f
                 .debug_struct("ReturnAllToBattlefield")
                 .field("filter", filter)
                 .field("tapped", tapped)
                 .field("face_down", face_down)
                 .field("controller", controller)
+                .field("verb_surface", verb_surface)
                 .finish(),
             Self::ExileUntilSourceLeaves {
                 target,
@@ -2671,6 +2783,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 zone,
                 to_top,
+                library_order,
+                library_order_chooser,
+                verb_surface,
+                target_plural_surface,
+                destination_player_surface,
+                destination_player_reference_surface,
+                exiled_with_source_surface,
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
@@ -2683,6 +2802,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("zone", zone)
                 .field("to_top", to_top)
+                .field("library_order", library_order)
+                .field("library_order_chooser", library_order_chooser)
+                .field("verb_surface", verb_surface)
+                .field("target_plural_surface", target_plural_surface)
+                .field("destination_player_surface", destination_player_surface)
+                .field(
+                    "destination_player_reference_surface",
+                    destination_player_reference_surface,
+                )
+                .field("exiled_with_source_surface", exiled_with_source_surface)
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("battlefield_attacking", battlefield_attacking)
@@ -2711,6 +2840,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 duration,
                 condition,
+                set_quantifier_surface,
             } => f
                 .debug_struct("Pump")
                 .field("power", power)
@@ -2718,18 +2848,21 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("duration", duration)
                 .field("condition", condition)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::SetBasePowerToughness {
                 power,
                 toughness,
                 target,
                 duration,
+                set_quantifier_surface,
             } => f
                 .debug_struct("SetBasePowerToughness")
                 .field("power", power)
                 .field("toughness", toughness)
                 .field("target", target)
                 .field("duration", duration)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::BecomeBasePtCreature {
                 power,
@@ -2741,6 +2874,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 colors,
                 abilities,
                 granted_abilities,
+                preserve_other_types,
+                type_retention_surface,
                 duration,
             } => f
                 .debug_struct("BecomeBasePtCreature")
@@ -2753,6 +2888,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("colors", colors)
                 .field("abilities", abilities)
                 .field("granted_abilities", granted_abilities)
+                .field("preserve_other_types", preserve_other_types)
+                .field("type_retention_surface", type_retention_surface)
                 .field("duration", duration)
                 .finish(),
             Self::SetBasePower {
@@ -2784,12 +2921,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 power,
                 toughness,
                 duration,
+                set_quantifier_surface,
             } => f
                 .debug_struct("PumpAll")
                 .field("filter", filter)
                 .field("power", power)
                 .field("toughness", toughness)
                 .field("duration", duration)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::PumpByLastEffect {
                 power,
@@ -2809,6 +2948,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
             } => f
                 .debug_struct("AddCardTypes")
+                .field("target", target)
+                .field("card_types", card_types)
+                .field("duration", duration)
+                .finish(),
+            Self::SetCardTypes {
+                target,
+                card_types,
+                duration,
+            } => f
+                .debug_struct("SetCardTypes")
                 .field("target", target)
                 .field("card_types", card_types)
                 .field("duration", duration)
@@ -2957,22 +3106,26 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 abilities,
                 duration,
                 condition,
+                set_quantifier_surface,
             } => f
                 .debug_struct("GrantAbilitiesAll")
                 .field("filter", filter)
                 .field("abilities", abilities)
                 .field("duration", duration)
                 .field("condition", condition)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::RemoveAbilitiesAll {
                 filter,
                 abilities,
                 duration,
+                set_quantifier_surface,
             } => f
                 .debug_struct("RemoveAbilitiesAll")
                 .field("filter", filter)
                 .field("abilities", abilities)
                 .field("duration", duration)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::GrantAbilitiesChoiceAll {
                 filter,
@@ -2989,12 +3142,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 abilities,
                 duration,
                 condition,
+                set_quantifier_surface,
             } => f
                 .debug_struct("GrantAbilitiesToTarget")
                 .field("target", target)
                 .field("abilities", abilities)
                 .field("duration", duration)
                 .field("condition", condition)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::GrantToTarget {
                 target,
@@ -3204,10 +3359,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .field("target", target)
                 .finish(),
-            Self::DealDistributedDamage { amount, target } => f
+            Self::DealDistributedDamage {
+                amount,
+                target,
+                source,
+                chooser,
+            } => f
                 .debug_struct("DealDistributedDamage")
                 .field("amount", amount)
                 .field("target", target)
+                .field("source", source)
+                .field("chooser", chooser)
                 .finish(),
             Self::Tap { target } => f.debug_tuple("Tap").field(target).finish(),
             Self::Untap { target } => f.debug_tuple("Untap").field(target).finish(),
@@ -3382,14 +3544,31 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PutCounterOfChosenKind")
                 .field("target", target)
                 .finish(),
-            Self::ReturnToHand { target, random } => f
+            Self::ReturnToHand {
+                target,
+                random,
+                destination_player_surface,
+                exiled_with_source_surface,
+                set_quantifier_surface,
+                set_reference_surface,
+            } => f
                 .debug_struct("ReturnToHand")
                 .field("target", target)
                 .field("random", random)
+                .field("destination_player_surface", destination_player_surface)
+                .field("exiled_with_source_surface", exiled_with_source_surface)
+                .field("set_quantifier_surface", set_quantifier_surface)
+                .field("set_reference_surface", set_reference_surface)
                 .finish(),
-            Self::ReturnAllToHand { filter } => f
+            Self::ReturnAllToHand {
+                filter,
+                destination_player_surface,
+                exiled_with_source_surface,
+            } => f
                 .debug_struct("ReturnAllToHand")
                 .field("filter", filter)
+                .field("destination_player_surface", destination_player_surface)
+                .field("exiled_with_source_surface", exiled_with_source_surface)
                 .finish(),
             Self::ReturnAllToHandOfChosenColor { filter } => f
                 .debug_struct("ReturnAllToHandOfChosenColor")

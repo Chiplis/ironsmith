@@ -4,7 +4,12 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalized
         .replace("creatures that shares ", "creatures that share ")
-        .replace("Creatures that shares ", "Creatures that share ");
+        .replace("Creatures that shares ", "Creatures that share ")
+        // A spell's own X value does not need a tautological renderer tail.
+        .replace(", where X is X", "");
+    if let Some(compact) = compact_same_subject_pt_then_gain_surface(&normalized) {
+        normalized = compact;
+    }
     if normalized.trim_end_matches('.')
         == "This creature's power is this creature's power, and its toughness is the number of Knights you control"
     {
@@ -846,12 +851,14 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact.starts_with("undaunted — spells cost") {
         return "Undaunted".to_string();
     }
-    if lower_compact.starts_with(
+    let has_myriad_cleanup_surface = lower_compact.contains("exile at end of combat")
+        || lower_compact.contains("exile that token at end of combat")
+        || lower_compact.contains("exile those tokens at end of combat");
+    if (lower_compact.starts_with(
         "whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature, tapped, attacking",
-    ) && lower_compact.contains("exile at end of combat")
-        || lower_compact.starts_with(
-            "whenever this creature attacks, for each opponent other than defending player, you may create a tapped token that's a copy of this creature, attacking",
-        ) && lower_compact.contains("exile at end of combat")
+    ) || lower_compact.starts_with(
+        "whenever this creature attacks, for each opponent other than defending player, you may create a tapped token that's a copy of this creature, attacking",
+    )) && has_myriad_cleanup_surface
     {
         return "Myriad".to_string();
     }
@@ -950,28 +957,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     )
     {
         return "Vanishing".to_string();
-    }
-    if lower_compact.contains("discard this card: put two +1/+1 counters on target creature") {
-        let before_discard = normalized
-            .split_once(", Discard this card:")
-            .map(|(head, _)| head)
-            .or_else(|| {
-                normalized
-                    .split_once(", discard this card:")
-                    .map(|(head, _)| head)
-            })
-            .unwrap_or(normalized.as_str())
-            .trim();
-        let cost = before_discard
-            .split_whitespace()
-            .last()
-            .unwrap_or(before_discard)
-            .trim();
-        let keyword = format!("Reinforce 2—{cost}");
-        if before_discard.to_ascii_lowercase().starts_with("flying ") {
-            return format!("Flying {keyword}");
-        }
-        return keyword;
     }
     if lower_compact.contains("have cascade and cascade") {
         return normalized.replace("Cascade and Cascade", "Cascade, cascade");
@@ -1326,6 +1311,23 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Shuffle target player's library.",
             ". Then that player shuffles.",
         );
+    }
+    if normalized.contains("Search target player's library for ")
+        && normalized.contains(", then shuffle target player's library.")
+    {
+        normalized = normalized
+            .replace(
+                ", exile it, then shuffle target player's library.",
+                " and exile it. Then that player shuffles.",
+            )
+            .replace(
+                ", exile them, then shuffle target player's library.",
+                " and exile them. Then that player shuffles.",
+            )
+            .replace(
+                ", then shuffle target player's library.",
+                ". Then that player shuffles.",
+            );
     }
     if normalized.starts_with("Creatures you control get ")
         && normalized.contains(" until end of turn. If it is not your turn, untap them.")
@@ -2040,12 +2042,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "at the beginning of each player's upkeep, that player chooses a non-auran artifact, creature, land, or enchantment on the battlefield, then phase out all nontoken non-auran artifacts, creatures, lands, or enchantments of the chosen type that shares a permanent type with that object",
     ) {
         return "At the beginning of each player's upkeep, that player chooses artifact, creature, land, or non-Aura enchantment. All nontoken permanents of that type phase out".to_string();
-    }
-    if lower_normalized.contains("double the number of +1/+1 counters on this creature") {
-        return line.replace(
-            "double the number of +1/+1 counters on this creature",
-            "double the number of +1/+1 counters on it",
-        );
     }
     if lower_normalized.contains(
         "create a 1/1 colorless robot artifact creature token for each +1/+1 counter on it",
@@ -4035,6 +4031,18 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(
             "permanent with the same name as that object card",
             "card with the same name as that object",
+        )
+        .replace(
+            "permanent with the same name as it cards",
+            "cards with the same name as it",
+        )
+        .replace(
+            "permanent with the same name as it card",
+            "card with the same name as it",
+        )
+        .replace(
+            "Whenever a player casts a spell, counter it unless its controller pays ",
+            "Whenever a player casts a spell, counter that spell unless that player pays ",
         )
         .replace("Counter target instant", "Counter target instant spell")
         .replace(

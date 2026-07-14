@@ -170,6 +170,37 @@ pub(super) fn parse_partial_reveal_from_hand_choose_one_of_them_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_dynamic_partial_reveal_from_hand_keeps_count_and_player_links() {
+    for (text, expected_fragments) in [
+        (
+            "Target player reveals X cards from their hand and you choose one of them. That player discards that card.",
+            &["target player reveals x cards from their hand and you choose one of them"][..],
+        ),
+        (
+            "Target player reveals a number of cards from their hand equal to one plus the number of creature cards in your graveyard. You choose one of them. That player discards that card.",
+            &[
+                "target player reveals a number of cards from their hand equal to",
+                "creature cards in your graveyard",
+                "you choose one of them",
+                "that player discards that card",
+            ][..],
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Partial Reveal Variant")
+            .parse_text(text)
+            .expect("dynamic partial hand reveal should parse");
+        let joined = unprocessed_compiled_lines(&def).join(" ").to_lowercase();
+        for expected in expected_fragments {
+            assert!(
+                joined.contains(expected),
+                "expected {expected:?} in {joined}"
+            );
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_trigger_target_opponent_gains_control_of_it_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Control Of It Variant")
         .parse_text("When this creature enters, target opponent gains control of it.")
@@ -939,6 +970,67 @@ pub(super) fn render_draw_for_each_subtype_uses_oracle_like_wording() {
     assert!(
         joined.contains("Draw a card for each Ally you control"),
         "expected subtype draw-for-each wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_flow_of_knowledge_preserves_for_each_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Flow of Knowledge")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Draw a card for each Island you control, then discard two cards.")
+        .expect("Flow of Knowledge should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Draw a card for each Island you control, then discard two cards"),
+        "expected the for-each draw surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_mind_sludge_preserves_for_each_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mind Sludge")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Target player discards a card for each Swamp you control.")
+        .expect("Mind Sludge should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Target player discards a card for each Swamp you control"),
+        "expected the for-each discard surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_huatli_radiant_champion_preserves_for_each_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Huatli, Radiant Champion")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .parse_text("+1: Put a loyalty counter on this for each creature you control.")
+        .expect("Huatli's first loyalty ability should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Put a loyalty counter on this for each creature you control"),
+        "expected the for-each counter surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_bioessence_hydra_preserves_for_each_counter_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bioessence Hydra")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This creature enters with a +1/+1 counter on it for each loyalty counter on planeswalkers you control.",
+        )
+        .expect("Bioessence Hydra's enters ability should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "This creature enters with a +1/+1 counter on it for each loyalty counter on planeswalkers you control"
+        ),
+        "expected the for-each enters-with-counters surface, got {rendered}"
     );
 }
 
@@ -2653,10 +2745,7 @@ pub(super) fn parse_search_target_player_library_and_exile_cards() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        (joined.contains("search target player's library for up to seven cards and exile")
-            || joined.contains("search target player's library for up to 7 cards, exile"))
-            && (joined.contains("then that player shuffles")
-                || joined.contains("shuffle target player's library")),
+        joined.contains("search target player's library for up to 7 cards and exile them. then that player shuffles"),
         "expected search/exile/shuffle rendering, got {joined}"
     );
 

@@ -147,6 +147,7 @@ fn ensure_optional_life_cost_reduction_costs(
         pending.caster,
         pending.spell_id,
         &pending.casting_method,
+        Some(pending.from_zone),
     );
     if costs.is_empty() {
         return false;
@@ -1026,13 +1027,14 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
     let combined_cost =
         mana_cost_with_paid_optional_costs(&base_cost, &hypothetical_spell, &optional_costs_paid);
     let effective_cost =
-        crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
+        crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
             game,
             pending.caster,
             &hypothetical_spell,
             &combined_cost,
             &pending.chosen_targets,
             &pending.casting_method,
+            pending.from_zone,
         );
 
     Some(crate::decision::can_potentially_pay(
@@ -1397,6 +1399,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
                     legal_target_sets: r.legal_target_sets,
                     min_targets: r.min_targets,
                     max_targets: r.max_targets,
+                    distinct_player_group: r.distinct_player_group,
                 })
                 .collect(),
         );
@@ -1772,7 +1775,7 @@ pub(super) fn continue_to_mana_payment(
     targets: Vec<Target>,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method;
+    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone;
 
     let mut pending = pending;
     pending.chosen_targets = targets;
@@ -1790,13 +1793,14 @@ pub(super) fn continue_to_mana_payment(
         // Apply cost reductions (affinity, delve, convoke, improvise)
         base_cost.map(|bc| {
             let bc = mana_cost_with_paid_optional_costs(&bc, obj, &pending.optional_costs_paid);
-            calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
+            calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
                 game,
                 pending.caster,
                 obj,
                 &bc,
                 &pending.chosen_targets,
                 &pending.casting_method,
+                pending.from_zone,
             )
         })
     } else {
@@ -1932,10 +1936,8 @@ pub(super) fn continue_spell_cast_mana_payment(
     let pip_description = format_pip(&pip);
 
     // Convert ManaPipPaymentOption to SelectableOption
-    let selectable_options: Vec<crate::decisions::context::SelectableOption> = options
-        .iter()
-        .map(|opt| crate::decisions::context::SelectableOption::new(opt.index, &opt.description))
-        .collect();
+    let selectable_options: Vec<crate::decisions::context::SelectableOption> =
+        options.iter().map(selectable_mana_pip_option).collect();
 
     pending.current_pip_payment_options = options;
     state.pending_cast = Some(pending);
@@ -2130,8 +2132,9 @@ pub(super) fn get_available_mana_abilities_for_pip(
     let _ = decision_maker;
     collect_available_mana_abilities(game, player, |perm_id, ability| {
         let mut source_policy = mana_spend_policy.clone();
-        source_policy.allow_any_color |=
-            game.can_spend_mana_as_any_color_from_mana_source(player, payment_source, perm_id);
+        if game.can_spend_mana_as_any_color_from_mana_source(player, payment_source, perm_id) {
+            source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+        }
         mana_ability_definition_can_pay_pip_with_reason(
             game,
             perm_id,
@@ -3360,12 +3363,27 @@ pub(super) fn continue_activation(
                 max_x = Some(max_x.map_or(cost_max_x, |mana_max| mana_max.min(cost_max_x)));
             }
             let max_x = max_x.unwrap_or(0);
+            let min_x = game
+                .current_ability(pending.source, pending.ability_index)
+                .and_then(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(activated) => {
+                        Some(activated.activation_x_minimum())
+                    }
+                    _ => None,
+                })
+                .unwrap_or(0);
+            if min_x > max_x {
+                return Err(GameLoopError::InvalidState(format!(
+                    "No legal X value between {min_x} and {max_x} for this activation"
+                )));
+            }
 
             state.pending_activation = Some(pending.clone());
 
-            let ctx = crate::decisions::context::NumberContext::x_value(
+            let ctx = crate::decisions::context::NumberContext::x_value_with_min(
                 pending.activator,
                 pending.source,
+                min_x,
                 max_x,
             );
             Ok(GameProgress::NeedsDecisionCtx(
@@ -3511,6 +3529,7 @@ pub(super) fn continue_activation(
                             legal_target_sets: r.legal_target_sets,
                             min_targets: r.min_targets,
                             max_targets: r.max_targets,
+                            distinct_player_group: r.distinct_player_group,
                         })
                         .collect(),
                 );
@@ -3613,12 +3632,8 @@ pub(super) fn continue_activation(
             state.pending_activation = Some(pending);
 
             // Convert ManaPipPaymentOption to SelectableOption
-            let selectable_options: Vec<crate::decisions::context::SelectableOption> = options
-                .iter()
-                .map(|opt| {
-                    crate::decisions::context::SelectableOption::new(opt.index, &opt.description)
-                })
-                .collect();
+            let selectable_options: Vec<crate::decisions::context::SelectableOption> =
+                options.iter().map(selectable_mana_pip_option).collect();
 
             let ctx = crate::decisions::context::SelectOptionsContext::mana_pip_payment(
                 player_id,

@@ -20,7 +20,8 @@ use crate::static_abilities::StaticAbility;
 #[cfg(test)]
 use crate::target::TaggedOpbjectRelation;
 use crate::target::{
-    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SourceReferenceSurface,
+    ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SacrificedObjectKind,
+    SourceReferenceSurface,
 };
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -63,6 +64,10 @@ use std::collections::HashMap;
 const SACRIFICE_COST_TAG_PREFIX: &str = "sacrifice_cost_";
 const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
 const UNATTACH_COST_TAG_PREFIX: &str = "unattach_cost_";
+const TAP_COST_TAG_PREFIX: &str = "tap_cost_";
+const RETURN_COST_TAG_PREFIX: &str = "return_cost_";
+const DISCARD_COST_TAG_PREFIX: &str = "discard_cost_";
+const DISCARDED_COST_TAG: &str = "discarded_cost";
 type SourceReferenceAlias = leaf::LeafSourceReferenceAlias;
 
 #[derive(Clone, Default)]
@@ -71,6 +76,7 @@ struct SourceReferenceContext {
     aliases: Vec<SourceReferenceAlias>,
     preferred_self_surface: Option<SourceReferenceSurface>,
     surfaces_by_span: HashMap<TextSpan, SourceReferenceSurface>,
+    sacrificed_kinds_by_span: HashMap<TextSpan, SacrificedObjectKind>,
 }
 
 thread_local! {
@@ -96,6 +102,24 @@ pub(crate) fn with_card_source_reference_context<T>(
     )
 }
 
+pub(crate) fn with_token_source_reference_context<T>(
+    token_name: &str,
+    card_types: &[CardType],
+    subtypes: &[Subtype],
+    f: impl FnOnce() -> T,
+) -> T {
+    let mut aliases = Vec::new();
+    push_source_reference_alias_words(
+        &mut aliases,
+        vec!["this".to_string(), "token".to_string()],
+        SourceReferenceSurface::ThisPermanentType("this token".to_string()),
+    );
+    for alias in source_reference_aliases_for_card_identity(card_types, subtypes) {
+        push_source_reference_alias_words(&mut aliases, alias.words, alias.surface);
+    }
+    with_source_reference_context_aliases(token_name, aliases, f)
+}
+
 fn with_source_reference_context_aliases<T>(
     card_name: &str,
     extra_aliases: Vec<SourceReferenceAlias>,
@@ -113,6 +137,7 @@ fn with_source_reference_context_aliases<T>(
             aliases,
             preferred_self_surface,
             surfaces_by_span: HashMap::new(),
+            sacrificed_kinds_by_span: HashMap::new(),
         });
         let result = f();
         context.replace(previous);
@@ -147,6 +172,31 @@ pub(crate) fn record_source_reference_surface(
     };
     SOURCE_REFERENCE_CONTEXT.with(|context| {
         context.borrow_mut().surfaces_by_span.insert(span, surface);
+    });
+}
+
+pub(crate) fn sacrificed_object_kind_for_span(
+    span: Option<TextSpan>,
+) -> Option<SacrificedObjectKind> {
+    let span = span?;
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        context
+            .borrow()
+            .sacrificed_kinds_by_span
+            .get(&span)
+            .copied()
+    })
+}
+
+pub(crate) fn record_sacrificed_object_kind(span: Option<TextSpan>, kind: SacrificedObjectKind) {
+    let Some(span) = span else {
+        return;
+    };
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        context
+            .borrow_mut()
+            .sacrificed_kinds_by_span
+            .insert(span, kind);
     });
 }
 
@@ -341,66 +391,111 @@ pub(crate) fn classify_instead_followup_tokens(
     super::grammar::effects::classify_instead_followup_semantics_tokens(tokens)
 }
 
-pub(crate) fn find_first_sacrifice_cost_choice_tag(mana_cost: &TotalCost) -> Option<TagKey> {
-    for cost in mana_cost.costs() {
-        let Some(effect) = cost.effect_ref() else {
-            continue;
-        };
-        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
-            continue;
-        };
-        if is_sacrifice_cost_choice_tag(&choose.tag) {
-            return Some(choose.tag.clone());
-        }
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ActivationCostObjectReference {
+    Tagged(TagKey),
+    Source,
+}
+
+fn is_activation_cost_object_tag(tag: &TagKey) -> bool {
+    [
+        SACRIFICE_COST_TAG_PREFIX,
+        EXILE_COST_TAG_PREFIX,
+        UNATTACH_COST_TAG_PREFIX,
+        TAP_COST_TAG_PREFIX,
+        RETURN_COST_TAG_PREFIX,
+        DISCARD_COST_TAG_PREFIX,
+    ]
+    .iter()
+    .any(|prefix| tag_has_prefix(tag, prefix))
+        || tag.as_str() == DISCARDED_COST_TAG
+}
+
+fn activation_cost_effect_object_reference(
+    effect: &Effect,
+) -> Option<ActivationCostObjectReference> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && is_activation_cost_object_tag(&tagged.tag)
+    {
+        return Some(ActivationCostObjectReference::Tagged(tagged.tag.clone()));
+    }
+    if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>()
+        && let Some(tag) = discard.tag.as_ref()
+    {
+        return Some(ActivationCostObjectReference::Tagged(tag.clone()));
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && is_activation_cost_object_tag(&choose.tag)
+    {
+        return Some(ActivationCostObjectReference::Tagged(choose.tag.clone()));
+    }
+    if effect
+        .downcast_ref::<crate::effects::TapEffect>()
+        .is_some_and(|tap| matches!(tap.target.base(), ChooseSpec::Source))
+        || effect
+            .downcast_ref::<crate::effects::UntapEffect>()
+            .is_some_and(|untap| matches!(untap.target.base(), ChooseSpec::Source))
+    {
+        return Some(ActivationCostObjectReference::Source);
     }
     None
 }
 
-pub(crate) fn find_last_exile_cost_choice_tag(mana_cost: &TotalCost) -> Option<TagKey> {
-    let mut found = None;
-    for cost in mana_cost.costs() {
-        let Some(effect) = cost.effect_ref() else {
-            continue;
-        };
-        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
-            continue;
-        };
-        if is_exile_cost_choice_tag(&choose.tag) {
-            found = Some(choose.tag.clone());
-        }
+fn activation_cost_component_object_reference(
+    cost: &crate::costs::Cost,
+) -> Option<ActivationCostObjectReference> {
+    match cost {
+        crate::costs::Cost::Tap
+        | crate::costs::Cost::Untap
+        | crate::costs::Cost::DiscardSource
+        | crate::costs::Cost::SacrificeSelf
+        | crate::costs::Cost::ExileSelf
+        | crate::costs::Cost::ReturnSelfToHand => Some(ActivationCostObjectReference::Source),
+        crate::costs::Cost::Discard { .. } => Some(ActivationCostObjectReference::Tagged(
+            TagKey::from(DISCARDED_COST_TAG),
+        )),
+        crate::costs::Cost::Effect(effect) => activation_cost_effect_object_reference(effect),
+        _ => None,
     }
-    found
 }
 
-pub(crate) fn find_first_unattach_cost_choice_tag(mana_cost: &TotalCost) -> Option<TagKey> {
-    for cost in mana_cost.costs() {
-        let Some(effect) = cost.effect_ref() else {
-            continue;
-        };
-        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
-            continue;
-        };
-        if is_unattach_cost_choice_tag(&choose.tag) {
-            return Some(choose.tag.clone());
+fn activation_cost_object_reference(cost: &TotalCost) -> Option<ActivationCostObjectReference> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => costs
+            .iter()
+            .filter_map(activation_cost_component_object_reference)
+            .last(),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut references = branches.iter().map(activation_cost_object_reference);
+            let first = references.next()??;
+            references
+                .all(|reference| reference.as_ref() == Some(&first))
+                .then_some(first)
         }
     }
-    None
+}
+
+/// Seed resolution references from the last object-bearing activation cost.
+///
+/// Cost choices run before an activated ability is put on the stack, so an
+/// object mentioned by the effect must use the snapshot captured while paying
+/// the cost. Source costs use the stack entry's source LKI instead of inventing
+/// a global `it` binding.
+pub(crate) fn activation_cost_reference_imports(cost: &TotalCost) -> ReferenceImports {
+    match activation_cost_object_reference(cost) {
+        Some(ActivationCostObjectReference::Tagged(tag)) => {
+            ReferenceImports::with_last_object_tag(tag)
+        }
+        Some(ActivationCostObjectReference::Source) => ReferenceImports {
+            source_object_antecedent: true,
+            ..Default::default()
+        },
+        None => ReferenceImports::default(),
+    }
 }
 
 fn tag_has_prefix(tag: &TagKey, prefix: &str) -> bool {
     tag.as_str().get(..prefix.len()) == Some(prefix)
-}
-
-fn is_sacrifice_cost_choice_tag(tag: &TagKey) -> bool {
-    tag_has_prefix(tag, SACRIFICE_COST_TAG_PREFIX)
-}
-
-fn is_exile_cost_choice_tag(tag: &TagKey) -> bool {
-    tag_has_prefix(tag, EXILE_COST_TAG_PREFIX)
-}
-
-fn is_unattach_cost_choice_tag(tag: &TagKey) -> bool {
-    tag_has_prefix(tag, UNATTACH_COST_TAG_PREFIX)
 }
 
 pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
@@ -1290,6 +1385,7 @@ mod tests {
                     | ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType(text),
                     ) => Some(text.clone()),
+                    ChooseSpecSurfaceHint::SacrificedObject(_) => None,
                 })
                 .unwrap_or_else(|| format!("{spec:?}")),
             _ => format!("{spec:?}"),

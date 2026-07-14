@@ -62,6 +62,7 @@ impl StaticAbility {
             Some(StaticAbilityId::Wither) => Self::wither(),
             Some(StaticAbilityId::Infect) => Self::infect(),
             Some(StaticAbilityId::Changeling) => Self::changeling(),
+            Some(StaticAbilityId::LivingMetal) => Self::living_metal(),
             Some(StaticAbilityId::Daybound) => Self::daybound(),
             Some(StaticAbilityId::Nightbound) => Self::nightbound(),
             Some(StaticAbilityId::DayNightStartsDayAsEnters) => {
@@ -78,6 +79,7 @@ impl StaticAbility {
             Some(StaticAbilityId::StartYourEngines) => Self::start_your_engines(),
             Some(StaticAbilityId::DoctorsCompanion) => Self::doctors_companion(),
             Some(StaticAbilityId::Assist) => Self::assist(),
+            Some(StaticAbilityId::Ascend) => Self::ascend(),
             Some(StaticAbilityId::SplitSecond) => Self::split_second(),
             Some(StaticAbilityId::Rebound) => Self::rebound(),
             Some(StaticAbilityId::Cascade) => Self::cascade(),
@@ -223,6 +225,9 @@ impl StaticAbility {
             Some(StaticAbilityId::AllPermanentsEnterTapped) => Self::permanents_enter_tapped(),
             Some(StaticAbilityId::PlayersCantCycle) => Self::players_cant_cycle(),
             Some(StaticAbilityId::PlayersSkipUpkeep) => Self::players_skip_upkeep(),
+            Some(StaticAbilityId::PlayerSkipsDrawStep) => {
+                Self::player_skips_draw_step(crate::target::PlayerFilter::You)
+            }
             Some(StaticAbilityId::AffinityForArtifacts) => Self::affinity_for_artifacts(),
             Some(StaticAbilityId::Delve) => Self::delve(),
             Some(StaticAbilityId::Convoke) => Self::convoke(),
@@ -230,6 +235,7 @@ impl StaticAbility {
             Some(StaticAbilityId::ChooseColorAsBecomesAttached) => {
                 Self::choose_color_as_becomes_attached(label)
             }
+            Some(StaticAbilityId::DiscardHandAsEnters) => Self::discard_hand_as_enters(label),
             Some(StaticAbilityId::RevealFromHandAsEnters) => Self::reveal_from_hand_as_enters(
                 crate::target::ObjectFilter::default(),
                 crate::ChoiceCount::any_number(),

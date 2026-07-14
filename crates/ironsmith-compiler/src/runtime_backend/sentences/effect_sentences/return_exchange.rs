@@ -122,6 +122,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
         crate::runtime_backend::grammar::effects::ReturnTargetShape::UntargetedExiledCards {
             filter_tokens,
+            count,
         } => {
             let filter = parse_object_filter(&filter_tokens, false)?;
             match destination.zone {
@@ -142,9 +143,20 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                         false,
                         None,
                     )
+                    .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Hand => {
-                    EffectAst::subject_verb_return_all_to_hand(filter)
+                    if let Some(count) = count {
+                        EffectAst::subject_verb_return_to_hand(
+                            TargetAst::WithCount(
+                                Box::new(TargetAst::Object(filter, None, None)),
+                                count,
+                            ),
+                            shape.random,
+                        )
+                    } else {
+                        EffectAst::subject_verb_return_all_to_hand(filter)
+                    }
                 }
             }
         }
@@ -241,6 +253,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                         false,
                         None,
                     )
+                    .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Hand => {
                     EffectAst::subject_verb_return_all_to_hand(filter)
@@ -252,6 +265,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             source_from_graveyard_tokens,
             dynamic_count,
             back_reference,
+            top_only,
         } => {
             if !destination.excluded_subtypes.is_empty() {
                 return Err(CardTextError::ParseError(format!(
@@ -296,6 +310,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                             destination.tapped,
                             Some(attached_to),
                         )
+                        .with_move_to_zone_verb_surface(
+                            ironsmith_core::MoveToZoneVerbSurface::Return,
+                        )
                     } else {
                         EffectAst::subject_verb_return_to_battlefield(
                             target,
@@ -305,6 +322,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                             return_controller,
                             count_value,
                         )
+                        .with_top_only_return_choice(top_only)
                     }
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Graveyard => {
@@ -316,6 +334,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                         false,
                         None,
                     )
+                    .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Hand => {
                     EffectAst::subject_verb_return_to_hand(target, shape.random)
@@ -323,6 +342,12 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             }
         }
     };
+    let effect =
+        if destination.zone == crate::runtime_backend::grammar::effects::ReturnZoneShape::Hand {
+            effect.with_return_destination_player_surface(destination.destination_player_surface)
+        } else {
+            effect
+        };
     Ok(wrap_return_with_delayed_timing(effect, delayed_timing))
 }
 pub(crate) fn parse_exchange(
@@ -455,5 +480,39 @@ pub(crate) fn parse_exchange(
                 constraint,
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn parses_top_graveyard_card_as_a_top_only_return_choice() {
+        let tokens = lex_line(
+            "the top creature card of your graveyard to the battlefield",
+            0,
+        )
+        .expect("lex return clause");
+        let effect = parse_return(&tokens).expect("parse return clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ReturnToBattlefield {
+                    target, top_only, ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a singular battlefield return");
+        };
+        let TargetAst::Object(filter, None, _) = target else {
+            panic!("expected an untargeted graveyard object filter");
+        };
+
+        assert!(top_only);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, [CardType::Creature]);
     }
 }

@@ -31,11 +31,21 @@ fn with_indefinite_article(text: &str) -> String {
 pub struct PlayerSacrificesTrigger {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
+    pub one_or_more_surface: bool,
 }
 
 impl PlayerSacrificesTrigger {
     pub fn new(player: PlayerFilter, filter: ObjectFilter) -> Self {
-        Self { player, filter }
+        Self {
+            player,
+            filter,
+            one_or_more_surface: false,
+        }
+    }
+
+    pub fn with_one_or_more_surface(mut self, one_or_more: bool) -> Self {
+        self.one_or_more_surface = one_or_more;
+        self
     }
 }
 
@@ -89,11 +99,17 @@ impl TriggerMatcher for PlayerSacrificesTrigger {
             PlayerFilter::Any => "a player sacrifices",
             _ => "someone sacrifices",
         };
-        format!(
-            "Whenever {} {}",
-            player_text,
+        let subject = if self.one_or_more_surface {
+            format!(
+                "one or more {}",
+                crate::compiled_text::pluralize_noun_phrase_for_trigger(
+                    self.filter.description().trim_start_matches("a ")
+                )
+            )
+        } else {
             with_indefinite_article(&self.filter.description())
-        )
+        };
+        format!("Whenever {player_text} {subject}")
     }
 }
 

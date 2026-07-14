@@ -31,6 +31,35 @@ pub(crate) struct FutureZoneCounterShape {
     pub(crate) count: u32,
 }
 
+pub(crate) fn parse_countered_spell_library_placement_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::ZoneReplacementLibraryPlacement> {
+    if !marker_present(tokens, primitives::phrase(&["countered", "this", "way"]))
+        || !marker_present(tokens, primitives::kw("library"))
+    {
+        return None;
+    }
+    if marker_present(
+        tokens,
+        primitives::phrase(&["choice", "of", "the", "top", "or", "bottom"]),
+    ) {
+        return Some(ironsmith_core::ZoneReplacementLibraryPlacement::TopOrBottom);
+    }
+    if marker_present(tokens, primitives::phrase(&["on", "the", "bottom"])) {
+        return Some(ironsmith_core::ZoneReplacementLibraryPlacement::Bottom);
+    }
+    if marker_present(
+        tokens,
+        alt((
+            primitives::phrase(&["on", "top"]),
+            primitives::phrase(&["on", "the", "top"]),
+        )),
+    ) {
+        return Some(ironsmith_core::ZoneReplacementLibraryPlacement::Top);
+    }
+    None
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WhereXReplacementScope {
     DamageOrLife,
@@ -523,6 +552,34 @@ mod tests {
                 action: TopLibraryAction::Reveal,
                 count: 3,
             })
+        );
+
+        let top = lex_line(
+            "If that spell is countered this way, put it on top of its owner's library instead.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_countered_spell_library_placement_tokens(&top),
+            Some(ironsmith_core::ZoneReplacementLibraryPlacement::Top)
+        );
+        let bottom = lex_line(
+            "If that spell is countered this way, put it on the bottom of its owner's library instead.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_countered_spell_library_placement_tokens(&bottom),
+            Some(ironsmith_core::ZoneReplacementLibraryPlacement::Bottom)
+        );
+        let choice = lex_line(
+            "If that spell is countered this way, put that card on your choice of the top or bottom of its owner's library instead.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_countered_spell_library_placement_tokens(&choice),
+            Some(ironsmith_core::ZoneReplacementLibraryPlacement::TopOrBottom)
         );
     }
 

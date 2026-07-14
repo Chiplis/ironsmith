@@ -68,12 +68,25 @@ impl EffectExecutor for CastSourceEffect {
             }
         }
 
+        let mana_sources_tag = crate::tag::TagKey::from(
+            ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
+        );
+        let spent_mana_sources = game
+            .object(source_id)
+            .and_then(|object| object.cast_tagged_objects.get(&mana_sources_tag))
+            .cloned()
+            .unwrap_or_default();
+
         let Some(new_id) = game.move_object_by_effect(source_id, Zone::Stack) else {
             return Ok(EffectOutcome::impossible());
         };
 
         if let Some(obj) = game.object_mut(new_id) {
             obj.x_value = x_value;
+            if !spent_mana_sources.is_empty() {
+                obj.cast_tagged_objects
+                    .insert(mana_sources_tag.clone(), spent_mana_sources.clone());
+            }
             if self.cast_as_suspend && suspend_alternative_index.is_none() {
                 suspend_alternative_index = Some(obj.alternative_casts.len());
                 obj.alternative_casts.push(
@@ -124,7 +137,11 @@ impl EffectExecutor for CastSourceEffect {
             crew_contributors: vec![],
             saddle_contributors: vec![],
             chosen_modes: None,
-            tagged_objects: std::collections::HashMap::new(),
+            tagged_objects: if spent_mana_sources.is_empty() {
+                std::collections::HashMap::new()
+            } else {
+                std::collections::HashMap::from([(mana_sources_tag, spent_mana_sources)])
+            },
             effect_outcomes: std::collections::HashMap::new(),
         };
 

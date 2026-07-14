@@ -29,6 +29,7 @@ pub enum KeywordActionKind {
     Incubate,
     Investigate,
     Manifest,
+    Cloak,
     OpenAttraction,
     NameSticker,
     Populate,
@@ -78,6 +79,7 @@ impl KeywordActionKind {
             "incubate" | "incubates" | "incubated" | "incubating" => Some(Self::Incubate),
             "investigate" | "investigates" => Some(Self::Investigate),
             "manifest" | "manifests" | "manifested" | "manifesting" => Some(Self::Manifest),
+            "cloak" | "cloaks" | "cloaked" | "cloaking" => Some(Self::Cloak),
             "populate" | "populates" | "populated" | "populating" => Some(Self::Populate),
             "planeswalk" | "planeswalks" | "planeswalked" | "planeswalking" => {
                 Some(Self::Planeswalk)
@@ -127,6 +129,7 @@ impl KeywordActionKind {
             Self::Incubate => "incubate",
             Self::Investigate => "investigate",
             Self::Manifest => "manifest",
+            Self::Cloak => "cloak",
             Self::OpenAttraction => "open an Attraction",
             Self::Populate => "populate",
             Self::Planeswalk => "planeswalk",
@@ -178,6 +181,7 @@ impl KeywordActionKind {
             Self::Incubate => "incubates",
             Self::Investigate => "investigates",
             Self::Manifest => "manifests",
+            Self::Cloak => "cloaks",
             Self::OpenAttraction => "opens an Attraction",
             Self::Populate => "populates",
             Self::Planeswalk => "planeswalks",

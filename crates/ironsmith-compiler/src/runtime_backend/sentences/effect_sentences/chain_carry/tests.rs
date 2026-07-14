@@ -1,6 +1,7 @@
 use crate::cards::builders::{
     CardDefinitionBuilder, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
 };
+use crate::effect::Value;
 use crate::ids::CardId;
 use crate::zone::Zone;
 
@@ -30,6 +31,99 @@ fn create_fragment_probe_accepts_capitalized_pt_token_clauses() {
         .expect("rewrite lexer should classify create-fragment text");
 
     assert!(starts_like_create_fragment_lexed(&tokens));
+}
+
+#[test]
+fn implicit_draw_then_discard_keeps_discard_on_ability_controller() {
+    let tokens = lex_line("Draw an additional card, then discard a card.", 0)
+        .expect("draw-discard fixture should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("draw-discard fixture should parse");
+
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { .. },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::Discard { .. },
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected adjacent draw and discard effects, got {effects:#?}");
+    };
+    assert_eq!(subject.player, PlayerAst::You);
+}
+
+#[test]
+fn source_damage_then_keyword_grant_keeps_coordinated_surface() {
+    let tokens = lex_line(
+        "This creature deals 2 damage to target player and gains indestructible until end of turn.",
+        0,
+    )
+    .expect("source damage-and-grant fixture should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("source damage-and-grant fixture should parse");
+
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected coordinated source damage-and-grant clause, got {effects:#?}");
+    };
+    let debug = format!("{coordinated:#?}");
+    assert!(debug.contains("DealDamageEqualToPower"), "{debug}");
+    assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+    assert!(debug.contains("Indestructible"), "{debug}");
+}
+
+#[test]
+fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
+    let tokens = lex_line(
+        "Tap target creature and it doesn't untap during its controller's next untap step.",
+        0,
+    )
+    .expect("freeze conjunction fixture should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("freeze conjunction fixture should parse");
+
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected coordinated tap/freeze clause, got {effects:#?}");
+    };
+    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
+    assert!(
+        matches!(
+            coordinated.first(),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Tap { .. },
+                ..
+            }))
+        ),
+        "{coordinated:#?}"
+    );
+    assert!(
+        matches!(
+            coordinated.get(1),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Cant {
+                    restriction: crate::effect::Restriction::Untap(_),
+                    duration: crate::effect::Until::ControllersNextUntapStep,
+                    condition: None,
+                },
+                ..
+            }))
+        ),
+        "{coordinated:#?}"
+    );
 }
 
 #[test]
@@ -93,6 +187,164 @@ fn coordinated_tap_set_stays_one_antecedent_for_then_them() {
     assert_eq!(
         filter.any_of[1].name.as_deref(),
         Some("kobolds of kher keep")
+    );
+}
+
+#[test]
+fn discard_up_to_two_then_draw_binds_the_actual_discard_outcome() {
+    let tokens = lex_line("Discard up to two cards, then draw that many cards.", 0)
+        .expect("discard/draw chain should lex");
+
+    let effects = parse_effect_chain_lexed(&tokens).expect("discard/draw chain should parse");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Discard {
+                    count: discard_count,
+                    any_number,
+                    ..
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count: draw_count },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected adjacent discard and draw effects, got {effects:#?}");
+    };
+
+    assert_eq!(discard_count, &Value::Fixed(2));
+    assert!(*any_number, "up to two must allow choosing fewer than two");
+    assert!(matches!(
+        draw_count,
+        Value::PendingEffectMetric {
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::Count,
+        }
+    ));
+}
+
+#[test]
+fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
+    let tokens = lex_line(
+        "You gain life equal to that card's toughness, lose life equal to its power, then put it into your hand.",
+        0,
+    )
+    .expect("life-stat chain should lex");
+
+    let effects = parse_effect_chain_lexed(&tokens).expect("life-stat chain should parse");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GainLife {
+                    amount: Value::ToughnessOf(_),
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::LoseLife {
+                    amount: Value::PowerOf(_),
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::MoveToZone {
+                    zone: Zone::Hand, ..
+                },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected gain-toughness, lose-power, then put-into-hand, got {effects:#?}");
+    };
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::GainLife {
+            amount: gain_amount,
+        },
+        ..
+    }) = &effects[0]
+    else {
+        unreachable!();
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LoseLife {
+            amount: lose_amount,
+        },
+        ..
+    }) = &effects[1]
+    else {
+        unreachable!();
+    };
+    let Value::ToughnessOf(gain_spec) = gain_amount.unhinted() else {
+        unreachable!();
+    };
+    let Value::PowerOf(lose_spec) = lose_amount.unhinted() else {
+        unreachable!();
+    };
+    assert_eq!(gain_spec.unhinted(), lose_spec.unhinted());
+    assert!(matches!(
+        lose_spec.unhinted(),
+        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
+    ));
+}
+
+#[test]
+fn conditional_reveal_moves_preserve_explicit_contextual_destinations() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Reveal Destination Variant")
+        .parse_text(
+            "Reveal the top card of your library. If it's a creature card, put it onto the battlefield. Otherwise, put it into your graveyard.",
+        )
+        .expect("conditional reveal destination should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+    assert!(
+        debug.contains("destination_player_surface: Some(\n") && debug.contains("You"),
+        "explicit your-graveyard surface was lost: {debug}"
+    );
+}
+
+#[test]
+fn return_to_hand_preserves_explicit_contextual_destination() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(2), "Return Destination Variant")
+        .parse_text("Return target permanent card from your graveyard to your hand.")
+        .expect("contextual return destination should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("ReturnFromGraveyardToHandEffect"), "{debug}");
+    assert!(
+        debug.contains("destination_player_surface: Some(") && debug.contains("You"),
+        "explicit your-hand surface was lost: {debug}"
+    );
+}
+
+#[test]
+fn source_card_return_preserves_identity_and_explicit_graveyard() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(3), "Chandra's Phoenix")
+        .parse_text("Return this card from your graveyard to your hand.")
+        .expect("source-card return should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("ReturnFromGraveyardToHandEffect"), "{debug}");
+    assert!(
+        debug.contains("zone: Some(\n") && debug.contains("Graveyard"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("owner: Some(\n") && debug.contains("You"),
+        "{debug}"
+    );
+    assert!(debug.contains("source: true"), "{debug}");
+    assert!(debug.contains("this card"), "{debug}");
+    assert!(debug.contains("graveyard_player_surface: Some("), "{debug}");
+    assert!(
+        debug.contains("destination_player_surface: Some("),
+        "{debug}"
     );
 }
 

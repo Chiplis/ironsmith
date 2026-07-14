@@ -2319,6 +2319,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     multiplayer,
     playerAccentOverrides,
   } = useGame();
+  const [decisionToolbarSearchTarget, setDecisionToolbarSearchTarget] = useState(null);
   const {
     hoveredObjectId,
     hoverCard,
@@ -2826,6 +2827,10 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                       )}
                     </div>
                   )}
+                  <div
+                    ref={setDecisionToolbarSearchTarget}
+                    className="action-strip-decision-toolbar-search min-w-0"
+                  />
                   <div className="flex min-w-0 max-w-[320px] shrink-0 items-stretch gap-2">
                     <PeerWaitPopover peerWait={peerWait}>
                       <Button
@@ -3267,6 +3272,7 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
                   hideDescription={false}
                   layout="strip"
                   showStripSummary={!showStripDecisionSummary}
+                  toolbarSearchTarget={decisionToolbarSearchTarget}
                 />
               </>
             ))}

@@ -11,7 +11,18 @@ pub(super) fn build_action_view(
     index: usize,
     action: &LegalAction,
 ) -> ActionView {
-    let (kind, object_id, ability_index, from_zone, to_zone) = action_drag_metadata(action);
+    let (kind, object_id, ability_index, from_zone, mut to_zone) = action_drag_metadata(action);
+    if let LegalAction::UsePregameAction {
+        card_id,
+        ability_index,
+    } = action
+        && matches!(
+            pregame_action_kind(game, *card_id, *ability_index),
+            Some(ironsmith::static_abilities::PregameActionKind::RevealFromOpeningHand(_))
+        )
+    {
+        to_zone = None;
+    }
     let source_visible = object_id
         .map(ObjectId::from_raw)
         .is_none_or(|id| object_visible_to_perspective(game, perspective, viewed_cards, id));
@@ -213,18 +224,21 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
         LegalAction::UsePregameAction {
             card_id,
             ability_index,
-        } => {
-            if matches!(
-                pregame_action_kind(game, *card_id, *ability_index),
-                Some(
-                    ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
-                )
-            ) {
-                format!("Use {}", object_name(game, *card_id))
-            } else {
+        } => match pregame_action_kind(game, *card_id, *ability_index) {
+            Some(ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(_)) => {
                 format!("Begin with {}", object_name(game, *card_id))
             }
-        }
+            Some(ironsmith::static_abilities::PregameActionKind::RevealFromOpeningHand(_)) => {
+                format!("Reveal {}", object_name(game, *card_id))
+            }
+            Some(
+                ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount,
+            ) => format!("Use {}", object_name(game, *card_id)),
+            Some(ironsmith::static_abilities::PregameActionKind::ChooseColor) => {
+                format!("Choose a color for {}", object_name(game, *card_id))
+            }
+            None => format!("Use {}", object_name(game, *card_id)),
+        },
         LegalAction::PlayLand { land_id } => {
             let name = game.object(*land_id).map_or_else(
                 || object_name(game, *land_id),
@@ -1187,10 +1201,7 @@ fn hidden_ref_matches_object(game: &GameState, id: ObjectId, hidden_ref: &Hidden
     };
     let hidden = game.hidden_card_info(id);
     let owner = hidden.map(|info| info.owner).unwrap_or(object.owner);
-    if hidden_ref
-        .owner
-        .is_some_and(|expected| owner.0 != expected)
-    {
+    if hidden_ref.owner.is_some_and(|expected| owner.0 != expected) {
         return false;
     }
     if hidden_ref
@@ -1302,7 +1313,11 @@ fn unique_legal_candidate_by_hidden_ref(
             hidden_ref.zone,
             hidden_ref.slot,
             hidden_ref.public_slot,
-            hidden_ref.commitment.as_deref().map(truncate).unwrap_or_default(),
+            hidden_ref
+                .commitment
+                .as_deref()
+                .map(truncate)
+                .unwrap_or_default(),
             hidden_ref
                 .public_commitment
                 .as_deref()
@@ -1351,13 +1366,11 @@ pub(super) fn normalize_select_object_choice_ids(
             }
 
             if let Some(Some(stable_id)) = stable_ids.get(choice_index) {
-                return unique_legal_candidate_by_stable_id(game, ctx, *stable_id)
-                    .map(|id| id.0);
+                return unique_legal_candidate_by_stable_id(game, ctx, *stable_id).map(|id| id.0);
             }
 
             if let Some(Some(hidden_ref)) = hidden_refs.get(choice_index) {
-                return unique_legal_candidate_by_hidden_ref(game, ctx, hidden_ref)
-                    .map(|id| id.0);
+                return unique_legal_candidate_by_hidden_ref(game, ctx, hidden_ref).map(|id| id.0);
             }
 
             Ok(*selected_id)

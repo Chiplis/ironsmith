@@ -6,8 +6,9 @@ use winnow::token::any;
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter};
+use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter, SacrificedObjectKind};
 use crate::types::{CardType, Subtype, Supertype};
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs,
@@ -226,22 +227,36 @@ fn parse_value_mana_value_segment_shape_lexed<'a>(
             "of",
             "the",
             "sacrificed",
+            "enchantment",
+        ],
+        &[
+            "the",
+            "mana",
+            "value",
+            "of",
+            "the",
+            "sacrificed",
             "permanent",
         ],
         &["mana", "value", "of", "the", "sacrificed", "creature"],
         &["mana", "value", "of", "the", "sacrificed", "artifact"],
+        &["mana", "value", "of", "the", "sacrificed", "enchantment"],
         &["mana", "value", "of", "the", "sacrificed", "permanent"],
         &["the", "sacrificed", "creature", "mana", "value"],
         &["the", "sacrificed", "artifact", "mana", "value"],
+        &["the", "sacrificed", "enchantment", "mana", "value"],
         &["the", "sacrificed", "permanent", "mana", "value"],
         &["the", "sacrificed", "creatures", "mana", "value"],
         &["the", "sacrificed", "artifacts", "mana", "value"],
+        &["the", "sacrificed", "enchantments", "mana", "value"],
         &["the", "sacrificed", "permanents", "mana", "value"],
         &["sacrificed", "creature", "mana", "value"],
         &["sacrificed", "artifact", "mana", "value"],
+        &["sacrificed", "enchantment", "mana", "value"],
         &["sacrificed", "permanent", "mana", "value"],
         &["sacrificed", "creatures", "mana", "value"],
         &["sacrificed", "artifacts", "mana", "value"],
+        &["sacrificed", "enchantments", "mana", "value"],
         &["sacrificed", "permanents", "mana", "value"],
         &["its", "mana", "value"],
     ])
@@ -685,6 +700,23 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         tail_clause.between_word_range(start, end)
     };
 
+    let sacrificed_object_kind = |words: &[&str]| -> Option<SacrificedObjectKind> {
+        words.windows(2).find_map(|pair| {
+            if pair[0] != "sacrificed" {
+                return None;
+            }
+            match pair[1] {
+                "creature" | "creatures" | "creature's" => Some(SacrificedObjectKind::Creature),
+                "artifact" | "artifacts" | "artifact's" => Some(SacrificedObjectKind::Artifact),
+                "enchantment" | "enchantments" | "enchantment's" => {
+                    Some(SacrificedObjectKind::Enchantment)
+                }
+                "permanent" | "permanents" | "permanent's" => Some(SacrificedObjectKind::Permanent),
+                _ => None,
+            }
+        })
+    };
+
     let parse_power_or_toughness_segment =
         |segment: &[&str], segment_clause: LexedClause<'_>| -> Option<Value> {
             if segment.last().copied() == Some(POWER_WORD) {
@@ -741,7 +773,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     let parse_amount_segment = |start: usize, end: usize| -> Option<Value> {
         let segment = &tail[start..end];
         let segment_clause = segment_clause(start, end)?;
-        parse_mana_value_segment(segment, segment_clause)
+        let value = parse_mana_value_segment(segment, segment_clause)
             .or_else(|| {
                 parse_value_expr_words(segment)
                     .and_then(|(value, used)| (used == segment.len()).then_some(value))
@@ -753,7 +785,11 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                 } else {
                     None
                 }
-            })
+            })?;
+        Some(match sacrificed_object_kind(segment) {
+            Some(kind) => value.with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
+            None => value,
+        })
     };
 
     let mut plus_idx = None;

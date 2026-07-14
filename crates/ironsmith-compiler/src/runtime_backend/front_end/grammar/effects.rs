@@ -16,9 +16,9 @@ use super::super::search_library_support::{
     word_slice_mentions_nth_from_top,
 };
 use super::super::util::{
-    is_article, parse_card_type, parse_choice_count_token_prefix_consumed, parse_color,
-    parse_number, parse_subject, parse_subtype_word, parse_target_phrase, span_from_tokens,
-    trim_commas,
+    helper_tag_for_tokens, is_article, parse_card_type, parse_choice_count_token_prefix_consumed,
+    parse_color, parse_number, parse_subject, parse_subtype_word, parse_target_phrase,
+    span_from_tokens, trim_commas,
 };
 use super::primitives;
 use crate::cards::builders::{
@@ -73,6 +73,8 @@ pub(crate) mod emblem_shapes;
 mod exile_shapes;
 #[path = "effects/fanout_shapes.rs"]
 pub(crate) mod fanout_shapes;
+#[path = "effects/optional_companion_shapes.rs"]
+pub(crate) mod optional_companion_shapes;
 pub(crate) use exile_shapes::*;
 #[path = "effects/exile_permission_followups.rs"]
 mod exile_permission_followups;
@@ -1900,34 +1902,64 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         sequence
     } else if split_battlefield_and_hand {
         let battlefield_tapped = effect_routing.has_tapped_modifier;
-        vec![
-            EffectAst::subject_verb_search_library(
-                filter.clone(),
-                Zone::Battlefield,
-                chooser,
-                player,
-                search_mode,
-                reveal,
-                false,
-                ChoiceCount::up_to(1),
-                None,
-                None,
-                battlefield_tapped,
+        if filter.owner.is_none() && matches!(player, PlayerAst::You | PlayerAst::Implicit) {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        let searched_tag = helper_tag_for_tokens(tokens, "searched_split");
+        let battlefield_tag = helper_tag_for_tokens(tokens, "searched_split_battlefield");
+        let battlefield_filter = ObjectFilter::tagged(searched_tag.clone()).in_zone(Zone::Library);
+        let battlefield_controller = if matches!(player, PlayerAst::You | PlayerAst::Implicit) {
+            ReturnControllerAst::You
+        } else {
+            ReturnControllerAst::Owner
+        };
+        let mut sequence = vec![EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            count_value: count_value.clone(),
+            player: chooser,
+            tag: searched_tag.clone(),
+            zones: vec![Zone::Library],
+            search_mode: Some(search_mode),
+        }];
+        if reveal {
+            sequence.push(EffectAst::subject_verb_reveal_tagged(searched_tag.clone()));
+        }
+        sequence.extend([
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter: battlefield_filter,
+                count: ChoiceCount::exactly(1),
+                player: chooser,
+                tag: battlefield_tag.clone(),
+                zone: Zone::Library,
+            },
+            EffectAst::ForEachTagged {
+                tag: battlefield_tag.clone(),
+                effects: vec![EffectAst::subject_verb_put_onto_battlefield(
+                    chooser,
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    battlefield_tapped,
+                    battlefield_controller,
+                )],
+            },
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::PutTaggedRemainderInZone {
+                    tag: searched_tag,
+                    keep_tagged: battlefield_tag,
+                    zone: Zone::Hand,
+                },
             ),
-            EffectAst::subject_verb_search_library(
-                filter,
-                Zone::Hand,
-                chooser,
+        ]);
+        if shuffle {
+            sequence.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
                 player,
-                search_mode,
-                reveal,
-                shuffle,
-                ChoiceCount::up_to(1),
-                None,
-                None,
-                false,
-            ),
-        ]
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
+        }
+        sequence
     } else if destination == Zone::Exile && face_down_exile {
         let searched_tag: TagKey = "searched_face_down".into();
         let mut sequence = vec![

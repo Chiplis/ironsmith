@@ -91,6 +91,7 @@ pub(crate) struct RewriteActivatedLine {
     pub(crate) is_loyalty_ability: bool,
     pub(crate) functional_zones: Vec<crate::zone::Zone>,
     pub(crate) presentation_kind: Option<ActivatedPresentationKind>,
+    pub(crate) presentation: Option<PresentationLabel>,
     pub(crate) chosen_option: Option<ChosenOptionContext>,
 }
 

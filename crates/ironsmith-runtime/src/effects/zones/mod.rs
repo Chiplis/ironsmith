@@ -357,7 +357,9 @@ pub use haunt_exile::HauntExileEffect;
 pub use may_move_to_zone::MayMoveToZoneEffect;
 pub use move_to_library_nth_from_top::MoveToLibraryNthFromTopEffect;
 pub use move_to_library_top_or_bottom_choice::MoveToLibraryTopOrBottomChoiceEffect;
-pub use move_to_zone::{BattlefieldController, MoveToZoneAttackTargetMode, MoveToZoneEffect};
+pub use move_to_zone::{
+    BattlefieldController, LibraryPlacementOrder, MoveToZoneAttackTargetMode, MoveToZoneEffect,
+};
 pub use put_onto_battlefield::PutOntoBattlefieldEffect;
 pub use reorder_graveyard::ReorderGraveyardEffect;
 pub use reorder_library_top::ReorderLibraryTopEffect;

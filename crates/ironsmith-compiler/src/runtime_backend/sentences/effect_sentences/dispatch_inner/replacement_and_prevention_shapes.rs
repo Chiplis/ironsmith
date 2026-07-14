@@ -59,7 +59,7 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
         return Ok(None);
     };
 
-    let mut effects = Vec::new();
+    let mut filters = Vec::new();
     for filter_tokens in shape.filter_tokens {
         let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
@@ -67,19 +67,25 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
                 render_token_slice(tokens).trim()
             ))
         })?;
-        let effect = match shape.verb {
-            replacement_grammar::SplitAllVerbShape::Destroy => {
-                EffectAst::subject_verb_destroy_all(filter)
-            }
-            replacement_grammar::SplitAllVerbShape::Exile => {
-                EffectAst::subject_verb_exile_all(filter, false)
-            }
-        };
-        effects.push(effect);
+        filters.push(filter);
     }
 
-    if effects.len() >= 2 {
-        return Ok(Some(effects));
+    if filters.len() >= 2 {
+        // Keep a conjoined all-object instruction as one producer. Besides
+        // matching the simultaneous rules action, this gives later
+        // "destroyed/exiled this way" references one exact result tag rather
+        // than pointing only at the final syntactic arm.
+        let mut union = ObjectFilter::default();
+        union.any_of = filters;
+        let effect = match shape.verb {
+            replacement_grammar::SplitAllVerbShape::Destroy => {
+                EffectAst::subject_verb_destroy_all(union)
+            }
+            replacement_grammar::SplitAllVerbShape::Exile => {
+                EffectAst::subject_verb_exile_all(union, false)
+            }
+        };
+        return Ok(Some(vec![effect]));
     }
     Ok(None)
 }

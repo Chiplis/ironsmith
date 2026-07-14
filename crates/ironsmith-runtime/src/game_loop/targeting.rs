@@ -848,6 +848,137 @@ pub(super) fn effect_mode_has_legal_targets_with_view(
     })
 }
 
+fn declared_player_target_candidates_with_view(
+    game: &GameState,
+    declared_targets: &[DeclaredTarget],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Option<Vec<PlayerId>> {
+    let player_target = declared_targets
+        .iter()
+        .find(|declared| matches!(declared.spec.base(), ChooseSpec::Player(_)))?;
+    let mut candidates = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+        game,
+        &player_target.spec,
+        caster,
+        source_id,
+        None,
+        view,
+    )
+    .into_iter()
+    .filter_map(|target| match target {
+        Target::Player(player) => Some(player),
+        Target::Object(_) => None,
+    })
+    .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.dedup();
+    (!candidates.is_empty()).then_some(candidates)
+}
+
+fn distinct_player_assignment_exists(candidate_sets: &[Vec<PlayerId>]) -> bool {
+    fn recurse(
+        candidate_sets: &[Vec<PlayerId>],
+        assigned: &mut HashSet<PlayerId>,
+        index: usize,
+    ) -> bool {
+        if index == candidate_sets.len() {
+            return true;
+        }
+        for player in &candidate_sets[index] {
+            if assigned.insert(*player) {
+                if recurse(candidate_sets, assigned, index + 1) {
+                    return true;
+                }
+                assigned.remove(player);
+            }
+        }
+        false
+    }
+
+    let mut ordered = candidate_sets.to_vec();
+    ordered.sort_by_key(Vec::len);
+    recurse(&ordered, &mut HashSet::new(), 0)
+}
+
+fn distinct_player_modal_selection_exists(
+    legal_modes: &[(usize, Vec<PlayerId>)],
+    min_points: usize,
+    max_points: usize,
+    allow_repeated_modes: bool,
+) -> bool {
+    fn recurse(
+        legal_modes: &[(usize, Vec<PlayerId>)],
+        min_points: usize,
+        max_points: usize,
+        allow_repeated_modes: bool,
+        mode_index: usize,
+        selected_points: usize,
+        selected_players: &mut HashSet<PlayerId>,
+    ) -> bool {
+        if selected_points >= min_points {
+            return true;
+        }
+        if mode_index == legal_modes.len() {
+            return false;
+        }
+
+        if recurse(
+            legal_modes,
+            min_points,
+            max_points,
+            allow_repeated_modes,
+            mode_index + 1,
+            selected_points,
+            selected_players,
+        ) {
+            return true;
+        }
+
+        let (point_cost, candidates) = &legal_modes[mode_index];
+        let next_points = selected_points.saturating_add(*point_cost);
+        if next_points > max_points {
+            return false;
+        }
+        for player in candidates {
+            if selected_players.insert(*player) {
+                let next_mode = if allow_repeated_modes {
+                    mode_index
+                } else {
+                    mode_index + 1
+                };
+                if recurse(
+                    legal_modes,
+                    min_points,
+                    max_points,
+                    allow_repeated_modes,
+                    next_mode,
+                    next_points,
+                    selected_players,
+                ) {
+                    return true;
+                }
+                selected_players.remove(player);
+            }
+        }
+        false
+    }
+
+    if min_points == 0 {
+        return true;
+    }
+    recurse(
+        legal_modes,
+        min_points,
+        max_points,
+        allow_repeated_modes,
+        0,
+        0,
+        &mut HashSet::new(),
+    )
+}
+
 fn modal_effect_has_legal_targets_internal_with_view(
     game: &GameState,
     modal: crate::effects::ModalEffectSpec<'_>,
@@ -872,6 +1003,7 @@ fn modal_effect_has_legal_targets_internal_with_view(
         let base_declared_targets = declared_targets.clone();
         let base_declared_len = base_declared_targets.len();
         let mut declared_targets_from_modes = Vec::new();
+        let mut distinct_player_candidates = Vec::new();
 
         for mode_idx in chosen_modes {
             let Some(mode) = modal.modes.get(*mode_idx) else {
@@ -906,6 +1038,18 @@ fn modal_effect_has_legal_targets_internal_with_view(
             }) {
                 return false;
             };
+            if modal.distinct_player_targets_per_mode {
+                let Some(candidates) = declared_player_target_candidates_with_view(
+                    game,
+                    &mode_declared_targets[base_declared_len..],
+                    caster,
+                    source_id,
+                    view,
+                ) else {
+                    return false;
+                };
+                distinct_player_candidates.push(candidates);
+            }
             append_declared_targets_added_after(
                 base_declared_len,
                 mode_declared_targets,
@@ -918,11 +1062,61 @@ fn modal_effect_has_legal_targets_internal_with_view(
             selected_count >= min_modes && selected_count <= max_modes
         } else {
             selected_count <= max_modes
-        };
+        } && (!modal.distinct_player_targets_per_mode
+            || distinct_player_assignment_exists(&distinct_player_candidates));
         if valid_selection {
             declared_targets.extend(declared_targets_from_modes);
         }
         return valid_selection;
+    }
+
+    if modal.distinct_player_targets_per_mode {
+        let legal_modes = modal
+            .modes
+            .iter()
+            .enumerate()
+            .filter_map(|(mode_idx, mode)| {
+                let base_declared_len = declared_targets.len();
+                let mut mode_consumed_modal_selection = false;
+                let mut mode_declared_targets = declared_targets.clone();
+                let legal = mode.effects.iter().all(|effect| {
+                    spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+                        game,
+                        effect,
+                        caster,
+                        source_id,
+                        None,
+                        &mut mode_consumed_modal_selection,
+                        &mut mode_declared_targets,
+                        require_full_selection,
+                        view,
+                    )
+                });
+                if !legal {
+                    return None;
+                }
+                let candidates = declared_player_target_candidates_with_view(
+                    game,
+                    &mode_declared_targets[base_declared_len..],
+                    caster,
+                    source_id,
+                    view,
+                )?;
+                let point_cost = modal
+                    .mode_point_costs
+                    .get(mode_idx)
+                    .copied()
+                    .unwrap_or(1)
+                    .max(1) as usize;
+                Some((point_cost, candidates))
+            })
+            .collect::<Vec<_>>();
+        return distinct_player_modal_selection_exists(
+            &legal_modes,
+            min_modes,
+            max_modes,
+            modal.allow_repeated_modes,
+        );
     }
 
     let legal_mode_count = modal
@@ -969,6 +1163,37 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     require_full_mode_selection: bool,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+    {
+        let base_declared_targets = declared_targets.clone();
+        let base_declared_len = base_declared_targets.len();
+        let mut declared_targets_from_children = Vec::new();
+        for inner in &sequence.effects {
+            let mut child_declared_targets = base_declared_targets.clone();
+            if !spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+                game,
+                inner,
+                caster,
+                source_id,
+                chosen_modes,
+                consumed_modal_selection,
+                &mut child_declared_targets,
+                require_full_mode_selection,
+                view,
+            ) {
+                return false;
+            }
+            append_declared_targets_added_after(
+                base_declared_len,
+                child_declared_targets,
+                &mut declared_targets_from_children,
+            );
+        }
+        declared_targets.extend(declared_targets_from_children);
+        return true;
+    }
+
     if let Some(modal) = effect.modal_effect_spec() {
         let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
@@ -1071,6 +1296,34 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
 ) {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+    {
+        let base_declared_targets = declared_targets.clone();
+        let base_declared_len = base_declared_targets.len();
+        let mut declared_targets_from_children = Vec::new();
+        for inner in &sequence.effects {
+            let mut child_declared_targets = base_declared_targets.clone();
+            extract_target_requirements_from_effect_internal(
+                game,
+                inner,
+                caster,
+                source_id,
+                chosen_modes,
+                consumed_modal_selection,
+                &mut child_declared_targets,
+                requirements,
+            );
+            append_declared_targets_added_after(
+                base_declared_len,
+                child_declared_targets,
+                &mut declared_targets_from_children,
+            );
+        }
+        declared_targets.extend(declared_targets_from_children);
+        return;
+    }
+
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
         extract_for_players_target_requirements(
             game,
@@ -1092,11 +1345,19 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             None
         };
         if let Some(chosen_modes) = modes_for_this_modal {
+            let distinct_player_group = modal.distinct_player_targets_per_mode.then(|| {
+                requirements
+                    .iter()
+                    .filter_map(|requirement| requirement.distinct_player_group)
+                    .max()
+                    .map_or(0, |group| group + 1)
+            });
             let base_declared_targets = declared_targets.clone();
             let base_declared_len = base_declared_targets.len();
             let mut declared_targets_from_modes = Vec::new();
             for mode_idx in chosen_modes {
                 if let Some(mode) = modal.modes.get(*mode_idx) {
+                    let mode_requirement_start = requirements.len();
                     let mut mode_declared_targets = base_declared_targets.clone();
                     for inner in &mode.effects {
                         extract_target_requirements_from_effect_internal(
@@ -1109,6 +1370,15 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             &mut mode_declared_targets,
                             requirements,
                         );
+                    }
+                    if let Some(group) = distinct_player_group
+                        && let Some(requirement) = requirements[mode_requirement_start..]
+                            .iter_mut()
+                            .find(|requirement| {
+                                matches!(requirement.spec.base(), ChooseSpec::Player(_))
+                            })
+                    {
+                        requirement.distinct_player_group = Some(group);
                     }
                     append_declared_targets_added_after(
                         base_declared_len,
@@ -1147,6 +1417,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     description: "target".to_string(),
                     min_targets: 1,
                     max_targets: Some(1),
+                    distinct_player_group: None,
                 });
             }
         }
@@ -1181,6 +1452,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
+                distinct_player_group: None,
             });
         }
     }
@@ -1276,6 +1548,7 @@ fn extract_target_requirements_from_iterated_effect(
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
+                distinct_player_group: None,
             });
         }
         return;
@@ -1363,6 +1636,12 @@ fn specialize_iterated_player_object_filter(
         .attached_to_player
         .as_ref()
         .map(|attached_to_player| specialize_iterated_player_filter(attached_to_player, player));
+    if let Some(attached_to_object) = filter.attached_to_object.as_ref() {
+        filter.attached_to_object = Some(Box::new(specialize_iterated_player_object_filter(
+            attached_to_object,
+            player,
+        )));
+    }
     filter.entered_battlefield_controller = filter
         .entered_battlefield_controller
         .as_ref()
@@ -1392,6 +1671,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::IteratedPlayer => PlayerFilter::Specific(player),
         PlayerFilter::Target(inner) => {
             PlayerFilter::Target(Box::new(specialize_iterated_player_filter(inner, player)))
+        }
+        PlayerFilter::AliasedTarget(inner) => {
+            PlayerFilter::AliasedTarget(Box::new(specialize_iterated_player_filter(inner, player)))
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             PlayerFilter::CardsInHandAtLeastMoreThanYou {
@@ -1423,6 +1705,31 @@ fn count_target_selection_slots_from_effect_internal(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
 ) -> usize {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+    {
+        let base_declared_targets = declared_targets.clone();
+        let base_declared_len = base_declared_targets.len();
+        let mut declared_targets_from_children = Vec::new();
+        let mut count = 0;
+        for inner in &sequence.effects {
+            let mut child_declared_targets = base_declared_targets.clone();
+            count += count_target_selection_slots_from_effect_internal(
+                inner,
+                chosen_modes,
+                consumed_modal_selection,
+                &mut child_declared_targets,
+            );
+            append_declared_targets_added_after(
+                base_declared_len,
+                child_declared_targets,
+                &mut declared_targets_from_children,
+            );
+        }
+        declared_targets.extend(declared_targets_from_children);
+        return count;
+    }
+
     if let Some(modal) = effect.modal_effect_spec() {
         let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
@@ -1506,6 +1813,20 @@ pub(crate) fn count_target_selection_slots_for_effect(
         chosen_modes,
         consumed_modal_selection,
         declared_targets,
+    )
+}
+
+pub(crate) fn count_target_selection_slots_for_isolated_effect(
+    effect: &Effect,
+    chosen_modes: Option<&[usize]>,
+    consumed_modal_selection: &mut bool,
+) -> usize {
+    let mut declared_targets = Vec::new();
+    count_target_selection_slots_from_effect_internal(
+        effect,
+        chosen_modes,
+        consumed_modal_selection,
+        &mut declared_targets,
     )
 }
 
@@ -1723,7 +2044,9 @@ fn player_filter_references_previous_target_tag(filter: &PlayerFilter) -> bool {
         | PlayerFilter::AliasedControllerOf(object_ref) => {
             matches!(object_ref, crate::filter::ObjectRef::Tagged(_))
         }
-        PlayerFilter::Target(inner) => player_filter_references_previous_target_tag(inner),
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
+            player_filter_references_previous_target_tag(inner)
+        }
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_references_previous_target_tag(base)
                 || player_filter_references_previous_target_tag(excluded)
@@ -2112,7 +2435,7 @@ pub fn player_matches_filter_with_combat(
             false
         }
         PlayerFilter::TargetPlayerOrControllerOfTarget => false,
-        PlayerFilter::Target(_) => {
+        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
             // Target filters are resolved through targeting, not direct matching
             true
         }
@@ -2144,6 +2467,31 @@ pub(super) fn collect_validation_target_specs_from_effect(
     declared_targets: &mut Vec<DeclaredTarget>,
     specs: &mut Vec<ChooseSpec>,
 ) {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+    {
+        let base_declared_targets = declared_targets.clone();
+        let base_declared_len = base_declared_targets.len();
+        let mut declared_targets_from_children = Vec::new();
+        for inner in &sequence.effects {
+            let mut child_declared_targets = base_declared_targets.clone();
+            collect_validation_target_specs_from_effect(
+                inner,
+                chosen_modes,
+                consumed_modal_selection,
+                &mut child_declared_targets,
+                specs,
+            );
+            append_declared_targets_added_after(
+                base_declared_len,
+                child_declared_targets,
+                &mut declared_targets_from_children,
+            );
+        }
+        declared_targets.extend(declared_targets_from_children);
+        return;
+    }
+
     if let Some(modal) = effect.modal_effect_spec() {
         let modes_for_this_modal = if !*consumed_modal_selection {
             *consumed_modal_selection = true;
@@ -2330,6 +2678,12 @@ fn replace_damaged_player_object_filter(
     if let Some(entered_battlefield_controller) = &mut filter.entered_battlefield_controller {
         replace_damaged_player_filter(entered_battlefield_controller, player);
     }
+    if let Some(attached_to_player) = &mut filter.attached_to_player {
+        replace_damaged_player_filter(attached_to_player, player);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+        replace_damaged_player_object_filter(attached_to, player);
+    }
     for nested in &mut filter.any_of {
         replace_damaged_player_object_filter(nested, player);
     }
@@ -2380,6 +2734,9 @@ fn player_filter_for_resolution_target_validation(
             player_filter_for_resolution_target_validation(base)
         }
         PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
+            player_filter_for_resolution_target_validation(inner),
+        )),
+        PlayerFilter::AliasedTarget(inner) => PlayerFilter::AliasedTarget(Box::new(
             player_filter_for_resolution_target_validation(inner),
         )),
         PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {

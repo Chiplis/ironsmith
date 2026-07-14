@@ -1,5 +1,6 @@
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
+use crate::snapshot::ObjectSnapshot;
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
 use std::collections::HashMap;
@@ -15,9 +16,22 @@ pub struct ManaPool {
     pub colorless: u32,
 }
 
+/// Provenance retained for a single mana unit in a player's pool.
+///
+/// Ordinary mana is tracked separately from usage restrictions so effects
+/// such as "for each mana from an artifact source spent to cast it" can use
+/// the source's last known information even after a Treasure is sacrificed.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ManaSourceProvenance {
+    pub(crate) symbol: ManaSymbol,
+    pub(crate) source: ObjectId,
+    pub(crate) snapshot: Option<ObjectSnapshot>,
+    pub(crate) restricted: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ManaSpendPolicy {
-    pub allow_any_color: bool,
+    pub mode: ironsmith_core::value_model::ManaSpendMode,
     pub any_color_mana_symbols: Vec<ManaSymbol>,
     pub other_mana_only_as_colorless: bool,
 }
@@ -25,9 +39,13 @@ pub struct ManaSpendPolicy {
 impl ManaSpendPolicy {
     pub fn from_any_color(allow_any_color: bool) -> Self {
         Self {
-            allow_any_color,
+            mode: allow_any_color.into(),
             ..Self::default()
         }
+    }
+
+    pub fn allow_mode(&mut self, mode: ironsmith_core::value_model::ManaSpendMode) {
+        self.mode = self.mode.combine(mode);
     }
 
     pub fn add_symbol_as_any_color(&mut self, symbol: ManaSymbol) {
@@ -37,16 +55,17 @@ impl ManaSpendPolicy {
     }
 
     pub(crate) fn has_any_color_spending(&self) -> bool {
-        self.allow_any_color || !self.any_color_mana_symbols.is_empty()
+        self.mode.allows_any_color() || !self.any_color_mana_symbols.is_empty()
     }
 
     fn symbol_spends_as_any_color(&self, symbol: ManaSymbol) -> bool {
         self.any_color_mana_symbols.contains(&symbol)
-            || (self.allow_any_color && !self.other_mana_only_as_colorless)
+            || (self.mode.allows_any_color() && !self.other_mana_only_as_colorless)
     }
 
     fn symbol_spends_as_colorless(&self, symbol: ManaSymbol) -> bool {
         symbol == ManaSymbol::Colorless
+            || self.mode.allows_any_type()
             || (self.other_mana_only_as_colorless && !self.symbol_spends_as_any_color(symbol))
     }
 
@@ -735,7 +754,7 @@ impl ManaPool {
 }
 
 /// Complete player state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Player {
     pub id: PlayerId,
     pub name: String,
@@ -745,6 +764,7 @@ pub struct Player {
     pub life: i32,
     pub mana_pool: ManaPool,
     pub restricted_mana: Vec<crate::ability::RestrictedManaUnit>,
+    pub(crate) mana_source_provenance: Vec<ManaSourceProvenance>,
     pub poison_counters: u32,
     pub energy_counters: u32,
     pub experience_counters: u32,
@@ -758,6 +778,9 @@ pub struct Player {
     // Per-turn tracking
     pub lands_played_this_turn: u32,
     pub land_plays_per_turn: u32,
+
+    // Game-scoped tracking
+    pub spells_cast_this_game: u32,
 
     // Hand size
     pub max_hand_size: i32,
@@ -794,6 +817,7 @@ impl Player {
             life: starting_life,
             mana_pool: ManaPool::new(),
             restricted_mana: Vec::new(),
+            mana_source_provenance: Vec::new(),
             poison_counters: 0,
             energy_counters: 0,
             experience_counters: 0,
@@ -804,6 +828,7 @@ impl Player {
             ring_legendary_added: None,
             lands_played_this_turn: 0,
             land_plays_per_turn: 1,
+            spells_cast_this_game: 0,
             max_hand_size: 7,
             has_lost: false,
             has_won: false,
@@ -846,9 +871,69 @@ impl Player {
         *self.commander_damage.entry(commander).or_insert(0) += amount;
     }
 
+    pub(crate) fn add_unrestricted_mana(
+        &mut self,
+        symbol: ManaSymbol,
+        source: ObjectId,
+        snapshot: Option<ObjectSnapshot>,
+    ) {
+        self.mana_pool.add(symbol, 1);
+        self.mana_source_provenance.push(ManaSourceProvenance {
+            symbol,
+            source,
+            snapshot,
+            restricted: false,
+        });
+    }
+
     pub fn add_restricted_mana(&mut self, unit: crate::ability::RestrictedManaUnit) {
+        self.add_restricted_mana_with_snapshot(unit, None);
+    }
+
+    pub(crate) fn add_restricted_mana_with_snapshot(
+        &mut self,
+        unit: crate::ability::RestrictedManaUnit,
+        snapshot: Option<ObjectSnapshot>,
+    ) {
         self.mana_pool.add(unit.symbol, 1);
+        self.mana_source_provenance.push(ManaSourceProvenance {
+            symbol: unit.symbol,
+            source: unit.source,
+            snapshot,
+            restricted: true,
+        });
         self.restricted_mana.push(unit);
+    }
+
+    pub(crate) fn take_mana_source_provenance(
+        &mut self,
+        symbol: ManaSymbol,
+        restricted: bool,
+        source: Option<ObjectId>,
+    ) -> Option<ManaSourceProvenance> {
+        let index = self.mana_source_provenance.iter().position(|unit| {
+            unit.symbol == symbol
+                && unit.restricted == restricted
+                && source.is_none_or(|source| unit.source == source)
+        })?;
+        Some(self.mana_source_provenance.remove(index))
+    }
+
+    pub(crate) fn clear_mana_source_provenance(&mut self) {
+        self.mana_source_provenance.clear();
+    }
+
+    /// Discard provenance entries that no longer have a corresponding unit in
+    /// the aggregate mana pool. This is used by legacy bulk-payment paths
+    /// which update `ManaPool` directly rather than selecting units one by one.
+    pub(crate) fn trim_mana_source_provenance_to_pool(&mut self) {
+        let mut remaining = self.mana_pool.clone();
+        self.mana_source_provenance.retain(|unit| {
+            if remaining.amount(unit.symbol) == 0 {
+                return false;
+            }
+            remaining.remove(unit.symbol, 1)
+        });
     }
 
     /// Returns the combat damage this player has taken from a commander.
@@ -1089,6 +1174,19 @@ mod tests {
 
         pool.empty();
         assert_eq!(pool.total(), 0);
+    }
+
+    #[test]
+    fn any_type_but_not_any_color_can_pay_colorless_requirements() {
+        let mut any_color = ManaSpendPolicy::default();
+        any_color.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+        assert!(any_color.can_pay_symbol(ManaSymbol::Red, ManaSymbol::Blue));
+        assert!(!any_color.can_pay_symbol(ManaSymbol::Red, ManaSymbol::Colorless));
+
+        let mut any_type = ManaSpendPolicy::default();
+        any_type.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyType);
+        assert!(any_type.can_pay_symbol(ManaSymbol::Red, ManaSymbol::Blue));
+        assert!(any_type.can_pay_symbol(ManaSymbol::Red, ManaSymbol::Colorless));
     }
 
     #[test]

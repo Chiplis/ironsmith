@@ -161,14 +161,19 @@ fn parse_target_indicator_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     ))
     .parse_next(&mut counted)
     .is_ok()
-        && peek(primitives::kw("target"))
-            .parse_next(&mut counted)
-            .is_ok()
     {
-        *input = counted;
+        let mut target_probe = counted.clone();
+        let _ = opt(alt((primitives::kw("another"), primitives::kw("other"))))
+            .parse_next(&mut target_probe);
+        if peek(primitives::kw("target"))
+            .parse_next(&mut target_probe)
+            .is_ok()
+        {
+            *input = counted;
+        }
     }
     opt(primitives::kw("on")).parse_next(input)?;
-    opt(primitives::kw("another")).parse_next(input)?;
+    opt(alt((primitives::kw("another"), primitives::kw("other")))).parse_next(input)?;
     primitives::kw("target").void().parse_next(input)
 }
 

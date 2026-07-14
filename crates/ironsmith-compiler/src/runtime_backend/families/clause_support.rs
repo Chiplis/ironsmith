@@ -103,6 +103,7 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
 #[derive(Debug, Clone, Copy)]
 enum AttackedPlayerFilterKind {
     Any,
+    AnyPlayerOrPlaneswalker,
     Enchanted,
     Opponent,
     You,
@@ -119,6 +120,18 @@ const ATTACKED_PLAYER_FILTERS: &[(&[&str], AttackedPlayerFilterKind)] = &[
     (&["a", "player"], AttackedPlayerFilterKind::Any),
     (&["player"], AttackedPlayerFilterKind::Any),
     (&["any", "player"], AttackedPlayerFilterKind::Any),
+    (
+        &["a", "player", "or", "planeswalker"],
+        AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker,
+    ),
+    (
+        &["a", "player", "or", "a", "planeswalker"],
+        AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker,
+    ),
+    (
+        &["player", "or", "planeswalker"],
+        AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker,
+    ),
 ];
 
 fn two_word_keyword_action(words: &[&str]) -> Option<KeywordAction> {
@@ -127,17 +140,19 @@ fn two_word_keyword_action(words: &[&str]) -> Option<KeywordAction> {
         .find_map(|(phrase, action)| (*phrase == words).then(|| action.clone()))
 }
 
-fn attacked_player_filter_from_words(words: &[&str]) -> Option<PlayerFilter> {
+fn attacked_player_filter_from_words(words: &[&str]) -> Option<(PlayerFilter, bool)> {
     ATTACKED_PLAYER_FILTERS
         .iter()
         .find_map(|(phrase, filter)| (*phrase == words).then_some(*filter))
         .map(|filter| match filter {
-            AttackedPlayerFilterKind::Any => PlayerFilter::Any,
-            AttackedPlayerFilterKind::Enchanted => {
-                PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"))
-            }
-            AttackedPlayerFilterKind::Opponent => PlayerFilter::Opponent,
-            AttackedPlayerFilterKind::You => PlayerFilter::You,
+            AttackedPlayerFilterKind::Any => (PlayerFilter::Any, true),
+            AttackedPlayerFilterKind::AnyPlayerOrPlaneswalker => (PlayerFilter::Any, false),
+            AttackedPlayerFilterKind::Enchanted => (
+                PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted")),
+                true,
+            ),
+            AttackedPlayerFilterKind::Opponent => (PlayerFilter::Opponent, true),
+            AttackedPlayerFilterKind::You => (PlayerFilter::You, true),
         })
 }
 fn is_and_word(word: &str) -> bool {
@@ -738,6 +753,7 @@ pub(crate) fn parse_triggered_line_lexed(
                     if filter.controller.is_none() {
                         filter.controller = Some(player);
                     }
+                    filter.set_union_one_or_more(one_or_more);
                     let trigger = if let Some(total_attackers) = exact_total_attackers {
                         TriggerSpec::AttacksOneOrMoreWithExactTotal {
                             filter,
@@ -772,7 +788,7 @@ pub(crate) fn parse_triggered_line_lexed(
         {
             let subject_words = &trigger_words[shape.subject_words.clone()];
             let attacked_words = &trigger_words[attacked_range];
-            if let (Some(player), Some(attacked_player)) = (
+            if let (Some(player), Some((attacked_player, attacked_target_must_be_player))) = (
                 super::activation_and_restrictions::parse_trigger_subject_player_filter(
                     subject_words,
                 ),
@@ -815,8 +831,11 @@ pub(crate) fn parse_triggered_line_lexed(
                     if filter.controller.is_none() {
                         filter.controller = Some(player);
                     }
+                    filter.set_union_one_or_more(one_or_more);
                     filter.attacking_player_or_planeswalker_controlled_by = Some(attacked_player);
-                    filter.targets_only_player = Some(PlayerFilter::Any);
+                    if attacked_target_must_be_player {
+                        filter.targets_only_player = Some(PlayerFilter::Any);
+                    }
                     let trigger = if let Some(total_attackers) = exact_total_attackers {
                         TriggerSpec::AttacksOneOrMoreWithExactTotal {
                             filter,
@@ -1030,10 +1049,79 @@ mod tests {
         )
         .unwrap();
         let parsed = parse_triggered_line_lexed(&tokens).unwrap();
-        let debug = format!("{parsed:#?}");
-        assert!(debug.contains("AttacksOneOrMore"), "{debug}");
-        assert!(debug.contains("Opponent"), "{debug}");
-        assert!(debug.contains("Draw"), "{debug}");
+        let LineAst::Triggered {
+            trigger: TriggerSpec::AttacksOneOrMore(filter),
+            effects,
+            ..
+        } = &parsed
+        else {
+            panic!("expected aggregate attack trigger, got {parsed:#?}");
+        };
+        assert!(filter.union_is_one_or_more());
+        assert_eq!(
+            filter
+                .attacking_player_or_planeswalker_controlled_by
+                .as_ref(),
+            Some(&PlayerFilter::Opponent)
+        );
+        assert!(format!("{effects:#?}").contains("Draw"));
+    }
+
+    #[test]
+    fn typed_attack_with_group_keeps_that_many_bound_to_attacker_count() {
+        let tokens = lex_line(
+            "Whenever you attack with one or more creatures, target player mills that many cards.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_triggered_line_lexed(&tokens).unwrap();
+        let LineAst::Triggered {
+            trigger: TriggerSpec::AttacksOneOrMore(filter),
+            effects,
+            ..
+        } = &parsed
+        else {
+            panic!("expected aggregate attack trigger, got {parsed:#?}");
+        };
+        assert!(filter.union_is_one_or_more());
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(subject_verb)]
+                if matches!(
+                    &subject_verb.action,
+                    SubjectVerbActionAst::Mill { count }
+                        if matches!(
+                            count.unhinted(),
+                            Value::EventValue(EventValueSpec::Amount)
+                        )
+                )
+        ));
+    }
+
+    #[test]
+    fn typed_attack_with_group_preserves_player_or_planeswalker_target() {
+        let tokens = lex_line(
+            "Whenever you attack a player or planeswalker with one or more creatures with power 1 or less, draw a card.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_triggered_line_lexed(&tokens).unwrap();
+        let LineAst::Triggered {
+            trigger: TriggerSpec::AttacksOneOrMore(filter),
+            ..
+        } = &parsed
+        else {
+            panic!("expected aggregate attack trigger, got {parsed:#?}");
+        };
+        assert!(filter.union_is_one_or_more());
+        assert_eq!(
+            filter
+                .attacking_player_or_planeswalker_controlled_by
+                .as_ref(),
+            Some(&PlayerFilter::Any)
+        );
+        assert!(filter.targets_only_player.is_none());
+        assert!(filter.power.is_some());
     }
 
     #[test]

@@ -178,6 +178,12 @@ impl Cost {
         if let Some((count, color_filter)) = effect.0.exile_from_hand_cost_info() {
             return Ok(Self::exile_from_hand(count, color_filter));
         }
+        if effect
+            .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+            .is_some_and(|sacrifice| sacrifice.target.source_reference_surface().is_some())
+        {
+            return Self::try_effect(effect);
+        }
         if effect.0.is_sacrifice_source_cost() {
             return Ok(Self::sacrifice_self());
         }

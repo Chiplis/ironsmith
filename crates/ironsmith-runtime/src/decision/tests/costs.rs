@@ -653,6 +653,7 @@ fn test_select_first_decision_maker_supports_multi_target_requirement() {
             legal_target_sets: Vec::new(),
             min_targets: 2,
             max_targets: Some(2),
+            distinct_player_group: None,
         }],
     );
 
@@ -1169,6 +1170,190 @@ fn spell_attached_global_cost_reduction_respects_color_filter() {
         "{R}",
         "red-only filter should reduce matching red spell costs"
     );
+}
+
+#[test]
+fn battlefield_cost_reduction_applies_only_to_the_chosen_creature_type() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let reducer = CardBuilder::new(CardId::from_raw(71_100), "Chosen Type Reducer")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let reducer_id = game.create_object_from_card(&reducer, alice, Zone::Battlefield);
+    let mut filter = ObjectFilter::default();
+    filter.cast_by = Some(PlayerFilter::You);
+    filter.chosen_creature_type = true;
+    game.object_mut(reducer_id)
+        .expect("reducer exists")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::CostReduction::new(filter, Value::Fixed(1)),
+        )));
+    game.set_chosen_creature_type(reducer_id, Subtype::Giant);
+
+    let matching = CardBuilder::new(CardId::from_raw(71_101), "Giant Cost Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .build();
+    let matching_id = game.create_object_from_card(&matching, alice, Zone::Hand);
+    let nonmatching = CardBuilder::new(CardId::from_raw(71_102), "Elf Cost Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .build();
+    let nonmatching_id = game.create_object_from_card(&nonmatching, alice, Zone::Hand);
+
+    for (spell_id, expected) in [(matching_id, "{2}"), (nonmatching_id, "{3}")] {
+        let spell = game.object(spell_id).expect("cost probe exists");
+        let effective = calculate_effective_mana_cost(
+            &game,
+            alice,
+            spell,
+            spell.mana_cost.as_ref().expect("cost probe has a cost"),
+        );
+        assert_eq!(effective.to_oracle(), expected);
+    }
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(actions.iter().any(|action| matches!(
+        action,
+        LegalAction::CastSpell { spell_id, .. } if *spell_id == matching_id
+    )));
+    assert!(!actions.iter().any(|action| matches!(
+        action,
+        LegalAction::CastSpell { spell_id, .. } if *spell_id == nonmatching_id
+    )));
+}
+
+#[test]
+fn generic_chosen_type_cost_filter_falls_back_to_the_sources_chosen_card_type() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let reducer = CardBuilder::new(CardId::from_raw(71_103), "Chosen Card Type Reducer")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let reducer_id = game.create_object_from_card(&reducer, alice, Zone::Battlefield);
+    let mut filter = ObjectFilter::default();
+    filter.cast_by = Some(PlayerFilter::You);
+    filter.chosen_creature_type = true;
+    game.object_mut(reducer_id)
+        .expect("reducer exists")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::CostReduction::new(filter, Value::Fixed(1)),
+        )));
+    game.set_chosen_card_type(reducer_id, CardType::Instant);
+
+    let matching = CardBuilder::new(CardId::from_raw(71_104), "Instant Cost Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .build();
+    let matching_id = game.create_object_from_card(&matching, alice, Zone::Hand);
+    let nonmatching = CardBuilder::new(CardId::from_raw(71_105), "Sorcery Cost Probe")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .build();
+    let nonmatching_id = game.create_object_from_card(&nonmatching, alice, Zone::Hand);
+
+    for (spell_id, expected) in [(matching_id, "{2}"), (nonmatching_id, "{3}")] {
+        let spell = game.object(spell_id).expect("cost probe exists");
+        let effective = calculate_effective_mana_cost(
+            &game,
+            alice,
+            spell,
+            spell.mana_cost.as_ref().expect("cost probe has a cost"),
+        );
+        assert_eq!(effective.to_oracle(), expected);
+    }
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(actions.iter().any(|action| matches!(
+        action,
+        LegalAction::CastSpell { spell_id, .. } if *spell_id == matching_id
+    )));
+    assert!(!actions.iter().any(|action| matches!(
+        action,
+        LegalAction::CastSpell { spell_id, .. } if *spell_id == nonmatching_id
+    )));
+}
+
+#[test]
+fn chosen_type_colored_reduction_removes_only_matching_colored_pips() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let reducer = CardBuilder::new(CardId::from_raw(71_106), "Colored Chosen Type Reducer")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let reducer_id = game.create_object_from_card(&reducer, alice, Zone::Battlefield);
+    let mut filter = ObjectFilter::default();
+    filter.cast_by = Some(PlayerFilter::You);
+    filter.chosen_creature_type = true;
+    let colored_reduction = ManaCost::from_symbols(vec![
+        ManaSymbol::White,
+        ManaSymbol::Blue,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+    ]);
+    game.object_mut(reducer_id)
+        .expect("reducer exists")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::CostReductionManaCost::new(filter, colored_reduction),
+        )));
+    game.set_chosen_creature_type(reducer_id, Subtype::Giant);
+
+    let five_color_cost = ManaCost::from_symbols(vec![
+        ManaSymbol::Generic(2),
+        ManaSymbol::White,
+        ManaSymbol::Blue,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+    ]);
+    let matching = CardBuilder::new(CardId::from_raw(71_107), "Five Color Giant Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant])
+        .mana_cost(five_color_cost.clone())
+        .build();
+    let matching_id = game.create_object_from_card(&matching, alice, Zone::Hand);
+    let nonmatching = CardBuilder::new(CardId::from_raw(71_108), "Five Color Elf Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .mana_cost(five_color_cost)
+        .build();
+    let nonmatching_id = game.create_object_from_card(&nonmatching, alice, Zone::Hand);
+
+    for (spell_id, expected) in [(matching_id, "{2}"), (nonmatching_id, "{2}{W}{U}{B}{R}{G}")] {
+        let spell = game.object(spell_id).expect("cost probe exists");
+        let effective = calculate_effective_mana_cost(
+            &game,
+            alice,
+            spell,
+            spell.mana_cost.as_ref().expect("cost probe has a cost"),
+        );
+        assert_eq!(effective.to_oracle(), expected);
+    }
 }
 
 #[test]
@@ -2442,4 +2627,108 @@ fn this_spell_cost_reduction_supports_greatest_commander_mana_value_where_x_is_c
     let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
     let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
     assert_eq!(effective.to_oracle(), "{3}{W}");
+}
+
+#[test]
+fn this_way_commander_reduction_applies_only_to_flashback_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let own_commander = CardBuilder::new(CardId::from_raw(50_100), "Own Commander")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+        ]))
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .build();
+    let own_commander_id = game.create_object_from_card(&own_commander, alice, Zone::Battlefield);
+    game.set_as_commander(own_commander_id, alice);
+
+    let own_command_zone_commander =
+        CardBuilder::new(CardId::from_raw(50_101), "Own Command Zone Commander")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(3)],
+                vec![ManaSymbol::Blue],
+            ]))
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build();
+    let own_command_zone_id =
+        game.create_object_from_card(&own_command_zone_commander, alice, Zone::Command);
+    game.set_as_commander(own_command_zone_id, alice);
+
+    let opposing_commander = CardBuilder::new(CardId::from_raw(50_102), "Opposing Commander")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(9)],
+            vec![ManaSymbol::Red],
+        ]))
+        .power_toughness(PowerToughness::fixed(10, 10))
+        .build();
+    let opposing_commander_id =
+        game.create_object_from_card(&opposing_commander, bob, Zone::Battlefield);
+    game.set_as_commander(opposing_commander_id, bob);
+
+    let normal_cost =
+        ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Black]]);
+    let flashback_cost = ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(8)],
+        vec![ManaSymbol::Black],
+        vec![ManaSymbol::Black],
+    ]);
+    let spell_card = CardBuilder::new(CardId::from_raw(50_103), "Visions Cost Probe")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(normal_cost.clone())
+        .build();
+    let spell_id = game.create_object_from_card(&spell_card, alice, Zone::Graveyard);
+
+    let mut battlefield_filter = ObjectFilter::default();
+    battlefield_filter.zone = Some(Zone::Battlefield);
+    battlefield_filter.owner = Some(PlayerFilter::You);
+    battlefield_filter.is_commander = true;
+    let mut command_filter = battlefield_filter.clone();
+    command_filter.zone = Some(Zone::Command);
+    let mut commander_filter = ObjectFilter::default();
+    commander_filter.any_of = vec![battlefield_filter, command_filter];
+
+    let reduction = StaticAbility::new(
+        crate::static_abilities::ThisSpellCostReduction::new(
+            Value::GreatestManaValue(commander_filter),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        )
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Flashback),
+    );
+    let spell = game.object_mut(spell_id).expect("spell exists");
+    spell
+        .abilities_mut()
+        .push(Ability::static_ability(reduction));
+    spell.alternative_casts.push(
+        crate::alternative_cast::AlternativeCastingMethod::Flashback {
+            total_cost: crate::cost::TotalCost::mana(flashback_cost.clone()),
+        },
+    );
+
+    let spell = game.object(spell_id).expect("spell exists");
+    let view = DerivedGameView::new(&game);
+    let normal = calculate_effective_mana_cost_with_view_for_casting_method(
+        &game,
+        alice,
+        spell,
+        &normal_cost,
+        &CastingMethod::Normal,
+        &view,
+    );
+    let flashback = calculate_effective_mana_cost_with_view_for_casting_method(
+        &game,
+        alice,
+        spell,
+        &flashback_cost,
+        &CastingMethod::Alternative(0),
+        &view,
+    );
+
+    assert_eq!(normal.to_oracle(), "{2}{B}");
+    assert_eq!(flashback.to_oracle(), "{2}{B}{B}");
 }

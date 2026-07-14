@@ -334,9 +334,22 @@ fn parse_divided_damage_equal_to_amount(
         )));
     }
     let target = parse_divided_damage_target(shape.target_tokens)?;
-    Ok(Some(EffectAst::subject_verb_distributed_damage(
-        amount, target,
-    )))
+    let chooser = if crate::runtime_backend::token_word_refs(shape.target_tokens)
+        .windows(4)
+        .any(|window| window == ["as", "its", "controller", "chooses"])
+    {
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+    } else {
+        PlayerFilter::You
+    };
+    Ok(Some(
+        EffectAst::subject_verb_distributed_damage_with_source(
+            amount,
+            target,
+            TargetAst::Source(None),
+            chooser,
+        ),
+    ))
 }
 pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     tokens: &[OwnedLexToken],
@@ -453,6 +466,26 @@ fn parse_divided_damage_target(
     )?;
     let base_target = if shape.any_target {
         TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))
+    } else if shape
+        .target_tokens
+        .first()
+        .is_some_and(|token| token.as_word() == Some("them"))
+    {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(shape.target_tokens))
+    } else if shape
+        .target_tokens
+        .first()
+        .is_some_and(|token| token.as_word() == Some("those"))
+    {
+        let mut filter = parse_object_filter(&shape.target_tokens[1..], false)?;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        TargetAst::Object(filter, span_from_tokens(shape.target_tokens), None)
     } else {
         parse_target_phrase(shape.target_tokens)?
     };
@@ -546,6 +579,16 @@ pub(crate) fn parse_deal_damage_with_amount(
                 if_false: Vec::new(),
             })
         }
+        combat_grammar::CombatDamageTargetShape::TrailingUnless {
+            target_tokens,
+            predicate,
+        } => {
+            let target = parse_target_phrase(target_tokens)?;
+            Ok(EffectAst::TrailingUnless {
+                predicate,
+                effects: vec![EffectAst::subject_verb_damage(amount, target)],
+            })
+        }
         combat_grammar::CombatDamageTargetShape::OmittedTargetIf { predicate } => {
             Ok(EffectAst::Conditional {
                 predicate,
@@ -599,6 +642,7 @@ pub(crate) fn parse_deal_damage_with_amount(
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
                 predicate,
+                result_predicate: IfResultPredicate::Did,
             })
         }
         combat_grammar::CombatDamageTargetShape::PlayerWho { predicate_tokens } => {
@@ -609,6 +653,7 @@ pub(crate) fn parse_deal_damage_with_amount(
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
                 predicate,
+                result_predicate: IfResultPredicate::Did,
             })
         }
         combat_grammar::CombatDamageTargetShape::PlayerAndObjects {

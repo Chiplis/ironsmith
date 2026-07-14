@@ -1,5 +1,28 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+
+#[test]
+fn choose_target_shape_keeps_counted_targets() {
+    let tokens = lex_line("Choose up to one target creature card in a graveyard.", 0).unwrap();
+    let shape = parse_choose_target_shape(&tokens).expect("counted target choice");
+    assert_eq!(
+        TokenWordView::new(shape.target_tokens).to_word_refs(),
+        vec![
+            "up",
+            "to",
+            "one",
+            "target",
+            "creature",
+            "card",
+            "in",
+            "a",
+            "graveyard"
+        ]
+    );
+
+    let tokens = lex_line("Choose any number of target creatures.", 0).unwrap();
+    assert!(parse_choose_target_shape(&tokens).is_some());
+}
 
 #[test]
 fn parses_direct_and_assign_damage_shapes() {
@@ -16,9 +39,30 @@ fn parses_direct_and_assign_damage_shapes() {
     let assign = lex_line("It assigns no combat damage this turn.", 0).unwrap();
     assert!(matches!(
         parse_assigns_no_combat_damage_shape(&assign),
-        Some(AssignsNoCombatDamageShape::Supported(
-            AssignDamageSourceShape::Tagged
-        ))
+        Some(AssignsNoCombatDamageShape::Supported {
+            source: AssignDamageSourceShape::Tagged,
+            duration: Until::EndOfTurn,
+        })
+    ));
+    let source = lex_line("This creature assigns no combat damage this combat.", 0).unwrap();
+    assert!(matches!(
+        parse_assigns_no_combat_damage_shape(&source),
+        Some(AssignsNoCombatDamageShape::Supported {
+            source: AssignDamageSourceShape::Source,
+            duration: Until::EndOfCombat,
+        })
+    ));
+    let target = lex_line(
+        "The attacking creature assigns no combat damage this turn.",
+        0,
+    )
+    .unwrap();
+    assert!(matches!(
+        parse_assigns_no_combat_damage_shape(&target),
+        Some(AssignsNoCombatDamageShape::Supported {
+            source: AssignDamageSourceShape::Target(_),
+            duration: Until::EndOfTurn,
+        })
     ));
 
     let next_turn = lex_line(
@@ -41,6 +85,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: false,
             includes_artifacts: false,
+            chooser: ProtectionChoiceChooserShape::You,
         })
     );
 
@@ -54,6 +99,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: true,
             includes_artifacts: false,
+            chooser: ProtectionChoiceChooserShape::You,
         })
     );
 
@@ -67,6 +113,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: false,
             includes_artifacts: true,
+            chooser: ProtectionChoiceChooserShape::You,
         })
     );
 
@@ -80,6 +127,7 @@ fn parses_protection_choice_shapes() {
         Some(ProtectionChoiceShape {
             includes_colorless: false,
             includes_artifacts: false,
+            chooser: ProtectionChoiceChooserShape::TargetController,
         })
     );
 }

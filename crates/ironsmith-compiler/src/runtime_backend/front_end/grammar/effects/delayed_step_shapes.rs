@@ -68,6 +68,7 @@ pub(crate) struct ImplicitBecomeSubjectShape<'a> {
 pub(crate) enum DelayedTimingStepShape {
     Upkeep,
     DrawStep,
+    EndStep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -3,10 +3,14 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
+use std::ops::Range;
+
 use crate::cards::builders::CardTextError;
 use crate::object::CounterType;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice, trim_lexed_commas};
+use super::super::super::lexer::{
+    LexStream, OwnedLexToken, parser_token_word_positions, render_token_slice, trim_lexed_commas,
+};
 use super::super::{filters, leaf, primitives, static_keyword_line_shapes};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,6 +18,95 @@ pub(crate) struct PregameBeginOnBattlefieldSpec {
     pub(crate) require_not_starting_player: bool,
     pub(crate) counters: Vec<(CounterType, u32)>,
     pub(crate) exile_cards_from_hand: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PregameRevealTiming {
+    FirstUpkeep,
+    YourFirstUpkeep,
+    YourFirstPrecombatMainPhase,
+    EachOpponentFirstSpellOfGame,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PregameRevealFromOpeningHandSpec {
+    pub(crate) timing: PregameRevealTiming,
+    pub(crate) effect_tokens: Range<usize>,
+    pub(crate) effect_before_timing: bool,
+}
+
+/// Parses the compound opening-hand reveal templates used by the Chancellor
+/// cycle and Sphinx of Foresight. The consequence remains a normal effect
+/// clause; this grammar only owns the pregame action and delayed timing.
+pub(crate) fn parse_pregame_reveal_from_opening_hand_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PregameRevealFromOpeningHandSpec> {
+    const INTRO: &[&str] = &[
+        "you", "may", "reveal", "this", "card", "from", "your", "opening", "hand", "if", "you",
+        "do",
+    ];
+    const FIRST_UPKEEP: &[&str] = &["at", "the", "beginning", "of", "the", "first", "upkeep"];
+    const YOUR_FIRST_UPKEEP: &[&str] = &["at", "the", "beginning", "of", "your", "first", "upkeep"];
+    const YOUR_FIRST_MAIN: &[&str] = &[
+        "at",
+        "the",
+        "beginning",
+        "of",
+        "your",
+        "first",
+        "main",
+        "phase",
+        "of",
+        "the",
+        "game",
+    ];
+    const EACH_OPPONENT_FIRST_SPELL: &[&str] = &[
+        "when", "each", "opponent", "casts", "their", "first", "spell", "of", "the", "game",
+    ];
+
+    let positions = parser_token_word_positions(tokens);
+    let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    if !words.starts_with(INTRO) {
+        return None;
+    }
+
+    let tail = &words[INTRO.len()..];
+    let prefix_shape = [
+        (FIRST_UPKEEP, PregameRevealTiming::FirstUpkeep),
+        (
+            YOUR_FIRST_MAIN,
+            PregameRevealTiming::YourFirstPrecombatMainPhase,
+        ),
+        (
+            EACH_OPPONENT_FIRST_SPELL,
+            PregameRevealTiming::EachOpponentFirstSpellOfGame,
+        ),
+    ]
+    .into_iter()
+    .find(|(phrase, _)| tail.starts_with(phrase));
+
+    if let Some((phrase, timing)) = prefix_shape {
+        let effect_word = INTRO.len() + phrase.len();
+        let effect_start = positions.get(effect_word)?.0;
+        return Some(PregameRevealFromOpeningHandSpec {
+            timing,
+            effect_tokens: effect_start..tokens.len(),
+            effect_before_timing: false,
+        });
+    }
+
+    if tail.len() > YOUR_FIRST_UPKEEP.len() && tail.ends_with(YOUR_FIRST_UPKEEP) {
+        let timing_word = words.len() - YOUR_FIRST_UPKEEP.len();
+        let effect_start = positions.get(INTRO.len())?.0;
+        let effect_end = positions.get(timing_word)?.0;
+        return Some(PregameRevealFromOpeningHandSpec {
+            timing: PregameRevealTiming::YourFirstUpkeep,
+            effect_tokens: effect_start..effect_end,
+            effect_before_timing: true,
+        });
+    }
+
+    None
 }
 
 pub(crate) fn parse_pregame_begin_on_battlefield_tokens(
@@ -219,6 +312,48 @@ mod tests {
         assert!(spec.require_not_starting_player);
         assert_eq!(spec.exile_cards_from_hand, 1);
         assert_eq!(spec.counters.len(), 1);
+    }
+
+    #[test]
+    fn parses_opening_hand_reveal_delayed_timing_shapes() {
+        let cases = [
+            (
+                "You may reveal this card from your opening hand. If you do, at the beginning of the first upkeep, create a 1/1 red Phyrexian Goblin creature token with haste.",
+                PregameRevealTiming::FirstUpkeep,
+                false,
+                "create a 1/1 red Phyrexian Goblin creature token with haste.",
+            ),
+            (
+                "You may reveal this card from your opening hand. If you do, at the beginning of your first main phase of the game, add {G}.",
+                PregameRevealTiming::YourFirstPrecombatMainPhase,
+                false,
+                "add {G}.",
+            ),
+            (
+                "You may reveal this card from your opening hand. If you do, when each opponent casts their first spell of the game, counter that spell unless that player pays {1}.",
+                PregameRevealTiming::EachOpponentFirstSpellOfGame,
+                false,
+                "counter that spell unless that player pays {1}.",
+            ),
+            (
+                "You may reveal this card from your opening hand. If you do, scry 3 at the beginning of your first upkeep.",
+                PregameRevealTiming::YourFirstUpkeep,
+                true,
+                "scry 3",
+            ),
+        ];
+
+        for (text, timing, effect_before_timing, expected_effect) in cases {
+            let tokens = lex_line(text, 0).unwrap();
+            let spec = parse_pregame_reveal_from_opening_hand_tokens(&tokens)
+                .unwrap_or_else(|| panic!("opening-hand reveal shape should parse: {text}"));
+            assert_eq!(spec.timing, timing);
+            assert_eq!(spec.effect_before_timing, effect_before_timing);
+            assert_eq!(
+                render_token_slice(trim_lexed_commas(&tokens[spec.effect_tokens])),
+                expected_effect
+            );
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@ use crate::card::{CardBuilder, PowerToughness};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -54,8 +55,13 @@ fn absent_optional_life_reduction_skips_dirty_layered_battlefield_scan() {
         .optional_costs_paid = Default::default();
 
     let before = game.work_counters();
-    let costs =
-        optional_life_cost_reduction_costs_for_cast(&game, alice, spell_id, &CastingMethod::Normal);
+    let costs = optional_life_cost_reduction_costs_for_cast(
+        &game,
+        alice,
+        spell_id,
+        &CastingMethod::Normal,
+        None,
+    );
     let after = game.work_counters();
 
     assert!(costs.is_empty());
@@ -189,6 +195,154 @@ fn mana_search_uses_snapshotted_life_capacity_in_both_source_count_paths() {
     assert!(large_search(2));
 }
 
+#[test]
+fn cost_filter_spell_view_uses_the_authoritative_cast_origin() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Stack Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&card, alice, Zone::Stack);
+    let spell = game.object(spell_id).expect("spell should exist");
+
+    let explicit_origin = spell_view_for_cost_filter_match(
+        &game,
+        alice,
+        spell,
+        &CastingMethod::Normal,
+        Some(Zone::Graveyard),
+    )
+    .expect("a stack spell should produce an origin-zone view");
+    assert_eq!(explicit_origin.zone, Zone::Graveyard);
+
+    let inferred_origin =
+        spell_view_for_cost_filter_match(&game, alice, spell, &CastingMethod::Normal, None)
+            .expect("a stack spell should produce an inferred origin-zone view");
+    assert_eq!(inferred_origin.zone, Zone::Hand);
+}
+
+#[test]
+fn payment_cost_matching_threads_the_authoritative_cast_origin() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let mut filter = ObjectFilter::default();
+    filter.cast_by = Some(PlayerFilter::You);
+    filter.zone = Some(Zone::Graveyard);
+    let reducer = CardDefinitionBuilder::new(CardId::new(), "Graveyard Reducer")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::CostReduction::new(filter, crate::effect::Value::Fixed(1)),
+            ),
+        ))
+        .build();
+    game.create_object_from_definition(&reducer, alice, Zone::Battlefield);
+
+    let base_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Stack Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(base_cost.clone())
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let spell = game.object(spell_id).expect("spell should exist");
+
+    let cost =
+        calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+            &game,
+            alice,
+            spell,
+            &base_cost,
+            &[],
+            &CastingMethod::Normal,
+            Zone::Graveyard,
+        );
+
+    assert_eq!(cost.to_oracle(), "{1}");
+}
+
+#[test]
+fn target_count_without_a_target_predicate_can_match_zero_targets() {
+    let game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let ctx = crate::filter::FilterContext::new(alice);
+    let mut filter = ObjectFilter {
+        target_count: Some(crate::effect::ChoiceCount::exactly(0)),
+        ..Default::default()
+    };
+
+    assert!(chosen_targets_match_cost_filter(&game, &filter, &ctx, &[]));
+
+    filter.target_count = Some(crate::effect::ChoiceCount::exactly(1));
+    assert!(!chosen_targets_match_cost_filter(&game, &filter, &ctx, &[]));
+
+    filter.target_count = Some(crate::effect::ChoiceCount::exactly(0));
+    filter.targets_player = Some(PlayerFilter::Any);
+    assert!(!chosen_targets_match_cost_filter(&game, &filter, &ctx, &[]));
+}
+
+#[test]
+fn mana_symbol_cost_modifiers_scale_by_target_count() {
+    assert_eq!(cost_modifier_target_repetitions(false, 0), 1);
+    assert_eq!(cost_modifier_target_repetitions(false, 3), 1);
+    assert_eq!(cost_modifier_target_repetitions(true, 0), 0);
+    assert_eq!(cost_modifier_target_repetitions(true, 3), 3);
+}
+
+#[test]
+fn battlefield_mana_symbol_cost_modifiers_repeat_for_each_target() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut filter = ObjectFilter::default();
+    filter.cast_by = Some(PlayerFilter::You);
+    let reducer = crate::static_abilities::CostReductionManaCost::new(
+        filter.clone(),
+        ManaCost::from_symbols(vec![ManaSymbol::White]),
+    )
+    .with_per_target();
+    let tax = crate::static_abilities::CostIncreaseManaCost::new(
+        filter,
+        ManaCost::from_symbols(vec![ManaSymbol::Blue]),
+    )
+    .with_per_target();
+    let source = CardDefinitionBuilder::new(CardId::new(), "Target Cost Source")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::new(reducer),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::new(tax),
+        ))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let base_cost = ManaCost::from_symbols(vec![
+        ManaSymbol::White,
+        ManaSymbol::White,
+        ManaSymbol::White,
+    ]);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Targeted Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(base_cost.clone())
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let spell = game.object(spell_id).expect("spell should exist");
+    let chosen_targets = [Target::Player(alice), Target::Player(bob)];
+
+    let cost =
+        calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+            &game,
+            alice,
+            spell,
+            &base_cost,
+            &chosen_targets,
+            &CastingMethod::Normal,
+            Zone::Hand,
+        );
+
+    assert_eq!(cost.to_oracle(), "{W}{U}{U}");
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 fn cavern_hoard_dragon_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(119_956), "Cavern-Hoard Dragon")
@@ -268,6 +422,7 @@ fn cavern_hoard_dragon_cost_reduction_uses_greatest_opponent_artifact_count() {
         0,
         &[],
         &CastingMethod::Normal,
+        None,
     );
     assert_eq!(
         adjusted.to_oracle(),

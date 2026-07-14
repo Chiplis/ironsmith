@@ -26,6 +26,12 @@ pub(crate) struct JointCreateShape<'a> {
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct JointSacrificeShape<'a> {
+    pub(crate) other_player: PlayerAst,
+    pub(crate) object_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AttackingPlayerDrawLoseShape<'a> {
     pub(crate) draw_tokens: &'a [OwnedLexToken],
@@ -109,6 +115,17 @@ fn joint_create<'a>(input: &mut LexStream<'a>) -> WResult<JointCreateShape<'a>> 
     })
 }
 
+fn joint_sacrifice<'a>(input: &mut LexStream<'a>) -> WResult<JointSacrificeShape<'a>> {
+    let other_player = joint_prefix.parse_next(input)?;
+    alt((primitives::kw("sacrifice"), primitives::kw("sacrifices"))).parse_next(input)?;
+    let object_tokens = remainder.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(JointSacrificeShape {
+        other_player,
+        object_tokens,
+    })
+}
+
 fn attacking_draw_lose<'a>(input: &mut LexStream<'a>) -> WResult<AttackingPlayerDrawLoseShape<'a>> {
     primitives::phrase(&["you", "and"]).parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
@@ -141,6 +158,12 @@ pub(crate) fn parse_joint_create_shape(tokens: &[OwnedLexToken]) -> Option<Joint
     primitives::parse_all(tokens, joint_create, "registry-joint-create").ok()
 }
 
+pub(crate) fn parse_joint_sacrifice_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<JointSacrificeShape<'_>> {
+    primitives::parse_all(tokens, joint_sacrifice, "registry-joint-sacrifice").ok()
+}
+
 pub(crate) fn parse_attacking_player_draw_lose_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AttackingPlayerDrawLoseShape<'_>> {
@@ -167,6 +190,14 @@ mod tests {
             TokenWordView::new(parse_joint_create_shape(&create).unwrap().effect_tokens)
                 .to_word_refs(),
             vec!["create", "a", "treasure", "token"]
+        );
+
+        let sacrifice = lex_line("You and that player each sacrifice a creature.", 0).unwrap();
+        let sacrifice = parse_joint_sacrifice_shape(&sacrifice).unwrap();
+        assert_eq!(sacrifice.other_player, PlayerAst::That);
+        assert_eq!(
+            TokenWordView::new(sacrifice.object_tokens).to_word_refs(),
+            vec!["a", "creature"]
         );
     }
 }

@@ -65,8 +65,19 @@ const SHARED_CARD_TYPE_PHRASES: &[&[&str]] = &[
     &["permanent", "type"],
     &["permanent", "types"],
 ];
+
+fn shared_type_relation(words: &[&str]) -> TaggedOpbjectRelation {
+    if find_any_phrase_start(words, &[&["permanent", "type"], &["permanent", "types"]]).is_some() {
+        TaggedOpbjectRelation::SharesPermanentType
+    } else {
+        TaggedOpbjectRelation::SharesCardType
+    }
+}
 const SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS: &[&str] = &["shares", "color", "it"];
 const CREATURE_TYPE_PHRASES: &[&[&str]] = &[&["creature", "type"], &["creature", "types"]];
+const TAPPED_THIS_WAY_PHRASE: &[&str] = &["tapped", "this", "way"];
+const EACH_CREATURE_TAPPED_THIS_WAY_PHRASE: &[&str] =
+    &["each", "creature", "tapped", "this", "way"];
 const EXILED_CARD_REFERENCE_PHRASES: &[&[&str]] = &[
     &["with", "exiled", "card"],
     &["with", "exiled", "cards"],
@@ -155,6 +166,10 @@ const ATTACHED_WORD: &str = "attached";
 const TO_WORD: &str = "to";
 const CONVOKED_THIS_SPELL_TAG_PHRASES: &[&[&str]] = &[
     &["that", "convoked", "this", "spell"],
+    // A permanent spell becomes "this creature" once it is on the
+    // battlefield, but the recorded convoke payment still belongs to the
+    // spell that produced it.  Keep both oracle surfaces on the same tag.
+    &["that", "convoked", "this", "creature"],
     &["that", "convoked", "it"],
 ];
 const CREWED_IT_THIS_TURN_TAG_PHRASE: &[&str] = &["that", "crewed", "it", "this", "turn"];
@@ -764,6 +779,14 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         }
 
         let word = words[idx];
+        if word == "with"
+            && let Some((constraint, consumed)) =
+                parse_filter_keyword_constraint_words(&words[idx + 1..])
+        {
+            apply_filter_keyword_constraint(filter, constraint, false);
+            idx += consumed + 1;
+            continue;
+        }
         if let Some((face_down, consumed)) = parse_filter_face_state_words(&words[idx..]) {
             filter.face_down = Some(face_down);
             idx += consumed;
@@ -792,6 +815,29 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             filter.colors = Some(existing.union(color));
         }
         idx += 1;
+    }
+}
+
+pub(super) fn apply_spell_filter_chosen_type_reference(filter: &mut ObjectFilter, words: &[&str]) {
+    let has_phrase = |phrase: &[&str]| {
+        words
+            .windows(phrase.len())
+            .any(|candidate| candidate == phrase)
+    };
+
+    if has_phrase(&["chosen", "card", "type"]) {
+        filter.chosen_card_type = true;
+    }
+    if has_phrase(&["chosen", "creature", "type"])
+        || has_phrase(&["chosen", "type"])
+        || has_phrase(&["that", "type"])
+    {
+        // The generic "chosen type" surface is intentionally represented by
+        // this predicate: runtime matching first consults the source's chosen
+        // creature type and then falls back to its chosen card type. That is
+        // what lets one spell-filter shape serve both Herald's Horn-style
+        // creature choices and Cloud Key-style card-type choices.
+        filter.chosen_creature_type = true;
     }
 }
 
@@ -871,6 +917,7 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     let mut filter = ObjectFilter::default();
 
     apply_spell_filter_word_atoms(&mut filter, words);
+    apply_spell_filter_chosen_type_reference(&mut filter, words);
     apply_spell_filter_comparisons(&mut filter, words, words);
     apply_spell_filter_tagged_relations(&mut filter, words);
     apply_spell_filter_source_creature_type_relation(&mut filter, words);
@@ -904,7 +951,7 @@ fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]
     if shares_card_type && references_exiled_card {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
-            relation: TaggedOpbjectRelation::SharesCardType,
+            relation: shared_type_relation(words),
         });
     }
 }
@@ -1218,17 +1265,23 @@ pub(super) fn apply_reference_and_tag_stage(
         filter.zone.get_or_insert(Zone::Exile);
     }
     let has_exiled_with_phrase = find_phrase_start(all_words, EXILED_WITH_PHRASE).is_some();
+    let source_exiled_is_same_name_antecedent =
+        find_any_phrase_start(all_words, SAME_NAME_AS_TAGGED_OBJECT_PHRASES)
+            .zip(find_phrase_start(all_words, EXILED_WITH_PHRASE))
+            .is_some_and(|(same_name_idx, exiled_with_idx)| same_name_idx < exiled_with_idx);
     let has_used_to_craft_phrase = find_phrase_start(all_words, USED_TO_CRAFT_PHRASE).is_some();
     let is_source_linked_exile_reference = has_exiled_with_phrase
         || (starts_with_exiled_card && (all_words.len() == 2 || has_used_to_craft_phrase));
     let mut source_linked_exile_reference = false;
     if is_source_linked_exile_reference {
         source_linked_exile_reference = true;
-        filter.zone = Some(Zone::Exile);
-        filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
+        if !source_exiled_is_same_name_antecedent {
+            filter.zone = Some(Zone::Exile);
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        }
         if let Some(exiled_with_idx) = find_phrase_start(all_words, EXILED_WITH_PHRASE) {
             let mut reference_end = exiled_with_idx + 2;
             if all_words
@@ -1342,9 +1395,13 @@ pub(super) fn apply_reference_and_tag_stage(
         && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
             || references_sacrifice_cost_object);
     let has_share_color = words_contain_all(all_words, SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS);
+    let references_tapped_cost_objects =
+        find_phrase_start(all_words, TAPPED_THIS_WAY_PHRASE).is_some();
+    let references_each_tapped_cost_object =
+        find_phrase_start(all_words, EACH_CREATURE_TAPPED_THIS_WAY_PHRASE).is_some();
     let has_share_creature_type = find_any_phrase_start(all_words, CREATURE_TYPE_PHRASES).is_some()
         && words_contain_any_word(all_words, SHARE_WORDS)
-        && words_contain_any_word(all_words, IT_OR_THEM_WORDS);
+        && (words_contain_any_word(all_words, IT_OR_THEM_WORDS) || references_tapped_cost_objects);
     let has_same_mana_value = find_phrase_start(all_words, SAME_MANA_VALUE_AS_PHRASE).is_some();
     let has_equal_or_lesser_mana_value =
         find_phrase_start(all_words, EQUAL_OR_LESSER_MANA_VALUE_PHRASE).is_some();
@@ -1370,7 +1427,7 @@ pub(super) fn apply_reference_and_tag_stage(
         };
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag,
-            relation: TaggedOpbjectRelation::SharesCardType,
+            relation: shared_type_relation(all_words),
         });
     }
     if has_share_color {
@@ -1382,7 +1439,11 @@ pub(super) fn apply_reference_and_tag_stage(
     if has_share_creature_type {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
-            relation: TaggedOpbjectRelation::SharesSubtypeWithTagged,
+            relation: if references_each_tapped_cost_object {
+                TaggedOpbjectRelation::SharesSubtypeWithEachTagged
+            } else {
+                TaggedOpbjectRelation::SharesSubtypeWithTagged
+            },
         });
     }
     if has_same_mana_value && references_sacrifice_cost_object {
@@ -1417,7 +1478,11 @@ pub(super) fn apply_reference_and_tag_stage(
     }
     if has_same_name_as_tagged_object {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: IT_TAG.into(),
+            tag: if source_exiled_is_same_name_antecedent {
+                TagKey::from(crate::tag::SOURCE_EXILED_TAG)
+            } else {
+                IT_TAG.into()
+            },
             relation: TaggedOpbjectRelation::SameNameAsTagged,
         });
     }

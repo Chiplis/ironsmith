@@ -227,6 +227,26 @@ pub(super) fn rewrite_anthem_subject_preserves_typed_commander_and_attacking_tok
 }
 
 #[test]
+pub(super) fn rewrite_anthem_subject_preserves_outer_aura_and_typed_attachment_host() {
+    let tokens = lex_line("Auras attached to permanents you control", 0)
+        .expect("rewrite lexer should classify attached Aura anthem subject");
+
+    let parsed = super::super::keyword_static::parse_anthem_subject(&tokens)
+        .expect("attached Aura anthem subject should parse");
+    let super::super::keyword_static::AnthemSubjectAst::Filter(filter) = parsed else {
+        panic!("expected typed object filter subject");
+    };
+
+    assert_eq!(filter.subtypes, vec![Subtype::Aura]);
+    let host = filter
+        .attached_to_object
+        .as_deref()
+        .expect("typed permanent attachment host");
+    assert_eq!(host.zone, Some(Zone::Battlefield));
+    assert_eq!(host.controller, Some(crate::target::PlayerFilter::You));
+}
+
+#[test]
 pub(super) fn rewrite_anthem_subject_rejects_speculative_non_subject_fragments_without_loss() {
     for fragment in [
         "all abilities and",
@@ -633,6 +653,7 @@ pub(super) fn rewrite_counter_entry_counts_loyalty_counters_across_controlled_pl
     assert!(!loss.is_lossy(), "{}", loss.reasons_text());
     let debug = format!("{:#?}", compiled.definition);
     assert!(debug.contains("CountersOn"), "{debug}");
+    assert!(debug.contains("ForEach"), "{debug}");
     assert!(debug.contains("Loyalty"), "{debug}");
     assert!(debug.contains("Planeswalker"), "{debug}");
     assert!(debug.contains("controller: Some(\n"), "{debug}");
@@ -1268,6 +1289,25 @@ pub(super) fn dynamic_draw_count_lowers_destroyed_this_way_to_prior_effect_metri
             && debug.contains("DrawCardsEffect"),
         "expected draw count to bind to prior destroy metric, got {debug}"
     );
+}
+
+#[test]
+pub(super) fn filtered_mill_draw_counts_bind_graveyard_and_concrete_mill_tag() {
+    for text in [
+        "Target player mills four cards. You draw a card for each creature card put into their graveyard this way.",
+        "At the beginning of your upkeep, target opponent mills three cards, then you draw a card for each land card put into their graveyard this way.",
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Filtered Mill Draw Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(text)
+            .expect("filtered mill-result draw count should parse");
+        let debug = format!("{:#?}", def.spell_effect);
+
+        assert!(debug.contains("DrawCardsEffect"), "{debug}");
+        assert!(debug.contains("Graveyard"), "{debug}");
+        assert!(debug.contains("\"milled_0\""), "{debug}");
+        assert!(!debug.contains("\"__it__\""), "{debug}");
+    }
 }
 
 #[test]
@@ -2024,6 +2064,57 @@ pub(super) fn rewrite_search_library_effect_routing_tracks_destination_and_flags
 }
 
 #[test]
+pub(super) fn rewrite_split_destination_search_uses_one_tagged_partition() {
+    let lexed = lex_line(
+        "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.",
+        0,
+    )
+    .expect("split-destination search should lex");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("split-destination search should parse");
+    let debug = format!("{effects:#?}");
+
+    let searches = effects
+        .iter()
+        .filter_map(|effect| match effect {
+            EffectAst::ChooseObjectsAcrossZones { count, .. } => Some(count),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(searches, vec![&ChoiceCount::up_to(2)], "{debug}");
+    assert_eq!(debug.matches("RevealTagged").count(), 1, "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert_eq!(debug.matches("ShuffleLibrary").count(), 1, "{debug}");
+}
+
+#[test]
+pub(super) fn search_filter_and_or_keeps_basic_land_and_gate_as_separate_branches() {
+    let tokens =
+        lex_line("basic land cards and/or Gate cards", 0).expect("and/or search filter should lex");
+    let filter =
+        super::super::search_library_support::parse_search_library_disjunction_filter(&tokens)
+            .expect("and/or search filter should parse");
+
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert_eq!(
+        filter.union_surface.connective,
+        crate::filter::ObjectFilterUnionConnective::AndOr
+    );
+    assert!(filter.any_of.iter().any(|branch| {
+        branch.card_types.contains(&CardType::Land)
+            && branch.supertypes.contains(&crate::types::Supertype::Basic)
+    }));
+    assert!(
+        filter
+            .any_of
+            .iter()
+            .any(|branch| branch.subtypes.contains(&Subtype::Gate))
+    );
+}
+
+#[test]
 pub(super) fn rewrite_search_library_subject_routing_tracks_zone_owner_prefixes() {
     let target_opponent_multi_zone = lex_line(
         "Search target opponent's graveyard, hand, and library for a card.",
@@ -2416,6 +2507,51 @@ pub(super) fn rewrite_object_filter_parser_handles_same_name_as_the_spell_refere
 }
 
 #[test]
+pub(super) fn library_search_resolves_same_name_it_to_the_revealed_card_tag() {
+    let text = "Reveal a creature card in your hand. Search your library for a card with the same name as that card, reveal it, put it into your hand, then shuffle.";
+    let (compiled, loss) = crate::parse_loss::capture(|| {
+        super::super::compile_card_text(
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Same Name Search Probe")
+                .card_types(vec![CardType::Instant]),
+            text,
+            false,
+        )
+    });
+    let compiled = compiled.expect("same-name search should compile");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+
+    let effects = compiled
+        .definition
+        .spell_effect
+        .as_ref()
+        .expect("probe should compile a spell program")
+        .flattened_default_effects();
+    let revealed_tag = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::RevealTaggedEffect>()
+                .map(|reveal| reveal.tag.clone())
+        })
+        .expect("reveal should preserve its concrete chosen-card tag");
+    let search = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::SearchLibraryEffect>())
+        .expect("single-card library search should use SearchLibraryEffect");
+    let same_name = search
+        .filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        })
+        .expect("search filter should retain the same-name relation");
+
+    assert_eq!(same_name.tag, revealed_tag);
+    assert_ne!(same_name.tag.as_str(), crate::cards::builders::IT_TAG);
+}
+
+#[test]
 pub(super) fn rewrite_search_library_object_filter_parser_handles_named_and_disjunction_shapes() {
     let named_filter = lex_line("artifact card named Sol Ring", 0)
         .expect("rewrite lexer should classify named search filter text");
@@ -2794,6 +2930,32 @@ pub(super) fn rewrite_lexed_cant_sentence_marks_source_tapped_duration_condition
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("SourceIsTapped"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_cant_sentence_preserves_distributive_compound_subject_filter() {
+    let lexed = lex_line(
+        "Each attacking creature and each blocking creature doesn't untap during its controller's next untap step.",
+        0,
+    )
+    .expect("rewrite lexer should classify compound untap restriction");
+    let parsed = parse_cant_effect_sentence_lexed(&lexed)
+        .expect("compound untap restriction should parse")
+        .expect("compound untap restriction should be recognized");
+
+    let [EffectAst::SubjectVerb(effect)] = parsed.as_slice() else {
+        panic!("expected one subject-verb restriction, got {parsed:#?}");
+    };
+    let SubjectVerbActionAst::Cant {
+        restriction: crate::effect::Restriction::Untap(filter),
+        ..
+    } = &effect.action
+    else {
+        panic!("expected untap restriction, got {effect:#?}");
+    };
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(filter.any_of.iter().any(|branch| branch.attacking));
+    assert!(filter.any_of.iter().any(|branch| branch.blocking));
 }
 
 #[test]

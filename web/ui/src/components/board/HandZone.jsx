@@ -342,7 +342,7 @@ export default function HandZone({
   layout = "fan",
 }) {
   const { state, multiplayer } = useGame();
-  const { hoverCard, clearHover, hoveredObjectId, hoveredLinkedObjectIds } = useHover();
+  const { hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const { startDrag, updateDrag, endDrag } = useDragActions();
   const handScale = useManabrewHandScale();
   const dragThresholdRef = useRef(null);
@@ -363,6 +363,7 @@ export default function HandZone({
   const [seenHandTransitionIds, setSeenHandTransitionIds] = useState(() => new Set());
   const [handTransitionsHydrated, setHandTransitionsHydrated] = useState(false);
   const [menuHoveredHandObjectId, setMenuHoveredHandObjectId] = useState(null);
+  const [hoveredHandObjectId, setHoveredHandObjectId] = useState(null);
   const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
     [player?.can_view_hand, player?.hand_cards]
@@ -676,7 +677,7 @@ export default function HandZone({
   );
   const activeFanObjectId = activeMenuHoveredHandObjectId
     || selectedObjectIdKey
-    || (hoveredObjectId != null ? String(hoveredObjectId) : null);
+    || hoveredHandObjectId;
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
     const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
@@ -780,12 +781,10 @@ export default function HandZone({
   useEffect(() => {
     const wasExpanded = previousExpandedRef.current;
     previousExpandedRef.current = isExpanded;
-    if (wasExpanded && !isExpanded && hoveredObjectId != null) {
-      if (hoverableHandObjectIds.has(String(hoveredObjectId))) {
-        clearHover();
-      }
+    if (wasExpanded && !isExpanded && hoveredHandObjectId != null) {
+      setHoveredHandObjectId(null);
     }
-  }, [clearHover, hoverableHandObjectIds, hoveredObjectId, isExpanded]);
+  }, [hoveredHandObjectId, isExpanded]);
 
   useLayoutEffect(() => {
     const handList = handListRef.current;
@@ -838,8 +837,8 @@ export default function HandZone({
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
     }
-    hoverCard(objectId);
-  }, [hoverCard]);
+    setHoveredHandObjectId(String(objectId));
+  }, []);
 
   const handleHoverLeave = useCallback(() => {
     if (hoverClearTimerRef.current) {
@@ -847,10 +846,10 @@ export default function HandZone({
     }
     // Small delay smooths hover-out when moving across dense hand cards.
     hoverClearTimerRef.current = setTimeout(() => {
-      clearHover();
+      setHoveredHandObjectId(null);
       hoverClearTimerRef.current = null;
     }, 110);
-  }, [clearHover]);
+  }, []);
 
   const resolveHandHoverObjectId = useCallback((clientX, clientY) => {
     const handList = handListRef.current;
@@ -890,7 +889,7 @@ export default function HandZone({
 
     const objectId = resolveHandHoverObjectId(event.clientX, event.clientY);
     if (objectId == null) {
-      if (hoveredObjectId != null && hoverableHandObjectIds.has(String(hoveredObjectId))) {
+      if (hoveredHandObjectId != null) {
         handleHoverLeave();
       }
       return;
@@ -900,10 +899,10 @@ export default function HandZone({
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
     }
-    if (hoveredObjectId == null || String(hoveredObjectId) !== objectId) {
-      hoverCard(objectId);
+    if (hoveredHandObjectId !== objectId) {
+      setHoveredHandObjectId(objectId);
     }
-  }, [handleHoverLeave, hoverCard, hoverableHandObjectIds, hoveredObjectId, resolveHandHoverObjectId]);
+  }, [handleHoverLeave, hoveredHandObjectId, resolveHandHoverObjectId]);
 
   const handleHandPointerLeave = useCallback((event) => {
     if (event.pointerType === "touch") return;
@@ -1114,7 +1113,7 @@ export default function HandZone({
           ? baseGlowKind
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
-        const isHovered = hoveredObjectId != null && String(hoveredObjectId) === cardObjectId;
+        const isHovered = hoveredHandObjectId === cardObjectId;
         const isInspected = (
           (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
@@ -1174,7 +1173,7 @@ export default function HandZone({
         ? baseGlowKind
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
-      const isHovered = hoveredObjectId != null && String(hoveredObjectId) === extraObjectId;
+      const isHovered = hoveredHandObjectId === extraObjectId;
       const isInspected = (
         (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
         || isMenuActionPreview
@@ -1238,7 +1237,7 @@ export default function HandZone({
           ? baseGlowKind
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
-        const isHovered = hoveredObjectId != null && String(hoveredObjectId) === cardObjectId;
+        const isHovered = hoveredHandObjectId === cardObjectId;
         const isInspected = (
           (selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
           || isMenuActionPreview
@@ -1306,7 +1305,7 @@ export default function HandZone({
         ? baseGlowKind
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
-      const isHovered = hoveredObjectId != null && String(hoveredObjectId) === extraObjectId;
+      const isHovered = hoveredHandObjectId === extraObjectId;
       const isInspected = (
         (selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
         || isMenuActionPreview

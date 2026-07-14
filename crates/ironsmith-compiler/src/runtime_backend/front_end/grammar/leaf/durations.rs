@@ -90,6 +90,7 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
         &["until", "end", "of", "combat"],
         LeafDurationPhrase::UntilEndOfCombat,
     ),
+    (&["this", "combat"], LeafDurationPhrase::UntilEndOfCombat),
     (
         &["until", "the", "end", "of", "turn"],
         LeafDurationPhrase::UntilEndOfTurn,

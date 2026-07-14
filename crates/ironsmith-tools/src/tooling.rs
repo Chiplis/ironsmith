@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use csv::StringRecord;
 use reqwest::blocking::Client;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -431,6 +431,79 @@ pub fn load_card_payloads_by_name(
     }
 
     Ok(Vec::new())
+}
+
+/// Load many named card payloads with a single `cards.json` parse.
+///
+/// The returned map uses the same normalized lookup keys as
+/// `load_card_payloads_by_name`. A linked-card name maps to every face, while a
+/// face name maps only to that face.
+pub fn load_card_payloads_by_names(
+    path: &str,
+    names: &[String],
+) -> Result<BTreeMap<String, Vec<CardPayload>>, Box<dyn Error>> {
+    let requested = names
+        .iter()
+        .map(|name| normalize_lookup_name(name))
+        .collect::<BTreeSet<_>>();
+    let raw = fs::read_to_string(path)?;
+    let cards: Vec<Value> = serde_json::from_str(&raw)?;
+    let mut out = BTreeMap::new();
+
+    for card in &cards {
+        if card
+            .get("digital")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let card_name = card
+            .get("name")
+            .and_then(Value::as_str)
+            .map(normalize_lookup_name);
+        if let Some(card_name) = card_name.as_ref()
+            && requested.contains(card_name)
+            && !out.contains_key(card_name)
+        {
+            let payloads = if linked_face_layout_from_card(card).is_some()
+                && let Some(faces) = card.get("card_faces").and_then(Value::as_array)
+            {
+                (0..faces.len())
+                    .filter_map(|idx| build_card_payload_for_face(card, idx))
+                    .collect::<Vec<_>>()
+            } else {
+                build_registry_card_record_with_explicit_includes(card, &BTreeSet::new())
+                    .map(|record| vec![record.payload])
+                    .unwrap_or_default()
+            };
+            if !payloads.is_empty() {
+                out.insert(card_name.clone(), payloads);
+            }
+        }
+
+        let Some(faces) = card.get("card_faces").and_then(Value::as_array) else {
+            continue;
+        };
+        for (idx, face) in faces.iter().enumerate() {
+            let Some(face_name) = face
+                .get("name")
+                .and_then(Value::as_str)
+                .map(normalize_lookup_name)
+            else {
+                continue;
+            };
+            if !requested.contains(&face_name) || out.contains_key(&face_name) {
+                continue;
+            }
+            if let Some(payload) = build_card_payload_for_face(card, idx) {
+                out.insert(face_name, vec![payload]);
+            }
+        }
+    }
+
+    Ok(out)
 }
 
 pub fn parse_card_with_fallback(name: &str, parse_input: &str) -> ParseAttempt {
@@ -1028,6 +1101,15 @@ impl CardStatusDb {
         let db = Self { conn };
         db.initialize()?;
         Ok(db)
+    }
+
+    /// Open an existing status database without running schema initialization
+    /// or permitting writes. Audit/reporting tools should use this path so a
+    /// read-only checkpoint cannot change database metadata as a side effect.
+    pub fn open_read_only(path: impl AsRef<Path>) -> Result<Self, Box<dyn Error>> {
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        conn.busy_timeout(Duration::from_secs(60))?;
+        Ok(Self { conn })
     }
 
     fn card_compilation_has_column(&self, column: &str) -> bool {
@@ -2513,6 +2595,11 @@ fn build_registry_card_record_with_explicit_includes(
     let toughness = pick_field_preferring_face(card, face, "toughness");
     let loyalty = pick_field_preferring_face(card, face, "loyalty");
     let defense = pick_field_preferring_face(card, face, "defense");
+    let first_printed_set_name = card
+        .get("first_printed_set_name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     let mut metadata_lines = Vec::new();
     if let Some(mana_cost) = mana_cost
@@ -2526,6 +2613,9 @@ fn build_registry_card_record_with_explicit_includes(
         .filter(|value| !value.trim().is_empty())
     {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
+    }
+    if let Some(set_name) = first_printed_set_name {
+        metadata_lines.push(format!("First printed set: {set_name}"));
     }
     if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
         && !power.trim().is_empty()
@@ -2811,6 +2901,11 @@ fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPa
     let toughness = pick_field_preferring_face(card, Some(face), "toughness");
     let loyalty = pick_field_preferring_face(card, Some(face), "loyalty");
     let defense = pick_field_preferring_face(card, Some(face), "defense");
+    let first_printed_set_name = card
+        .get("first_printed_set_name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     let mut metadata_lines = Vec::new();
     if let Some(mana_cost) = mana_cost
@@ -2824,6 +2919,9 @@ fn build_card_payload_for_face(card: &Value, face_index: usize) -> Option<CardPa
         .filter(|value| !value.trim().is_empty())
     {
         metadata_lines.push(format!("Type: {}", type_line.trim()));
+    }
+    if let Some(set_name) = first_printed_set_name {
+        metadata_lines.push(format!("First printed set: {set_name}"));
     }
     if let (Some(power), Some(toughness)) = (power.as_deref(), toughness.as_deref())
         && !power.trim().is_empty()

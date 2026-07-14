@@ -87,7 +87,8 @@ pub(crate) struct ColorsAmongSpan<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum LandCouldProduceShape<'a> {
-    Filter(&'a [OwnedLexToken]),
+    CouldProduceFilter(&'a [OwnedLexToken]),
+    TriggeringEventProducedFilter(&'a [OwnedLexToken]),
     UnsupportedTrailing,
 }
 
@@ -269,19 +270,22 @@ pub(crate) fn parse_land_could_produce_shape(
     if words.len() < 3 || !phrase_is_prefix(&words, &["that"]) {
         return None;
     }
-    let (marker_word, marker_length) =
+    let (marker_word, marker_length, triggering_event) =
         if let Some(offset) = phrase_offset(&words, &["could", "produce"]) {
-            (offset, 2)
+            (offset, 2, false)
         } else {
-            (word_offset(&words, &["produced"])?, 1)
+            (word_offset(&words, &["produced"])?, 1, true)
         };
     if marker_word + marker_length != words.len() {
         return Some(LandCouldProduceShape::UnsupportedTrailing);
     }
     let marker_token = view.token_start_indices().get(marker_word).copied()?;
-    Some(LandCouldProduceShape::Filter(trim_leading_commas(
-        &tokens[1..marker_token],
-    )))
+    let filter = trim_leading_commas(&tokens[1..marker_token]);
+    if triggering_event {
+        Some(LandCouldProduceShape::TriggeringEventProducedFilter(filter))
+    } else {
+        Some(LandCouldProduceShape::CouldProduceFilter(filter))
+    }
 }
 
 pub(crate) fn is_player_choice_tail(tokens: &[OwnedLexToken]) -> bool {
@@ -519,7 +523,7 @@ mod tests {
     #[test]
     fn typed_land_production_shape_preserves_filter_span_and_rejects_trailing_words() {
         let tokens = lex_line("that a land you control could produce", 0).unwrap();
-        let LandCouldProduceShape::Filter(filter) =
+        let LandCouldProduceShape::CouldProduceFilter(filter) =
             parse_land_could_produce_shape(&tokens).unwrap()
         else {
             panic!("expected a land-production filter");
@@ -528,6 +532,14 @@ mod tests {
             TokenWordView::new(filter).word_refs(),
             ["a", "land", "you", "control"]
         );
+
+        let produced = lex_line("that land produced", 0).unwrap();
+        let LandCouldProduceShape::TriggeringEventProducedFilter(filter) =
+            parse_land_could_produce_shape(&produced).unwrap()
+        else {
+            panic!("expected a triggering-event production filter");
+        };
+        assert_eq!(TokenWordView::new(filter).word_refs(), ["land"]);
 
         let trailing = lex_line("that a land could produce this turn", 0).unwrap();
         assert!(matches!(

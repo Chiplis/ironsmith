@@ -473,6 +473,7 @@ pub(super) fn parse_level_item_cst(
                     ActivationTiming::AnyTime,
                     false,
                     None,
+                    None,
                 )?;
                 return Ok(Some(LevelItemCst {
                     info: line.info.clone(),

@@ -218,7 +218,7 @@ impl DecisionSpec for ChooseObjectsSpec {
             self.min,
             self.max,
         );
-        let ctx = if let Some(constraint) = self.aggregate_constraint {
+        let ctx = if let Some(constraint) = self.aggregate_constraint.clone() {
             ctx.with_aggregate_constraint(constraint)
         } else {
             ctx
@@ -951,6 +951,7 @@ fn runtime_requirements(
             legal_target_sets: req.legal_target_sets.clone(),
             min_targets: req.min_targets,
             max_targets: req.max_targets,
+            distinct_player_group: None,
         })
         .collect()
 }

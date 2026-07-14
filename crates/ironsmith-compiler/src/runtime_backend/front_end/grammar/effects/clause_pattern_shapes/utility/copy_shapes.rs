@@ -40,17 +40,18 @@ fn word_slice_boundary(words: &[&str], expected: &'static str) -> Option<usize> 
 }
 
 pub(crate) fn parse_copy_tail_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTailShape {
-    let retarget = boundary_before(tokens, retarget_prefix).and_then(|(index, may)| {
-        let tail = tokens.get(index + 1..).unwrap_or_default();
-        (marker_anywhere(
-            tail,
-            alt((primitives::kw("target"), primitives::kw("targets"))),
-        ) && marker_anywhere(tail, primitives::kw("copy")))
-        .then_some((index, may))
-    });
+    let retarget =
+        boundary_before(tokens, retarget_prefix).and_then(|(index, may)| {
+            let tail = tokens.get(index + 1..).unwrap_or_default();
+            let has_target = marker_anywhere(tail, primitives::kw("target"));
+            let has_targets = marker_anywhere(tail, primitives::kw("targets"));
+            ((has_target || has_targets) && marker_anywhere(tail, primitives::kw("copy")))
+                .then_some((index, may, has_target && !has_targets))
+        });
     CopyTailShape {
-        retarget_split: retarget.map(|(index, _)| index),
-        retarget_may: retarget.is_some_and(|(_, may)| may),
+        retarget_split: retarget.map(|(index, _, _)| index),
+        retarget_may: retarget.is_some_and(|(_, may, _)| may),
+        retarget_single_target: retarget.is_some_and(|(_, _, single)| single),
         exception_split: word_boundary(tokens, "except"),
         then_split: word_boundary(tokens, "then"),
         for_each_split: boundary_before(tokens, primitives::phrase(&["for", "each"]))
@@ -187,10 +188,13 @@ fn parse_copy_retarget_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyRetar
         ));
     }
     let has_new = marker_anywhere(tail, primitives::kw("new"));
+    let has_target = marker_anywhere(tail, primitives::kw("target"));
+    let has_targets = marker_anywhere(tail, primitives::kw("targets"));
     while any::<_, ErrMode<ContextError>>.parse_next(input).is_ok() {}
     Ok(CopyRetargetShape {
         may_choose,
         has_new,
+        single_target: has_target && !has_targets,
     })
 }
 

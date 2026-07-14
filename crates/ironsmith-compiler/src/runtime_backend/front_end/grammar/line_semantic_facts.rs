@@ -39,6 +39,7 @@ fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSema
         },
         trailing_instead_if_predicate: parse_trailing_instead_if_predicate(tokens),
         replacement_surfaces,
+        presentation_label: None,
         creature_type_choice_buff: lowering_surfaces::parse_creature_type_choice_buff_tokens(
             tokens,
         )

@@ -97,6 +97,7 @@ pub struct ParsedModalHeader<TriggerSpec, Effect, Value, Predicate, TotalCost, Z
     pub same_mode_more_than_once: bool,
     pub mode_must_be_unchosen: bool,
     pub mode_must_be_unchosen_this_turn: bool,
+    pub distinct_player_targets_per_mode: bool,
     pub commander_allows_both: bool,
     pub trigger: Option<TriggerSpec>,
     pub activated: Option<ParsedModalActivatedHeader<TotalCost, Zone, Condition>>,

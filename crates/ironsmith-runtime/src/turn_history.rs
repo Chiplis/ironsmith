@@ -2,15 +2,21 @@ use std::collections::{HashMap, HashSet};
 
 use crate::color::ColorSet;
 use crate::events::EnterBattlefieldEvent;
-use crate::events::combat::{CreatureBecameBlockedEvent, CreatureBlockedEvent};
+use crate::events::combat::{
+    CreatureAttackedEvent, CreatureBecameBlockedEvent, CreatureBlockedEvent,
+};
+use crate::events::other::CounterPlacedEvent;
 use crate::events::other::{
     CardDiscardedEvent, CardsDrawnEvent, ControlChangedEvent, KeywordActionEvent,
     KeywordActionKind, SearchLibraryEvent,
 };
 use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::SpellCastEvent;
+use crate::events::tokens::CreateTokensEvent;
 use crate::events::zones::ZoneChangeEvent;
-use crate::events::{DamageEvent, EventKind, LifeGainEvent, LifeLossEvent};
+use crate::events::{DamageEvent, DamageTarget, EventKind, LifeGainEvent, LifeLossEvent};
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
+use crate::game_state::GameState;
 use crate::game_state::TurnCounterTracker;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::provenance::{ProvNodeId, ProvenanceGraph};
@@ -19,6 +25,7 @@ use crate::triggers::TriggerEvent;
 use crate::triggers::TriggerIdentity;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+use ironsmith_core::TurnHistoryCount;
 
 /// One ingested trigger/event observation for the current turn.
 #[derive(Debug, Clone)]
@@ -81,7 +88,7 @@ impl TurnHistory {
         spells_cast_last_turn_total
     }
 
-    fn projected_records(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> {
+    pub(crate) fn projected_records(&self) -> impl DoubleEndedIterator<Item = &TurnEventRecord> {
         self.event_records
             .iter()
             .chain(self.staged_event_records.iter())
@@ -489,6 +496,37 @@ impl TurnHistory {
                             .is_some_and(|snapshot| snapshot.stable_id == stable_id)
                 })
         })
+    }
+
+    /// Counts the number of times a player descended this turn.
+    ///
+    /// Descend looks at the card's last known characteristics and owner when it
+    /// moved, so the result remains true even if the card later leaves the
+    /// graveyard. Tokens do not count because they are permanents, not
+    /// permanent cards.
+    pub fn player_descended_count_this_turn(&self, player: PlayerId) -> u32 {
+        const PERMANENT_CARD_TYPES: [CardType; 6] = [
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+        ];
+
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.to == Zone::Graveyard)
+            .flat_map(|event| event.snapshots.iter())
+            .filter(|snapshot| {
+                snapshot.owner == player
+                    && !snapshot.is_token
+                    && snapshot
+                        .card_types
+                        .iter()
+                        .any(|card_type| PERMANENT_CARD_TYPES.contains(card_type))
+            })
+            .count() as u32
     }
 
     pub fn object_was_put_into_graveyard_from_battlefield_this_turn(
@@ -983,5 +1021,428 @@ impl TurnHistory {
                 Some(damage.amount)
             })
             .sum()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum HistoricalObjectIdentity {
+    Stable(StableId),
+    Object(ObjectId),
+}
+
+fn historical_identity(
+    object: ObjectId,
+    snapshot: Option<&ObjectSnapshot>,
+) -> HistoricalObjectIdentity {
+    snapshot
+        .map(|snapshot| HistoricalObjectIdentity::Stable(snapshot.stable_id))
+        .unwrap_or(HistoricalObjectIdentity::Object(object))
+}
+
+/// Resolve a typed turn-history count against event snapshots.  This is shared
+/// by ordinary effect values and continuous/static values so both paths use the
+/// same retained-event semantics.
+pub(crate) fn resolve_turn_history_count(
+    game: &GameState,
+    query: &TurnHistoryCount,
+    filter_ctx: &crate::target::FilterContext,
+    triggering_event: Option<&TriggerEvent>,
+) -> i32 {
+    let history = &game.turn_store.turn_history;
+
+    match query {
+        TurnHistoryCount::Died(filter) => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+                .filter(|event| event.is_dies())
+                .flat_map(ZoneChangeEvent::snapshots)
+                .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
+                .count() as i32
+        }
+        TurnHistoryCount::EnteredBattlefield(filter) => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            history
+                .projected_records()
+                .filter_map(|record| {
+                    let event = record.event.downcast::<ZoneChangeEvent>()?;
+                    if !event.is_etb() {
+                        return None;
+                    }
+                    if !event.snapshots().is_empty() {
+                        Some(event.snapshots().to_vec())
+                    } else {
+                        record
+                            .object_snapshot
+                            .clone()
+                            .map(|snapshot| vec![snapshot])
+                    }
+                })
+                .flatten()
+                .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
+                .count() as i32
+        }
+        TurnHistoryCount::TokensCreated(player_filter) => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<CreateTokensEvent>())
+            .filter(|event| player_filter.matches_player(event.controller, filter_ctx))
+            .map(|event| {
+                event.count.saturating_add(
+                    event
+                        .additional_tokens
+                        .iter()
+                        .map(|(_, count)| *count)
+                        .sum::<u32>(),
+                )
+            })
+            .sum::<u32>() as i32,
+        TurnHistoryCount::PutIntoGraveyard { owner, from } => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.to == Zone::Graveyard)
+            .filter(|event| from.is_empty() || from.contains(&event.from))
+            .flat_map(ZoneChangeEvent::snapshots)
+            .filter(|snapshot| owner.matches_player(snapshot.owner, filter_ctx))
+            .count() as i32,
+        TurnHistoryCount::MovedZones { filter, from, to } => {
+            let mut historical_filter = filter.clone();
+            historical_filter.zone = None;
+            history
+                .projected_records()
+                .filter_map(|record| {
+                    let event = record.event.downcast::<ZoneChangeEvent>()?;
+                    if from.is_some_and(|zone| zone != event.from)
+                        || to.is_some_and(|zone| zone != event.to)
+                    {
+                        return None;
+                    }
+                    if !event.snapshots().is_empty() {
+                        Some(event.snapshots().to_vec())
+                    } else {
+                        record
+                            .object_snapshot
+                            .clone()
+                            .map(|snapshot| vec![snapshot])
+                    }
+                })
+                .flatten()
+                .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
+                .count() as i32
+        }
+        TurnHistoryCount::Sacrificed { player, filter } => history
+            .projected_records()
+            .filter_map(|record| {
+                let event = record.event.downcast::<SacrificeEvent>()?;
+                let snapshot = event
+                    .snapshot
+                    .as_ref()
+                    .or(record.object_snapshot.as_ref())?;
+                let sacrificing_player = event.sacrificing_player.unwrap_or(snapshot.controller);
+                Some((sacrificing_player, snapshot))
+            })
+            .filter(|(sacrificing_player, snapshot)| {
+                player.matches_player(*sacrificing_player, filter_ctx)
+                    && filter.matches_snapshot(snapshot, filter_ctx, game)
+            })
+            .count() as i32,
+        TurnHistoryCount::CountersPutOn {
+            counter_type,
+            filter,
+        } => history
+            .projected_records()
+            .filter_map(|record| {
+                let event = record.event.downcast::<CounterPlacedEvent>()?;
+                let snapshot = record.object_snapshot.as_ref()?;
+                (counter_type.is_none_or(|counter_type| event.counter_type == counter_type)
+                    && filter.matches_snapshot(snapshot, filter_ctx, game))
+                .then_some(event.amount)
+            })
+            .sum::<u32>() as i32,
+        TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+            let mut seen = HashSet::new();
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else {
+                    continue;
+                };
+                let Some(snapshot) = record.object_snapshot.as_ref() else {
+                    continue;
+                };
+                if !player.matches_player(snapshot.controller, filter_ctx)
+                    || !filter.matches_snapshot(snapshot, filter_ctx, game)
+                {
+                    continue;
+                }
+                seen.insert(historical_identity(event.attacker, Some(snapshot)));
+            }
+            seen.len() as i32
+        }
+        TurnHistoryCount::OpponentsAttacked(player) => {
+            let mut seen = HashSet::new();
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else {
+                    continue;
+                };
+                let Some(snapshot) = record.object_snapshot.as_ref() else {
+                    continue;
+                };
+                if !player.matches_player(snapshot.controller, filter_ctx) {
+                    continue;
+                }
+                if let crate::triggers::event::AttackEventTarget::Player(defender) = event.target
+                    && filter_ctx.opponents.contains(&defender)
+                {
+                    seen.insert(defender);
+                }
+            }
+            seen.len() as i32
+        }
+        TurnHistoryCount::PlayersDiscarded(player) => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<CardDiscardedEvent>())
+            .map(|event| event.player)
+            .filter(|discarding_player| player.matches_player(*discarding_player, filter_ctx))
+            .collect::<HashSet<_>>()
+            .len() as i32,
+        TurnHistoryCount::PlayersDealtDamage(player) => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<DamageEvent>())
+            .filter(|event| event.amount > 0)
+            .filter_map(|event| match event.target {
+                DamageTarget::Player(target) if player.matches_player(target, filter_ctx) => {
+                    Some(target)
+                }
+                _ => None,
+            })
+            .collect::<HashSet<_>>()
+            .len() as i32,
+        TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => history
+            .projected_records()
+            .filter_map(|record| {
+                let event = record.event.downcast::<DamageEvent>()?;
+                if !event.is_combat || event.amount == 0 {
+                    return None;
+                }
+                let DamageTarget::Player(target) = event.target else {
+                    return None;
+                };
+                let source = record
+                    .source_snapshot
+                    .as_ref()
+                    .or(record.object_snapshot.as_ref())?;
+                (players.matches_player(target, filter_ctx)
+                    && sources.matches_snapshot(source, filter_ctx, game))
+                .then_some(target)
+            })
+            .collect::<HashSet<_>>()
+            .len()
+            as i32,
+        TurnHistoryCount::DiscardedOrCycled(player) => {
+            let mut seen = HashSet::new();
+            for record in history.projected_records() {
+                if let Some(event) = record.event.downcast::<CardDiscardedEvent>()
+                    && player.matches_player(event.player, filter_ctx)
+                {
+                    seen.insert(historical_identity(event.card, event.snapshot.as_ref()));
+                }
+                if let Some(event) = record.event.downcast::<KeywordActionEvent>()
+                    && event.action == KeywordActionKind::Cycle
+                    && player.matches_player(event.player, filter_ctx)
+                {
+                    seen.insert(historical_identity(event.source, event.snapshot.as_ref()));
+                }
+            }
+            seen.len() as i32
+        }
+        TurnHistoryCount::Cycled(player) => {
+            let mut seen = HashSet::new();
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<KeywordActionEvent>() else {
+                    continue;
+                };
+                if event.action != KeywordActionKind::Cycle
+                    || !player.matches_player(event.player, filter_ctx)
+                {
+                    continue;
+                }
+                seen.insert(historical_identity(event.source, event.snapshot.as_ref()));
+            }
+            seen.len() as i32
+        }
+        TurnHistoryCount::PlayersLostLife(player) => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<LifeLossEvent>())
+            .filter(|event| event.amount > 0 && player.matches_player(event.player, filter_ctx))
+            .map(|event| event.player)
+            .collect::<HashSet<_>>()
+            .len() as i32,
+        TurnHistoryCount::SpellsCast {
+            player,
+            filter,
+            from_zone,
+            from_outside_hand,
+            exclude_source,
+            before_triggering_spell,
+        } => {
+            let triggering_cast = if *before_triggering_spell {
+                triggering_event.and_then(|event| {
+                    event
+                        .downcast::<SpellCastEvent>()
+                        .map(|cast| (event.provenance(), cast.spell))
+                })
+            } else {
+                None
+            };
+            if *before_triggering_spell && triggering_cast.is_none() {
+                return 0;
+            }
+
+            let mut count = 0i32;
+            let mut found_boundary = !*before_triggering_spell;
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<SpellCastEvent>() else {
+                    continue;
+                };
+                if let Some((trigger_provenance, trigger_spell)) = triggering_cast {
+                    let same_provenance = trigger_provenance != ProvNodeId::default()
+                        && record.event.provenance() == trigger_provenance;
+                    if same_provenance || event.spell == trigger_spell {
+                        found_boundary = true;
+                        break;
+                    }
+                }
+                let Some(snapshot) = event.snapshot.as_ref().or(record.object_snapshot.as_ref())
+                else {
+                    continue;
+                };
+                if player.matches_player(event.caster, filter_ctx)
+                    && from_zone.is_none_or(|zone| event.from_zone == zone)
+                    && (!*from_outside_hand || event.from_zone != Zone::Hand)
+                    && (!*exclude_source || Some(snapshot.object_id) != filter_ctx.source)
+                    && filter.matches_snapshot(snapshot, filter_ctx, game)
+                {
+                    count = count.saturating_add(1);
+                }
+            }
+            if found_boundary { count } else { 0 }
+        }
+        TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
+            let mut colors = ColorSet::new();
+            for &object_id in &game.battlefield {
+                let Some(object) = game.object(object_id) else {
+                    continue;
+                };
+                if player.matches_player(game.controller_of(object), filter_ctx) {
+                    colors = colors.union(object.colors());
+                }
+            }
+            for record in history.projected_records() {
+                let Some(event) = record.event.downcast::<SpellCastEvent>() else {
+                    continue;
+                };
+                if !player.matches_player(event.caster, filter_ctx) {
+                    continue;
+                }
+                if let Some(snapshot) = event.snapshot.as_ref().or(record.object_snapshot.as_ref())
+                {
+                    colors = colors.union(snapshot.colors);
+                }
+            }
+            colors.count() as i32
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::filter::{ObjectFilter, PlayerFilter, StackObjectKind};
+    use crate::ids::CardId;
+
+    fn cast_event(game: &GameState, spell: ObjectId, caster: PlayerId) -> TriggerEvent {
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(spell).expect("spell object should exist"),
+            game,
+        );
+        TriggerEvent::new_with_provenance(
+            SpellCastEvent::new_with_snapshot(spell, caster, Zone::Hand, snapshot),
+            ProvNodeId::default(),
+        )
+    }
+
+    #[test]
+    fn triggering_cast_boundary_excludes_the_trigger_and_later_responses() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let instant = CardDefinitionBuilder::new(CardId::new(), "History Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+
+        let alice_first = game.create_object_from_definition(&instant, alice, Zone::Stack);
+        let bob_first = game.create_object_from_definition(&instant, bob, Zone::Stack);
+        let triggering_spell = game.create_object_from_definition(&instant, alice, Zone::Stack);
+        let response_spell = game.create_object_from_definition(&instant, alice, Zone::Stack);
+        for (spell, caster) in [(alice_first, alice), (bob_first, bob)] {
+            game.record_turn_history_event(&cast_event(&game, spell, caster));
+        }
+        let triggering_event = cast_event(&game, triggering_spell, alice);
+        game.record_turn_history_event(&triggering_event);
+        game.record_turn_history_event(&cast_event(&game, response_spell, alice));
+
+        let mut spell_filter = ObjectFilter::default();
+        spell_filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        spell_filter.stack_kind = Some(StackObjectKind::Spell);
+        let before_trigger = TurnHistoryCount::SpellsCast {
+            player: PlayerFilter::You,
+            filter: spell_filter.clone(),
+            from_zone: None,
+            from_outside_hand: false,
+            exclude_source: false,
+            before_triggering_spell: true,
+        };
+        let alice_ctx = crate::filter::FilterContext::new(alice);
+        assert_eq!(
+            resolve_turn_history_count(&game, &before_trigger, &alice_ctx, Some(&triggering_event),),
+            1,
+            "Alice's response after the triggering cast is outside the boundary"
+        );
+
+        let before_trigger_any = TurnHistoryCount::SpellsCast {
+            player: PlayerFilter::Any,
+            filter: spell_filter.clone(),
+            from_zone: None,
+            from_outside_hand: false,
+            exclude_source: false,
+            before_triggering_spell: true,
+        };
+        assert_eq!(
+            resolve_turn_history_count(
+                &game,
+                &before_trigger_any,
+                &alice_ctx,
+                Some(&triggering_event),
+            ),
+            2,
+            "Sentinel-style counts include all players but stop at the triggering cast"
+        );
+
+        let ordinary_other = TurnHistoryCount::SpellsCast {
+            player: PlayerFilter::You,
+            filter: spell_filter,
+            from_zone: None,
+            from_outside_hand: false,
+            exclude_source: true,
+            before_triggering_spell: false,
+        };
+        let source_ctx = crate::filter::FilterContext::new(alice).with_source(triggering_spell);
+        assert_eq!(
+            resolve_turn_history_count(&game, &ordinary_other, &source_ctx, None),
+            2,
+            "ordinary other-spell counts include later casts and exclude only the source spell"
+        );
     }
 }

@@ -42,6 +42,7 @@ pub(crate) fn mana_added_outcome_with_value(
         outcome.with_event(
             ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
                 .with_production_provenance(ctx.mana.production_provenance)
+                .with_snapshot(ctx.source_snapshot.clone())
                 .into_trigger_event(),
         )
     }
@@ -196,20 +197,23 @@ where
         player_id,
         mana,
         production_provenance,
-        snapshot,
+        snapshot.clone(),
         decision_maker,
     );
     if let Some(player) = game.player_mut(player_id) {
         for symbol in mana.iter().copied() {
             if restrictions.is_empty() {
-                player.mana_pool.add(symbol, 1);
+                player.add_unrestricted_mana(symbol, source, snapshot.clone());
             } else {
-                player.add_restricted_mana(crate::ability::RestrictedManaUnit {
-                    symbol,
-                    source,
-                    source_chosen_creature_type,
-                    restrictions: restrictions.to_vec(),
-                });
+                player.add_restricted_mana_with_snapshot(
+                    crate::ability::RestrictedManaUnit {
+                        symbol,
+                        source,
+                        source_chosen_creature_type,
+                        restrictions: restrictions.to_vec(),
+                    },
+                    snapshot.clone(),
+                );
             }
         }
     }

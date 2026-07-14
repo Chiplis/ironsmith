@@ -1,6 +1,6 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 
 mod mechanics;
 
@@ -527,56 +527,99 @@ fn casting_method_is_bestow(
     }
 }
 
+fn inferred_cast_origin_zone_for_cost_filter(
+    _game: &GameState,
+    _caster: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> Zone {
+    match casting_method {
+        CastingMethod::Normal => {
+            if spell.zone == Zone::Stack {
+                Zone::Hand
+            } else {
+                spell.zone
+            }
+        }
+        CastingMethod::FaceDown | CastingMethod::SplitOtherHalf | CastingMethod::Fuse => Zone::Hand,
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .cloned()
+            .or_else(|| spell.cast_alternative_method_owned())
+            .map(|method| method.cast_from_zone())
+            .unwrap_or_else(|| {
+                if spell.zone == Zone::Stack {
+                    Zone::Hand
+                } else {
+                    spell.zone
+                }
+            }),
+        CastingMethod::GrantedEscape { .. } | CastingMethod::GrantedFlashback => Zone::Graveyard,
+        CastingMethod::PlayFrom { zone, .. }
+        | CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => *zone,
+    }
+}
+
 fn spell_view_for_cost_filter_match(
     game: &GameState,
     caster: PlayerId,
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
 ) -> Option<crate::object::Object> {
+    let mut view = spell.clone();
+    let mut changed = false;
+
     if casting_method_is_bestow(game, caster, spell, casting_method) {
-        let mut view = spell.clone();
         view.apply_bestow_cast_overlay();
-        return Some(view);
-    }
+        changed = true;
+    } else {
+        let method = match casting_method {
+            CastingMethod::Alternative(idx) => spell
+                .alternative_casts
+                .get(*idx)
+                .cloned()
+                .or_else(|| spell.cast_alternative_method_owned()),
+            CastingMethod::PlayFrom {
+                use_alternative: Some(idx),
+                zone,
+                ..
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom {
+                use_alternative: idx,
+                zone,
+                ..
+            } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+                .or_else(|| spell.cast_alternative_method_owned()),
+            _ => spell.cast_alternative_method_owned(),
+        };
 
-    let method = match casting_method {
-        CastingMethod::Alternative(idx) => spell
-            .alternative_casts
-            .get(*idx)
-            .cloned()
-            .or_else(|| spell.cast_alternative_method_owned()),
-        CastingMethod::PlayFrom {
-            use_alternative: Some(idx),
-            zone,
-            ..
+        if matches!(
+            method,
+            Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
+        ) {
+            if let Some(disturb_view) = spell_view_for_disturb_cast(game, spell) {
+                view = disturb_view;
+                changed = true;
+            }
+        } else if let Some(method) = method.as_ref()
+            && let Some(power_toughness) = method.prototype_power_toughness()
+            && let Some(cost) = method.mana_cost()
+            && view.apply_prototype_cast_overlay(cost.clone(), power_toughness)
+        {
+            changed = true;
         }
-        | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: idx,
-            zone,
-            ..
-        } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
-            .or_else(|| spell.cast_alternative_method_owned()),
-        _ => spell.cast_alternative_method_owned(),
-    };
-
-    if matches!(
-        method,
-        Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. })
-    ) {
-        return spell_view_for_disturb_cast(game, spell);
     }
 
-    if let Some(method) = method.as_ref()
-        && let Some(power_toughness) = method.prototype_power_toughness()
-        && let Some(cost) = method.mana_cost()
-    {
-        let mut view = spell.clone();
-        if view.apply_prototype_cast_overlay(cost.clone(), power_toughness) {
-            return Some(view);
-        }
+    if cast_from_zone.is_some() || spell.zone == Zone::Stack {
+        view.zone = cast_from_zone.unwrap_or_else(|| {
+            inferred_cast_origin_zone_for_cost_filter(game, caster, spell, casting_method)
+        });
+        changed = true;
     }
 
-    None
+    changed.then_some(view)
 }
 
 pub(crate) fn optional_life_cost_reduction_costs_for_cast(
@@ -584,6 +627,7 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     caster: PlayerId,
     spell_id: ObjectId,
     casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
 ) -> Vec<(ObjectId, ironsmith_core::OptionalLifeAdditionalCost)> {
     let Some(spell) = game.object(spell_id) else {
         return Vec::new();
@@ -604,9 +648,9 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     }
     view.prewarm_characteristics_forced(&prewarm_ids);
 
-    let mut spell_for_filter =
-        spell_view_for_cost_filter_match(game, caster, spell, casting_method).unwrap_or_else(
-            || {
+    let spell_for_filter =
+        spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone)
+            .unwrap_or_else(|| {
                 let mut spell_for_filter = spell.clone();
                 if let Some(chars) = view.current_characteristics_arc(spell_id) {
                     spell_for_filter.name = chars.name.clone().into();
@@ -616,9 +660,7 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
                     spell_for_filter.color_override = Some(chars.colors);
                 }
                 spell_for_filter
-            },
-        );
-    spell_for_filter.zone = Zone::Stack;
+            });
 
     let mut costs = Vec::new();
     for perm_id in modifier_sources {
@@ -1547,7 +1589,7 @@ fn effective_cost_with_affordable_non_mana_optional_cost(
 ) -> Option<crate::mana::ManaCost> {
     let mut spell_with_optional_costs = spell.clone();
     for (source, optional) in
-        optional_life_cost_reduction_costs_for_cast(game, player, spell.id, casting_method)
+        optional_life_cost_reduction_costs_for_cast(game, player, spell.id, casting_method, None)
     {
         let label = optional_life_cost_reduction_label(&optional, source);
         if spell_with_optional_costs
@@ -2709,6 +2751,7 @@ pub fn calculate_effective_mana_cost_for_casting_method(
         &[],
         true,
         casting_method,
+        None,
         &view,
     )
 }
@@ -2730,6 +2773,7 @@ pub(crate) fn calculate_effective_mana_cost_with_view_for_casting_method(
         &[],
         true,
         casting_method,
+        None,
         view,
     )
 }
@@ -2752,6 +2796,7 @@ pub fn calculate_effective_mana_cost_with_targets(
         &[],
         true,
         &CastingMethod::Normal,
+        None,
         &view,
     )
 }
@@ -2792,6 +2837,31 @@ pub fn calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
         chosen_targets,
         true,
         casting_method,
+        None,
+        &view,
+    )
+}
+
+pub(crate) fn calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+    casting_method: &CastingMethod,
+    cast_from_zone: Zone,
+) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
+    calculate_effective_mana_cost_with_targets_internal(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_targets.len(),
+        chosen_targets,
+        true,
+        casting_method,
+        Some(cast_from_zone),
         &view,
     )
 }
@@ -2833,6 +2903,7 @@ pub fn calculate_effective_mana_cost_for_payment_with_targets_for_casting_method
         &[],
         false,
         casting_method,
+        None,
         &view,
     )
 }
@@ -2873,6 +2944,31 @@ pub fn calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting
         chosen_targets,
         false,
         casting_method,
+        None,
+        &view,
+    )
+}
+
+pub(crate) fn calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+    casting_method: &CastingMethod,
+    cast_from_zone: Zone,
+) -> crate::mana::ManaCost {
+    let view = DerivedGameView::new(game);
+    calculate_effective_mana_cost_with_targets_internal(
+        game,
+        player,
+        spell,
+        base_cost,
+        chosen_targets.len(),
+        chosen_targets,
+        false,
+        casting_method,
+        Some(cast_from_zone),
         &view,
     )
 }
@@ -2886,6 +2982,7 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
     chosen_targets: &[Target],
     include_convoke_improvise_reductions: bool,
     casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     let mut current_cost = base_cost.clone();
@@ -2906,6 +3003,7 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         chosen_target_count,
         chosen_targets,
         casting_method,
+        cast_from_zone,
     );
 
     // Apply global cost modifiers from battlefield permanents (Sphere of Resistance, leeches, etc.).
@@ -2915,7 +3013,9 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         spell,
         &current_cost,
         chosen_target_count,
+        chosen_targets,
         casting_method,
+        cast_from_zone,
         view,
     );
 
@@ -2957,6 +3057,98 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
     apply_minimum_spell_total_mana_with_view(view, &current_cost)
 }
 
+fn chosen_targets_match_cost_filter(
+    game: &GameState,
+    filter: &crate::target::ObjectFilter,
+    ctx: &crate::filter::FilterContext,
+    chosen_targets: &[Target],
+) -> bool {
+    if let Some(count) = filter.target_count
+        && (chosen_targets.len() < count.min
+            || count
+                .max
+                .is_some_and(|maximum| chosen_targets.len() > maximum))
+    {
+        return false;
+    }
+
+    let requires_witnessed_target = filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some();
+    if !requires_witnessed_target {
+        return true;
+    }
+    if chosen_targets.is_empty() {
+        return false;
+    }
+
+    let matches_player = filter.targets_player.as_ref().is_none_or(|player_filter| {
+        chosen_targets.iter().any(|target| match target {
+            Target::Player(player) => player_filter.matches_player(*player, ctx),
+            Target::Object(_) => false,
+        })
+    });
+    let matches_object = filter.targets_object.as_ref().is_none_or(|object_filter| {
+        chosen_targets.iter().any(|target| match target {
+            Target::Object(object) => game
+                .object(*object)
+                .is_some_and(|object| object_filter.matches(object, ctx, game)),
+            Target::Player(_) => false,
+        })
+    });
+    if filter.targets_player.is_some() || filter.targets_object.is_some() {
+        let matches = if filter.targets_any_of
+            && filter.targets_player.is_some()
+            && filter.targets_object.is_some()
+        {
+            matches_player || matches_object
+        } else {
+            matches_player && matches_object
+        };
+        if !matches {
+            return false;
+        }
+    }
+
+    if filter.targets_only_player.is_some() || filter.targets_only_object.is_some() {
+        let every_target_matches = chosen_targets.iter().all(|target| {
+            let matches_player = filter
+                .targets_only_player
+                .as_ref()
+                .is_some_and(|player_filter| match target {
+                    Target::Player(player) => player_filter.matches_player(*player, ctx),
+                    Target::Object(_) => false,
+                });
+            let matches_object = filter
+                .targets_only_object
+                .as_ref()
+                .is_some_and(|object_filter| match target {
+                    Target::Object(object) => game
+                        .object(*object)
+                        .is_some_and(|object| object_filter.matches(object, ctx, game)),
+                    Target::Player(_) => false,
+                });
+            if filter.targets_only_player.is_some() && filter.targets_only_object.is_some() {
+                matches_player || matches_object
+            } else if filter.targets_only_player.is_some() {
+                matches_player
+            } else {
+                matches_object
+            }
+        });
+        if !every_target_matches {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn cost_modifier_target_repetitions(per_target: bool, chosen_target_count: usize) -> usize {
+    if per_target { chosen_target_count } else { 1 }
+}
+
 pub(crate) fn apply_spell_cost_modifiers(
     game: &GameState,
     player: PlayerId,
@@ -2965,6 +3157,7 @@ pub(crate) fn apply_spell_cost_modifiers(
     chosen_target_count: usize,
     chosen_targets: &[Target],
     casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
@@ -2987,17 +3180,22 @@ pub(crate) fn apply_spell_cost_modifiers(
         filter: &ObjectFilter,
         ctx: &FilterContext,
         casting_method: &CastingMethod,
+        cast_from_zone: Option<Zone>,
+        chosen_targets: &[Target],
     ) -> bool {
-        if filter.targets_object.is_some() || filter.targets_player.is_some() {
-            // Target-dependent cost modifiers require target selection context.
-            return false;
-        }
+        let targets_match = chosen_targets_match_cost_filter(game, filter, ctx, chosen_targets);
         let mut cast_filter = filter.clone();
         let alternative_cast = cast_filter.alternative_cast;
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
+        cast_filter.targets_any_of = false;
+        cast_filter.targets_only_player = None;
+        cast_filter.targets_only_object = None;
+        cast_filter.targets_only_any_of = false;
+        cast_filter.target_count = None;
         cast_filter.alternative_cast = None;
-        let overlaid_spell = spell_view_for_cost_filter_match(game, caster, spell, casting_method);
+        let overlaid_spell =
+            spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
         let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
         let matches =
             cast_filter.matches_non_recursive(
@@ -3005,7 +3203,8 @@ pub(crate) fn apply_spell_cost_modifiers(
                 &ctx.clone().with_caster(Some(caster)),
                 game,
             ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
-        matches
+        targets_match
+            && matches
             && alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
             })
@@ -3043,13 +3242,18 @@ pub(crate) fn apply_spell_cost_modifiers(
         };
         let functions_in_current_zone = ability.functions_in(&spell.zone);
         if let Some(reduction) = static_ability.this_spell_cost_reduction() {
-            if crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
-                game,
-                spell.id,
-                &reduction.condition,
-                chosen_targets,
-                Some(&spell.optional_costs_paid),
-            ) {
+            let casting_method_matches = reduction.alternative_cast.is_none_or(|kind| {
+                casting_method_matches_alternative_kind(game, player, spell, casting_method, kind)
+            });
+            if casting_method_matches
+                && crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
+                    game,
+                    spell.id,
+                    &reduction.condition,
+                    chosen_targets,
+                    Some(&spell.optional_costs_paid),
+                )
+            {
                 let amount =
                     resolve_this_spell_cost_reduction_value(game, player, spell, reduction);
                 if amount > 0 {
@@ -3082,31 +3286,84 @@ pub(crate) fn apply_spell_cost_modifiers(
             continue;
         }
         if let Some(reduction) = static_ability.cost_reduction()
-            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx, casting_method)
+            && spell_matches_filter(
+                game,
+                spell,
+                player,
+                &reduction.filter,
+                &ctx,
+                casting_method,
+                cast_from_zone,
+                chosen_targets,
+            )
         {
-            let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction);
+            let multiplier = if reduction.per_target {
+                i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
+            } else {
+                1
+            };
+            let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction)
+                .saturating_mul(multiplier);
             if amount > 0 {
                 total_reduction = total_reduction.saturating_add(amount);
             }
         }
         if let Some(increase) = static_ability.cost_increase()
-            && spell_matches_filter(game, spell, player, &increase.filter, &ctx, casting_method)
+            && spell_matches_filter(
+                game,
+                spell,
+                player,
+                &increase.filter,
+                &ctx,
+                casting_method,
+                cast_from_zone,
+                chosen_targets,
+            )
         {
-            let amount = resolve_cost_modifier_value(game, player, spell, &increase.increase);
+            let multiplier = if increase.per_target {
+                i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
+            } else {
+                1
+            };
+            let amount = resolve_cost_modifier_value(game, player, spell, &increase.increase)
+                .saturating_mul(multiplier);
             if amount > 0 {
                 total_increase = total_increase.saturating_add(amount);
             }
         }
         if let Some(increase) = static_ability.cost_increase_mana_cost()
-            && spell_matches_filter(game, spell, player, &increase.filter, &ctx, casting_method)
+            && spell_matches_filter(
+                game,
+                spell,
+                player,
+                &increase.filter,
+                &ctx,
+                casting_method,
+                cast_from_zone,
+                chosen_targets,
+            )
         {
-            increase_pips.extend(increase.increase.pips().iter().cloned());
+            for _ in 0..cost_modifier_target_repetitions(increase.per_target, chosen_target_count) {
+                increase_pips.extend(increase.increase.pips().iter().cloned());
+            }
         }
         if let Some(reduction) = static_ability.cost_reduction_mana_cost()
-            && spell_matches_filter(game, spell, player, &reduction.filter, &ctx, casting_method)
+            && spell_matches_filter(
+                game,
+                spell,
+                player,
+                &reduction.filter,
+                &ctx,
+                casting_method,
+                cast_from_zone,
+                chosen_targets,
+            )
             && optional_life_reduction_was_paid(spell, reduction, spell.id)
         {
-            reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+            for _ in 0..cost_modifier_target_repetitions(reduction.per_target, chosen_target_count)
+            {
+                reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+            }
         }
         if let Some(per_target_amount) = static_ability.cost_increase_per_additional_target() {
             let additional_targets = chosen_target_count.saturating_sub(1);
@@ -3145,6 +3402,8 @@ pub(crate) fn apply_spell_cost_modifiers(
             &effect.filter,
             &temporary_ctx,
             casting_method,
+            cast_from_zone,
+            chosen_targets,
         ) {
             if let Some(generic_reduction) = &effect.generic_reduction {
                 let amount = resolve_cost_modifier_value(game, player, spell, generic_reduction);
@@ -3178,7 +3437,9 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
     spell: &crate::object::Object,
     cost: &crate::mana::ManaCost,
     chosen_target_count: usize,
+    chosen_targets: &[Target],
     casting_method: &CastingMethod,
+    cast_from_zone: Option<Zone>,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
@@ -3202,18 +3463,22 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
         filter: &ObjectFilter,
         ctx: &FilterContext,
         casting_method: &CastingMethod,
-        _chosen_target_count: usize,
+        cast_from_zone: Option<Zone>,
+        chosen_targets: &[Target],
     ) -> bool {
-        if filter.targets_object.is_some() || filter.targets_player.is_some() {
-            // Target-dependent cost modifiers require target selection context.
-            return false;
-        }
+        let targets_match = chosen_targets_match_cost_filter(game, filter, ctx, chosen_targets);
         let mut cast_filter = filter.clone();
         let alternative_cast = cast_filter.alternative_cast;
         cast_filter.targets_player = None;
         cast_filter.targets_object = None;
+        cast_filter.targets_any_of = false;
+        cast_filter.targets_only_player = None;
+        cast_filter.targets_only_object = None;
+        cast_filter.targets_only_any_of = false;
+        cast_filter.target_count = None;
         cast_filter.alternative_cast = None;
-        let overlaid_spell = spell_view_for_cost_filter_match(game, caster, spell, casting_method);
+        let overlaid_spell =
+            spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
         let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
         let matches =
             cast_filter.matches_non_recursive(
@@ -3221,7 +3486,8 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                 &ctx.clone().with_caster(Some(caster)),
                 game,
             ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
-        matches
+        targets_match
+            && matches
             && alternative_cast.is_none_or(|kind| {
                 casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
             })
@@ -3261,6 +3527,9 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
 
         if let Some(static_abilities) = view.static_abilities_rc(perm_id) {
             for static_ability in static_abilities.iter() {
+                if !static_ability.is_active(game, perm_id) {
+                    continue;
+                }
                 if let Some(reduction) = static_ability.cost_reduction()
                     && spell_matches_filter(
                         game,
@@ -3269,15 +3538,22 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &reduction.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                 {
+                    let multiplier = if reduction.per_target {
+                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
+                    } else {
+                        1
+                    };
                     let amount = resolve_cost_modifier_value_for_source(
                         game,
                         perm_id,
                         controller,
                         &reduction.reduction,
-                    );
+                    )
+                    .saturating_mul(multiplier);
                     if amount > 0 {
                         total_reduction = total_reduction.saturating_add(amount);
                     }
@@ -3290,15 +3566,22 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &increase.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                 {
+                    let multiplier = if increase.per_target {
+                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
+                    } else {
+                        1
+                    };
                     let amount = resolve_cost_modifier_value_for_source(
                         game,
                         perm_id,
                         controller,
                         &increase.increase,
-                    );
+                    )
+                    .saturating_mul(multiplier);
                     if amount > 0 {
                         total_increase = total_increase.saturating_add(amount);
                     }
@@ -3311,10 +3594,16 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &increase.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                 {
-                    increase_pips.extend(increase.increase.pips().iter().cloned());
+                    for _ in 0..cost_modifier_target_repetitions(
+                        increase.per_target,
+                        chosen_target_count,
+                    ) {
+                        increase_pips.extend(increase.increase.pips().iter().cloned());
+                    }
                 }
                 if let Some(reduction) = static_ability.cost_reduction_mana_cost()
                     && spell_matches_filter(
@@ -3324,11 +3613,17 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &reduction.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                     && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
-                    reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    for _ in 0..cost_modifier_target_repetitions(
+                        reduction.per_target,
+                        chosen_target_count,
+                    ) {
+                        reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    }
                 }
                 if let Some(per_target_amount) =
                     static_ability.cost_increase_per_additional_target()
@@ -3358,6 +3653,9 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                     _ => None,
                 })
             {
+                if !static_ability.is_active(game, perm_id) {
+                    continue;
+                }
                 if let Some(reduction) = static_ability.cost_reduction()
                     && spell_matches_filter(
                         game,
@@ -3366,15 +3664,22 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &reduction.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                 {
+                    let multiplier = if reduction.per_target {
+                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
+                    } else {
+                        1
+                    };
                     let amount = resolve_cost_modifier_value_for_source(
                         game,
                         perm_id,
                         controller,
                         &reduction.reduction,
-                    );
+                    )
+                    .saturating_mul(multiplier);
                     if amount > 0 {
                         total_reduction = total_reduction.saturating_add(amount);
                     }
@@ -3387,15 +3692,22 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &increase.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                 {
+                    let multiplier = if increase.per_target {
+                        i32::try_from(chosen_target_count).unwrap_or(i32::MAX)
+                    } else {
+                        1
+                    };
                     let amount = resolve_cost_modifier_value_for_source(
                         game,
                         perm_id,
                         controller,
                         &increase.increase,
-                    );
+                    )
+                    .saturating_mul(multiplier);
                     if amount > 0 {
                         total_increase = total_increase.saturating_add(amount);
                     }
@@ -3408,10 +3720,16 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &increase.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                 {
-                    increase_pips.extend(increase.increase.pips().iter().cloned());
+                    for _ in 0..cost_modifier_target_repetitions(
+                        increase.per_target,
+                        chosen_target_count,
+                    ) {
+                        increase_pips.extend(increase.increase.pips().iter().cloned());
+                    }
                 }
                 if let Some(reduction) = static_ability.cost_reduction_mana_cost()
                     && spell_matches_filter(
@@ -3421,11 +3739,17 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         &reduction.filter,
                         &ctx,
                         casting_method,
-                        chosen_target_count,
+                        cast_from_zone,
+                        chosen_targets,
                     )
                     && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
-                    reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    for _ in 0..cost_modifier_target_repetitions(
+                        reduction.per_target,
+                        chosen_target_count,
+                    ) {
+                        reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                    }
                 }
                 if let Some(per_target_amount) =
                     static_ability.cost_increase_per_additional_target()
@@ -3626,6 +3950,7 @@ pub fn calculate_delve_exile_count_with_targets(
         chosen_target_count,
         &[],
         &CastingMethod::Normal,
+        None,
     );
 
     // Now calculate how much generic mana remains
@@ -4159,11 +4484,13 @@ fn can_pay_expanded_pips(
                 continue;
             }
             let mut source_policy = mana_spend_policy.clone();
-            source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
+            if game.can_spend_mana_as_any_color_from_mana_source(
                 player,
                 payment_source,
                 source.source_id,
-            );
+            ) {
+                source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+            }
             for output in &source.outputs {
                 if let Some(pool_from_output) =
                     consume_output_for_pip(output, symbol, &source_policy)
@@ -4262,11 +4589,13 @@ fn can_pay_expanded_pips_large_source_count(
                 continue;
             }
             let mut source_policy = mana_spend_policy.clone();
-            source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
+            if game.can_spend_mana_as_any_color_from_mana_source(
                 player,
                 payment_source,
                 source.source_id,
-            );
+            ) {
+                source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+            }
             for output in &source.outputs {
                 if let Some(pool_from_output) =
                     consume_output_for_pip(output, symbol, &source_policy)

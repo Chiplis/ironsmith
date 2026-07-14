@@ -239,7 +239,8 @@ impl GameState {
             && new_object.prototype_cast_state.is_some();
         let preserve_temporary_static_ability_grants =
             old_zone == Zone::Stack && new_zone == Zone::Battlefield;
-        let preserve_cast_tags = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
+        let preserve_cast_tags =
+            new_zone == Zone::Stack || (old_zone == Zone::Stack && new_zone == Zone::Battlefield);
         let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_x_value = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         if !preserve_prototype_overlay {
@@ -926,6 +927,28 @@ impl GameState {
                     if static_ability.life_total_note_as_enters().is_some() {
                         self.note_life_total_for_source(new_id, controller);
                     }
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::DiscardHandAsEnters
+                    {
+                        let hand = self
+                            .player(controller)
+                            .map(|player| player.hand.clone())
+                            .unwrap_or_default();
+                        for card_id in hand {
+                            let provenance = self
+                                .provenance_graph_mut()
+                                .alloc_root_event(crate::events::EventKind::Discard);
+                            crate::events::processing::execute_discard(
+                                self,
+                                card_id,
+                                controller,
+                                cause.clone(),
+                                false,
+                                provenance,
+                                decision_maker,
+                            );
+                        }
+                    }
                 }
             }
             self.apply_power_toughness_choice_as_enters_or_turns_face_up(
@@ -1481,6 +1504,11 @@ impl GameState {
         self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
         obj.add_counters(counter_type, amount);
+        if amount > 0 {
+            self.effect_store
+                .continuous_effects
+                .record_counter_change(id, counter_type);
+        }
         self.record_counter_ui_effect_event("counters_added", id, counter_type, amount);
 
         let event_provenance = self
@@ -1548,6 +1576,9 @@ impl GameState {
 
         let obj = self.object_mut(id)?;
         obj.add_counters(counter_type, amount);
+        self.effect_store
+            .continuous_effects
+            .record_counter_change(id, counter_type);
         self.record_counter_ui_effect_event("counters_added", id, counter_type, amount);
 
         let event_provenance = self

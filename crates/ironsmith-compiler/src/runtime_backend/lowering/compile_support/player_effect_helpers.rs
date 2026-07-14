@@ -218,8 +218,7 @@ impl LoweredSubject {
         filter: &ObjectFilter,
         ctx: &mut EffectLoweringContext,
     ) -> Result<ObjectFilter, CardTextError> {
-        let mut resolved = filter.clone();
-        self.apply_player_refs_to_filter(&mut resolved, ctx);
+        let mut resolved = self.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
         if resolved.zone.is_none() {
             resolved.zone = Some(Zone::Library);
         }
@@ -281,6 +280,7 @@ impl LoweredSubject {
             resolved.owner = ctx
                 .last_player_filter
                 .clone()
+                .map(as_followup_player_alias)
                 .or_else(|| Some(self.player_filter.clone()));
         }
         Ok(resolved)

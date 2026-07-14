@@ -25,6 +25,26 @@ fn parses_counted_manifest_dread() {
 }
 
 #[test]
+fn parses_cloak_top_card_for_you_and_that_player() {
+    for (text, expected_player) in [
+        (
+            "Cloak the top card of your library.",
+            ManifestPlayerShape::You,
+        ),
+        (
+            "Cloak the top card of that player's library.",
+            ManifestPlayerShape::ThatPlayerOrTargetController,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(matches!(
+            parse_keyword_mechanic_tokens(&tokens),
+            Some(KeywordMechanicShape::CloakTop { player }) if player == expected_player
+        ));
+    }
+}
+
+#[test]
 fn parses_hyphenated_six_sided_dice() {
     let tokens = lex_line("Roll X six-sided dice.", 0).unwrap();
     assert!(matches!(

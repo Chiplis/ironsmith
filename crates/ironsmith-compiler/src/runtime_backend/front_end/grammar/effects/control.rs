@@ -8,6 +8,7 @@ pub(crate) struct ReciprocalCreatureControlSequence {
     pub(crate) target_player_creatures: ObjectFilter,
     pub(crate) duration: Until,
     pub(crate) untap: bool,
+    pub(crate) untap_before_control: bool,
     pub(crate) grant_haste: bool,
 }
 
@@ -16,23 +17,42 @@ pub(crate) fn parse_reciprocal_creature_control_sequence_tokens(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<ReciprocalCreatureControlSequence>, CardTextError> {
-    let Some(duration) = primitives::parse_all_or_none(
+    let head_first = primitives::parse_all_or_none(
         first,
         parse_reciprocal_creature_control_head_lexed,
         "reciprocal-creature-control-head",
-    )?
-    else {
-        return Ok(None);
+    )?;
+    let (duration, untap_before_control) = if let Some(duration) = head_first {
+        if primitives::parse_all_or_none(
+            second,
+            parse_reciprocal_creature_control_untap_lexed,
+            "reciprocal-creature-control-untap",
+        )?
+        .is_none()
+        {
+            return Ok(None);
+        }
+        (duration, false)
+    } else {
+        if primitives::parse_all_or_none(
+            first,
+            parse_reciprocal_creature_control_initial_untap_lexed,
+            "reciprocal-creature-control-initial-untap",
+        )?
+        .is_none()
+        {
+            return Ok(None);
+        }
+        let Some(duration) = primitives::parse_all_or_none(
+            second,
+            parse_reciprocal_creature_control_head_lexed,
+            "reciprocal-creature-control-head",
+        )?
+        else {
+            return Ok(None);
+        };
+        (duration, true)
     };
-    if primitives::parse_all_or_none(
-        second,
-        parse_reciprocal_creature_control_untap_lexed,
-        "reciprocal-creature-control-untap",
-    )?
-    .is_none()
-    {
-        return Ok(None);
-    }
     if primitives::parse_all_or_none(
         third,
         parse_reciprocal_creature_control_haste_lexed,
@@ -49,6 +69,7 @@ pub(crate) fn parse_reciprocal_creature_control_sequence_tokens(
         target_player_creatures: ObjectFilter::creature().controlled_by(target_player),
         duration,
         untap: true,
+        untap_before_control,
         grant_haste: true,
     }))
 }
@@ -87,6 +108,26 @@ fn parse_reciprocal_creature_control_untap_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
     primitives::phrase(&["untap", "those", "creatures"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
+}
+
+fn parse_reciprocal_creature_control_initial_untap_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    primitives::phrase(&[
+        "untap",
+        "all",
+        "creatures",
+        "you",
+        "control",
+        "and",
+        "all",
+        "creatures",
+        "target",
+        "opponent",
+        "controls",
+    ])
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)
 }
 

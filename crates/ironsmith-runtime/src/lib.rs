@@ -36,6 +36,7 @@ pub mod mana;
 pub mod marker;
 pub mod object;
 pub(crate) mod object_query;
+pub(crate) mod party;
 pub(crate) mod perf;
 pub mod player;
 pub mod prevention;
@@ -97,7 +98,7 @@ pub use continuous::{
 };
 pub use cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 pub use effect::Condition as ConditionExpr;
-pub use effect::{ChoiceCount, Effect, Until, Value};
+pub use effect::{ChoiceCount, Effect, SourceCounterThresholdSurface, Until, Value};
 pub use effects::{DealDamageEffect, EffectExecutor};
 pub use events::processing::{
     DestroyResult,

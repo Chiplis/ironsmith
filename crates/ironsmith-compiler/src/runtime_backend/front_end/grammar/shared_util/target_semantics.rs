@@ -14,10 +14,13 @@ use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView};
 use crate::runtime_backend::object_filters::parse_object_filter;
 use crate::runtime_backend::util::{
     is_article, is_demonstrative_object_head, parse_for_each_count_value_words,
-    record_source_reference_surface, source_reference_surface_for_words, strip_possessive_suffix,
-    this_source_surface_for_words,
+    record_sacrificed_object_kind, record_source_reference_surface,
+    source_reference_surface_for_possessive_words, source_reference_surface_for_words,
+    strip_possessive_suffix, this_source_surface_for_words,
 };
-use crate::target::{ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation};
+use crate::target::{
+    ObjectFilter, PlayerFilter, SacrificedObjectKind, SourceReferenceSurface, TaggedOpbjectRelation,
+};
 use crate::types::CardType;
 use crate::zone::Zone;
 use crate::{ChoiceCount, TagKey};
@@ -26,6 +29,20 @@ use super::reference_shapes;
 use super::target_surfaces::*;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
+
+fn typed_demonstrative_reference_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceReferenceSurface> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    if words.len() != 2
+        || !matches!(words[0], "that" | "those")
+        || !is_demonstrative_object_head(words[1])
+    {
+        return None;
+    }
+
+    Some(SourceReferenceSurface::ThisPermanentType(words.join(" ")))
+}
 
 fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {
     if let Some(count) = target_count {
@@ -54,6 +71,23 @@ fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
     }
 }
 
+fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
+    let words = match words {
+        [article @ ("the" | "a" | "an"), rest @ ..] => {
+            let _ = article;
+            rest
+        }
+        words => words,
+    };
+    match words {
+        ["sacrificed", "creature"] => Some(SacrificedObjectKind::Creature),
+        ["sacrificed", "artifact"] => Some(SacrificedObjectKind::Artifact),
+        ["sacrificed", "enchantment"] => Some(SacrificedObjectKind::Enchantment),
+        ["sacrificed", "permanent"] => Some(SacrificedObjectKind::Permanent),
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_target_phrase_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
@@ -78,6 +112,11 @@ pub(crate) fn parse_target_phrase_inner(
 
     let token_word_view = TokenWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
+    if let Some(kind) = sacrificed_object_kind(&token_words) {
+        let span = token_slice_span(tokens);
+        record_sacrificed_object_kind(span, kind);
+        return Ok(TargetAst::Tagged(TagKey::from(IT_TAG), span));
+    }
     if matches_surface(token_words.as_slice(), YOUR_OPPONENTS_TARGET_PATTERN) {
         return Ok(TargetAst::Player(
             PlayerFilter::Opponent,
@@ -99,6 +138,11 @@ pub(crate) fn parse_target_phrase_inner(
     // consumed, only the object noun remains and the phrase would otherwise
     // widen from the source permanent to every matching permanent.
     if let Some(surface) = this_source_surface_for_words(&token_words) {
+        let span = token_slice_span(tokens);
+        record_source_reference_surface(span, surface);
+        return Ok(TargetAst::Source(span));
+    }
+    if let Some(surface) = source_reference_surface_for_possessive_words(&token_words) {
         let span = token_slice_span(tokens);
         record_source_reference_surface(span, surface);
         return Ok(TargetAst::Source(span));
@@ -153,6 +197,12 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
     if matches_surface(&all_words, TAGGED_OBJECT_TARGET_PATTERN) {
+        if all_words == ["the", "card"] {
+            record_source_reference_surface(
+                span,
+                SourceReferenceSurface::ThisPermanentType("the card".to_string()),
+            );
+        }
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from(IT_TAG), span),
             target_count,
@@ -353,7 +403,10 @@ pub(crate) fn parse_target_phrase_inner(
     {
         let player = tagged_it_owner_or_controller_player_filter(remaining_words[2]);
         return Ok(wrap_target_count(
-            TargetAst::Player(player, target_span),
+            // The referenced object may have been targeted earlier, but its
+            // controller/owner is an ordinary resolution-time reference. The
+            // possessive phrase does not create another target requirement.
+            TargetAst::Player(player, None),
             target_count,
         ));
     }
@@ -366,7 +419,7 @@ pub(crate) fn parse_target_phrase_inner(
     {
         let player = tagged_it_owner_or_controller_player_filter(remaining_words[4]);
         return Ok(wrap_target_count(
-            TargetAst::Player(player, target_span),
+            TargetAst::Player(player, None),
             target_count,
         ));
     }
@@ -374,7 +427,7 @@ pub(crate) fn parse_target_phrase_inner(
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG)),
-                target_span,
+                None,
             ),
             target_count,
         ));
@@ -388,7 +441,7 @@ pub(crate) fn parse_target_phrase_inner(
         {
             let player = tagged_it_owner_or_controller_player_filter(remaining_words[1]);
             return Ok(wrap_target_count(
-                TargetAst::Player(player, target_span),
+                TargetAst::Player(player, None),
                 target_count,
             ));
         }
@@ -397,7 +450,7 @@ pub(crate) fn parse_target_phrase_inner(
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG)),
-                target_span,
+                None,
             ),
             target_count,
         ));
@@ -456,6 +509,31 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
 
+    if reference_shapes::is_source_from_your_graveyard(&remaining_words) {
+        let mut source_filter = ObjectFilter::source().in_zone(Zone::Graveyard);
+        source_filter.owner = Some(PlayerFilter::You);
+        if let Some(surface) = source_reference_surface_for_words(&remaining_words)
+            .or_else(|| this_source_surface_for_words(&remaining_words))
+        {
+            source_filter = source_filter.with_source_surface(surface);
+        }
+        return Ok(wrap_target_count(
+            TargetAst::Object(source_filter, target_span, None),
+            target_count,
+        ));
+    }
+    if reference_shapes::is_source_from_exile(&remaining_words) {
+        let mut source_filter = ObjectFilter::source().in_zone(Zone::Exile);
+        if let Some(surface) = source_reference_surface_for_words(&remaining_words)
+            .or_else(|| this_source_surface_for_words(&remaining_words))
+        {
+            source_filter = source_filter.with_source_surface(surface);
+        }
+        return Ok(wrap_target_count(
+            TargetAst::Object(source_filter, target_span, None),
+            target_count,
+        ));
+    }
     if let Some(surface) = source_reference_surface_for_words(&remaining_words)
         .or_else(|| this_source_surface_for_words(&remaining_words))
     {
@@ -463,21 +541,6 @@ pub(crate) fn parse_target_phrase_inner(
         record_source_reference_surface(source_span, surface);
         return Ok(wrap_target_count(
             TargetAst::Source(source_span),
-            target_count,
-        ));
-    }
-    if reference_shapes::is_source_from_your_graveyard(&remaining_words) {
-        let mut source_filter = ObjectFilter::source().in_zone(Zone::Graveyard);
-        source_filter.owner = Some(PlayerFilter::You);
-        return Ok(wrap_target_count(
-            TargetAst::Object(source_filter, target_span, None),
-            target_count,
-        ));
-    }
-    if reference_shapes::is_source_from_exile(&remaining_words) {
-        let source_filter = ObjectFilter::source().in_zone(Zone::Exile);
-        return Ok(wrap_target_count(
-            TargetAst::Object(source_filter, target_span, None),
             target_count,
         ));
     }
@@ -750,7 +813,11 @@ pub(crate) fn parse_target_phrase_inner(
     {
         filter.with_counter = Some(counter_constraint);
     }
-    let it_span = if filter
+    let reference_span = if let Some(surface) = typed_demonstrative_reference_surface(remaining) {
+        let span = token_slice_span(remaining);
+        record_source_reference_surface(span, surface);
+        span
+    } else if filter
         .tagged_constraints
         .iter()
         .any(|constraint| constraint.tag.as_str() == IT_TAG)
@@ -769,7 +836,7 @@ pub(crate) fn parse_target_phrase_inner(
         None
     };
     Ok(wrap_target_count(
-        TargetAst::Object(filter, target_span, it_span),
+        TargetAst::Object(filter, target_span, reference_span),
         target_count,
     ))
 }
@@ -828,5 +895,80 @@ mod tests {
             Some(ColorSet::BLUE.union(ColorSet::BLACK))
         );
         assert_eq!(filter.colors, None);
+    }
+
+    #[test]
+    fn typed_demonstrative_target_records_its_exact_surface() {
+        let tokens = lex_line("that creature", 0).expect("lex target");
+        let target = parse_target_phrase_inner(&tokens).expect("parse target");
+        let TargetAst::Object(_, _, Some(span)) = target else {
+            panic!("expected typed demonstrative object target with reference span");
+        };
+        assert_eq!(
+            crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+            Some(SourceReferenceSurface::ThisPermanentType(
+                "that creature".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn definite_card_target_is_a_tagged_reference() {
+        let TargetAst::Tagged(tag, Some(span)) = parse("the card") else {
+            panic!("expected definite card reference");
+        };
+        assert_eq!(tag.as_str(), IT_TAG);
+        assert_eq!(
+            crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+            Some(SourceReferenceSurface::ThisPermanentType(
+                "the card".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn sacrificed_object_target_is_a_typed_tagged_reference() {
+        let TargetAst::Tagged(tag, Some(span)) = parse("the sacrificed creature") else {
+            panic!("expected tagged sacrificed-object reference");
+        };
+        assert_eq!(tag.as_str(), IT_TAG);
+        assert_eq!(
+            crate::runtime_backend::util::sacrificed_object_kind_for_span(Some(span)),
+            Some(SacrificedObjectKind::Creature)
+        );
+    }
+
+    #[test]
+    fn named_possessive_source_target_preserves_short_name_surface() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Casey Jones, Asphalt Hooligan",
+            || {
+                let TargetAst::Source(Some(span)) = parse("Casey Jones's") else {
+                    panic!("expected named possessive to resolve to the source");
+                };
+                assert_eq!(
+                    crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+                    Some(SourceReferenceSurface::ShortName("Casey Jones".to_string()))
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn full_name_possessive_source_target_preserves_full_name_surface() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Tifa Lockhart",
+            || {
+                let TargetAst::Source(Some(span)) = parse("Tifa Lockhart's") else {
+                    panic!("expected named possessive to resolve to the source");
+                };
+                assert_eq!(
+                    crate::runtime_backend::util::source_reference_surface_for_span(Some(span)),
+                    Some(SourceReferenceSurface::FullName(
+                        "Tifa Lockhart".to_string()
+                    ))
+                );
+            },
+        );
     }
 }

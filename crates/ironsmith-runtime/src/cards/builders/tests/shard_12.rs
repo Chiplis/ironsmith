@@ -3049,20 +3049,20 @@ pub(super) fn parse_defending_player_suffix_subject_keeps_player_binding() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_rejects_assigns_no_combat_damage_clause() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper Reject Variant")
+pub(super) fn parse_compound_assigns_no_combat_damage_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of Tresserhorn Probe")
         .parse_text(
             "Whenever this creature attacks and isn't blocked, it assigns no combat damage this turn and defending player loses 2 life.",
         )
-        .expect_err("assigns-no-combat-damage clause should not partially parse");
+        .expect("assigns-no-combat-damage should compose with a following action");
 
-    let message = format!("{err:?}").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        message.contains("assigns-no-combat-damage")
-            || message.contains("unsupported triggered line")
-            || message.contains("unsupported parser line")
-            || message.contains("unsupported known partial parse pattern"),
-        "expected assigns-no-combat-damage rejection, got {message}"
+        rendered.contains("assigns no combat damage this turn")
+            && rendered.contains("defending player loses 2 life"),
+        "expected both compound actions, got {rendered}"
     );
 }
 

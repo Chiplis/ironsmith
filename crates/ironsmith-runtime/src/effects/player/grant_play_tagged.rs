@@ -19,6 +19,9 @@ pub struct GrantPlayTaggedEffect {
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
+    pub mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    /// Compatibility predicate for older compiled-text pattern matchers.
+    /// True for both `AnyColor` and `AnyType`.
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
@@ -34,14 +37,16 @@ impl GrantPlayTaggedEffect {
         player: PlayerFilter,
         duration: GrantPlayTaggedDuration,
         allow_land: bool,
-        allow_any_color_for_cast: bool,
+        mana_spend_mode: impl Into<ironsmith_core::value_model::ManaSpendMode>,
     ) -> Self {
+        let mana_spend_mode = mana_spend_mode.into();
         Self {
             tag: tag.into(),
             player,
             duration,
             allow_land,
-            allow_any_color_for_cast,
+            mana_spend_mode,
+            allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
             cast_pool_is_plural: false,
@@ -51,6 +56,28 @@ impl GrantPlayTaggedEffect {
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
         self.cast_pool_is_plural = plural;
         self
+    }
+
+    pub fn with_mana_spend_mode(
+        mut self,
+        mode: ironsmith_core::value_model::ManaSpendMode,
+    ) -> Self {
+        self.mana_spend_mode = mode;
+        self.allow_any_color_for_cast = mode.allows_any_color();
+        self
+    }
+
+    /// Oracle clause appended to a temporary cast permission.
+    pub fn mana_spend_cast_clause(&self, spell_reference: &str) -> Option<String> {
+        match self.mana_spend_mode {
+            ironsmith_core::value_model::ManaSpendMode::Normal => None,
+            ironsmith_core::value_model::ManaSpendMode::AnyColor => Some(format!(
+                "you may spend mana as though it were mana of any color to cast {spell_reference}"
+            )),
+            ironsmith_core::value_model::ManaSpendMode::AnyType => Some(format!(
+                "mana of any type can be spent to cast {spell_reference}"
+            )),
+        }
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {
@@ -158,6 +185,15 @@ impl GrantPlayTaggedEffect {
             GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 Self::next_turn_number_for_player(game, player)
             }
+            GrantPlayTaggedDuration::UntilYourNextEndStep => {
+                if game.turn.active_player == player
+                    && !matches!(game.turn.phase, crate::game_state::Phase::Ending)
+                {
+                    game.turn.turn_number
+                } else {
+                    Self::next_turn_number_for_player(game, player)
+                }
+            }
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
         }
@@ -213,7 +249,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 continue;
             }
 
-            if self.allow_any_color_for_cast && !object.is_land() {
+            if self.mana_spend_mode.allows_any_color() && !object.is_land() {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
@@ -257,14 +293,27 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             granted += 1;
         }
 
-        if self.allow_any_color_for_cast && !mana_permission_stable_ids.is_empty() {
+        if self.mana_spend_mode.allows_any_color() && !mana_permission_stable_ids.is_empty() {
+            let permission = match self.mana_spend_mode {
+                ironsmith_core::value_model::ManaSpendMode::Normal => {
+                    unreachable!("normal mana spending does not collect permission stable ids")
+                }
+                ironsmith_core::value_model::ManaSpendMode::AnyColor => {
+                    crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
+                        crate::target::PlayerFilter::You,
+                        mana_permission_stable_ids,
+                    )
+                }
+                ironsmith_core::value_model::ManaSpendMode::AnyType => {
+                    crate::effect::ManaSpendPermission::any_type_for_casting_stable_ids(
+                        crate::target::PlayerFilter::You,
+                        mana_permission_stable_ids,
+                    )
+                }
+            };
             game.effect_store.mana_spend_effects.permissions.push(
                 crate::game_state::ActiveManaSpendPermission {
-                    permission:
-                        crate::effect::ManaSpendPermission::any_color_for_casting_stable_ids(
-                            crate::target::PlayerFilter::You,
-                            mana_permission_stable_ids,
-                        ),
+                    permission,
                     controller: player_id,
                     source: crate::game_state::ManaSpendPermissionSource::Effect {
                         source_id: ctx.source,

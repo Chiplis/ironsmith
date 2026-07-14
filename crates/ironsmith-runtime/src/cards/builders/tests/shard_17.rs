@@ -1069,6 +1069,7 @@ pub(super) fn target_assignments_for_requirements(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect::<Vec<_>>();
@@ -3525,4 +3526,185 @@ pub(super) fn keyword_action_count(
         .filter_map(|event| event.downcast::<crate::events::KeywordActionEvent>())
         .filter(|event| event.action == action)
         .count()
+}
+
+fn first_created_token_definition(definition: &CardDefinition) -> CardDefinition {
+    fn from_effect(effect: &crate::effect::Effect) -> Option<CardDefinition> {
+        if let Some(create) = effect.downcast_ref::<CreateTokenEffect>() {
+            return Some(create.token.clone());
+        }
+        if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
+            return from_effect(&tagged.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
+            return from_effect(&with_id.effect);
+        }
+        None
+    }
+
+    if let Some(program) = &definition.spell_effect
+        && let Some(token) = program.all_effects().into_iter().find_map(from_effect)
+    {
+        return token;
+    }
+    for ability in &definition.abilities {
+        let program = match &ability.kind {
+            AbilityKind::Activated(activated) => &activated.effects,
+            AbilityKind::Triggered(triggered) => &triggered.effects,
+            AbilityKind::Static(_) => continue,
+        };
+        if let Some(token) = program.all_effects().into_iter().find_map(from_effect) {
+            return token;
+        }
+    }
+    panic!("{} should create a token", definition.card.name);
+}
+
+#[test]
+pub(super) fn spirit_token_reciprocal_blocking_cards_compile_one_typed_rule_surface() {
+    const RULE: &str = "This token can't block or be blocked by non-Spirit creatures.";
+    for name in [
+        "Baboon Spirit",
+        "Foggy Swamp Spirit Keeper",
+        "Hei Bai, Forest Guardian",
+        "Lost in the Spirit World",
+        "Realm of Koh",
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let token = first_created_token_definition(&definition);
+        let rendered = canonical_compiled_lines(&definition).join("\n");
+        let rule_abilities = token
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::RuleRestriction =>
+                {
+                    Some(static_ability)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rule_abilities.len(),
+            1,
+            "{name} should give its Spirit token one compound rule ability: {:#?}",
+            token.abilities
+        );
+        assert_eq!(rule_abilities[0].display(), RULE, "unexpected {name} rule");
+        assert!(
+            token.abilities.iter().all(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => !matches!(
+                    static_ability.id(),
+                    StaticAbilityId::CantBlock | StaticAbilityId::Unblockable
+                ),
+                _ => true,
+            }),
+            "{name} must not infer unconditional blocking abilities: {:#?}",
+            token.abilities
+        );
+
+        let rule_debug = format!("{:#?}", rule_abilities[0]);
+        let compact_rule_debug = rule_debug.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert_eq!(
+            rule_debug.matches("BlockSpecificAttacker").count(),
+            2,
+            "{name} should lower both blocking directions: {rule_debug}"
+        );
+        assert_eq!(
+            compact_rule_debug
+                .matches("excluded_subtypes: [ Spirit,")
+                .count(),
+            2,
+            "{name} should type both non-Spirit filters: {rule_debug}"
+        );
+        assert!(
+            rendered.contains(&format!(
+                "1/1 colorless Spirit creature token with \"{RULE}\""
+            )),
+            "{name} should round-trip the single quoted rule: {rendered}"
+        );
+        assert!(
+            !rendered.contains("\"This token can't block.\"")
+                && !rendered.contains("\"This token can't be blocked.\""),
+            "{name} should not render unconditional fallback rules: {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn spirit_token_reciprocal_blocking_rule_enforces_both_directions() {
+    fn creature(name: &str, subtype: Subtype) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![subtype])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    let realm = parse_oracle_card_definition("Realm of Koh");
+    let token = first_created_token_definition(&realm);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let token_id = game.create_object_from_definition(&token, alice, Zone::Battlefield);
+    let non_spirit_attacker_id = game.create_object_from_definition(
+        &creature("Non-Spirit Attacker", Subtype::Pirate),
+        bob,
+        Zone::Battlefield,
+    );
+    let spirit_attacker_id = game.create_object_from_definition(
+        &creature("Spirit Attacker", Subtype::Spirit),
+        bob,
+        Zone::Battlefield,
+    );
+    let non_spirit_blocker_id = game.create_object_from_definition(
+        &creature("Non-Spirit Blocker", Subtype::Pirate),
+        bob,
+        Zone::Battlefield,
+    );
+    let spirit_blocker_id = game.create_object_from_definition(
+        &creature("Spirit Blocker", Subtype::Spirit),
+        bob,
+        Zone::Battlefield,
+    );
+    game.refresh_continuous_state();
+
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(non_spirit_attacker_id)
+                .expect("non-Spirit attacker exists"),
+            game.object(token_id).expect("Spirit token exists"),
+            &game,
+        ),
+        "the Spirit token must not block a non-Spirit attacker"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(spirit_attacker_id)
+                .expect("Spirit attacker exists"),
+            game.object(token_id).expect("Spirit token exists"),
+            &game,
+        ),
+        "the Spirit token should be allowed to block a Spirit attacker"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(token_id).expect("Spirit token exists"),
+            game.object(non_spirit_blocker_id)
+                .expect("non-Spirit blocker exists"),
+            &game,
+        ),
+        "a non-Spirit creature must not block the Spirit token"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(token_id).expect("Spirit token exists"),
+            game.object(spirit_blocker_id)
+                .expect("Spirit blocker exists"),
+            &game,
+        ),
+        "a Spirit creature should be allowed to block the Spirit token"
+    );
 }

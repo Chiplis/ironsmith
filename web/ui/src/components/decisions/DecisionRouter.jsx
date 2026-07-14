@@ -21,6 +21,7 @@ export default function DecisionRouter({
   layout = "panel",
   showStripSummary = true,
   onCombatActionChange = null,
+  toolbarSearchTarget = null,
 }) {
   const { state } = useGame();
   if (!decision) return null;
@@ -90,6 +91,7 @@ export default function DecisionRouter({
           onSubmitActionChange={onSubmitActionChange}
           hideDescription={hideDescription}
           layout={layout}
+          toolbarSearchTarget={toolbarSearchTarget}
         />
       );
     case "number":

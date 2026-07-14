@@ -85,6 +85,7 @@ fn extract_requirements(
             legal_target_sets,
             min_targets: count.min,
             max_targets: count.max,
+            distinct_player_group: None,
         });
     }
 

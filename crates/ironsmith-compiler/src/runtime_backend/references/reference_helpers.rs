@@ -1,4 +1,6 @@
-use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, TagKey, TargetAst};
+use crate::cards::builders::{
+    CardTextError, IT_TAG, PlayerAst, THIS_WAY_SACRIFICED_TAG, TagKey, TargetAst,
+};
 use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
@@ -6,11 +8,33 @@ use crate::zone::Zone;
 
 use super::reference_model::ReferenceEnv;
 
+pub(crate) fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
+    tag == "sacrificed"
+        || tag.starts_with("sacrificed_")
+        || tag.starts_with("sacrifice_cost_")
+        || tag.starts_with("__sentence_helper_sacrificed")
+}
+
 pub(crate) fn is_you_player_filter(filter: &PlayerFilter) -> bool {
     match filter {
         PlayerFilter::You => true,
-        PlayerFilter::Target(inner) => is_you_player_filter(inner),
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
+            is_you_player_filter(inner)
+        }
         _ => false,
+    }
+}
+
+/// Preserve that an object-relative player was introduced as the discourse
+/// antecedent for a later "that player"/"they" reference. The aliased forms
+/// resolve identically at runtime but keep that player surface distinct from
+/// an explicit later "its controller" or "its owner" reference.
+pub(crate) fn as_followup_player_alias(filter: PlayerFilter) -> PlayerFilter {
+    match filter {
+        PlayerFilter::Target(inner) => PlayerFilter::AliasedTarget(inner),
+        PlayerFilter::ControllerOf(reference) => PlayerFilter::AliasedControllerOf(reference),
+        PlayerFilter::OwnerOf(reference) => PlayerFilter::AliasedOwnerOf(reference),
+        other => other,
     }
 }
 
@@ -66,17 +90,18 @@ pub(crate) fn resolve_non_target_player_filter(
             }
         }
         PlayerAst::That => {
-            if refs.iterated_player {
-                Ok(PlayerFilter::IteratedPlayer)
+            let filter = if refs.iterated_player {
+                PlayerFilter::IteratedPlayer
             } else if let Some(filter) = refs.known_last_player_filter()
                 && !filter.mentions_iterated_player()
             {
-                Ok(filter.clone())
+                filter.clone()
             } else if let Some(filter) = refs.known_last_player_filter() {
-                Ok(filter.clone())
+                filter.clone()
             } else {
-                Ok(PlayerFilter::IteratedPlayer)
-            }
+                PlayerFilter::IteratedPlayer
+            };
+            Ok(as_followup_player_alias(filter))
         }
         PlayerAst::ThatPlayerOrTargetController => {
             Ok(PlayerFilter::TargetPlayerOrControllerOfTarget)
@@ -174,6 +199,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::TargetPlayerOrControllerOfTarget
         | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_)
+        | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::AliasedOwnerOf(_)
         | PlayerFilter::AliasedControllerOf(_) => {}
     }
@@ -189,6 +215,12 @@ fn append_object_filter_target_player_choices(
     if let Some(controller) = &filter.controller {
         push_target_player_filter_choices(controller, choices);
     }
+    if let Some(attached_to_player) = &filter.attached_to_player {
+        push_target_player_filter_choices(attached_to_player, choices);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref() {
+        append_object_filter_target_player_choices(attached_to, choices);
+    }
     for branch in &filter.any_of {
         append_object_filter_target_player_choices(branch, choices);
     }
@@ -201,6 +233,12 @@ fn resolve_object_ref(reference: &ObjectRef, refs: &ReferenceEnv) -> ObjectRef {
             .cloned()
             .map(ObjectRef::tagged)
             .unwrap_or(ObjectRef::Target),
+        ObjectRef::Tagged(tag) => refs
+            .snapshot_tag_aliases
+            .iter()
+            .find(|(alias, _)| alias == tag.as_str())
+            .map(|(_, concrete)| ObjectRef::tagged(concrete.as_str()))
+            .unwrap_or_else(|| reference.clone()),
         _ => reference.clone(),
     }
 }
@@ -222,6 +260,9 @@ fn resolve_contextual_player_filter(
         }
         PlayerFilter::Target(inner) => {
             PlayerFilter::Target(Box::new(resolve_contextual_player_filter(inner, refs)?))
+        }
+        PlayerFilter::AliasedTarget(inner) => {
+            PlayerFilter::AliasedTarget(Box::new(resolve_contextual_player_filter(inner, refs)?))
         }
         PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
             base: Box::new(resolve_contextual_player_filter(base, refs)?),
@@ -317,6 +358,12 @@ fn resolve_object_filter_player_refs(
     {
         *attacking_player = resolve_contextual_player_filter(attacking_player, refs)?;
     }
+    if let Some(attached_to_player) = resolved.attached_to_player.as_mut() {
+        *attached_to_player = resolve_contextual_player_filter(attached_to_player, refs)?;
+    }
+    if let Some(attached_to_object) = resolved.attached_to_object.as_mut() {
+        **attached_to_object = resolve_object_filter_player_refs(attached_to_object, refs)?;
+    }
     if let Some(entered_controller) = resolved.entered_battlefield_controller.as_mut() {
         *entered_controller = resolve_contextual_player_filter(entered_controller, refs)?;
     }
@@ -331,6 +378,12 @@ pub(crate) fn resolve_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
+    if let Some(attached_to_object) = resolved.attached_to_object.as_mut() {
+        **attached_to_object = resolve_it_tag(attached_to_object, refs)?;
+    }
+    for nested in &mut resolved.any_of {
+        *nested = resolve_it_tag(nested, refs)?;
+    }
     if !refs.snapshot_tag_aliases.is_empty() {
         for constraint in &mut resolved.tagged_constraints {
             if let Some((_, concrete)) = refs
@@ -350,6 +403,12 @@ pub(crate) fn resolve_it_tag(
             if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
                 constraint.tag = tag.clone();
             }
+            if constraint.tag.as_str() == "__public_revealed"
+                && (tag.as_str().starts_with("revealed_")
+                    || tag.as_str().starts_with("__sentence_helper_revealed"))
+            {
+                constraint.tag = tag.clone();
+            }
         }
     }
     if !filter
@@ -362,8 +421,22 @@ pub(crate) fn resolve_it_tag(
 
     let Some(tag) = refs.known_last_object_tag() else {
         let mut saw_it_constraint = false;
+        let mut preserved_runtime_it_constraint = false;
         resolved.tagged_constraints.retain(|constraint| {
             if constraint.tag.as_str() != IT_TAG {
+                return true;
+            }
+            // Only relations with an explicit runtime interpretation may keep
+            // an unresolved `__it__`: delayed triggers bind lesser mana value
+            // to their triggering object, while same-name predicates use an
+            // existential comparison set. Immediate relations such as
+            // "Equipment attached to that creature" must not leak an unbound
+            // tag into a merged target filter.
+            if matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::ManaValueLtTagged | TaggedOpbjectRelation::SameNameAsTagged
+            ) {
+                preserved_runtime_it_constraint = true;
                 return true;
             }
             saw_it_constraint = true;
@@ -385,7 +458,7 @@ pub(crate) fn resolve_it_tag(
             && let Some(player_filter) = refs.known_last_player_filter().cloned()
         {
             if resolved.owner.is_none() {
-                resolved.owner = Some(player_filter);
+                resolved.owner = Some(as_followup_player_alias(player_filter));
             }
             return Ok(resolved);
         }
@@ -394,7 +467,7 @@ pub(crate) fn resolve_it_tag(
             && let Some(player_filter) = refs.known_last_player_filter().cloned()
         {
             resolved.zone = Some(Zone::Hand);
-            resolved.owner = Some(player_filter);
+            resolved.owner = Some(as_followup_player_alias(player_filter));
             return Ok(resolved);
         }
         if saw_it_constraint && resolved == ObjectFilter::default() {
@@ -402,6 +475,10 @@ pub(crate) fn resolve_it_tag(
             return Ok(resolved);
         }
         if saw_it_constraint {
+            return Ok(resolved);
+        }
+
+        if preserved_runtime_it_constraint {
             return Ok(resolved);
         }
 
@@ -428,6 +505,19 @@ pub(crate) fn resolve_it_tag_key(
         .find(|(alias, _)| alias == tag.as_str())
     {
         return Ok(TagKey::from(concrete.as_str()));
+    }
+    if tag.as_str() == THIS_WAY_SACRIFICED_TAG {
+        let resolved = refs.known_last_object_tag().ok_or_else(|| {
+            CardTextError::ParseError(
+                "unable to resolve 'sacrificed this way' without a prior sacrifice".to_string(),
+            )
+        })?;
+        if !is_sacrificed_object_reference_tag(resolved.as_str()) {
+            return Err(CardTextError::ParseError(
+                "'sacrificed this way' does not refer to the prior object".to_string(),
+            ));
+        }
+        return Ok(resolved.clone());
     }
     if tag.as_str() != IT_TAG {
         return Ok(tag.clone());
@@ -624,7 +714,7 @@ pub(crate) fn resolve_choose_spec_it_tag(
             if let Some(player_filter) = refs.known_last_player_filter().cloned() {
                 let filter = ObjectFilter {
                     zone: Some(Zone::Hand),
-                    owner: Some(player_filter),
+                    owner: Some(as_followup_player_alias(player_filter)),
                     ..Default::default()
                 };
                 return Ok(ChooseSpec::Object(filter));
@@ -737,6 +827,96 @@ pub(crate) fn resolve_value_it_tag(
         Value::ColorsAmong(filter) => Ok(Value::ColorsAmong(resolve_it_tag(filter, refs)?)),
         Value::DistinctNames(filter) => Ok(Value::DistinctNames(resolve_it_tag(filter, refs)?)),
         Value::DistinctPowers(filter) => Ok(Value::DistinctPowers(resolve_it_tag(filter, refs)?)),
+        Value::TurnHistoryCount(query) => {
+            use ironsmith_core::TurnHistoryCount;
+
+            let query = match query {
+                TurnHistoryCount::Died(filter) => {
+                    TurnHistoryCount::Died(resolve_it_tag(filter, refs)?)
+                }
+                TurnHistoryCount::EnteredBattlefield(filter) => {
+                    TurnHistoryCount::EnteredBattlefield(resolve_it_tag(filter, refs)?)
+                }
+                TurnHistoryCount::TokensCreated(player) => {
+                    TurnHistoryCount::TokensCreated(resolve_contextual_player_filter(player, refs)?)
+                }
+                TurnHistoryCount::PutIntoGraveyard { owner, from } => {
+                    TurnHistoryCount::PutIntoGraveyard {
+                        owner: resolve_contextual_player_filter(owner, refs)?,
+                        from: from.clone(),
+                    }
+                }
+                TurnHistoryCount::MovedZones { filter, from, to } => TurnHistoryCount::MovedZones {
+                    filter: resolve_it_tag(filter, refs)?,
+                    from: *from,
+                    to: *to,
+                },
+                TurnHistoryCount::Sacrificed { player, filter } => TurnHistoryCount::Sacrificed {
+                    player: resolve_contextual_player_filter(player, refs)?,
+                    filter: resolve_it_tag(filter, refs)?,
+                },
+                TurnHistoryCount::CountersPutOn {
+                    counter_type,
+                    filter,
+                } => TurnHistoryCount::CountersPutOn {
+                    counter_type: *counter_type,
+                    filter: resolve_it_tag(filter, refs)?,
+                },
+                TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+                    TurnHistoryCount::CreaturesAttackedWith {
+                        player: resolve_contextual_player_filter(player, refs)?,
+                        filter: resolve_it_tag(filter, refs)?,
+                    }
+                }
+                TurnHistoryCount::OpponentsAttacked(player) => TurnHistoryCount::OpponentsAttacked(
+                    resolve_contextual_player_filter(player, refs)?,
+                ),
+                TurnHistoryCount::PlayersDiscarded(player) => TurnHistoryCount::PlayersDiscarded(
+                    resolve_contextual_player_filter(player, refs)?,
+                ),
+                TurnHistoryCount::PlayersDealtDamage(player) => {
+                    TurnHistoryCount::PlayersDealtDamage(resolve_contextual_player_filter(
+                        player, refs,
+                    )?)
+                }
+                TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => {
+                    TurnHistoryCount::PlayersDealtCombatDamageBy {
+                        players: resolve_contextual_player_filter(players, refs)?,
+                        sources: resolve_it_tag(sources, refs)?,
+                    }
+                }
+                TurnHistoryCount::DiscardedOrCycled(player) => TurnHistoryCount::DiscardedOrCycled(
+                    resolve_contextual_player_filter(player, refs)?,
+                ),
+                TurnHistoryCount::Cycled(player) => {
+                    TurnHistoryCount::Cycled(resolve_contextual_player_filter(player, refs)?)
+                }
+                TurnHistoryCount::PlayersLostLife(player) => TurnHistoryCount::PlayersLostLife(
+                    resolve_contextual_player_filter(player, refs)?,
+                ),
+                TurnHistoryCount::SpellsCast {
+                    player,
+                    filter,
+                    from_zone,
+                    from_outside_hand,
+                    exclude_source,
+                    before_triggering_spell,
+                } => TurnHistoryCount::SpellsCast {
+                    player: resolve_contextual_player_filter(player, refs)?,
+                    filter: resolve_it_tag(filter, refs)?,
+                    from_zone: *from_zone,
+                    from_outside_hand: *from_outside_hand,
+                    exclude_source: *exclude_source,
+                    before_triggering_spell: *before_triggering_spell,
+                },
+                TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
+                    TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(
+                        resolve_contextual_player_filter(player, refs)?,
+                    )
+                }
+            };
+            Ok(Value::TurnHistoryCount(query))
+        }
         Value::Devotion { player, color } => Ok(Value::Devotion {
             player: resolve_contextual_player_filter(player, refs)?,
             color: *color,
@@ -753,6 +933,10 @@ pub(crate) fn resolve_value_it_tag(
         Value::ManaValueOf(spec) => Ok(Value::ManaValueOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::ManaSymbolsInManaCostOf { spec, color } => Ok(Value::ManaSymbolsInManaCostOf {
+            spec: Box::new(resolve_choose_spec_it_tag(spec, refs)?),
+            color: *color,
+        }),
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => {
             if !refs.allow_life_event_value {
@@ -810,6 +994,53 @@ pub(crate) fn resolve_value_it_tag(
     }
 }
 
+pub(crate) fn resolve_total_cost_it_tags(
+    cost: &crate::cost::TotalCost,
+    refs: &ReferenceEnv,
+) -> Result<crate::cost::TotalCost, CardTextError> {
+    fn resolve_component(
+        component: &crate::costs::Cost,
+        refs: &ReferenceEnv,
+    ) -> Result<crate::costs::Cost, CardTextError> {
+        let mut resolved = component.clone();
+        match &mut resolved {
+            crate::costs::Cost::DynamicMana(dynamic) => {
+                if let Some(value) = dynamic.x_value.as_mut() {
+                    *value = resolve_value_it_tag(value, refs)?;
+                }
+                if let Some(value) = dynamic.additional_generic.as_mut() {
+                    *value = resolve_value_it_tag(value, refs)?;
+                }
+                if let Some(value) = dynamic.multiplier.as_mut() {
+                    *value = resolve_value_it_tag(value, refs)?;
+                }
+            }
+            crate::costs::Cost::Energy(value)
+            | crate::costs::Cost::Mill(value)
+            | crate::costs::Cost::Life(value) => {
+                *value = resolve_value_it_tag(value, refs)?;
+            }
+            _ => {}
+        }
+        Ok(resolved)
+    }
+
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => Ok(crate::cost::TotalCost::from_costs(
+            components
+                .iter()
+                .map(|component| resolve_component(component, refs))
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+        ironsmith_core::TotalCostKind::OneOf(branches) => Ok(crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| resolve_total_cost_it_tags(branch, refs))
+                .collect::<Result<Vec<_>, _>>()?,
+        )),
+    }
+}
+
 pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     matches!(
         spec.base(),
@@ -818,6 +1049,22 @@ pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
             | ChooseSpec::SpecificObject(_)
             | ChooseSpec::Source
     )
+}
+
+pub(crate) fn with_target_reference_surface_hint(
+    spec: ChooseSpec,
+    target: &TargetAst,
+) -> ChooseSpec {
+    let span = match target {
+        TargetAst::Source(span) | TargetAst::Tagged(_, span) | TargetAst::Object(_, _, span) => {
+            *span
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            return with_target_reference_surface_hint(spec, inner);
+        }
+        _ => None,
+    };
+    target_reference_hinted_spec(spec, span)
 }
 
 fn source_reference_hinted_spec(
@@ -836,6 +1083,17 @@ fn source_reference_surface_for_target_span(
     crate::runtime_backend::util::source_reference_surface_for_span(span)
 }
 
+fn target_reference_hinted_spec(
+    spec: ChooseSpec,
+    span: Option<crate::cards::TextSpan>,
+) -> ChooseSpec {
+    let spec = source_reference_hinted_spec(spec, source_reference_surface_for_target_span(span));
+    match crate::runtime_backend::util::sacrificed_object_kind_for_span(span) {
+        Some(kind) => spec.with_surface_hint(ChooseSpecSurfaceHint::SacrificedObject(kind)),
+        None => spec,
+    }
+}
+
 fn implicit_it_reference_resolves_to_source(refs: &ReferenceEnv) -> bool {
     refs.known_last_object_tag().is_none()
         && (refs.has_source_object_antecedent() || refs.known_last_player_filter().is_none())
@@ -849,10 +1107,7 @@ fn implicit_source_pronoun_surface(
 
 pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
     match target {
-        TargetAst::Source(span) => source_reference_hinted_spec(
-            ChooseSpec::Source,
-            source_reference_surface_for_target_span(*span),
-        ),
+        TargetAst::Source(span) => target_reference_hinted_spec(ChooseSpec::Source, *span),
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
         TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
         TargetAst::PlayerOrPlaneswalker(filter, _) => {
@@ -871,27 +1126,20 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
                 ChooseSpec::Player(filter.clone())
             }
         }
-        TargetAst::Object(filter, explicit_target_span, _) => {
-            if filter.source && filter.zone != Some(Zone::Exile) {
-                return source_reference_hinted_spec(
-                    ChooseSpec::Source,
-                    filter.source_surface.clone(),
-                );
-            }
-            if explicit_target_span.is_some() {
+        TargetAst::Object(filter, explicit_target_span, reference_span) => {
+            let spec = if filter.source && filter.zone != Some(Zone::Exile) {
+                source_reference_hinted_spec(ChooseSpec::Source, filter.source_surface.clone())
+            } else if explicit_target_span.is_some() {
                 ChooseSpec::target(ChooseSpec::Object(filter.clone()))
             } else {
                 ChooseSpec::Object(filter.clone())
-            }
+            };
+            target_reference_hinted_spec(spec, *reference_span)
         }
-        TargetAst::Tagged(tag, span) => source_reference_hinted_spec(
-            ChooseSpec::Tagged(tag.clone()),
-            if tag.as_str() == IT_TAG {
-                source_reference_surface_for_target_span(*span)
-            } else {
-                None
-            },
-        ),
+        TargetAst::Tagged(tag, span) => {
+            let spec = ChooseSpec::Tagged(tag.clone());
+            target_reference_hinted_spec(spec, *span)
+        }
         TargetAst::WithCount(inner, count) => choose_spec_for_target(inner).with_count(*count),
         TargetAst::WithCountValue(inner, count, value) => {
             choose_spec_for_target(inner).with_count_value(*count, value.clone())
@@ -905,7 +1153,10 @@ pub(crate) fn resolve_target_spec_with_choices(
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
     let mut spec = match target {
         TargetAst::Tagged(tag, span)
-            if tag.as_str() == IT_TAG && implicit_it_reference_resolves_to_source(refs) =>
+            if tag.as_str() == IT_TAG
+                && crate::runtime_backend::util::sacrificed_object_kind_for_span(*span)
+                    .is_none()
+                && implicit_it_reference_resolves_to_source(refs) =>
         {
             source_reference_hinted_spec(
                 ChooseSpec::Source,
@@ -920,7 +1171,7 @@ pub(crate) fn resolve_target_spec_with_choices(
         && matches!(filter, PlayerFilter::Target(_))
     {
         if let Some(last_filter) = refs.known_last_player_filter() {
-            spec = ChooseSpec::Player(last_filter.clone());
+            spec = ChooseSpec::Player(as_followup_player_alias(last_filter.clone()));
         } else if refs.iterated_player {
             spec = ChooseSpec::Player(PlayerFilter::IteratedPlayer);
         }
@@ -1009,5 +1260,49 @@ mod tests {
             Value::PowerOf(Box::new(ChooseSpec::Source)),
             "source-bound implicit it should not remain target-wrapped"
         );
+    }
+
+    #[test]
+    fn public_revealed_count_binds_to_current_reveal_result_tag() {
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(TagKey::from("__sentence_helper_revealed_l0_s0_e7")),
+            ..ReferenceEnv::default()
+        };
+        let value = Value::Count(ObjectFilter::tagged(TagKey::from("__public_revealed")));
+        let resolved = resolve_value_it_tag(&value, &refs).expect("resolve reveal count");
+        let Value::Count(filter) = resolved else {
+            panic!("expected count value");
+        };
+        assert_eq!(
+            filter.tagged_constraints[0].tag.as_str(),
+            "__sentence_helper_revealed_l0_s0_e7"
+        );
+    }
+
+    #[test]
+    fn unresolved_it_relational_constraint_survives_for_runtime_trigger_binding() {
+        let filter = ObjectFilter::default().match_tagged(
+            TagKey::from(IT_TAG),
+            TaggedOpbjectRelation::ManaValueLtTagged,
+        );
+
+        let resolved =
+            resolve_it_tag(&filter, &ReferenceEnv::default()).expect("preserve runtime relation");
+
+        assert_eq!(resolved.tagged_constraints, filter.tagged_constraints);
+    }
+
+    #[test]
+    fn unresolved_immediate_attachment_relation_does_not_leak_into_target_filter() {
+        let filter = ObjectFilter::creature().match_tagged(
+            TagKey::from(IT_TAG),
+            TaggedOpbjectRelation::AttachedToTaggedObject,
+        );
+
+        let resolved = resolve_it_tag(&filter, &ReferenceEnv::default())
+            .expect("consume unbound immediate attachment relation");
+
+        assert!(resolved.tagged_constraints.is_empty());
+        assert_eq!(resolved.card_types, filter.card_types);
     }
 }

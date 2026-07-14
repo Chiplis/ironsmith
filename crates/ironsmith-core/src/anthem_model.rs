@@ -1,6 +1,6 @@
 use crate::{
-    CounterType, KeywordActionKind, ManaSymbol, ObjectFilter, PlayerFilter, SourceReferenceSurface,
-    Value,
+    CounterType, KeywordActionKind, ManaSymbol, ObjectFilter, ObjectRef, PlayerFilter,
+    SourceReferenceSurface, Value,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,23 +55,34 @@ impl AnthemValue {
     }
 
     pub fn uses_affected_object(&self) -> bool {
-        matches!(
-            self,
+        match self {
             Self::PerCount {
-                count: AnthemCountExpression::AttachedToAffected(_)
+                count:
+                    AnthemCountExpression::AttachedToAffected(_)
                     | AnthemCountExpression::ColorsOfAffected
                     | AnthemCountExpression::AffectedAttackedThisTurn
                     | AnthemCountExpression::CountersOnAffected(_),
                 ..
-            }
-        )
+            } => true,
+            Self::PerCount {
+                count: AnthemCountExpression::MatchingFilter(filter),
+                ..
+            } => matches!(
+                filter.owner.as_ref().or(filter.controller.as_ref()),
+                Some(
+                    PlayerFilter::ControllerOf(ObjectRef::Target)
+                        | PlayerFilter::OwnerOf(ObjectRef::Target)
+                )
+            ),
+            _ => false,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{AnthemCountExpression, AnthemValue};
-    use crate::ObjectFilter;
+    use crate::{ObjectFilter, ObjectRef, PlayerFilter, Zone};
 
     #[test]
     fn anthem_value_scaled_collapses_zero() {
@@ -92,6 +103,18 @@ mod tests {
                 AnthemCountExpression::AttachedToAffected(ObjectFilter::artifact())
             )
             .uses_affected_object()
+        );
+    }
+
+    #[test]
+    fn controller_of_affected_object_count_reports_dependency() {
+        let mut cards_in_hand = ObjectFilter::default();
+        cards_in_hand.zone = Some(Zone::Hand);
+        cards_in_hand.owner = Some(PlayerFilter::ControllerOf(ObjectRef::Target));
+
+        assert!(
+            AnthemValue::scaled(1, AnthemCountExpression::MatchingFilter(cards_in_hand))
+                .uses_affected_object()
         );
     }
 }

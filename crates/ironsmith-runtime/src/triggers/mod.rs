@@ -113,6 +113,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
+        | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::Excluding { .. } => "that player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()
@@ -152,6 +153,7 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         | PlayerFilter::ChosenPlayer
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::Target(_)
+        | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::Excluding { .. } => "that player's".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player's".to_string()
@@ -428,6 +430,12 @@ impl Trigger {
         Self::new(BeginningOfEndStepTrigger::new(player))
     }
 
+    /// Create the Any-player end-step trigger with Oracle's definite
+    /// "the end step" surface.
+    pub fn beginning_of_the_end_step() -> Self {
+        Self::new(BeginningOfEndStepTrigger::the_end_step())
+    }
+
     /// Create a "at the beginning of combat on [player]'s turn" trigger.
     pub fn beginning_of_combat(player: PlayerFilter) -> Self {
         Self::new(BeginningOfCombatTrigger::new(player))
@@ -458,7 +466,7 @@ impl Trigger {
     pub fn beginning_of_main_phase(player: PlayerFilter) -> Self {
         Self::new(BeginningOfMainPhaseTrigger::new(
             player,
-            MainPhaseType::Precombat,
+            MainPhaseType::Either,
         ))
     }
 
@@ -1043,6 +1051,17 @@ impl Trigger {
         Self::new(PlayerDrawsNthCardEachTurnTrigger::new(player, card_number))
     }
 
+    /// Create a trigger for any of the specified numbered draws each turn.
+    pub fn player_draws_numbered_cards_each_turn(
+        player: PlayerFilter,
+        card_numbers: impl IntoIterator<Item = u32>,
+    ) -> Self {
+        Self::new(PlayerDrawsNumberedCardsEachTurnTrigger::new(
+            player,
+            card_numbers,
+        ))
+    }
+
     /// Create a "whenever you discard a card" trigger.
     pub fn you_discard_card() -> Self {
         Self::new(YouDiscardCardTrigger::new(PlayerFilter::You, None))
@@ -1122,7 +1141,18 @@ impl Trigger {
 
     /// Create a "when a player sacrifices [filter]" trigger.
     pub fn player_sacrifices(player: PlayerFilter, filter: ObjectFilter) -> Self {
-        Self::new(PlayerSacrificesTrigger::new(player, filter))
+        Self::player_sacrifices_with_surface(player, filter, false)
+    }
+
+    pub fn player_sacrifices_with_surface(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        one_or_more_surface: bool,
+    ) -> Self {
+        Self::new(
+            PlayerSacrificesTrigger::new(player, filter)
+                .with_one_or_more_surface(one_or_more_surface),
+        )
     }
 
     /// Create a "whenever [player] creates [tokens]" trigger.

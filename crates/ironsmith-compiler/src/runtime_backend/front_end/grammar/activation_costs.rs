@@ -76,10 +76,15 @@ pub(crate) enum ActivationCostSegmentCst {
         other: bool,
     },
     Mill(u32),
-    SacrificeSelf,
+    SacrificeSelf {
+        surface: Option<crate::target::SourceReferenceSurface>,
+    },
     SacrificeCreature,
     SacrificeChosen {
         count: crate::effect::ChoiceCount,
+        filter: ObjectFilter,
+    },
+    SacrificeAll {
         filter: ObjectFilter,
     },
     UnattachChosen {

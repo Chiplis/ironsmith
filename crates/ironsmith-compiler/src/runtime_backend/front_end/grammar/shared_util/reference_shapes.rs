@@ -427,6 +427,8 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
     }
     if permission_shapes::exact_words(words, &["decayed"]) {
         Some(Marker("decayed"))
+    } else if permission_shapes::exact_words(words, &["toxic"]) {
+        Some(Marker("toxic"))
     } else if permission_shapes::exact_words(words, &["islandwalk"]) {
         Some(Marker("islandwalk"))
     } else if permission_shapes::exact_words(words, &["swampwalk"]) {
@@ -559,6 +561,10 @@ mod tests {
         assert_eq!(
             parse_filter_keyword_constraint_words(&["cascade"]),
             Some((FilterKeywordConstraint::Static(StaticAbilityId::Cascade), 1))
+        );
+        assert_eq!(
+            parse_filter_keyword_constraint_words(&["toxic"]),
+            Some((FilterKeywordConstraint::Marker("toxic"), 1))
         );
         assert_eq!(
             parse_life_advantage_player(&["opponent", "who", "has", "more", "life", "than", "you"]),

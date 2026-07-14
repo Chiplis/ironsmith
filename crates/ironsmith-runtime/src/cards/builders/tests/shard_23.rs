@@ -749,7 +749,9 @@ pub(super) fn knowledge_exploitation_compiled_text_keeps_prowl_and_target_oppone
         "expected Knowledge Exploitation to render the prowl keyword cost, got {rendered}"
     );
     assert!(
-        rendered.contains("search target opponent's library for an instant or sorcery"),
+        rendered.contains(
+            "Search target opponent's library for an instant or sorcery card. You may cast that card without paying its mana cost. Then that player shuffles"
+        ),
         "expected Knowledge Exploitation to keep search-target clause, got {rendered}"
     );
 }
@@ -1996,6 +1998,55 @@ pub(super) fn looked_card_three_way_choices_lower_as_three_disjoint_candidate_se
         assert!(debug.contains(middle_zone), "{debug}");
         assert_eq!(debug.contains("to_top: true"), expects_top, "{debug}");
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn top_three_partition_cluster_parses_strictly_and_compiles_exactly() {
+    for (name, expected) in [
+        (
+            "Dark Bargain",
+            "Look at the top three cards of your library. Put two of them into your hand and the other into your graveyard. Dark Bargain deals 2 damage to you.",
+        ),
+        (
+            "Moment of Truth",
+            "Look at the top three cards of your library. Put one of those cards into your hand, one into your graveyard, and one on the bottom of your library.",
+        ),
+        (
+            "Omen",
+            "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card.",
+        ),
+        (
+            "Ponder",
+            "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card.",
+        ),
+        (
+            "Telling Time",
+            "Look at the top three cards of your library. Put one of those cards into your hand, one on top of your library, and one on the bottom of your library.",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(name);
+        let def = parse_oracle_card_definition(name);
+        let rendered = compiled_text_lines(&def).join(" ");
+        assert_eq!(rendered, expected, "{name}: {def:#?}");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn dark_bargain_lowers_to_selected_cards_plus_their_exact_complement() {
+    let def = parse_oracle_card_definition("Dark Bargain");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(
+        debug.contains("min: 2") && debug.contains("TagMatchingObjectsEffect"),
+        "{debug}"
+    );
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

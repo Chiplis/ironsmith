@@ -41,14 +41,31 @@ fn card_type_set_includes(card_types: &[CardType], expected: CardType) -> bool {
 pub(crate) fn parse_search_library_disjunction_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let segments = split_lexed_slices_on_or(filter_tokens);
+    let uses_and_or = filter_tokens.iter().any(|token| token.is_word("and/or"));
+    let segments = if uses_and_or {
+        let mut segments = Vec::new();
+        let mut start = 0usize;
+        for (idx, token) in filter_tokens.iter().enumerate() {
+            if token.is_word("and/or") {
+                segments.push(trim_commas(&filter_tokens[start..idx]));
+                start = idx + 1;
+            }
+        }
+        segments.push(trim_commas(&filter_tokens[start..]));
+        segments
+    } else {
+        split_lexed_slices_on_or(filter_tokens)
+            .into_iter()
+            .map(trim_commas)
+            .collect()
+    };
     if segments.len() < 2 {
         return None;
     }
 
     let mut branches = Vec::new();
     for segment in segments {
-        let trimmed = trim_commas(segment);
+        let trimmed = trim_commas(&segment);
         if trimmed.is_empty() {
             return None;
         }
@@ -64,6 +81,9 @@ pub(crate) fn parse_search_library_disjunction_filter(
 
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
+    if uses_and_or {
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
     Some(filter)
 }
 

@@ -88,6 +88,10 @@ fn object_filter_references_target_player(filter: &crate::target::ObjectFilter) 
             .as_deref()
             .is_some_and(object_filter_references_target_player)
         || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(object_filter_references_target_player)
+        || filter
             .any_of
             .iter()
             .any(object_filter_references_target_player)

@@ -2604,8 +2604,7 @@ pub(super) fn ocelot_pride_city_blessing_clause_copies_each_matching_recent_toke
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let ocelot = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-    let blessing = CardDefinitionBuilder::new(CardId::new(), "City's Blessing").build();
-    game.create_object_from_definition(&blessing, alice, Zone::Command);
+    game.grant_citys_blessing(alice);
     let cat = CardDefinitionBuilder::new(CardId::new(), "Test Cat")
         .token()
         .card_types(vec![CardType::Creature])
@@ -2914,7 +2913,8 @@ pub(super) fn aggregate_choice_wipes_and_sorcerer_class_compile_to_truthful_mode
             debug.contains("ChooseObjectsEffect")
                 && debug.contains("aggregate_constraint: Some")
                 && debug.contains("Power")
-                && debug.contains("maximum: 4")
+                && debug.contains("maximum: Fixed(")
+                && debug.contains("4")
                 && debug.contains("SacrificePlayerEffect"),
             "{name} must retain the any-number total-power choice and sacrifice its complement: {debug}"
         );
@@ -2977,7 +2977,7 @@ pub(super) fn slaughter_the_strong_keeps_each_players_legal_power_group_and_sacr
                 .filter(|candidate| candidate.legal)
                 .map(|candidate| candidate.id)
                 .collect::<Vec<_>>();
-            let Some(constraint) = ctx.aggregate_constraint else {
+            let Some(constraint) = ctx.aggregate_constraint.clone() else {
                 return legal;
             };
             self.seen_constraints.push((ctx.player, constraint));
@@ -3039,7 +3039,7 @@ pub(super) fn slaughter_the_strong_keeps_each_players_legal_power_group_and_sacr
 
     assert_eq!(dm.seen_constraints.len(), 2);
     assert!(dm.seen_constraints.iter().all(|(_, constraint)| {
-        *constraint == crate::effect::ChoiceAggregateConstraint::total_power_at_most(4)
+        constraint == &crate::effect::ChoiceAggregateConstraint::total_power_at_most(4)
     }));
     let battlefield_names = game
         .battlefield

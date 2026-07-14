@@ -118,30 +118,7 @@ pub(crate) fn describe_tagged_this_way_action(filter: &ObjectFilter) -> Option<&
         if tag == "__it__" && filter.zone == Some(Zone::Exile) {
             return Some("exiled");
         }
-        if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled") {
-            Some("exiled")
-        } else if tag.starts_with("revealed_")
-            || crate::cards::is_sentence_helper_tag(tag, "revealed")
-        {
-            Some("revealed")
-        } else if tag.starts_with("destroyed_")
-            || crate::cards::is_sentence_helper_tag(tag, "destroyed")
-        {
-            Some("destroyed")
-        } else if tag.starts_with("sacrificed_")
-            || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
-        {
-            Some("sacrificed")
-        } else if tag.starts_with("discarded_")
-            || crate::cards::is_sentence_helper_tag(tag, "discarded")
-        {
-            Some("discarded")
-        } else if tag.starts_with("milled_") || crate::cards::is_sentence_helper_tag(tag, "milled")
-        {
-            Some("milled")
-        } else {
-            None
-        }
+        this_way_action_from_tag(&constraint.tag)
     })
 }
 
@@ -533,7 +510,10 @@ pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
         }
         Value::Count(filter)
             if filter.zone == Some(Zone::Hand)
-                && matches!((&draw.player, &filter.owner), (PlayerFilter::Target(draw_inner), Some(PlayerFilter::Target(owner_inner))) if draw_inner == owner_inner) =>
+                && matches!(draw.player, PlayerFilter::Target(_))
+                && filter.owner.as_ref().is_some_and(|owner| {
+                    player_filters_refer_to_same_player(&draw.player, owner)
+                }) =>
         {
             Some(format!(
                 "{player} {verb} cards equal to the number of cards in their hand"
@@ -686,6 +666,9 @@ pub(super) fn describe_dynamic_counter_amount_phrase(
 }
 
 pub(super) fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str) -> String {
+    if let Some(kind) = spec.sacrificed_object_kind() {
+        return format!("the sacrificed {}'s {attribute}", kind.noun());
+    }
     if let Some(surface) = spec.source_reference_surface()
         && matches!(spec.unhinted(), ChooseSpec::Source)
     {
@@ -711,6 +694,14 @@ pub(super) fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str)
             format!("the sacrificed creature's {attribute}")
         }
         ChooseSpec::Tagged(tag)
+            if tag.as_str() == "discarded_cost" || tag.as_str().starts_with("discard_cost_") =>
+        {
+            format!("the discarded card's {attribute}")
+        }
+        ChooseSpec::Tagged(tag) if tag.as_str().starts_with("exile_cost_") => {
+            format!("the exiled card's {attribute}")
+        }
+        ChooseSpec::Tagged(tag)
             if attribute == "mana value" && tag.as_str().starts_with("countered_") =>
         {
             "that spell's mana value".to_string()
@@ -733,6 +724,12 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value_prefers_where_x(value) {
         return None;
     }
+    if let Some((1, party)) = describe_party_size_for_each_basis(value) {
+        return Some(party);
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay) {
+        return Some("card drawn this way".to_string());
+    }
     match value.unhinted() {
         Value::Count(filter) => Some(describe_for_each_filter(filter)),
         Value::BasicLandTypesAmong(filter) => Some(describe_basic_land_types_among(filter)),
@@ -749,16 +746,71 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             Some("color of mana spent to cast this spell".to_string())
         }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
+        Value::CreaturesDiedThisTurnControlledBy(controller) => {
+            let controller = match controller {
+                PlayerFilter::You => "you controlled".to_string(),
+                PlayerFilter::Opponent => "an opponent controlled".to_string(),
+                PlayerFilter::Any => return Some("creature that died this turn".to_string()),
+                other => format!("{} controlled", describe_player_filter(other)),
+            };
+            Some(format!("creature {controller} that died this turn"))
+        }
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(filter)) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            subject_filter.zone = None;
+            let subject = describe_for_each_filter(&subject_filter);
+            Some(match controller {
+                Some(controller) => format!(
+                    "{subject} that died under {} control this turn",
+                    describe_possessive_player_filter(&controller)
+                ),
+                None => format!("{subject} that died this turn"),
+            })
+        }
+        Value::KickCount => Some("time it was kicked".to_string()),
+        Value::SpellsCastThisTurn(player) => Some(describe_spells_cast_this_turn_each(player)),
+        Value::SpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let described = describe_for_each_filter(filter);
+            let prefix = if *exclude_source && !described.starts_with("other ") {
+                "other "
+            } else {
+                ""
+            };
+            let tail = match player {
+                PlayerFilter::You => "you've cast this turn".to_string(),
+                PlayerFilter::Opponent => "an opponent has cast this turn".to_string(),
+                PlayerFilter::Any => "cast this turn".to_string(),
+                other => format!("cast this turn by {}", describe_player_filter(other)),
+            };
+            Some(format!("{prefix}{described} {tail}"))
+        }
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
+        Value::PlayerCounters(player, counter_type) => Some(format!(
+            "{} counter {}",
+            describe_counter_type(*counter_type),
+            describe_player_counter_holder(player)
+        )),
         Value::CountersOnSource(counter_type) => Some(format!(
             "{} counter on it",
             describe_counter_type(*counter_type)
         )),
-        Value::CountersOn(spec, Some(counter_type)) => Some(format!(
-            "{} counter on {}",
-            describe_counter_type(*counter_type),
-            describe_choose_spec(spec)
-        )),
+        Value::CountersOn(spec, Some(counter_type)) => {
+            let objects = match spec.unhinted() {
+                ChooseSpec::All(filter) => {
+                    pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
+                }
+                _ => describe_choose_spec(spec),
+            };
+            Some(format!(
+                "{} counter on {objects}",
+                describe_counter_type(*counter_type),
+            ))
+        }
         Value::CountersOn(spec, None) => Some(format!("counter on {}", describe_choose_spec(spec))),
         _ => None,
     }
@@ -893,7 +945,9 @@ pub(super) fn describe_create_token_action(object_text: &str, controller: &Playe
 }
 
 pub(crate) fn should_render_token_count_with_where_x(value: &Value) -> bool {
-    if value_has_surface_hint(value, ValueSurfaceHint::ForEach) {
+    if value_has_surface_hint(value, ValueSurfaceHint::ForEach)
+        || value_has_surface_hint(value, ValueSurfaceHint::EqualTo)
+    {
         return false;
     }
     if matches!(
@@ -928,6 +982,15 @@ pub(crate) fn should_render_token_count_with_where_x(value: &Value) -> bool {
 }
 
 pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> String {
+    if value.has_surface_hint(ValueSurfaceHint::EqualTo) {
+        let amount = value
+            .clone()
+            .without_surface_hint(ValueSurfaceHint::EqualTo);
+        return format!(
+            "a number of {token_name} tokens equal to {}",
+            describe_value(&amount)
+        );
+    }
     match value.unhinted() {
         Value::Fixed(1) => format!("a {token_name} token"),
         Value::Fixed(n) => format!("{n} {token_name} tokens"),
@@ -1081,6 +1144,9 @@ pub(crate) fn describe_create_token_and_manifest_top_card(
     create: &crate::effects::CreateTokenEffect,
     manifest: &crate::effects::ManifestTopCardOfLibraryEffect,
 ) -> Option<String> {
+    if manifest.cloak {
+        return None;
+    }
     let create_text = describe_compact_create_token(create)?;
     let owner = match manifest.player {
         crate::filter::PlayerFilter::TargetPlayerOrControllerOfTarget => {
@@ -1197,13 +1263,56 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return selection;
     }
 
-    let filter_text = choose.filter.description();
+    let mut described_filter = choose.filter.clone();
+    let greatest_suffix = match (
+        described_filter.mana_value.clone(),
+        described_filter.power.clone(),
+    ) {
+        (Some(crate::filter::Comparison::EqualExpr(value)), _)
+            if matches!(value.unhinted(), Value::GreatestManaValue(_)) =>
+        {
+            let Value::GreatestManaValue(scope) = value.unhinted() else {
+                unreachable!()
+            };
+            described_filter.mana_value = None;
+            Some(format!(
+                " with the greatest mana value among {}",
+                describe_for_each_count_filter(scope)
+                    .replace("that player controls", "they control")
+            ))
+        }
+        (_, Some(crate::filter::Comparison::EqualExpr(value)))
+            if matches!(value.unhinted(), Value::GreatestPower(_)) =>
+        {
+            let Value::GreatestPower(scope) = value.unhinted() else {
+                unreachable!()
+            };
+            described_filter.power = None;
+            Some(format!(
+                " with the greatest power among {}",
+                describe_for_each_count_filter(scope)
+                    .replace("that player controls", "they control")
+            ))
+        }
+        _ => None,
+    };
+    let filter_text = described_filter
+        .zone
+        .or(choose.zone)
+        .filter(|zone| is_nonbattlefield_card_zone(*zone))
+        .map_or_else(
+            || described_filter.description(),
+            |zone| describe_nonbattlefield_card_filter_without_zone(&described_filter, zone),
+        );
     let mut card_desc = filter_text
         .split(" in ")
         .next()
         .unwrap_or(filter_text.as_str())
         .trim()
         .to_string();
+    if let Some(suffix) = greatest_suffix {
+        card_desc.push_str(&suffix);
+    }
     for owner_prefix in [
         "target player's ",
         "that player's ",
@@ -1219,6 +1328,11 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     if let Some(rest) = card_desc.strip_suffix(" hands") {
         card_desc = format!("{rest} hand");
     }
+    if let Some(action) = describe_tagged_this_way_action(&choose.filter)
+        && !card_desc.ends_with("this way")
+    {
+        card_desc.push_str(&format!(" {action} this way"));
+    }
     let where_x_suffix = apply_mana_value_where_x_surface(&mut card_desc, &choose.filter);
     if card_desc == "with different names" {
         card_desc = "card with different names".to_string();
@@ -1228,7 +1342,11 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         card_desc = format!("{base} with different names");
     } else if let Some(base) = card_desc.strip_prefix("with different powers ") {
         card_desc = format!("{base} with different powers");
-    } else if let Some(rest) = card_desc.strip_prefix("card ") {
+    } else if let Some(rest) = card_desc.strip_prefix("card ")
+        && !rest.starts_with("with ")
+        && !rest.starts_with("without ")
+        && !rest.starts_with("that ")
+    {
         card_desc = format!("{rest} card");
     }
     let distinct_names_suffix = if choose.filter.distinct_names {
@@ -1283,16 +1401,20 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return selection;
     }
     let mut selection = describe_plural_selection(describe_choice_count(&choose.count), &card_desc);
-    if let Some(constraint) = choose.aggregate_constraint {
+    if let Some(constraint) = &choose.aggregate_constraint {
         let metric = match constraint.metric {
             crate::effect::ChoiceAggregateMetric::Power => "power",
             crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
             crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
         };
-        selection.push_str(&format!(
-            " with total {metric} {} or less",
-            constraint.maximum
-        ));
+        let maximum = describe_value(&constraint.maximum);
+        if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
+            selection.push_str(&format!(" with total {metric} {maximum} or less"));
+        } else {
+            selection.push_str(&format!(
+                " with total {metric} less than or equal to {maximum}"
+            ));
+        }
     }
     selection.push_str(&where_x_suffix);
     selection
@@ -1410,6 +1532,14 @@ pub(crate) fn describe_choose_then_exile(
             .unwrap_or_else(|| describe_choose_selection(choose));
         let face_down_suffix = if exile.face_down { " face down" } else { "" };
         return Some(format!("Exile {chosen}{face_down_suffix}"));
+    }
+
+    if choose_primary_zone(choose) == Some(Zone::Battlefield) {
+        let chooser = describe_player_filter(&choose.chooser);
+        let verb = player_verb(&chooser, "exile", "exiles");
+        let chosen = describe_choose_selection(choose);
+        let face_down_suffix = if exile.face_down { " face down" } else { "" };
+        return Some(format!("{chooser} {verb} {chosen}{face_down_suffix}"));
     }
 
     let zones = choose_search_zones(choose)?;
@@ -1580,10 +1710,27 @@ pub(super) fn describe_put_counters_then_gain_suspend(effects: &[Effect]) -> Opt
         return None;
     }
 
+    let target_text = describe_choose_spec(&put.target);
+    let target_text = if target_text.starts_with("the tagged object '") {
+        "the exiled card"
+    } else {
+        target_text.as_str()
+    };
     Some(format!(
-        "Put {} on the exiled card. If it doesn't have suspend, it gains suspend",
+        "Put {} on {target_text}. If it doesn't have suspend, it gains suspend",
         describe_put_counter_phrase(&put.amount, put.counter_type)
     ))
+}
+
+pub(super) fn describe_exile_with_counters_then_gain_suspend(effects: &[Effect]) -> Option<String> {
+    let [exile_effect, put_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let exile_with_counters = describe_source_exile_with_counters_pair(exile_effect, put_effect)?;
+    let put_then_suspend =
+        describe_put_counters_then_gain_suspend(&[put_effect.clone(), conditional_effect.clone()])?;
+    let (_, suspend_clause) = put_then_suspend.split_once(". ")?;
+    Some(format!("{exile_with_counters}. {suspend_clause}"))
 }
 
 pub(super) fn describe_countered_spell_exile_with_counters_gain_suspend(
@@ -1714,6 +1861,58 @@ pub(crate) fn return_to_hand_uses_chosen_tag(
         }
         _ => false,
     }
+}
+
+pub(super) fn describe_exiled_with_source_move(
+    surface: &ironsmith_core::ExiledWithSourceMoveSurface,
+    zone: Zone,
+    contextual_player: Option<&PlayerFilter>,
+) -> String {
+    use ironsmith_core::{
+        ExiledWithSourceDestinationSurface as DestinationSurface,
+        ExiledWithSourceReferenceSurface as ReferenceSurface,
+        ExiledWithSourceSubjectSurface as SubjectSurface,
+    };
+
+    let subject = match surface.subject {
+        SubjectSurface::AllCards => "all cards",
+        SubjectSurface::EachCard => "each card",
+        SubjectSurface::OneCard => "a card",
+        SubjectSurface::TheExiledCard => "the exiled card",
+        SubjectSurface::TheExiledCards => "the exiled cards",
+        SubjectSurface::TheCards => "the cards",
+    };
+    let source = match &surface.source {
+        ReferenceSurface::Source(source) => format!(" exiled with {}", source.display_text()),
+        ReferenceSurface::It => " exiled with it".to_string(),
+        ReferenceSurface::Omitted => String::new(),
+    };
+    let zone_noun = match zone {
+        Zone::Hand => "hand",
+        Zone::Graveyard => "graveyard",
+        Zone::Library => "library",
+        Zone::Exile => "exile",
+        Zone::Battlefield => "battlefield",
+        Zone::Stack => "stack",
+        Zone::Command => "command zone",
+        Zone::OutsideGame => "outside the game",
+    };
+    let plural_zone_noun = match zone {
+        Zone::Hand => "hands",
+        Zone::Graveyard => "graveyards",
+        Zone::Library => "libraries",
+        _ => zone_noun,
+    };
+    let destination = match surface.destination {
+        DestinationSurface::ContextualPlayer => contextual_player
+            .map(|player| format!("{} {zone_noun}", describe_possessive_player_filter(player)))
+            .unwrap_or_else(|| format!("its owner's {zone_noun}")),
+        DestinationSurface::ItsOwner => format!("its owner's {zone_noun}"),
+        DestinationSurface::TheirOwner => format!("their owner's {zone_noun}"),
+        DestinationSurface::TheirOwners => format!("their owners' {plural_zone_noun}"),
+    };
+
+    format!("Put {subject}{source} into {destination}")
 }
 
 pub(super) fn describe_return_to_hand_excluded_subtypes(
@@ -2119,20 +2318,25 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
     if chooser != "you"
         && move_to_zone.battlefield_controller == crate::effects::BattlefieldController::You
     {
-        let choice_location = match primary_zone {
-            Zone::Hand => describe_choose_zone_origin(choose, "hand"),
-            Zone::Graveyard => describe_choose_zone_location(choose, "graveyard"),
-            Zone::Library => describe_choose_zone_origin(choose, "library"),
-            _ => return None,
-        };
-        let choose_verb = player_verb(&chooser, "choose", "chooses");
-        let moved = if choose.count.is_single() {
-            "that card"
+        let origin = if choose
+            .filter
+            .owner
+            .as_ref()
+            .is_some_and(|owner| player_filters_refer_to_same_player(owner, &choose.chooser))
+        {
+            match primary_zone {
+                Zone::Hand => "from their hand".to_string(),
+                Zone::Graveyard => "from their graveyard".to_string(),
+                Zone::Library if choose.top_only => "from the top of their library".to_string(),
+                Zone::Library => "from their library".to_string(),
+                _ => origin,
+            }
         } else {
-            "those cards"
+            origin
         };
+        let put_verb = player_verb(&chooser, "put", "puts");
         return Some(format!(
-            "{} {choose_verb} {chosen} {choice_location}. Put {moved} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}",
+            "{} {put_verb} {chosen} of their choice {origin} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}",
             capitalize_first(&chooser)
         ));
     }
@@ -2478,7 +2682,14 @@ pub(super) fn describe_exile_top_clause(
     exile_top: &crate::effects::ExileTopOfLibraryEffect,
     suppress_count_where_clause: bool,
 ) -> Option<(String, bool)> {
-    let owner = describe_possessive_player_filter(&exile_top.player);
+    let owner = if exile_top.player == PlayerFilter::DamagedPlayer {
+        // This action immediately follows the combat-damage trigger that
+        // introduced the player, so Oracle keeps the demonstrative antecedent
+        // rather than switching to a free pronoun.
+        "that player's".to_string()
+    } else {
+        describe_possessive_player_filter(&exile_top.player)
+    };
     let dynamic_count_basis = match &exile_top.count {
         Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" || tag.as_str().starts_with("sacrificed")) => {
             Some("its mana value")
@@ -2627,7 +2838,10 @@ pub(super) fn describe_exile_top_then_play(
     }
     let duration_text = match grant_play.duration {
         crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "Until end of turn",
-        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => "Until your next end step",
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
+            "Until the end of your next turn"
+        }
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => "Until your next end step",
         _ => return None,
     };
 
@@ -2644,21 +2858,21 @@ pub(super) fn describe_exile_top_then_play(
         "cast"
     };
     let player = describe_player_filter(&grant_play.player);
-    let mana_suffix = if grant_play.allow_any_color_for_cast {
-        if grant_play.allow_land {
-            let spell_ref = if singular_count {
-                "that spell"
-            } else {
-                "those spells"
-            };
-            format!(", and mana of any type can be spent to cast {spell_ref}")
+    let spell_ref = if grant_play.allow_land {
+        if singular_count {
+            "that spell"
         } else {
-            let spell_ref = if singular_count { "that spell" } else { "them" };
-            format!(", and mana of any type can be spent to cast {spell_ref}")
+            "those spells"
         }
+    } else if singular_count {
+        "that spell"
     } else {
-        String::new()
+        "them"
     };
+    let mana_suffix = grant_play
+        .mana_spend_cast_clause(spell_ref)
+        .map(|clause| format!(", and {clause}"))
+        .unwrap_or_default();
 
     if !grant_play.allow_land && !singular_count {
         let pool_text = if grant_play.tag.as_str() == "exiled"
@@ -2703,7 +2917,11 @@ pub(super) fn describe_triggering_counter_count_exile_top_then_play(
     };
     if grant_play.tag != *first_tag
         || grant_play.player != PlayerFilter::You
-        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+        || !matches!(
+            grant_play.duration,
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+                | crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
+        )
         || grant_play.allow_any_color_for_cast
         || grant_play.while_on_top_of_library
         || grant_play.filter.is_some()
@@ -2723,8 +2941,15 @@ pub(super) fn describe_triggering_counter_count_exile_top_then_play(
     } else {
         "cast"
     };
+    let duration = match grant_play.duration {
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
+            "Until the end of your next turn"
+        }
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => "Until your next end step",
+        _ => return None,
+    };
     Some(format!(
-        "Exile that many cards from the top of {owner} library. Until your next end step, you may {verb} those cards"
+        "Exile that many cards from the top of {owner} library. {duration}, you may {verb} those cards"
     ))
 }
 
@@ -2841,11 +3066,10 @@ pub(crate) fn describe_look_at_top_exile_face_down_then_play_while_exiled(
     let cast_ref = if singular_count { "that spell" } else { "them" };
     let player = describe_player_filter(&grant.player);
     let verb = if grant.allow_land { "play" } else { "cast" };
-    let mana_suffix = if grant.allow_any_color_for_cast {
-        format!(", and you may spend mana as though it were mana of any color to cast {cast_ref}")
-    } else {
-        String::new()
-    };
+    let mana_suffix = grant
+        .mana_spend_cast_clause(cast_ref)
+        .map(|clause| format!(", and {clause}"))
+        .unwrap_or_default();
 
     Some(format!(
         "{look_clause}, then exile {object_ref} face down. For as long as {duration_ref} remains exiled, {player} may {verb} {object_ref}{mana_suffix}"
@@ -3032,8 +3256,17 @@ pub(crate) fn describe_exile_top_of_library(
     count: &Value,
     face_down: bool,
 ) -> String {
-    let owner = describe_possessive_player_filter(player);
+    let owner = if *player == PlayerFilter::DamagedPlayer {
+        "that player's".to_string()
+    } else {
+        describe_possessive_player_filter(player)
+    };
     let face_down_suffix = if face_down { " face down" } else { "" };
+    if let Some(count_text) = describe_effect_count_backref(count) {
+        return format!(
+            "Exile {count_text} cards from the top of {owner} library{face_down_suffix}"
+        );
+    }
     if let Value::Fixed(n) = count
         && *n >= 0
     {
@@ -3046,6 +3279,12 @@ pub(crate) fn describe_exile_top_of_library(
             (format!("{word} "), "cards")
         };
         return format!("Exile the top {count_text}{noun} of {owner} library{face_down_suffix}");
+    }
+
+    if let Some(where_x) = describe_where_x_basis(count) {
+        return format!(
+            "Exile the top X cards of {owner} library{face_down_suffix}, where X is {where_x}"
+        );
     }
 
     let value_text = describe_value(count);
@@ -3165,40 +3404,52 @@ pub(crate) fn for_each_moves_unselected_to_zone(
     else {
         return false;
     };
+    let moves_iterated_object = matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+        || matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"
+        );
     if move_to_zone.zone != zone
         || (zone == Zone::Library && move_to_zone.to_top)
         || (zone != Zone::Library && move_to_zone.to_top)
-        || !matches!(move_to_zone.target, ChooseSpec::Iterated)
+        || !moves_iterated_object
     {
         return false;
     }
-    matches!(
-        &conditional.condition,
-        crate::effect::Condition::PlayerTaggedObjectMatches { tag, filter, .. }
-            if tag.as_str() == chosen_tag && filter_is_membership_test_for_chosen(filter, chosen_tag)
-    ) || matches!(
-        &conditional.condition,
-        crate::effect::Condition::TaggedObjectMatches(tag, filter)
-            if tag.as_str() == chosen_tag && filter_is_membership_test_for_chosen(filter, chosen_tag)
-    )
+    condition_matches_tagged_object_membership(&conditional.condition, chosen_tag)
 }
 
 pub(super) fn condition_matches_tagged_object_membership(
     condition: &crate::effect::Condition,
     tag: &str,
 ) -> bool {
-    matches!(
-        condition,
+    let matches_membership = |condition_tag: &crate::tag::TagKey,
+                              filter: &crate::filter::ObjectFilter| {
+        if condition_tag.as_str() == tag {
+            return filter_is_membership_test_for_chosen(filter, tag);
+        }
+        condition_tag.as_str() == "__it__"
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == tag
+                    && matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            | crate::filter::TaggedOpbjectRelation::SameStableId
+                    )
+            })
+    };
+
+    match condition {
         crate::effect::Condition::PlayerTaggedObjectMatches {
             tag: condition_tag,
             filter,
             ..
-        } if condition_tag.as_str() == tag && filter_is_membership_test_for_chosen(filter, tag)
-    ) || matches!(
-        condition,
-        crate::effect::Condition::TaggedObjectMatches(condition_tag, filter)
-            if condition_tag.as_str() == tag && filter_is_membership_test_for_chosen(filter, tag)
-    )
+        }
+        | crate::effect::Condition::TaggedObjectMatches(condition_tag, filter) => {
+            matches_membership(condition_tag, filter)
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn effect_moves_iterated_to_zone(effect: &Effect, zone: Zone) -> bool {
@@ -3248,19 +3499,13 @@ pub(crate) fn describe_choose_filter_from_looked_cards(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
     choose: &crate::effects::ChooseObjectsEffect,
 ) -> Option<String> {
-    if choose_primary_zone(choose) != Some(Zone::Library)
-        || choose.is_search
-        || choose.count.max != Some(1)
-    {
-        return None;
-    }
     let references_looked = choose.filter.tagged_constraints.iter().any(|constraint| {
         matches!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::IsTaggedObject
         ) && constraint.tag.as_str() == look_at_top.tag.as_str()
     });
-    if !references_looked {
+    if !references_looked || choose.is_search || choose.count.max != Some(1) {
         return None;
     }
 
@@ -3273,7 +3518,10 @@ pub(crate) fn describe_choose_filter_from_looked_cards(
         ) && constraint.tag.as_str() == look_at_top.tag.as_str())
     });
     if base_filter == ObjectFilter::default() {
-        return Some("a card".to_string());
+        return Some(format!(
+            "a card{}",
+            describe_choice_aggregate_constraint_suffix(choose)
+        ));
     }
 
     let filter_text = base_filter.description();
@@ -3303,7 +3551,30 @@ pub(crate) fn describe_choose_filter_from_looked_cards(
         card_desc = format!("{card_desc} card");
     }
 
-    Some(with_indefinite_article(&card_desc))
+    Some(format!(
+        "{}{}",
+        with_indefinite_article(&card_desc),
+        describe_choice_aggregate_constraint_suffix(choose)
+    ))
+}
+
+pub(super) fn describe_choice_aggregate_constraint_suffix(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> String {
+    let Some(constraint) = &choose.aggregate_constraint else {
+        return String::new();
+    };
+    let metric = match constraint.metric {
+        crate::effect::ChoiceAggregateMetric::Power => "power",
+        crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
+        crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
+    };
+    let maximum = describe_value(&constraint.maximum);
+    if matches!(constraint.maximum.unhinted(), Value::Fixed(_)) {
+        format!(" with total {metric} {maximum} or less")
+    } else {
+        format!(" with total {metric} less than or equal to {maximum}")
+    }
 }
 
 pub(super) fn describe_counted_choose_filter_from_looked_cards(
@@ -3313,16 +3584,13 @@ pub(super) fn describe_counted_choose_filter_from_looked_cards(
     if choose.count.max == Some(1) {
         return describe_choose_filter_from_looked_cards(look_at_top, choose);
     }
-    if choose_primary_zone(choose) != Some(Zone::Library) || choose.is_search {
-        return None;
-    }
     let references_looked = choose.filter.tagged_constraints.iter().any(|constraint| {
         matches!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::IsTaggedObject
         ) && constraint.tag.as_str() == look_at_top.tag.as_str()
     });
-    if !references_looked {
+    if !references_looked || choose.is_search {
         return None;
     }
 
@@ -3367,6 +3635,7 @@ pub(super) fn describe_counted_choose_filter_from_looked_cards(
         strip_leading_article(&card_desc).to_string()
     };
     let plural = pluralize_noun_phrase(&singular);
+    let aggregate_suffix = describe_choice_aggregate_constraint_suffix(choose);
 
     if choose.count.dynamic_x {
         let count_text =
@@ -3376,17 +3645,19 @@ pub(super) fn describe_counted_choose_filter_from_looked_cards(
                 "X"
             };
         let where_clause = describe_runtime_choice_where_clause(choose).unwrap_or_default();
-        return Some(format!("{count_text} {plural}{where_clause}"));
+        return Some(format!(
+            "{count_text} {plural}{aggregate_suffix}{where_clause}"
+        ));
     }
     if choose.count.min == 0 {
         let max = choose.count.max?;
         let count_text = small_number_word(max as u32).unwrap_or_else(|| max.to_string());
-        return Some(format!("up to {count_text} {plural}"));
+        return Some(format!("up to {count_text} {plural}{aggregate_suffix}"));
     }
     if choose.count.max == Some(choose.count.min) && choose.count.min > 0 {
         let count_text = small_number_word(choose.count.min as u32)
             .unwrap_or_else(|| choose.count.min.to_string());
-        return Some(format!("{count_text} {plural}"));
+        return Some(format!("{count_text} {plural}{aggregate_suffix}"));
     }
 
     None
@@ -3396,19 +3667,13 @@ pub(super) fn describe_any_number_filter_from_looked_cards(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
     choose: &crate::effects::ChooseObjectsEffect,
 ) -> Option<String> {
-    if choose_primary_zone(choose) != Some(Zone::Library)
-        || choose.is_search
-        || !choose.count.is_any_number()
-    {
-        return None;
-    }
     let references_looked = choose.filter.tagged_constraints.iter().any(|constraint| {
         matches!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::IsTaggedObject
         ) && constraint.tag.as_str() == look_at_top.tag.as_str()
     });
-    if !references_looked {
+    if !references_looked || choose.is_search || !choose.count.is_any_number() {
         return None;
     }
 
@@ -3421,10 +3686,16 @@ pub(super) fn describe_any_number_filter_from_looked_cards(
         ) && constraint.tag.as_str() == look_at_top.tag.as_str())
     });
     if base_filter == ObjectFilter::default() {
-        return Some("cards".to_string());
+        return Some(format!(
+            "cards{}",
+            describe_choice_aggregate_constraint_suffix(choose)
+        ));
     }
     if let Some(description) = describe_land_or_legendary_permanent_looked_filter(&base_filter) {
-        return Some(description);
+        return Some(format!(
+            "{description}{}",
+            describe_choice_aggregate_constraint_suffix(choose)
+        ));
     }
 
     let filter_text = base_filter.description();
@@ -3453,7 +3724,11 @@ pub(super) fn describe_any_number_filter_from_looked_cards(
     if !card_desc.contains(" card") {
         card_desc = format!("{card_desc} card");
     }
-    Some(pluralize_noun_phrase(strip_leading_article(&card_desc)))
+    Some(format!(
+        "{}{}",
+        pluralize_noun_phrase(strip_leading_article(&card_desc)),
+        describe_choice_aggregate_constraint_suffix(choose)
+    ))
 }
 
 pub(super) fn describe_choose_filter_from_looked_cards_with_ignored_tags(
@@ -3461,19 +3736,13 @@ pub(super) fn describe_choose_filter_from_looked_cards_with_ignored_tags(
     choose: &crate::effects::ChooseObjectsEffect,
     ignored_tags: &[&str],
 ) -> Option<String> {
-    if choose_primary_zone(choose) != Some(Zone::Library)
-        || choose.is_search
-        || choose.count.max != Some(1)
-    {
-        return None;
-    }
     let references_looked = choose.filter.tagged_constraints.iter().any(|constraint| {
         matches!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::IsTaggedObject
         ) && constraint.tag.as_str() == look_at_top.tag.as_str()
     });
-    if !references_looked {
+    if !references_looked || choose.is_search || choose.count.max != Some(1) {
         return None;
     }
 
@@ -3490,7 +3759,10 @@ pub(super) fn describe_choose_filter_from_looked_cards_with_ignored_tags(
             ) && ignored_tags.contains(&constraint.tag.as_str()))
     });
     if base_filter == ObjectFilter::default() {
-        return Some("a card".to_string());
+        return Some(format!(
+            "a card{}",
+            describe_choice_aggregate_constraint_suffix(choose)
+        ));
     }
 
     let filter_text = base_filter.description();
@@ -3520,5 +3792,9 @@ pub(super) fn describe_choose_filter_from_looked_cards_with_ignored_tags(
         card_desc = format!("{card_desc} card");
     }
 
-    Some(with_indefinite_article(&card_desc))
+    Some(format!(
+        "{}{}",
+        with_indefinite_article(&card_desc),
+        describe_choice_aggregate_constraint_suffix(choose)
+    ))
 }

@@ -26,16 +26,22 @@ use self::oracle_style::*;
 use self::render_effects::*;
 use self::surface_helpers::*;
 
-pub(crate) use self::normalize_common::describe_value;
+pub(crate) use self::normalize_common::{
+    describe_counter_for_each_basis, describe_party_size_for_each_basis,
+    describe_turn_history_for_each_basis, describe_value, party_size_multiplier,
+};
 pub use self::oracle_style::canonical_compiled_lines;
 pub use self::render_effects::compile_effect_list;
+
+pub(crate) fn pluralize_noun_phrase_for_trigger(phrase: &str) -> String {
+    self::render_effects::pluralize_noun_phrase(phrase)
+}
 
 /// Render the structured runtime model for debug/inspector use.
 pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)
-        .map(normalize_debug_compiled_line)
         .collect()
 }
 
@@ -100,7 +106,43 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
         .flat_map(expand_finalized_ast_surface_line)
         .map(normalize_mass_opponent_controller_surface)
         .collect();
-    compact_station_threshold_lines(lines)
+    compact_threshold_ability_word_lines(compact_station_threshold_lines(lines))
+}
+
+fn compact_threshold_ability_word_lines(lines: Vec<String>) -> Vec<String> {
+    let mut compacted = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(compact) =
+                compact_threshold_pump_and_cant_block(&lines[idx], &lines[idx + 1])
+        {
+            compacted.push(compact);
+            idx += 2;
+            continue;
+        }
+        compacted.push(lines[idx].clone());
+        idx += 1;
+    }
+    compacted
+}
+
+fn compact_threshold_pump_and_cant_block(pump_line: &str, cant_block_line: &str) -> Option<String> {
+    const CONDITION: &str = "there are seven or more cards in your graveyard";
+    let pump = pump_line.trim().trim_end_matches('.');
+    let cant_block = cant_block_line.trim().trim_end_matches('.');
+    let (pump_body, pump_condition) = pump.rsplit_once(" as long as ")?;
+    let (cant_block_body, cant_block_condition) = cant_block.rsplit_once(" as long as ")?;
+    if !pump_condition.eq_ignore_ascii_case(CONDITION)
+        || !cant_block_condition.eq_ignore_ascii_case(CONDITION)
+        || cant_block_body != "This creature can't block"
+    {
+        return None;
+    }
+    let pump_value = pump_body.strip_prefix("This creature gets ")?;
+    Some(format!(
+        "Threshold — As long as {pump_condition}, this creature gets {pump_value} and can't block."
+    ))
 }
 
 fn compact_post_substitution_surface_lines(lines: Vec<String>) -> Vec<String> {
@@ -625,11 +667,46 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
     line
 }
 
-fn normalize_debug_compiled_line(line: String) -> String {
-    line.replace(
-        "Target creature gets +3/+3 and gains trample until end of turn",
-        "Up to one target creature gets +3/+3 and gains trample until end of turn",
-    )
+fn remove_redundant_period_after_terminal_quote(line: &str) -> String {
+    let mut normalized = String::with_capacity(line.len());
+    let mut chars = line.char_indices().peekable();
+    let mut in_quote = false;
+
+    while let Some((_idx, ch)) = chars.next() {
+        if ch != '"' {
+            normalized.push(ch);
+            continue;
+        }
+
+        if !in_quote {
+            in_quote = true;
+            normalized.push(ch);
+            continue;
+        }
+
+        let quote_has_terminal_punctuation = normalized
+            .chars()
+            .last()
+            .is_some_and(|previous| matches!(previous, '.' | '!' | '?'));
+        in_quote = false;
+        normalized.push(ch);
+
+        let Some((period_idx, '.')) = chars.peek().copied() else {
+            continue;
+        };
+        let after_period = &line[period_idx + 1..];
+        let follows_with_same_line_sentence = after_period.starts_with(' ')
+            && after_period
+                .trim_start_matches(' ')
+                .chars()
+                .next()
+                .is_some_and(|next| next.is_ascii_uppercase());
+        if quote_has_terminal_punctuation && follows_with_same_line_sentence {
+            chars.next();
+        }
+    }
+
+    normalized
 }
 
 fn finalize_ast_surface_line(line: String) -> String {
@@ -643,12 +720,6 @@ fn finalize_ast_surface_line(line: String) -> String {
         line = line.replace(
             "If you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost.",
             "Freerunning {2}{R}.",
-        );
-    }
-    if line.contains("Target creature gets +3/+3 and gains trample until end of turn") {
-        line = line.replace(
-            "Target creature gets +3/+3 and gains trample until end of turn",
-            "Up to one target creature gets +3/+3 and gains trample until end of turn",
         );
     }
     if line.contains(
@@ -1081,6 +1152,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_simple_token_keyword_surface(&line);
     line = normalize_chosen_creature_type_surface(&line);
     line = normalize_token_quoted_ability_surfaces(&line);
+    line = remove_redundant_period_after_terminal_quote(&line);
     line = line
         .replace(
             "When this token dies: You gain 1 life",
@@ -1806,6 +1878,12 @@ fn normalize_gain_control_untap_pump_haste_surface(line: &str) -> Option<String>
 
 fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
     let trimmed = line.trim().trim_end_matches('.');
+    if let Some(first_line) = trimmed.strip_suffix(". Draw a card")
+        && first_line.ends_with(". You may shuffle")
+        && first_line.contains("put them back in any order")
+    {
+        return vec![format!("{first_line}."), "Draw a card.".to_string()];
+    }
     match trimmed.to_ascii_lowercase().as_str() {
         "skulk, lifelink" => vec!["Skulk".to_string(), "Lifelink".to_string()],
         "skulk, deathtouch" => vec!["Skulk".to_string(), "Deathtouch".to_string()],
@@ -2731,6 +2809,17 @@ mod tests {
                 "Scry 1.".to_string(),
             ]
         );
+        assert_eq!(
+            expand_finalized_ast_surface_line(
+                "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card."
+                    .to_string()
+            ),
+            vec![
+                "Look at the top three cards of your library, then put them back in any order. You may shuffle."
+                    .to_string(),
+                "Draw a card.".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -2741,6 +2830,29 @@ mod tests {
                     .to_string()
             ),
             "Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this token: Add {C}.\""
+        );
+    }
+
+    #[test]
+    fn terminal_quoted_ability_does_not_add_a_second_sentence_period() {
+        assert_eq!(
+            finalize_ast_surface_line(
+                "Until end of turn, this land becomes a creature with \"{X}: This creature gets +X/+0 until end of turn.\". It's still a land"
+                    .to_string(),
+            ),
+            "Until end of turn, this land becomes a creature with \"{X}: This creature gets +X/+0 until end of turn.\" It's still a land."
+        );
+        assert_eq!(
+            remove_redundant_period_after_terminal_quote(
+                "It has \"Can you pay?\". This sentence follows."
+            ),
+            "It has \"Can you pay?\" This sentence follows."
+        );
+        assert_eq!(
+            remove_redundant_period_after_terminal_quote(
+                "It has \"Flying\". This period terminates the containing sentence."
+            ),
+            "It has \"Flying\". This period terminates the containing sentence."
         );
     }
 

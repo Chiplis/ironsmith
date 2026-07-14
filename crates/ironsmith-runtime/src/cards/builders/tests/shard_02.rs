@@ -298,6 +298,64 @@ pub(super) fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn filtered_future_zone_replacement_surfaces_round_trip() {
+    let cosmic = "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. Return it to the battlefield under its owner's control at the beginning of the next end step.";
+    let cosmic_def = CardDefinitionBuilder::new(CardId::new(), "Cosmic Intervention Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(cosmic)
+        .expect("linked future replacement should parse");
+    assert_eq!(
+        unprocessed_compiled_lines(&cosmic_def),
+        vec![cosmic.to_string()]
+    );
+    let cosmic_debug = format!("{:#?}", cosmic_def.spell_effect);
+    assert!(
+        cosmic_debug.contains("link_exiled_to_source: true")
+            && cosmic_debug.contains("UntilEndOfTurn")
+            && cosmic_debug.contains(crate::tag::SOURCE_EXILED_TAG),
+        "expected linked multi-use replacement and delayed return, got {cosmic_debug}"
+    );
+
+    let cry = "All creatures get -2/-2 until end of turn. Exile all creature cards in all graveyards that were put there from the battlefield this turn. If a creature would die this turn, exile it instead.";
+    let cry_def = CardDefinitionBuilder::new(CardId::new(), "Carnarium Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(cry)
+        .expect("global creature future replacement should parse");
+    assert_eq!(unprocessed_compiled_lines(&cry_def), vec![cry.to_string()]);
+    let cry_debug = format!("{:#?}", cry_def.spell_effect);
+    assert!(
+        cry_debug.contains("RegisterFutureZoneReplacementEffect")
+            && cry_debug.contains("mode: UntilEndOfTurn")
+            && cry_debug.contains("cause_filter: None"),
+        "expected unrestricted multi-use creature replacement, got {cry_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn targeted_graveyard_cast_replacement_is_gated_on_successful_cast() {
+    let oracle = "When Victor Timely enters, you may cast target artifact, instant, or sorcery card with mana value 4 or less from your graveyard without paying its mana cost. If that spell would be put into your graveyard, exile it instead.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Victor Timely, Wily Tycoon")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(oracle)
+        .expect("targeted graveyard cast replacement should parse");
+    assert_eq!(unprocessed_compiled_lines(&def), vec![oracle.to_string()]);
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("TargetOnlyEffect"), "{debug}");
+    assert!(debug.contains("CastTaggedEffect"), "{debug}");
+    assert!(debug.contains("IfEffect"), "{debug}");
+    assert!(
+        debug.contains("RegisterFutureZoneReplacementEffect"),
+        "{debug}"
+    );
+    assert!(debug.contains("card_types: [\n"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn pantlaza_keeps_do_this_only_once_each_turn_condition() {
     let oracle = "Whenever Pantlaza or another Dinosaur you control enters, you may discover X, where X is that creature's toughness. Do this only once each turn.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Pantlaza, Sun-Favored")
@@ -1849,9 +1907,128 @@ pub(super) fn test_parse_start_your_engines_and_max_speed_graveyard_cast_permiss
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Start your engines!")
-            && rendered.contains("You may cast this card from your graveyard")
-            && rendered.contains("as long as you have max speed"),
+            && rendered.contains("Max speed — You may cast this card from your graveyard")
+            && !rendered.contains("as long as you have max speed"),
         "expected speed keyword plus max-speed graveyard cast permission, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_max_speed_static_surfaces_preserve_subjects_and_coalesce_siblings() {
+    let cases = [
+        (
+            "Burnout Bashtronaut",
+            CardType::Creature,
+            "Menace\nStart your engines!\n{2}: This creature gets +1/+0 until end of turn.\nMax speed — This creature has double strike.",
+            "Max speed — This creature has double strike",
+        ),
+        (
+            "Streaking Oilgorger",
+            CardType::Creature,
+            "Flying, haste\nStart your engines!\nMax speed — This creature has lifelink.",
+            "Max speed — This creature has lifelink",
+        ),
+        (
+            "Swiftwing Assailant",
+            CardType::Creature,
+            "Flying\nStart your engines!\nMax speed — This creature gets +0/+1 and has vigilance.",
+            "Max speed — This creature gets +0/+1 and has vigilance",
+        ),
+        (
+            "Gastal Thrillseeker",
+            CardType::Creature,
+            "Start your engines!\nWhen this creature enters, it deals 1 damage to target opponent and you gain 1 life.\nMax speed — This creature has deathtouch and haste.",
+            "Max speed — This creature has deathtouch and haste",
+        ),
+        (
+            "Lightwheel Enhancements",
+            CardType::Enchantment,
+            "Enchant creature or Vehicle\nStart your engines!\nEnchanted permanent gets +1/+1 and has vigilance.\nMax speed — You may cast this card from your graveyard.",
+            "Max speed — You may cast this card from your graveyard",
+        ),
+    ];
+
+    for (name, card_type, oracle, expected) in cases {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+            .card_types(vec![card_type])
+            .parse_text(oracle)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
+        let max_speed_lines = unprocessed_compiled_lines(&def)
+            .into_iter()
+            .filter(|line| line.starts_with("Max speed —"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            max_speed_lines,
+            vec![expected.to_string()],
+            "unexpected max-speed surface for {name}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_max_speed_trigger_label_does_not_repeat_intervening_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Speed Trigger Test")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Start your engines!\nMax speed — Whenever you draw a card, each opponent mills two cards.",
+        )
+        .expect("max-speed triggered line should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{def:#?}");
+    assert!(
+        rendered.contains("Max speed — Whenever")
+            && !rendered.contains("if you have max speed")
+            && debug.contains("left: Speed(")
+            && debug.contains("right: Fixed("),
+        "expected the label to carry max-speed presentation while retaining the condition, got rendered={rendered}; debug={debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_max_speed_mana_activation_label_does_not_repeat_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Speed Mana Test")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("Start your engines!\nMax speed — {T}: Add {R}{R}.")
+        .expect("max-speed mana ability should parse");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{def:#?}");
+    assert!(
+        rendered.contains("Max speed — {T}: Add {R}{R}")
+            && !rendered.contains("Activate only if you have max speed")
+            && debug.contains("left: Speed(")
+            && debug.contains("right: Fixed("),
+        "expected the label to carry max-speed presentation while retaining the activation condition, got rendered={rendered}; debug={debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_max_speed_sorcery_activation_keeps_timing_without_repeating_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Perilous Snare")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Start your engines!\nWhen this artifact enters, exile target nonland permanent an opponent controls until this artifact leaves the battlefield.\nMax speed — {T}: Put a +1/+1 counter on target creature or Vehicle you control. Activate only as a sorcery.",
+        )
+        .expect("max-speed sorcery activation should parse");
+    let rendered = unprocessed_compiled_lines(&def);
+    let max_speed_line = rendered
+        .iter()
+        .find(|line| line.starts_with("Max speed —"))
+        .expect("max-speed line");
+    let debug = format!("{def:#?}");
+    assert_eq!(
+        max_speed_line.trim_end_matches('.'),
+        "Max speed — {T}: Put a +1/+1 counter on target creature or Vehicle you control. Activate only as a sorcery"
+    );
+    assert!(
+        !max_speed_line.contains("if you have max speed")
+            && debug.contains("timing: SorcerySpeed")
+            && debug.contains("left: Speed(")
+            && debug.contains("right: Fixed("),
+        "expected typed max-speed gating plus sorcery timing without duplicate surface, got rendered={rendered:?}; debug={debug}"
     );
 }
 
@@ -1994,8 +2171,8 @@ pub(super) fn test_parse_max_speed_draw_replacement_static_ability() {
     assert!(
         rendered.contains("Start your engines!")
             && rendered.contains("no maximum hand size")
-            && rendered.contains("If you would draw a card, draw two cards instead")
-            && rendered.contains("max speed"),
+            && rendered.contains("Max speed — If you would draw a card, draw two cards instead")
+            && !rendered.contains("As long as you have max speed"),
         "expected max-speed draw replacement static ability, got {rendered}"
     );
 }
@@ -3460,5 +3637,154 @@ pub(super) fn realmwright_adds_chosen_basic_land_type_to_lands_you_control_only(
     assert!(
         !bob_land_chars.subtypes.contains(&Subtype::Plains),
         "Realmwright should not affect lands controlled by opponents"
+    );
+}
+
+#[test]
+pub(super) fn split_destination_land_searches_keep_one_search_and_partition_the_results() {
+    for (card_name, expected) in [
+        (
+            "Cultivate",
+            "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle",
+        ),
+        (
+            "Flare of Cultivation",
+            "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle",
+        ),
+        (
+            "Kodama's Reach",
+            "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle",
+        ),
+        (
+            "Navigation Orb",
+            "Search your library for up to two basic land cards and/or Gate cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle",
+        ),
+        (
+            "Peregrination",
+            "Search your library for up to two basic land cards, reveal those cards, and put one onto the battlefield tapped and the other into your hand. Shuffle, then scry 1",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(card_name);
+        let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition(card_name));
+        assert!(
+            rendered.iter().any(|line| line.contains(expected)),
+            "expected {card_name} to preserve its split search, got {rendered:#?}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn granted_trigger_surfaces_render_fixed_life_totals_as_numbers() {
+    for (card_name, expected) in [
+        (
+            "Lavabelly Sliver",
+            "it deals 1 damage to target player or planeswalker and you gain 1 life",
+        ),
+        (
+            "Relic Vial",
+            "each opponent loses 1 life and you gain 1 life",
+        ),
+        ("Quintessential Katana", "untap it and you gain 2 life"),
+    ] {
+        assert_oracle_card_parses_strict(card_name);
+        let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition(card_name));
+        assert!(
+            rendered.iter().any(|line| line.contains(expected)),
+            "expected {card_name} to render {expected:?}, got {rendered:#?}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn threshold_pump_and_block_restriction_keeps_ability_word_surface() {
+    let expected = "Threshold — As long as there are seven or more cards in your graveyard, this creature gets +2/+2 and can't block.";
+    for card_name in ["Childhood Horror", "Dirty Wererat", "Frightcrawler"] {
+        assert_oracle_card_parses_strict(card_name);
+        let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition(card_name));
+        assert!(
+            rendered.iter().any(|line| line == expected),
+            "expected {card_name} to retain its Threshold surface, got {rendered:#?}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn sacrifice_trigger_surface_preserves_explicit_one_or_more_quantifier() {
+    for (card_name, expected) in [
+        ("Dina, Essence Brewer", "Whenever you sacrifice a creature"),
+        (
+            "Forge Boss",
+            "Whenever you sacrifice one or more other creatures",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(card_name);
+        let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition(card_name));
+        assert!(
+            rendered.iter().any(|line| line.contains(expected)),
+            "expected {card_name} to render {expected:?}, got {rendered:#?}"
+        );
+    }
+
+    let dina = unprocessed_compiled_lines(&parse_oracle_card_definition("Dina, Essence Brewer"));
+    assert!(
+        dina.iter().any(|line| line.contains(
+            "You gain X life and put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power"
+        )),
+        "expected Dina's two X results to share one cost-object basis, got {dina:#?}"
+    );
+}
+
+#[test]
+pub(super) fn divided_cost_object_power_damage_uses_equal_to_surface() {
+    let rendered =
+        unprocessed_compiled_lines(&parse_oracle_card_definition("Freyalise Supplicant"));
+    assert!(
+        rendered.iter().any(|line| line.contains(
+            "deals damage to any target equal to half the sacrificed creature's power, rounded down"
+        )),
+        "expected divided damage to retain its cost-object basis, got {rendered:#?}"
+    );
+}
+
+#[test]
+pub(super) fn wonderscape_sage_tracks_the_returned_lands_nonbasic_land_type() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Wonderscape Sage"));
+    assert!(
+        rendered.iter().any(|line| line.contains(
+            "Draw a card, then discard a card unless that land had a nonbasic land type"
+        )),
+        "expected Wonderscape Sage to preserve its historical land-type test, got {rendered:#?}"
+    );
+}
+
+#[test]
+pub(super) fn nyx_infusion_compacts_inverse_attached_enchantment_conditions() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Nyx Infusion"));
+    assert!(
+        rendered.iter().any(|line| line
+            == "Enchanted creature gets +2/+2 as long as it's an enchantment. Otherwise, it gets -2/-2."),
+        "expected Nyx Infusion to retain its Otherwise branch, got {rendered:#?}"
+    );
+}
+
+#[test]
+pub(super) fn paroxysm_uses_its_plain_creature_attachment_subject() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Paroxysm"));
+    assert!(
+        rendered.iter().any(|line| line
+            .contains("At the beginning of the upkeep of enchanted creature's controller")),
+        "expected Paroxysm to refine the attachment subject to creature, got {rendered:#?}"
+    );
+}
+
+#[test]
+pub(super) fn goblin_morningstar_keeps_its_triggered_die_result_table() {
+    let rendered =
+        unprocessed_compiled_lines(&parse_oracle_card_definition("Goblin Morningstar")).join("\n");
+    assert!(
+        rendered.contains(
+            "roll a d20.\n1—9 | Create a 1/1 red Goblin creature token.\n10—20 | Create a 1/1 red Goblin creature token, then attach this Equipment to it"
+        ),
+        "expected Goblin Morningstar to preserve its numeric die-result table, got {rendered}"
     );
 }

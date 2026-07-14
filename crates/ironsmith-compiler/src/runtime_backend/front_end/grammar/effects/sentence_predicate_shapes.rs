@@ -716,6 +716,20 @@ pub(crate) fn parse_where_x_sentence_tokens(
     })
 }
 
+pub(crate) fn starts_with_source_deals_x_tokens(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["it", "deals", "x"]),
+            primitives::phrase(&["this", "deals", "x"]),
+            primitives::phrase(&["this", "creature", "deals", "x"]),
+            primitives::phrase(&["this", "permanent", "deals", "x"]),
+            primitives::phrase(&["this", "source", "deals", "x"]),
+        )),
+    )
+    .is_some()
+}
+
 pub(crate) fn parse_before_activation_time_tokens(
     where_tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {

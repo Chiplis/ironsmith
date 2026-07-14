@@ -10,7 +10,7 @@ use crate::effect::RestrictionExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ObjectFilter;
-use crate::types::SubtypeFamily;
+use crate::types::{CardType, SubtypeFamily};
 
 /// Macro to define simple keyword abilities.
 ///
@@ -373,5 +373,78 @@ impl StaticAbilityKind for Changeling {
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]
+    }
+}
+
+/// Living metal (CR 702.161a) makes its source an artifact creature during its
+/// controller's turn, in addition to its other types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LivingMetal;
+
+impl StaticAbilityKind for LivingMetal {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LivingMetal
+    }
+
+    fn display(&self) -> String {
+        "Living metal".to_string()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        if game.turn.active_player != controller {
+            return vec![];
+        }
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::AddCardTypes(vec![CardType::Artifact, CardType::Creature]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn living_metal_adds_artifact_creature_types_only_during_controllers_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+
+        game.turn.active_player = alice;
+        let own_turn = LivingMetal.generate_effects(source, alice, &game);
+        assert!(matches!(
+            own_turn.as_slice(),
+            [effect]
+                if matches!(
+                    &effect.modification,
+                    Modification::AddCardTypes(types)
+                        if types == &[CardType::Artifact, CardType::Creature]
+                )
+        ));
+
+        game.turn.active_player = bob;
+        assert!(
+            LivingMetal
+                .generate_effects(source, alice, &game)
+                .is_empty()
+        );
+        assert_eq!(LivingMetal.generate_effects(source, bob, &game).len(), 1);
     }
 }

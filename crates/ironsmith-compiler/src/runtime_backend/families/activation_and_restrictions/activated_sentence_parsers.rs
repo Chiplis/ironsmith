@@ -43,11 +43,38 @@ fn parse_activate_only_sentence_details_lexed(
     }
 
     let timing = parse_activate_only_timing_lexed(tokens).unwrap_or_else(|| current_timing.clone());
+    let condition = parse_activation_condition_lexed(tokens)
+        .and_then(|condition| strip_once_per_turn_condition_redundancy(condition, &timing));
     Some(ActivateOnlySentenceDetails {
         timing: timing.clone(),
-        condition: parse_activation_condition_lexed(tokens),
+        condition,
         normalized_restriction: normalize_activate_only_restriction(tokens, &timing),
     })
+}
+
+fn strip_once_per_turn_condition_redundancy(
+    condition: crate::ConditionExpr,
+    timing: &ActivationTiming,
+) -> Option<crate::ConditionExpr> {
+    if timing != &ActivationTiming::OncePerTurn {
+        return Some(condition);
+    }
+
+    match condition {
+        crate::ConditionExpr::MaxActivationsPerTurn(1) => None,
+        crate::ConditionExpr::And(left, right) => {
+            let left = strip_once_per_turn_condition_redundancy(*left, timing);
+            let right = strip_once_per_turn_condition_redundancy(*right, timing);
+            match (left, right) {
+                (Some(left), Some(right)) => {
+                    Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)))
+                }
+                (Some(condition), None) | (None, Some(condition)) => Some(condition),
+                (None, None) => None,
+            }
+        }
+        condition => Some(condition),
+    }
 }
 
 fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
@@ -229,4 +256,40 @@ pub(crate) fn parse_activation_condition_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
     ability_grammar::parse_activation_condition_lexed(tokens)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    fn lex(text: &str) -> Vec<OwnedLexToken> {
+        lex_line(text, 0).expect("activation restriction should lex")
+    }
+
+    #[test]
+    fn once_each_turn_timing_does_not_duplicate_the_max_activation_condition() {
+        let sentence = lex("Activate only once each turn.");
+        let details =
+            parse_activate_only_sentence_details_lexed(&sentence, &ActivationTiming::AnyTime)
+                .expect("restriction should parse");
+
+        assert_eq!(details.timing, ActivationTiming::OncePerTurn);
+        assert_eq!(details.condition, None);
+    }
+
+    #[test]
+    fn once_each_turn_keeps_an_independent_activation_condition() {
+        let sentence =
+            lex("Activate only once each turn and only if this creature attacked this turn.");
+        let details =
+            parse_activate_only_sentence_details_lexed(&sentence, &ActivationTiming::AnyTime)
+                .expect("restriction should parse");
+
+        assert_eq!(details.timing, ActivationTiming::OncePerTurn);
+        assert_eq!(
+            details.condition,
+            Some(crate::ConditionExpr::SourceAttackedThisTurn)
+        );
+    }
 }

@@ -826,11 +826,15 @@ fn normalize_chosen_aggregate_constraint(
     fill_to_min: bool,
     constraint: crate::effect::ChoiceAggregateConstraint,
 ) -> Vec<ObjectId> {
+    let maximum = match constraint.maximum.unhinted() {
+        crate::effect::Value::Fixed(maximum) => *maximum,
+        _ => return chosen,
+    };
     let chosen_total: i32 = chosen
         .iter()
         .map(|id| aggregate_choice_value(game, *id, constraint.metric))
         .sum();
-    if chosen_total <= constraint.maximum {
+    if chosen_total <= maximum {
         return chosen;
     }
 
@@ -850,7 +854,7 @@ fn normalize_chosen_aggregate_constraint(
         if normalized.len() >= max {
             break;
         }
-        if total.saturating_add(value) <= constraint.maximum {
+        if total.saturating_add(value) <= maximum {
             total = total.saturating_add(value);
             normalized.push(id);
         }
@@ -868,7 +872,7 @@ fn normalize_chosen_aggregate_constraint(
             if normalized.len() >= min || normalized.len() >= max {
                 break;
             }
-            if total.saturating_add(value) <= constraint.maximum {
+            if total.saturating_add(value) <= maximum {
                 total = total.saturating_add(value);
                 normalized.push(id);
             }
@@ -1233,6 +1237,17 @@ pub(crate) fn run_choose_objects(
         } else {
             effect.description.clone()
         };
+        let aggregate_constraint = effect
+            .aggregate_constraint
+            .as_ref()
+            .map(|constraint| {
+                let maximum = resolve_value(game, &constraint.maximum, ctx)?;
+                Ok::<_, ExecutionError>(crate::effect::ChoiceAggregateConstraint::at_most(
+                    constraint.metric,
+                    maximum,
+                ))
+            })
+            .transpose()?;
         let chosen: Vec<ObjectId> = if effect.count.is_random() {
             let mut randomized = candidates.clone();
             game.shuffle_slice(&mut randomized);
@@ -1241,7 +1256,7 @@ pub(crate) fn run_choose_objects(
         } else {
             let mut spec =
                 ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max));
-            if let Some(constraint) = effect.aggregate_constraint {
+            if let Some(constraint) = aggregate_constraint.clone() {
                 spec = spec.with_aggregate_constraint(constraint);
             }
             if allow_hidden_partial {
@@ -1312,7 +1327,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
-        let chosen = if let Some(constraint) = effect.aggregate_constraint {
+        let chosen = if let Some(constraint) = aggregate_constraint {
             normalize_chosen_aggregate_constraint(
                 game,
                 chosen,
@@ -1577,6 +1592,21 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
+    fn create_battlefield_artifact_with_mana_value(
+        game: &mut GameState,
+        name: &str,
+        owner: PlayerId,
+        mana_value: u8,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::Generic(mana_value),
+            ]]))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
     struct PromptCapturingDecisionMaker {
         captured: bool,
     }
@@ -1613,7 +1643,7 @@ mod tests {
                 _game: &GameState,
                 ctx: &crate::decisions::context::SelectObjectsContext,
             ) -> Vec<ObjectId> {
-                self.seen_constraint = ctx.aggregate_constraint;
+                self.seen_constraint = ctx.aggregate_constraint.clone();
                 ctx.candidates
                     .iter()
                     .filter(|candidate| candidate.legal)
@@ -1638,7 +1668,7 @@ mod tests {
             PlayerFilter::You,
             "kept",
         )
-        .with_aggregate_constraint(constraint);
+        .with_aggregate_constraint(constraint.clone());
 
         let outcome = run_choose_objects(&effect, &mut game, &mut ctx)
             .expect("aggregate-constrained choice should resolve");
@@ -1669,6 +1699,74 @@ mod tests {
         );
 
         assert_eq!(normalized, chosen, "5 + -2 is a legal total power of 3");
+    }
+
+    #[test]
+    fn aggregate_choice_constraint_resolves_dynamic_mana_value_from_sacrificed_lki() {
+        struct SelectAllDecisionMaker {
+            seen_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
+        }
+
+        impl DecisionMaker for SelectAllDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                self.seen_constraint = ctx.aggregate_constraint.clone();
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .collect()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let sacrificed =
+            create_battlefield_artifact_with_mana_value(&mut game, "Sacrificed", alice, 4);
+        let two = create_battlefield_artifact_with_mana_value(&mut game, "Two", alice, 2);
+        let three = create_battlefield_artifact_with_mana_value(&mut game, "Three", alice, 3);
+        let sacrificed_snapshot = ObjectSnapshot::from_object(
+            game.object(sacrificed).expect("sacrificed artifact"),
+            &game,
+        );
+        game.move_object_by_effect(sacrificed, Zone::Graveyard)
+            .expect("sacrifice should move the artifact");
+
+        let source = game.new_object_id();
+        let mut dm = SelectAllDecisionMaker {
+            seen_constraint: None,
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.tag_objects("sacrifice_cost_0", vec![sacrificed_snapshot]);
+        let effect = ChooseObjectsEffect::new(
+            ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+            crate::effect::ChoiceCount::any_number(),
+            PlayerFilter::You,
+            "chosen",
+        )
+        .in_zone(Zone::Battlefield)
+        .with_aggregate_constraint(
+            crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(
+                crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                    crate::tag::TagKey::from("sacrifice_cost_0"),
+                ))),
+            ),
+        );
+
+        let outcome = run_choose_objects(&effect, &mut game, &mut ctx)
+            .expect("dynamic aggregate-constrained choice should resolve");
+        let chosen = outcome.objects().expect("choice should return objects");
+        drop(ctx);
+
+        assert_eq!(
+            dm.seen_constraint,
+            Some(crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(4))
+        );
+        assert_eq!(chosen, &[two]);
+        assert!(!chosen.contains(&three));
     }
 
     #[derive(Default)]

@@ -59,6 +59,10 @@ pub fn execute_combat_damage_step(
     for attacker_info in &combat.attackers {
         let attacker_id = attacker_info.creature;
 
+        if game.combat_damage_assignment_is_suppressed(attacker_id) {
+            continue;
+        }
+
         // Check if this creature deals damage in this step
         let Some(attacker) = game.object(attacker_id) else {
             continue;
@@ -125,6 +129,9 @@ pub fn execute_combat_damage_step(
     let mut blocker_damage_info: Vec<(ObjectId, ObjectId, PlayerId, u32, DamageResult)> =
         Vec::new();
     for (blocker_id, mut attacker_ids) in attackers_by_blocker {
+        if game.combat_damage_assignment_is_suppressed(blocker_id) {
+            continue;
+        }
         let Some(blocker) = game.object(blocker_id).cloned() else {
             continue;
         };
@@ -302,6 +309,9 @@ fn execute_unblocked_player_damage_fast_path(
 
         for attacker_info in &combat.attackers {
             let attacker_id = attacker_info.creature;
+            if game.combat_damage_assignment_is_suppressed(attacker_id) {
+                continue;
+            }
             let AttackTarget::Player(target) = &attacker_info.target else {
                 unreachable!("fast path only accepts attackers targeting players");
             };

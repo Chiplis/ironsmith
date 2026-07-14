@@ -439,15 +439,30 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
     let Some(shape) = effect_grammar::parse_exile_source_counter_shape(clause.tokens()) else {
         return Ok(None);
     };
-    let (count, counter_type) = parse_counter_descriptor(shape.descriptor_tokens)?;
+    let (count, counter_type) = match parse_counter_descriptor(shape.descriptor_tokens) {
+        Ok(descriptor) => descriptor,
+        Err(error) if shape.source_reference => return Err(error),
+        Err(_) => return Ok(None),
+    };
+    if !shape.source_reference && counter_type != crate::object::CounterType::Time {
+        return Ok(None);
+    }
 
-    let source_target = TargetAst::Source(clause.span());
+    let (exile_target, counter_target) = if shape.source_reference {
+        let source = TargetAst::Source(clause.span());
+        (source.clone(), source)
+    } else {
+        (
+            parse_target_phrase(shape.target_tokens)?,
+            TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+        )
+    };
     Ok(Some(vec![
-        EffectAst::subject_verb_exile(source_target.clone(), false),
+        EffectAst::subject_verb_exile(exile_target, false),
         EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(count as i32),
-            source_target,
+            counter_target,
             None,
             false,
         ),

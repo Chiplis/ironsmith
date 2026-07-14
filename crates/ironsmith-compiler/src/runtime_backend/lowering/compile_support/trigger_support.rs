@@ -221,6 +221,10 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             player,
             card_number,
         } => Trigger::player_draws_nth_card_each_turn(player, card_number),
+        TriggerSpec::PlayerDrawsNumberedCardsEachTurn {
+            player,
+            card_numbers,
+        } => Trigger::player_draws_numbered_cards_each_turn(player, card_numbers),
         TriggerSpec::PlayerDiscardsCard {
             player,
             filter,
@@ -246,9 +250,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             from_source,
         } => Trigger::player_reveals_card(player, filter, from_source),
-        TriggerSpec::PlayerSacrifices { player, filter } => {
-            Trigger::player_sacrifices(player, filter)
-        }
+        TriggerSpec::PlayerSacrifices {
+            player,
+            filter,
+            one_or_more,
+        } => Trigger::player_sacrifices_with_surface(player, filter, one_or_more),
         TriggerSpec::TokensCreated {
             player,
             filter,
@@ -443,6 +449,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
         TriggerSpec::BeginningOfEndStep(player) => Trigger::beginning_of_end_step(player),
+        TriggerSpec::BeginningOfTheEndStep => Trigger::beginning_of_the_end_step(),
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Trigger::beginning_of_precombat_main_phase(player)
         }
@@ -573,6 +580,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_)
         | TriggerSpec::PlayerDrawsNthCardEachTurn { .. }
+        | TriggerSpec::PlayerDrawsNumberedCardsEachTurn { .. }
         | TriggerSpec::PlayerDiscardsCard { .. }
         | TriggerSpec::PlayerRevealsCard { .. }
         | TriggerSpec::PlayerPlaysLand { .. }
@@ -594,6 +602,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::BeginningOfDrawStep(_)
         | TriggerSpec::BeginningOfCombat(_)
         | TriggerSpec::BeginningOfEndStep(_)
+        | TriggerSpec::BeginningOfTheEndStep
         | TriggerSpec::BeginningOfPrecombatMain(_)
         | TriggerSpec::BeginningOfPostcombatMain(_)
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
@@ -631,16 +640,18 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }
         | TriggerSpec::EntersBattlefieldFromZone { .. }
         | TriggerSpec::EntersBattlefieldTapped { .. }
-        | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::ControllerOf(
+        | TriggerSpec::EntersBattlefieldUntapped { .. } => Some(PlayerFilter::AliasedControllerOf(
             ObjectRef::tagged(TagKey::from("triggering")),
         )),
         TriggerSpec::SpellCast { caster, .. } => {
             if *caster == PlayerFilter::Any {
                 Some(PlayerFilter::IteratedPlayer)
+            } else if *caster == PlayerFilter::You {
+                Some(PlayerFilter::You)
             } else {
-                Some(PlayerFilter::ControllerOf(ObjectRef::tagged(TagKey::from(
-                    "triggering",
-                ))))
+                Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(
+                    TagKey::from("triggering"),
+                )))
             }
         }
         TriggerSpec::SpellCountered { controller, .. } => {
@@ -666,6 +677,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsNthCardEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerDrawsNumberedCardsEachTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDiscardsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRevealsCard { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerPlaysLand { .. } => Some(PlayerFilter::IteratedPlayer),
@@ -729,6 +741,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
                 Some(PlayerFilter::IteratedPlayer)
             }
         }
+        TriggerSpec::BeginningOfTheEndStep => Some(PlayerFilter::Active),
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         } => {
@@ -762,6 +775,10 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
     match spec {
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
+            TriggerSpec::SpellCast {
+                filter: Some(filter),
+                ..
+            } if spell_cast_filter_binds_target_count(filter) => true,
             TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
@@ -814,6 +831,14 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             _ => false,
         },
     }
+}
+
+fn spell_cast_filter_binds_target_count(filter: &crate::target::ObjectFilter) -> bool {
+    filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
 }
 
 pub(crate) fn compile_trigger_effects(

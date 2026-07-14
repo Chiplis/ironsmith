@@ -30,6 +30,7 @@ impl EffectExecutor for EmptyManaPoolEffect {
         };
         player.mana_pool.empty();
         player.restricted_mana.clear();
+        player.clear_mana_source_provenance();
         Ok(EffectOutcome::default())
     }
 }

@@ -530,7 +530,12 @@ fn parse_get_pump_clause(
     let (power, toughness, parsed_duration, condition) =
         parse_get_modifier_values_with_tail(modifier_tail, power, toughness)?;
     let duration = subject_shape.duration.unwrap_or(parsed_duration);
-    let effect = match subject_shape.kind {
+    let demonstrative_set_surface = subject_shape
+        .subject_tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        == Some("those");
+    let mut effect = match subject_shape.kind {
         clause_grammar::PumpSubjectKind::Tagged => EffectAst::subject_verb_pump(
             power,
             toughness,
@@ -541,6 +546,21 @@ fn parse_get_pump_clause(
             duration,
             condition,
         ),
+        clause_grammar::PumpSubjectKind::DemonstrativeTarget
+            if subject_shape
+                .subject_tokens
+                .first()
+                .and_then(OwnedLexToken::as_word)
+                == Some("those")
+                && condition.is_none() =>
+        {
+            let filter = match parse_target_phrase(subject_shape.subject_tokens)? {
+                TargetAst::Object(filter, None, _) => filter,
+                TargetAst::Tagged(tag, _) => ObjectFilter::tagged(tag),
+                _ => return Ok(None),
+            };
+            EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
+        }
         clause_grammar::PumpSubjectKind::DemonstrativeTarget => EffectAst::subject_verb_pump(
             power,
             toughness,
@@ -611,6 +631,18 @@ fn parse_get_pump_clause(
             EffectAst::subject_verb_pump_all(filter, power, toughness, duration)
         }
     };
+    if demonstrative_set_surface
+        && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PumpAll {
+                    set_quantifier_surface,
+                    ..
+                },
+            ..
+        }) = &mut effect
+    {
+        *set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::Each);
+    }
     Ok(Some(effect))
 }
 
@@ -781,6 +813,24 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if let Some(effect) = parse_play_exiled_cards_for_as_long_as_exiled_clause(tokens) {
         return Ok(effect);
+    }
+
+    if let Some(shape) =
+        clause_grammar::parse_cast_target_from_your_graveyard_this_turn_shape(tokens)
+    {
+        let target = parse_target_phrase(shape.target_tokens)?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(target),
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    TagKey::from(IT_TAG),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    false,
+                ),
+            ],
+        });
     }
 
     if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
@@ -1080,26 +1130,28 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if let Some(shape) = clause_grammar::parse_assigns_no_combat_damage_shape(tokens) {
-        let source = match shape {
+        match shape {
             clause_grammar::AssignsNoCombatDamageShape::Unsupported => {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported assigns-no-combat-damage clause tail (clause: '{}') [rule=assigns-no-combat-damage-tail]",
                     clause_words.join(" ")
                 )));
             }
-            clause_grammar::AssignsNoCombatDamageShape::Supported(
-                clause_grammar::AssignDamageSourceShape::Source,
-            ) => TargetAst::Source(None),
-            clause_grammar::AssignsNoCombatDamageShape::Supported(
-                clause_grammar::AssignDamageSourceShape::Tagged,
-            ) => TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
-            clause_grammar::AssignsNoCombatDamageShape::Supported(
-                clause_grammar::AssignDamageSourceShape::Target(target_tokens),
-            ) => parse_target_phrase(target_tokens)?,
-        };
-        return Ok(
-            EffectAst::subject_verb_prevent_all_combat_damage_from_source(source, Until::EndOfTurn),
-        );
+            clause_grammar::AssignsNoCombatDamageShape::Supported { source, duration } => {
+                let source = match source {
+                    clause_grammar::AssignDamageSourceShape::Source => TargetAst::Source(None),
+                    clause_grammar::AssignDamageSourceShape::Tagged => {
+                        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
+                    }
+                    clause_grammar::AssignDamageSourceShape::Target(target_tokens) => {
+                        parse_target_phrase(target_tokens)?
+                    }
+                };
+                return Ok(EffectAst::subject_verb_assign_no_combat_damage(
+                    source, duration,
+                ));
+            }
+        }
     }
 
     if starts_with_target_indicator(tokens)
@@ -1293,7 +1345,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             parse_controller_or_owner_of_target_subject(subject_tokens)
     {
         if is_pronoun_top_or_bottom_library_choice_put_tail(rest) {
-            return Ok(EffectAst::subject_verb_move_to_library_top_or_bottom_choice(target));
+            return Ok(EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::ItsOwner,
+                SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target },
+            ));
         }
     }
     let subject_word_view = ClauseDispatchCompatWords::new(subject_tokens);
@@ -1309,6 +1365,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             let target = parse_target_phrase(subject_tokens)?;
             return Ok(EffectAst::subject_verb_grant_protection_choice(
                 target,
+                match shape.chooser {
+                    clause_grammar::ProtectionChoiceChooserShape::You => PlayerAst::You,
+                    clause_grammar::ProtectionChoiceChooserShape::TargetController => {
+                        PlayerAst::ItsController
+                    }
+                },
                 shape.includes_colorless,
                 shape.includes_artifacts,
             ));
@@ -1406,6 +1468,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+    let each_other_player = matches!(
+        subject_words.as_slice(),
+        ["each", "other", "player"] | ["each", "other", "players"]
+    );
     if matches!(verb, Verb::Return)
         && clause_grammar::is_return_tagged_reference_shape(subject_tokens)
     {
@@ -1422,7 +1489,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     let mut effect = if matches!(verb, Verb::Become) {
         parse_become_clause(subject_tokens, rest)?
     } else {
-        let subject = parse_subject(subject_tokens);
+        let subject = if each_other_player {
+            SubjectAst::Player(PlayerAst::That)
+        } else {
+            parse_subject(subject_tokens)
+        };
         if let Some(clause) = CommonPlayerActionClause::recognize(subject, verb, rest) {
             clause.lower()?
         } else {
@@ -1432,6 +1503,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     if let Some(filter) = for_each_subject_filter {
         effect = EffectAst::ForEachObject {
             filter,
+            effects: vec![effect],
+        };
+    }
+    if each_other_player {
+        effect = EffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::NotYou,
             effects: vec![effect],
         };
     }
@@ -1594,6 +1671,189 @@ mod tests {
             parse_effect_clause(&tokens)
                 .unwrap_or_else(|err| panic!("common player clause should parse: {text}: {err:?}"));
         }
+    }
+
+    #[test]
+    fn targeted_graveyard_cast_permission_preserves_one_target_and_duration() {
+        use crate::types::{CardType, Subtype};
+
+        let cases = [
+            (
+                "You may cast target nonland card from your graveyard this turn.",
+                vec![],
+                vec![],
+                true,
+            ),
+            (
+                "You may cast target artifact card from your graveyard this turn.",
+                vec![CardType::Artifact],
+                vec![],
+                false,
+            ),
+            (
+                "You may cast target enchantment card from your graveyard this turn.",
+                vec![CardType::Enchantment],
+                vec![],
+                false,
+            ),
+            (
+                "You may cast target Zombie creature card from your graveyard this turn.",
+                vec![CardType::Creature],
+                vec![Subtype::Zombie],
+                false,
+            ),
+        ];
+
+        for (text, card_types, subtypes, excludes_land) in cases {
+            let tokens = lex_line(text, 0).expect("lex targeted graveyard permission");
+            let effect = parse_effect_clause(&tokens).expect("targeted graveyard permission");
+            let EffectAst::Sequence { effects } = effect else {
+                panic!("expected target-plus-grant sequence for {text}");
+            };
+            let [
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { target },
+                    ..
+                }),
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                            tag,
+                            player,
+                            allow_land,
+                            without_paying_mana_cost,
+                            allow_any_color_for_cast,
+                            while_on_top_of_library,
+                        },
+                    ..
+                }),
+            ] = effects.as_slice()
+            else {
+                panic!("expected one target followed by one tagged cast grant for {text}");
+            };
+            let TargetAst::Object(filter, _, _) = target else {
+                panic!("expected a single object target for {text}");
+            };
+            assert_eq!(filter.zone, Some(Zone::Graveyard), "{text}");
+            assert_eq!(filter.owner, Some(PlayerFilter::You), "{text}");
+            assert_eq!(filter.card_types, card_types, "{text}");
+            assert_eq!(filter.subtypes, subtypes, "{text}");
+            assert_eq!(
+                filter.excluded_card_types.contains(&CardType::Land),
+                excludes_land,
+                "{text}"
+            );
+            assert_eq!(tag.as_str(), IT_TAG, "{text}");
+            assert_eq!(*player, PlayerAst::You, "{text}");
+            assert!(!*allow_land, "{text}");
+            assert!(!*without_paying_mana_cost, "{text}");
+            assert_eq!(
+                *allow_any_color_for_cast,
+                ironsmith_core::value_model::ManaSpendMode::Normal,
+                "{text}"
+            );
+            assert!(!*while_on_top_of_library, "{text}");
+        }
+    }
+
+    #[test]
+    fn leading_may_chain_reaches_targeted_graveyard_cast_permission() {
+        let tokens = lex_line(
+            "You may cast target Zombie creature card from your graveyard this turn.",
+            0,
+        )
+        .expect("lex leading-may targeted graveyard permission");
+        let effects =
+            crate::runtime_backend::sentences::effect_sentences::parse_effect_chain_lexed(&tokens)
+                .expect("parse through production leading-may chain");
+
+        let [EffectAst::Sequence { effects }] = effects.as_slice() else {
+            panic!("expected the chain to preserve a target-plus-grant sequence: {effects:#?}");
+        };
+        assert!(matches!(
+            effects.as_slice(),
+            [
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. },
+                    ..
+                }),
+            ]
+        ));
+    }
+
+    #[test]
+    fn plural_demonstrative_pump_preserves_tagged_set() {
+        let tokens =
+            lex_line("Those creatures get +1/+1 until end of turn.", 0).expect("lex plural pump");
+        let effect = parse_effect_clause(&tokens).expect("plural tagged pump should parse");
+
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PumpAll {
+                    filter,
+                    set_quantifier_surface,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a mass pump for a plural demonstrative subject");
+        };
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert_eq!(
+            set_quantifier_surface,
+            Some(ironsmith_core::SetQuantifierSurface::Each)
+        );
+    }
+
+    #[test]
+    fn plural_demonstrative_untap_preserves_typed_tagged_set() {
+        let tokens = lex_line("Untap those creatures.", 0).expect("lex plural untap");
+        let effect = parse_effect_clause(&tokens).expect("plural tagged untap should parse");
+
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::UntapAll { filter },
+            ..
+        }) = effect
+        else {
+            panic!("expected a mass untap for a plural demonstrative subject");
+        };
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
+    fn each_other_player_subject_lowers_to_filtered_player_iteration() {
+        let tokens = lex_line("Each other player loses X life.", 0).expect("lex clause");
+        let effect = parse_effect_clause(&tokens).expect("each-other-player clause should parse");
+
+        let EffectAst::ForEachPlayersFiltered { filter, effects } = effect else {
+            panic!("expected filtered player iteration");
+        };
+        assert_eq!(filter, PlayerFilter::NotYou);
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                    action: SubjectVerbActionAst::LoseLife { .. },
+                }
+            )]
+        ));
     }
 
     #[test]

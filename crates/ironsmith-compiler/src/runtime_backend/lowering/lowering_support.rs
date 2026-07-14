@@ -4,7 +4,7 @@ use crate::cards::builders::{
     PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
-use crate::filter::ObjectFilter;
+use crate::filter::{ObjectFilter, ObjectRef};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
@@ -12,9 +12,10 @@ use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
 use super::compile_support::{
-    choose_spec_mentions_iterated_player, compile_trigger_spec, condition_mentions_iterated_player,
-    effect_mentions_iterated_player, effect_references_it_tag, effect_references_its_controller,
-    effect_references_tag, effects_contain_pending_effect_metric, effects_reference_it_tag,
+    choose_spec_mentions_iterated_player, compile_delayed_trigger_spec, compile_trigger_effects,
+    compile_trigger_spec, condition_mentions_iterated_player, effect_mentions_iterated_player,
+    effect_references_it_tag, effect_references_its_controller, effect_references_tag,
+    effects_contain_pending_effect_metric, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag, ensure_concrete_trigger_spec,
     inferred_trigger_player_filter, is_sentence_helper_exiled_collection_tag,
     materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
@@ -24,8 +25,11 @@ use super::compile_support::{
 };
 use super::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    bind_condition_counter_antecedent_in_effects, predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects,
+    bind_random_count_condition_antecedent_in_effects,
+    bind_trigger_antecedent_after_top_library_observation, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent, retarget_it_animations_to_source,
+    retarget_source_damage_attack_followups_to_source,
 };
 use super::effect_ast_normalization::normalize_effects_ast;
 use super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -332,7 +336,32 @@ fn replace_exile_top_event_count_with_triggering_counter_count(effect: &mut Effe
     for_each_nested_effects_mut(effect, false, replace_in_effects);
 }
 
+fn phase_step_trigger_object_reference_tag(trigger: &TriggerSpec) -> Option<&str> {
+    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
+        return phase_step_trigger_object_reference_tag(trigger);
+    }
+    let player = match trigger {
+        TriggerSpec::BeginningOfUpkeep(player)
+        | TriggerSpec::BeginningOfDrawStep(player)
+        | TriggerSpec::BeginningOfCombat(player)
+        | TriggerSpec::BeginningOfEndStep(player)
+        | TriggerSpec::BeginningOfPrecombatMain(player)
+        | TriggerSpec::BeginningOfPostcombatMain(player) => player,
+        _ => return None,
+    };
+    match player {
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+        | PlayerFilter::OwnerOf(ObjectRef::Tagged(tag))
+        | PlayerFilter::AliasedControllerOf(ObjectRef::Tagged(tag))
+        | PlayerFilter::AliasedOwnerOf(ObjectRef::Tagged(tag)) => Some(tag.as_str()),
+        _ => None,
+    }
+}
+
 fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
+    if phase_step_trigger_object_reference_tag(trigger).is_some() {
+        return false;
+    }
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return phase_step_trigger_has_no_object_reference(trigger);
     }
@@ -342,14 +371,18 @@ fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::BeginningOfDrawStep(_)
             | TriggerSpec::BeginningOfCombat(_)
             | TriggerSpec::BeginningOfEndStep(_)
+            | TriggerSpec::BeginningOfTheEndStep
             | TriggerSpec::BeginningOfPrecombatMain(_)
             | TriggerSpec::BeginningOfPostcombatMain(_)
     )
 }
 
-pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str> {
+pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&str> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
+    }
+    if let Some(tag) = phase_step_trigger_object_reference_tag(trigger) {
+        return Some(tag);
     }
     if phase_step_trigger_has_no_object_reference(trigger) {
         return None;
@@ -372,7 +405,11 @@ pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&
     }
     if matches!(
         trigger,
-        TriggerSpec::ThisDealsDamageTo(_)
+        TriggerSpec::ThisIsDealtDamage
+            | TriggerSpec::ThisIsDealtCombatDamage
+            | TriggerSpec::IsDealtDamage(_)
+            | TriggerSpec::IsDealtCombatDamage(_)
+            | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsDamageTo { .. }
             | TriggerSpec::DealsCombatDamageTo { .. }
@@ -619,10 +656,12 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     controller,
                     count_value,
                     as_aura,
+                    top_only,
                 } if tagged_target_key(target).is_some_and(|target_tag| {
                     matches!(target_tag.as_str(), crate::tag::SOURCE_EXILED_TAG | IT_TAG)
                 }) && !*transformed
                     && !*converted
+                    && !*top_only
                     && count_value.is_none()
                     && as_aura.is_none() =>
                 {
@@ -631,6 +670,7 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                         tapped: *tapped,
                         face_down: false,
                         controller: controller.clone(),
+                        verb_surface: ironsmith_core::MoveToZoneVerbSurface::Return,
                     })
                 }
                 _ => None,
@@ -798,6 +838,12 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let mut normalized = normalize_effects_ast(effects);
+    if let Some(antecedent_tag) = trigger.and_then(default_trigger_last_object_tag) {
+        bind_trigger_antecedent_after_top_library_observation(
+            &mut normalized,
+            &crate::tag::TagKey::from(antecedent_tag),
+        );
+    }
     carry_all_object_sweep_filter_to_it_followups(&mut normalized);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
     let has_phase_step_it_prelude =
@@ -886,7 +932,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     /// the effect rather than gating the trigger.
     fn predicate_requires_battlefield_state(predicate: &PredicateAst) -> bool {
         match predicate {
-            PredicateAst::ItMatches(filter) => {
+            PredicateAst::ItMatches(filter) | PredicateAst::ItMatchedLastKnown(filter) => {
                 filter.tapped
                     || filter.untapped
                     || filter.attacking
@@ -938,6 +984,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             PredicateAst::ItIsLandCard
             | PredicateAst::ItIsSoulbondPaired
             | PredicateAst::ItMatches(_)
+            | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_) => true,
             PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
@@ -953,6 +1000,12 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     ensure_concrete_trigger_spec(&trigger)?;
 
     let mut normalized = normalize_effects_ast(effects);
+    if let Some(antecedent_tag) = default_trigger_last_object_tag(&trigger) {
+        bind_trigger_antecedent_after_top_library_observation(
+            &mut normalized,
+            &crate::tag::TagKey::from(antecedent_tag),
+        );
+    }
     carry_all_object_sweep_filter_to_it_followups(&mut normalized);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
     let has_phase_step_it_prelude =
@@ -1022,6 +1075,10 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             ConditionAntecedentBinding::TaggedItOnly,
         );
     }
+    if let Some(predicate) = intervening_if.as_ref() {
+        bind_random_count_condition_antecedent_in_effects(&mut body_effects, predicate);
+    }
+    retarget_source_damage_attack_followups_to_source(&mut body_effects);
     if let Some(counter_type) = intervening_if
         .as_ref()
         .and_then(predicate_source_counter_antecedent)
@@ -1729,6 +1786,27 @@ fn rewrite_lower_grant_static_ability(
     Ok(StaticAbility::new(grant))
 }
 
+fn rewrite_lower_static_set_quantifier_surface(
+    ability: StaticAbilityAst,
+    surface: ironsmith_core::SetQuantifierSurface,
+) -> Result<StaticAbility, CardTextError> {
+    let mut lowered = rewrite_lower_static_ability_ast(ability)?;
+    match &mut lowered.payload {
+        crate::static_abilities::StaticAbilityPayload::GrantAbility(grant) => {
+            grant.set_quantifier_surface = Some(surface);
+        }
+        crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+            grant.set_quantifier_surface = Some(surface);
+        }
+        _ => {
+            return Err(CardTextError::InvariantViolation(
+                "set-quantifier surface wrapper requires a filter-wide granted ability".to_string(),
+            ));
+        }
+    }
+    Ok(lowered)
+}
+
 fn rewrite_lower_attached_static_ability_grant(
     ability: StaticAbilityAst,
     display: String,
@@ -1768,20 +1846,92 @@ fn rewrite_lower_attached_chosen_landwalk_grant(
     Ok(StaticAbility::new(grant))
 }
 
+fn rewrite_lower_pregame_reveal_from_opening_hand(
+    trigger: TriggerSpec,
+    effects: Vec<EffectAst>,
+    one_shot: bool,
+    first_spell_of_game: bool,
+    effect_before_timing: bool,
+    display: String,
+) -> Result<StaticAbility, CardTextError> {
+    let (effects, choices) = compile_trigger_effects(Some(&trigger), &effects)?;
+    if !choices.is_empty() {
+        return Err(CardTextError::InvariantViolation(
+            "opening-hand delayed consequences cannot require choices before the game begins"
+                .to_string(),
+        ));
+    }
+    let mut delayed_trigger = compile_delayed_trigger_spec(&trigger)?;
+    if first_spell_of_game {
+        let ironsmith_core::DelayedTriggerSpec::SpellCast {
+            first_spell_of_game,
+            ..
+        } = &mut delayed_trigger
+        else {
+            return Err(CardTextError::InvariantViolation(
+                "first-spell-of-game pregame consequence requires a spell-cast trigger".to_string(),
+            ));
+        };
+        *first_spell_of_game = true;
+    }
+
+    let schedule = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+        delayed_trigger,
+        effects,
+        one_shot,
+        Vec::new(),
+        PlayerFilter::You,
+    ));
+    Ok(StaticAbility::pregame_action_with_effects(
+        crate::static_abilities::PregameActionKind::RevealFromOpeningHand(
+            crate::static_abilities::PregameRevealFromOpeningHandSpec {
+                effect_before_timing,
+            },
+        ),
+        display,
+        vec![schedule],
+    ))
+}
+
 pub(crate) fn rewrite_lower_static_ability_ast(
     ability: StaticAbilityAst,
 ) -> Result<StaticAbility, CardTextError> {
     match ability {
         StaticAbilityAst::Static(ability) => Ok(ability),
         StaticAbilityAst::KeywordAction(action) => rewrite_lower_keyword_action_or_err(action),
+        StaticAbilityAst::PregameRevealFromOpeningHand {
+            trigger,
+            effects,
+            one_shot,
+            first_spell_of_game,
+            effect_before_timing,
+            display,
+        } => rewrite_lower_pregame_reveal_from_opening_hand(
+            trigger,
+            effects,
+            one_shot,
+            first_spell_of_game,
+            effect_before_timing,
+            display,
+        ),
         StaticAbilityAst::ConditionalStaticAbility { ability, condition } => {
             rewrite_lower_conditional_static_ability(*ability, condition)
         }
+        StaticAbilityAst::LabeledConditionalStaticAbility {
+            ability,
+            condition,
+            label,
+        } => Ok(
+            rewrite_lower_static_ability_ast(*ability)?.with_labeled_condition(condition, label)
+        ),
         StaticAbilityAst::ConditionalKeywordAction { action, condition } => {
             rewrite_lower_conditional_static_ability(
                 StaticAbilityAst::KeywordAction(action),
                 condition,
             )
+        }
+        StaticAbilityAst::WithSetQuantifierSurface { ability, surface } => {
+            rewrite_lower_static_set_quantifier_surface(*ability, surface)
         }
         StaticAbilityAst::GrantStaticAbility {
             filter,
@@ -2324,5 +2474,73 @@ mod tests {
                 && !debug.contains(crate::tag::SOURCE_EXILED_TAG),
             "expected aggregate helper tag to replace the plural placeholder, got {debug}"
         );
+    }
+
+    #[test]
+    fn trailing_unless_stays_a_resolution_time_conditional() {
+        let cases = [
+            (
+                "This creature deals 4 damage to that player unless they control a commander.",
+                TriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
+            ),
+            (
+                "This creature deals 2 damage to that player unless they control two or more basic lands.",
+                TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any),
+            ),
+            (
+                "This artifact deals 2 damage to that player unless they have exactly three or exactly four cards in hand.",
+                TriggerSpec::BeginningOfUpkeep(PlayerFilter::Opponent),
+            ),
+            (
+                "This Aura deals 2 damage to that player unless that creature attacked this turn.",
+                TriggerSpec::BeginningOfEndStep(PlayerFilter::ControllerOf(ObjectRef::tagged(
+                    "enchanted",
+                ))),
+            ),
+        ];
+
+        for (text, trigger) in cases {
+            let tokens = lex_line(text, 0).expect("lex trailing-unless sentence");
+            let effects =
+                crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
+                    .expect("parse trailing-unless sentence");
+            assert!(
+                matches!(effects.as_slice(), [EffectAst::TrailingUnless { .. }]),
+                "expected explicit trailing-unless AST for {text}: {effects:#?}"
+            );
+
+            let (_, prepared) = rewrite_prepare_triggered_effects_for_lowering(
+                trigger,
+                &effects,
+                ReferenceImports::default(),
+            )
+            .expect("prepare trailing-unless trigger");
+            assert!(
+                prepared.intervening_if.is_none(),
+                "trailing unless must not be promoted to intervening-if: {text}"
+            );
+
+            let (lowered, intervening_if) = materialize_prepared_triggered_effects(&prepared)
+                .expect("lower trailing-unless trigger");
+            assert!(
+                intervening_if.is_none(),
+                "unexpected intervening-if: {text}"
+            );
+            let conditional = lowered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+                .expect("lowered trailing-unless conditional");
+            assert_eq!(
+                conditional.surface,
+                ironsmith_core::ConditionalSurface::TrailingUnless,
+                "missing trailing-unless runtime surface: {text}"
+            );
+            assert!(
+                matches!(&conditional.condition, Condition::Not(_)),
+                "runtime true branch must retain the negated executable gate: {text}"
+            );
+        }
     }
 }

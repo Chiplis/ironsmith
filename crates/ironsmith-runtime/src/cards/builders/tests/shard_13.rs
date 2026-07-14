@@ -26,6 +26,40 @@ use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn demonic_bargain_search_followup_hides_internal_tag_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Demonic Bargain Variant")
+        .parse_text(
+            "Exile the top thirteen cards of your library, then search your library for a card. Put that card into your hand, then shuffle.",
+        )
+        .expect("Demonic Bargain text should parse");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        !rendered.to_ascii_lowercase().contains("tagged '"),
+        "search followup leaked an internal tag reference: {rendered}; unprocessed: {}",
+        unprocessed_compiled_lines(&def).join(" ")
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn ruin_in_their_wake_conditional_search_followup_hides_internal_tag_reference() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ruin in Their Wake Variant")
+        .parse_text(
+            "Devoid\nSearch your library for a basic land card and reveal it. You may put that card onto the battlefield tapped if you control a land named Wastes. Otherwise, put that card into your hand. Then shuffle.",
+        )
+        .expect("Ruin in Their Wake text should parse");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        !rendered.to_ascii_lowercase().contains("tagged '"),
+        "conditional search followup leaked an internal tag reference: {rendered}; unprocessed: {}",
+        unprocessed_compiled_lines(&def).join(" ")
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_search_basic_triple_and_gain_life_keeps_all_components() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brokers Hideout Variant")
         .parse_text(
@@ -2239,6 +2273,56 @@ pub(super) fn parse_distribute_counters_one_two_or_three_targets() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn source_double_counter_cards_keep_singular_source_surface() {
+    for (name, counter_phrase, source_surface) in [
+        ("Ascendant Acolyte", "+1/+1", "this creature"),
+        ("Dragonsguard Elite", "+1/+1", "this creature"),
+        ("Paradox Zone", "growth", "this enchantment"),
+        ("Solarion", "+1/+1", "this creature"),
+    ] {
+        let lines = compiled_text_lines(&parse_oracle_card_definition(name));
+        let rendered = lines.join("\n");
+        let lower = rendered.to_ascii_lowercase();
+        assert!(
+            lower.contains(&format!(
+                "double the number of {counter_phrase} counters on {source_surface}"
+            )),
+            "expected {name} to keep its singular source surface, got {rendered}"
+        );
+        assert!(
+            !lower.contains("on each this"),
+            "expected {name} not to widen its source into a filter-wide target, got {rendered}"
+        );
+
+        match name {
+            "Ascendant Acolyte" => assert!(lower.contains("enters with a +1/+1 counter")),
+            "Dragonsguard Elite" => assert!(lower.contains("magecraft")),
+            "Paradox Zone" => assert!(
+                lower.contains("create a 0/0 green and blue fractal creature token"),
+                "counter doubling must not absorb Paradox Zone's token follow-up: {rendered}"
+            ),
+            "Solarion" => {
+                assert!(
+                    lines
+                        .iter()
+                        .any(|line| line.eq_ignore_ascii_case("Sunburst")),
+                    "Solarion must retain Sunburst as its own clause: {rendered}"
+                );
+                assert!(
+                    lines.iter().any(|line| {
+                        line.to_ascii_lowercase()
+                            .contains("double the number of +1/+1 counters")
+                    }),
+                    "Solarion must retain its separate double-counters ability: {rendered}"
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_distribute_then_double_counters_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Biogenic Upgrade Variant")
         .parse_text(
@@ -2823,6 +2907,66 @@ pub(super) fn tidal_influence_renders_state_trigger_without_duplicate_counter_co
         !rendered.contains("if this enchantment has 4 or more tide counters")
             && !rendered.contains("the number of tide counters"),
         "expected Tidal Influence not to duplicate its trigger condition or count phrase, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn source_counter_thresholds_keep_existential_oracle_surface() {
+    for name in [
+        "Budoka Pupil",
+        "Callow Jushi",
+        "Cunning Bandit",
+        "Faithful Squire",
+        "Hired Muscle",
+    ] {
+        let rendered =
+            crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition(name))
+                .join("\n");
+        assert!(
+            rendered
+                .contains("if there are two or more ki counters on this creature, you may flip it"),
+            "expected {name} to preserve its existential ki-counter condition and lowercase flip, got {rendered}"
+        );
+    }
+
+    let decree = crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition(
+        "Decree of Silence",
+    ))
+    .join("\n");
+    assert!(
+        decree.contains(
+            "Then if there are three or more depletion counters on this enchantment, sacrifice it"
+        ),
+        "expected Decree of Silence to preserve its conditional follow-up, got {decree}"
+    );
+
+    let foreboding = crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition(
+        "Foreboding Statue",
+    ))
+    .join("\n");
+    assert!(
+        foreboding.contains(
+            "if there are three or more omen counters on this creature, untap this creature"
+        ),
+        "expected Foreboding Statue to preserve its parsed counter-threshold follow-up, got {foreboding}"
+    );
+
+    let grasping = crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition(
+        "Grasping Shadows",
+    ))
+    .join("\n");
+    assert!(
+        grasping.contains("Then if there are three or more dread counters on it, transform it"),
+        "expected Grasping Shadows to preserve its source pronoun and transform follow-up, got {grasping}"
+    );
+
+    let quest = crate::compiled_text::compiled_text_lines(&parse_oracle_card_definition(
+        "Quest for Ula's Temple",
+    ))
+    .join("\n");
+    assert!(
+        quest.contains("if there are three or more quest counters on this enchantment"),
+        "expected Quest for Ula's Temple to preserve its existential counter condition, got {quest}"
     );
 }
 
@@ -3426,5 +3570,93 @@ pub(super) fn omenport_vigilante_keeps_committed_crime_condition() {
     assert!(
         debug.contains("playercommittedcrimethisturn") && debug.contains("doublestrike"),
         "expected Omenport Vigilante definition to include committed-crime condition, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn retained_land_animation_cluster_keeps_oracle_surface_contracts() {
+    let compiled = |name| {
+        unprocessed_compiled_lines(&parse_oracle_card_definition(name))
+            .join(" ")
+            .to_ascii_lowercase()
+    };
+
+    for (name, land) in [
+        ("Genju of the Fens", "swamp"),
+        ("Genju of the Fields", "plains"),
+    ] {
+        let rendered = compiled(name);
+        assert!(
+            rendered.contains(&format!("until end of turn, enchanted {land} becomes"))
+                && rendered.contains("it's still a land")
+                && rendered.contains('"')
+                && !rendered.contains(&format!("all enchanted {land}")),
+            "expected {name} to keep its singular enchanted-land animation and quoted ability, got {rendered}"
+        );
+    }
+
+    for name in [
+        "Lavaclaw Reaches",
+        "Raging Ravine",
+        "Restless Spire",
+        "Wandering Fumarole",
+    ] {
+        let rendered = compiled(name);
+        assert!(
+            rendered.contains("until end of turn, this land becomes")
+                && rendered.contains("it's still a land")
+                && rendered.contains('"')
+                && !rendered.contains("where x is x"),
+            "expected {name} to keep one outer duration, a quoted granted ability, and its land type, got {rendered}"
+        );
+    }
+
+    let great_hall = compiled("Great Hall of the Biblioplex");
+    assert!(
+        great_hall.contains("if this land isn't a creature, it becomes")
+            && great_hall.contains("\"whenever you cast an instant or sorcery spell")
+            && great_hall.contains("this creature gets +1/+0 until end of turn.\"")
+            && great_hall.contains("it's still a land")
+            && great_hall.matches("until end of turn").count() == 1,
+        "expected Great Hall to keep the negated land condition and only the granted trigger's duration, got {great_hall}"
+    );
+
+    for name in [
+        "Nissa, Who Shakes the World",
+        "Tendril of the Mycotyrant",
+        "Wakeroot Elemental",
+    ] {
+        let rendered = compiled(name);
+        assert!(
+            rendered.contains("it's still a land")
+                && !rendered.contains("in addition to its other types"),
+            "expected {name}'s standalone follow-up to preserve the still-a-land surface, got {rendered}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn moon_girl_compound_possessive_is_not_a_subtype_set() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition(
+        "Moon Girl and Devil Dinosaur",
+    ))
+    .join(" ");
+
+    assert!(
+        rendered.contains(
+            "until end of turn, Moon Girl and Devil Dinosaur's base power and toughness become 6/6 and they gain trample"
+        ),
+        "expected Moon Girl's compound named source to remain one possessive subject, got {rendered}"
+    );
+    assert!(
+        !rendered
+            .to_ascii_lowercase()
+            .contains("each devil or dinosaur")
+            && !rendered
+                .to_ascii_lowercase()
+                .contains("devils or dinosaurs gain"),
+        "Moon Girl must not widen its named source into a subtype set: {rendered}"
     );
 }

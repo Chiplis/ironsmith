@@ -32,6 +32,7 @@ pub(crate) enum ReturnTimingShape {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ReturnDestinationShape {
     pub(crate) zone: ReturnZoneShape,
+    pub(crate) destination_player_surface: Option<PlayerAst>,
     pub(crate) tapped: bool,
     pub(crate) transformed: bool,
     pub(crate) converted: bool,
@@ -49,6 +50,7 @@ pub(crate) enum ReturnTargetShape {
     },
     UntargetedExiledCards {
         filter_tokens: Vec<OwnedLexToken>,
+        count: Option<ChoiceCount>,
     },
     All {
         raw_filter_tokens: Vec<OwnedLexToken>,
@@ -64,6 +66,7 @@ pub(crate) enum ReturnTargetShape {
         source_from_graveyard_tokens: Option<Vec<OwnedLexToken>>,
         dynamic_count: bool,
         back_reference: bool,
+        top_only: bool,
     },
     MultiTargetUnsupported,
 }
@@ -292,6 +295,33 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         return None;
     }
     let (_, zone) = first_zone(destination_head)?;
+    let destination_player_surface = if marker_anywhere(
+        destination_head,
+        alt((
+            primitives::kw("owner"),
+            primitives::kw("owners"),
+            primitives::kw("owner's"),
+            primitives::kw("owners'"),
+        )),
+    ) {
+        None
+    } else if marker_anywhere(
+        destination_head,
+        alt((primitives::kw("your"), primitives::kw("you"))),
+    ) {
+        Some(PlayerAst::You)
+    } else if marker_anywhere(
+        destination_head,
+        alt((
+            primitives::kw("their").void(),
+            primitives::phrase(&["that", "player"]),
+            primitives::phrase(&["that", "players"]),
+        )),
+    ) {
+        Some(PlayerAst::That)
+    } else {
+        None
+    };
     let tapped = marker_anywhere(destination_head, primitives::kw("tapped"));
     let transformed = marker_anywhere(tokens, primitives::kw("transformed"));
     let converted = marker_anywhere(tokens, primitives::kw("converted"));
@@ -322,6 +352,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
                     || marker_anywhere(tokens, primitives::kw("step")))));
     Some(ReturnDestinationShape {
         zone,
+        destination_player_surface,
         tapped,
         transformed,
         converted,
@@ -452,8 +483,14 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
     let has_exiled_cards = marker_anywhere(tokens, primitives::kw("exiled"))
         && marker_anywhere(tokens, primitives::kw("cards"));
     if !has_target && has_exiled_cards {
+        let parsed_count = leaf::parse_leaf_choice_count_prefix_tokens(tokens);
+        let filter_tokens = parsed_count
+            .as_ref()
+            .and_then(|parsed| tokens.get(parsed.consumed..))
+            .unwrap_or(tokens);
         return Some(ReturnTargetShape::UntargetedExiledCards {
-            filter_tokens: tokens.to_vec(),
+            filter_tokens: trim_lexed_commas(filter_tokens).to_vec(),
+            count: parsed_count.map(|parsed| parsed.count),
         });
     }
 
@@ -532,11 +569,24 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
     } else {
         (tokens.to_vec(), false)
     };
+    let (target_tokens, top_only) = if let Some((_, rest)) =
+        primitives::parse_prefix(&target_tokens, primitives::phrase(&["the", "top"]).void())
+    {
+        (trim_lexed_commas(rest).to_vec(), true)
+    } else {
+        (target_tokens, false)
+    };
+    let source_from_graveyard_tokens = source_from_graveyard_tokens.map(|tokens| {
+        primitives::parse_prefix(&tokens, primitives::phrase(&["the", "top"]).void())
+            .map(|(_, rest)| trim_lexed_commas(rest).to_vec())
+            .unwrap_or(tokens)
+    });
     Some(ReturnTargetShape::Singular {
         back_reference: is_return_back_reference_shape(&target_tokens),
         target_tokens,
         source_from_graveyard_tokens,
         dynamic_count,
+        top_only,
     })
 }
 
@@ -600,6 +650,22 @@ mod tests {
     }
 
     #[test]
+    fn preserves_contextual_hand_destination_without_changing_owner_destination() {
+        for (text, expected) in [
+            ("it to your hand", Some(PlayerAst::You)),
+            ("those cards to their hand", Some(PlayerAst::That)),
+            ("it to its owner's hand", None),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let shape = parse_return_clause_shape(&tokens).expect("shape");
+            assert_eq!(
+                shape.destination.destination_player_surface, expected,
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
     fn normalizes_destination_first_return_surface() {
         let tokens = lex_line("to their owners' hands all creatures", 0).unwrap();
         let shape = parse_return_clause_shape(&tokens).expect("shape");
@@ -617,6 +683,33 @@ mod tests {
             panic!("expected singular target");
         };
         assert_eq!(target_tokens.len(), 2);
+    }
+
+    #[test]
+    fn preserves_top_only_graveyard_return_as_a_typed_shape_fact() {
+        let tokens = lex_line(
+            "the top creature card of your graveyard to the battlefield",
+            0,
+        )
+        .unwrap();
+        let shape = parse_return_clause_shape(&tokens).expect("shape");
+        let ReturnTargetShape::Singular {
+            target_tokens,
+            top_only,
+            ..
+        } = shape.target
+        else {
+            panic!("expected singular return target");
+        };
+
+        assert!(top_only);
+        assert_eq!(
+            target_tokens
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            ["creature", "card", "of", "your", "graveyard"]
+        );
     }
 
     #[test]

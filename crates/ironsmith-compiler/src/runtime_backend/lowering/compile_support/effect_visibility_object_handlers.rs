@@ -115,7 +115,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     chooser.clone(),
                     tag.clone(),
                 )
-                .with_aggregate_constraint(*constraint),
+                .with_aggregate_constraint(constraint.clone()),
             ));
             ctx.last_object_tag = Some(tag.as_str().to_string());
             ctx.last_player_filter = Some(chooser);
@@ -203,7 +203,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 resolved_filter.owner = ctx
                     .last_revealed_player_filter
                     .clone()
-                    .or_else(|| ctx.last_player_filter.clone());
+                    .or_else(|| ctx.last_player_filter.clone())
+                    .map(as_followup_player_alias);
             }
             let cross_zone_choices = hand_or_graveyard_choice_zones(&resolved_filter);
             if let Some(zones) = &cross_zone_choices {

@@ -102,7 +102,7 @@ pub(crate) fn parse_consult_traversal_sentence(
             LibraryConsultModeAst::Exile => "exiled",
         },
     );
-    let match_tag = helper_tag_for_tokens(tokens, "chosen");
+    let match_tag = helper_tag_for_tokens(tokens, "consult_match");
     let mut effects = prefix_effects;
     effects.push(if let Some(max_exposed) = max_exposed {
         EffectAst::subject_verb_consult_top_of_library_with_max_exposed(

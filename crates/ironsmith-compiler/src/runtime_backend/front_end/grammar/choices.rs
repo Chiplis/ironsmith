@@ -48,6 +48,7 @@ pub(crate) struct ChoiceClauseSeparatorSpan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChoiceObjectCountSource {
     CardsDiscardedThisWay,
+    ThatMany,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -155,7 +156,7 @@ pub(crate) fn parse_choice_object_clause_tokens(
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    let count_source = strip_discarded_this_way_count_suffix(&mut words);
+    let mut count_source = strip_discarded_this_way_count_suffix(&mut words);
     let mut references = ChoiceObjectReferenceFacts::default();
     while let Some(suffix) = parse_container_reference_suffix(&words) {
         let removed = match suffix {
@@ -173,7 +174,15 @@ pub(crate) fn parse_choice_object_clause_tokens(
 
     let refs = string_word_refs(&words);
     let mut count = ChoiceCount::exactly(1);
-    if let Some(parsed) = leaf::parse_leaf_choice_count_prefix_words(&refs) {
+    if phrase_is_prefix(&refs, &["up", "to", "that", "many"]) {
+        count = ChoiceCount::up_to_dynamic_x();
+        count_source = Some(ChoiceObjectCountSource::ThatMany);
+        words.drain(..4);
+    } else if phrase_is_prefix(&refs, &["that", "many"]) {
+        count = ChoiceCount::dynamic_x();
+        count_source = Some(ChoiceObjectCountSource::ThatMany);
+        words.drain(..2);
+    } else if let Some(parsed) = leaf::parse_leaf_choice_count_prefix_words(&refs) {
         count = parsed.count;
         words.drain(..parsed.consumed);
     } else if parse_leading_article(&refs) {
@@ -186,7 +195,10 @@ pub(crate) fn parse_choice_object_clause_tokens(
     if parse_aura_eligibility_suffix(&words) {
         words.truncate(words.len().saturating_sub(4));
     }
-    if count_source.is_some() {
+    if matches!(
+        count_source,
+        Some(ChoiceObjectCountSource::CardsDiscardedThisWay)
+    ) {
         count = ChoiceCount::dynamic_x();
     }
     if words.is_empty() {
@@ -664,6 +676,24 @@ mod tests {
         assert!(parsed.references.references_it);
         assert!(parsed.references.references_container_it);
         assert!(parsed.references.explicit_container_reference);
+    }
+
+    #[test]
+    fn choice_object_shape_preserves_up_to_prior_amount_count() {
+        let tokens = lex_line("Choose up to that many target creatures you control.", 0).unwrap();
+        let tokens = &tokens[..tokens.len() - 1];
+
+        let ChoiceObjectClauseKind::Object(parsed) =
+            parse_choice_object_clause_tokens(tokens).unwrap().unwrap()
+        else {
+            panic!("expected object choice");
+        };
+        assert!(parsed.count.is_up_to_dynamic_x());
+        assert_eq!(parsed.count_source, Some(ChoiceObjectCountSource::ThatMany));
+        assert_eq!(
+            parsed.filter_words,
+            ["target", "creatures", "you", "control"]
+        );
     }
 
     #[test]

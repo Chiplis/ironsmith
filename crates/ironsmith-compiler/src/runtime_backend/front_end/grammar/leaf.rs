@@ -87,7 +87,7 @@ pub(crate) use references::LeafPlayerReference;
 #[cfg(test)]
 pub(crate) use references::parse_player_reference_complete;
 pub(crate) use source_references::{
-    LeafSourceReferenceAlias, parse_leaf_source_anaphor_words,
+    LeafSourceAnaphor, LeafSourceReferenceAlias, parse_leaf_source_anaphor_words,
     parse_leaf_source_reference_alias_words, parse_leaf_source_reference_aliases_for_name,
     parse_leaf_source_reference_possessive_alias_words, parse_leaf_this_source_reference_surface,
     parse_leaf_this_source_reference_words, push_leaf_source_reference_alias,
@@ -153,6 +153,10 @@ mod tests {
         );
         assert_eq!(
             parse_duration_phrase_complete("until the end of combat").unwrap(),
+            LeafDurationPhrase::UntilEndOfCombat
+        );
+        assert_eq!(
+            parse_duration_phrase_complete("this combat").unwrap(),
             LeafDurationPhrase::UntilEndOfCombat
         );
     }

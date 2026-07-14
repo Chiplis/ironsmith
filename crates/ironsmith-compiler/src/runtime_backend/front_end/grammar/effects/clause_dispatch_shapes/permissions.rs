@@ -2,7 +2,7 @@ use super::super::*;
 
 use crate::filter::Comparison;
 use crate::runtime_backend::front_end::grammar::leaf;
-use winnow::combinator::{alt, opt, repeat_till};
+use winnow::combinator::{alt, eof, opt, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
 
@@ -144,6 +144,39 @@ pub(crate) fn parse_cast_target_without_paying_shape(
     Some(CastTargetWithoutPayingShape {
         target_tokens: trim_lexed_commas(target_tokens),
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CastTargetFromYourGraveyardThisTurnShape<'a> {
+    pub(crate) target_tokens: &'a [OwnedLexToken],
+}
+
+pub(crate) fn parse_cast_target_from_your_graveyard_this_turn_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CastTargetFromYourGraveyardThisTurnShape<'_>> {
+    let (_, rest) = primitives::parse_prefix(
+        trim_lexed_commas(tokens),
+        alt((
+            primitives::phrase(&["you", "may", "cast"]),
+            primitives::kw("cast").void(),
+        )),
+    )?;
+    let (target_tokens, ()) = primitives::split_lexed_once_before_suffix(rest, 2, || {
+        (
+            primitives::phrase(&["this", "turn"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    })?;
+    let target_tokens = trim_lexed_commas(target_tokens);
+    let (_, target_body) = primitives::parse_prefix(target_tokens, primitives::kw("target"))?;
+    if target_body.is_empty() {
+        return None;
+    }
+    primitives::split_lexed_once_before_suffix(target_tokens, 2, || {
+        (primitives::phrase(&["from", "your", "graveyard"]), eof).void()
+    })?;
+    Some(CastTargetFromYourGraveyardThisTurnShape { target_tokens })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +331,7 @@ pub(crate) fn parse_trailing_if_fallback_shape(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::TokenWordView;
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     #[test]
@@ -318,5 +352,46 @@ mod tests {
                 .group_size,
             2
         );
+    }
+
+    #[test]
+    fn parses_target_from_your_graveyard_this_turn_permission() {
+        let tokens = lex_line(
+            "You may cast target Zombie creature card from your graveyard this turn.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_cast_target_from_your_graveyard_this_turn_shape(&tokens)
+            .expect("targeted graveyard permission");
+
+        assert_eq!(
+            TokenWordView::new(shape.target_tokens).to_word_refs(),
+            vec![
+                "target",
+                "zombie",
+                "creature",
+                "card",
+                "from",
+                "your",
+                "graveyard"
+            ]
+        );
+        let stripped = lex_line(
+            "cast target Zombie creature card from your graveyard this turn.",
+            0,
+        )
+        .unwrap();
+        let stripped_shape = parse_cast_target_from_your_graveyard_this_turn_shape(&stripped)
+            .expect("leading-may chain should route its stripped cast clause");
+        assert_eq!(
+            TokenWordView::new(stripped_shape.target_tokens).to_word_refs(),
+            TokenWordView::new(shape.target_tokens).to_word_refs(),
+        );
+        let wrong_zone = lex_line(
+            "You may cast target Zombie creature card from exile this turn.",
+            0,
+        )
+        .unwrap();
+        assert!(parse_cast_target_from_your_graveyard_this_turn_shape(&wrong_zone).is_none());
     }
 }

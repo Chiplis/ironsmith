@@ -29,6 +29,9 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 game.turn.turn_number.saturating_add(1)
             }
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
+                game.turn.turn_number.saturating_add(1)
+            }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
             | crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
         };

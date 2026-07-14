@@ -30,12 +30,77 @@ use crate::static_abilities::StaticAbilityId;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
+/// The values a copy effect is allowed to copy after layers 1a and 1b.
+///
+/// These are stored separately from the effective characteristics in an LKI
+/// snapshot because effects from later layers are not copiable (CR 707.2).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CopiableValues {
+    pub name: String,
+    pub compiled_card_text: String,
+    pub power: Option<i32>,
+    pub toughness: Option<i32>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub supertypes: Vec<Supertype>,
+    pub colors: ColorSet,
+    pub abilities: Arc<Vec<Ability>>,
+    pub aura_attach_filter: Option<AuraAttachmentFilter>,
+}
+
+impl CopiableValues {
+    pub fn from_object(obj: &Object) -> Self {
+        let bestow_restore = obj.bestow_cast_state.as_ref();
+        Self {
+            name: obj.name.to_owned_string(),
+            compiled_card_text: obj.compiled_card_text.to_string(),
+            power: obj.base_power.as_ref().map(|power| power.base_value()),
+            toughness: obj
+                .base_toughness
+                .as_ref()
+                .map(|toughness| toughness.base_value()),
+            card_types: bestow_restore
+                .map(|restore| restore.card_types.to_vec())
+                .unwrap_or_else(|| obj.card_types.to_vec()),
+            subtypes: bestow_restore
+                .map(|restore| restore.subtypes.to_vec())
+                .unwrap_or_else(|| obj.subtypes.to_vec()),
+            supertypes: obj.supertypes.to_vec(),
+            colors: obj.colors(),
+            abilities: obj.abilities.clone(),
+            aura_attach_filter: if let Some(restore) = bestow_restore {
+                restore
+                    .aura_attach_filter
+                    .as_ref()
+                    .map(|filter| filter.to_owned_value())
+            } else {
+                obj.aura_attach_filter_owned()
+            },
+        }
+    }
+
+    pub fn from_calculated(chars: &CalculatedCharacteristics) -> Self {
+        Self {
+            name: chars.name.to_owned_string(),
+            compiled_card_text: chars.compiled_card_text.to_string(),
+            power: chars.power,
+            toughness: chars.toughness,
+            card_types: chars.card_types.to_vec(),
+            subtypes: chars.subtypes.to_vec(),
+            supertypes: chars.supertypes.to_vec(),
+            colors: chars.colors,
+            abilities: Arc::new(chars.abilities.to_vec()),
+            aura_attach_filter: chars.aura_attach_filter.clone(),
+        }
+    }
+}
+
 /// A comprehensive snapshot of an object's state.
 ///
 /// This unified type replaces the previous separate snapshot types.
 ///
 /// It captures all relevant fields from an Object for LKI purposes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ObjectSnapshot {
     // === Identity ===
     /// The object's ID at the time of snapshot.
@@ -56,6 +121,9 @@ pub struct ObjectSnapshot {
     // === Copiable characteristics ===
     /// The object's name.
     pub name: String,
+    /// Earliest eligible paper set for the oracle identity represented by the
+    /// current name, when registry metadata is available.
+    pub first_printed_set_name: Option<String>,
     /// The mana cost (if any).
     pub mana_cost: Option<ManaCost>,
     /// Colors of the object.
@@ -90,6 +158,8 @@ pub struct ObjectSnapshot {
     pub abilities: Arc<Vec<Ability>>,
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
+    /// Frozen layer-1 copiable values at the instant this snapshot was made.
+    pub copiable_values: CopiableValues,
     /// For sagas: maximum chapter number.
     /// X value chosen when this object was cast (if any).
     pub x_value: Option<u32>,
@@ -147,6 +217,10 @@ impl ObjectSnapshot {
 
             // Copiable characteristics
             name: obj.name.to_string(),
+            first_printed_set_name: obj
+                .first_printed_set_name
+                .as_ref()
+                .map(|set_name| set_name.to_owned_string()),
             mana_cost: obj.mana_cost_owned(),
             colors: obj.colors(),
             supertypes: obj.supertypes.to_vec(),
@@ -167,6 +241,7 @@ impl ObjectSnapshot {
             defense: obj.base_defense,
             abilities: obj.abilities.clone(),
             aura_attach_filter: obj.aura_attach_filter_owned(),
+            copiable_values: CopiableValues::from_object(obj),
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
@@ -246,7 +321,20 @@ impl ObjectSnapshot {
         effects: &[ContinuousEffect],
     ) -> Self {
         let calculated = game.calculated_characteristics_with_effects(obj.id, effects);
-        Self::from_object_with_known_characteristics(obj, game, calculated.as_ref())
+        let copiable_values = crate::continuous::copiable_values_with_effects(
+            obj.id,
+            game.objects_map(),
+            effects,
+            &game.battlefield,
+            game.commander_objects(),
+            game,
+        );
+        Self::from_object_with_known_characteristics_and_copiable_values(
+            obj,
+            game,
+            calculated.as_ref(),
+            copiable_values,
+        )
     }
 
     /// Create a snapshot using characteristics already calculated for the same
@@ -257,9 +345,39 @@ impl ObjectSnapshot {
         game: &crate::game_state::GameState,
         calculated: Option<&CalculatedCharacteristics>,
     ) -> Self {
+        let effects = game.all_continuous_effects();
+        let copiable_values = crate::continuous::copiable_values_with_effects(
+            obj.id,
+            game.objects_map(),
+            &effects,
+            &game.battlefield,
+            game.commander_objects(),
+            game,
+        );
+        Self::from_object_with_known_characteristics_and_copiable_values(
+            obj,
+            game,
+            calculated,
+            copiable_values,
+        )
+    }
+
+    fn from_object_with_known_characteristics_and_copiable_values(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+        calculated: Option<&CalculatedCharacteristics>,
+        copiable_values: Option<CopiableValues>,
+    ) -> Self {
         let mut snapshot = Self::from_object(obj, game);
+        if let Some(copiable_values) = copiable_values {
+            snapshot.copiable_values = copiable_values;
+        }
 
         if let Some(calculated) = calculated {
+            if calculated.name.as_str() != obj.name.as_ref() {
+                snapshot.first_printed_set_name = None;
+            }
+            snapshot.name = calculated.name.to_string();
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
@@ -453,6 +571,7 @@ impl ObjectSnapshot {
             controller,
             owner: controller,
             name: name.to_string(),
+            first_printed_set_name: None,
             mana_cost: None,
             colors: ColorSet::default(),
             supertypes: vec![],
@@ -470,6 +589,10 @@ impl ObjectSnapshot {
             defense: None,
             abilities: Arc::new(vec![]),
             aura_attach_filter: None,
+            copiable_values: CopiableValues {
+                name: name.to_string(),
+                ..CopiableValues::default()
+            },
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
@@ -492,7 +615,8 @@ impl ObjectSnapshot {
     /// Set the card types for testing.
     #[cfg(test)]
     pub fn with_card_types(mut self, types: Vec<CardType>) -> Self {
-        self.card_types = types;
+        self.card_types = types.clone();
+        self.copiable_values.card_types = types;
         self
     }
 
@@ -503,13 +627,16 @@ impl ObjectSnapshot {
         self.toughness = Some(toughness);
         self.base_power = Some(power);
         self.base_toughness = Some(toughness);
+        self.copiable_values.power = Some(power);
+        self.copiable_values.toughness = Some(toughness);
         self
     }
 
     /// Set subtypes for testing.
     #[cfg(test)]
     pub fn with_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
-        self.subtypes = subtypes;
+        self.subtypes = subtypes.clone();
+        self.copiable_values.subtypes = subtypes;
         self
     }
 
@@ -517,6 +644,7 @@ impl ObjectSnapshot {
     #[cfg(test)]
     pub fn with_colors(mut self, colors: ColorSet) -> Self {
         self.colors = colors;
+        self.copiable_values.colors = colors;
         self
     }
 

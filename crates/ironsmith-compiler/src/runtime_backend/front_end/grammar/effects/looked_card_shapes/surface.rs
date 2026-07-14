@@ -154,6 +154,7 @@ fn negative_put_from_among_head(input: &mut LexStream<'_>) -> WResult<()> {
         primitives::phrase(&["do", "not"]).void(),
     ))
     .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
     primitives::kw("put").parse_next(input)?;
     opt(alt((
         primitives::kw("a"),

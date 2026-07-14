@@ -253,6 +253,9 @@ fn source_is_tagged(tokens: &[OwnedLexToken]) -> bool {
         || exact_phrase(tokens, &["that", "creature"])
         || exact_phrase(tokens, &["that", "permanent"])
         || exact_phrase(tokens, &["that", "card"])
+        || TokenWordView::new(tokens)
+            .to_word_refs()
+            .ends_with(&["tapped", "this", "way"])
 }
 
 fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTargetShape<'_> {
@@ -275,6 +278,9 @@ fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTarget
 pub(crate) fn parse_power_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PowerDamageShape<'_>>, CardTextError> {
+    if primitives::find_prefix(tokens, || primitives::kw("divided").void()).is_some() {
+        return Ok(None);
+    }
     let tokens = trim_shape_edges(tokens);
     let Some((source_tokens, after_deal)) =
         primitives::split_lexed_once_on_separator(tokens, || {

@@ -1086,6 +1086,180 @@ pub(super) fn parse_mana_ability_activate_only_if_control_subtype() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_source_entry_or_basic_land_mana_gate_for_all_five_lands() {
+    for (name, colored_mana) in [
+        ("Dark Fortress", "{B} or {R}"),
+        ("Gathering Place", "{G} or {W}"),
+        ("Gleaming Bastion", "{W} or {U}"),
+        ("Hidden Lair", "{U} or {B}"),
+        ("Training Compound", "{R} or {G}"),
+    ] {
+        let oracle = format!(
+            "{{T}}: Add {{C}}.\n{{T}}: Add {colored_mana}. Activate only if this land entered this turn or if you control a basic land."
+        );
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .parse_text(&oracle)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err}"));
+
+        assert_eq!(def.abilities.len(), 2, "{name}");
+        let AbilityKind::Activated(colorless) = &def.abilities[0].kind else {
+            panic!("{name} colorless ability should be activated");
+        };
+        assert!(
+            colorless.activation_condition.is_none(),
+            "{name} colorless ability must remain unconditional"
+        );
+
+        let AbilityKind::Activated(colored) = &def.abilities[1].kind else {
+            panic!("{name} colored ability should be activated");
+        };
+        let Some(crate::ConditionExpr::Or(left, right)) = &colored.activation_condition else {
+            panic!(
+                "{name} colored ability should carry a typed disjunction, got {:?}",
+                colored.activation_condition
+            );
+        };
+        assert!(matches!(
+            left.as_ref(),
+            crate::ConditionExpr::ObjectEnteredBattlefieldThisTurn(filter)
+                if filter.source
+                    && filter.source_surface
+                        == Some(SourceReferenceSurface::ThisPermanentType(
+                            "this land".to_string()
+                        ))
+        ));
+        assert!(matches!(
+            right.as_ref(),
+            crate::ConditionExpr::YouControl(filter)
+                if filter.card_types.contains(&CardType::Land)
+                    && filter
+                        .supertypes
+                        .contains(&crate::types::Supertype::Basic)
+        ));
+
+        let rendered = compiled_text_lines(&def);
+        let expected = format!(
+            "{{T}}: Add {colored_mana}. Activate only if this land entered this turn or if you control a basic land"
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.trim_end_matches('.') == expected),
+            "expected exact colored mana restriction for {name}, got {rendered:?}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn source_entry_or_basic_land_gate_controls_colored_mana_legal_actions() {
+    use crate::events::{EnterBattlefieldEvent, RawEvent};
+    use crate::provenance::ProvNodeId;
+    use crate::special_actions::{SpecialAction, can_perform_check};
+
+    fn definition() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Dark Fortress")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "{T}: Add {C}.\n{T}: Add {B} or {R}. Activate only if this land entered this turn or if you control a basic land.",
+            )
+            .expect("representative land should parse")
+    }
+
+    fn setup() -> (crate::game_state::GameState, PlayerId, ObjectId) {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&definition(), alice, Zone::Battlefield);
+        (game, alice, source)
+    }
+
+    fn can_activate(
+        game: &crate::game_state::GameState,
+        player: PlayerId,
+        source: ObjectId,
+        ability_index: usize,
+    ) -> bool {
+        can_perform_check(
+            &SpecialAction::ActivateManaAbility {
+                permanent_id: source,
+                ability_index,
+            },
+            game,
+            player,
+        )
+        .is_ok()
+    }
+
+    fn record_source_entry_this_turn(game: &mut crate::game_state::GameState, source: ObjectId) {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("source should exist"),
+            game,
+        );
+        let event = RawEvent::new(
+            EnterBattlefieldEvent::new(source, Zone::Hand),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&event, Some(snapshot), None);
+    }
+
+    fn add_land(
+        game: &mut crate::game_state::GameState,
+        controller: PlayerId,
+        name: &str,
+        basic: bool,
+        subtypes: Vec<Subtype>,
+    ) {
+        let mut builder = crate::card::CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .subtypes(subtypes);
+        if basic {
+            builder = builder.supertypes(vec![crate::types::Supertype::Basic]);
+        }
+        let card = builder.build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield);
+    }
+
+    let (game, alice, source) = setup();
+    assert!(can_activate(&game, alice, source, 0));
+    assert!(!can_activate(&game, alice, source, 1));
+
+    let (mut game, alice, source) = setup();
+    record_source_entry_this_turn(&mut game, source);
+    assert!(can_activate(&game, alice, source, 1));
+    game.turn_store.turn_history.clear_for_new_turn();
+    assert!(!can_activate(&game, alice, source, 1));
+
+    let (mut game, alice, source) = setup();
+    add_land(&mut game, alice, "Forest", true, vec![Subtype::Forest]);
+    assert!(can_activate(&game, alice, source, 1));
+
+    let (mut game, alice, source) = setup();
+    add_land(
+        &mut game,
+        alice,
+        "Nonbasic Island",
+        false,
+        vec![Subtype::Island],
+    );
+    assert!(!can_activate(&game, alice, source, 1));
+
+    let (mut game, alice, source) = setup();
+    let bob = PlayerId::from_index(1);
+    add_land(
+        &mut game,
+        bob,
+        "Opponent Forest",
+        true,
+        vec![Subtype::Forest],
+    );
+    assert!(!can_activate(&game, alice, source, 1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_semicolon_keyword_line_does_not_force_comma_merge() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Semicolon Keywords Variant")
         .card_types(vec![CardType::Creature])
@@ -1249,6 +1423,23 @@ pub(super) fn parse_mana_ability_activate_only_as_instant_clause() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(rendered.contains("Activate only as an instant"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_generic_activated_presentation_label_keeps_exact_source_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Power-up Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Power-up — {5}{U}: Put three +1/+1 counters on this creature.")
+        .expect("parse generic activated ability presentation label");
+
+    let rendered = unprocessed_compiled_lines(&def);
+    assert!(
+        rendered
+            .iter()
+            .any(|line| line == "Power-up — {5}{U}: Put three +1/+1 counters on this creature."),
+        "expected exact generic activated presentation label, got {rendered:?}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1985,6 +2176,45 @@ pub(super) fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
         .card_types(vec![CardType::Creature])
         .parse_text(*clause)
         .expect("extended where-X spells-cost modifier should parse");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn visions_flashback_commander_reduction_is_typed_and_renders_as_one_line() {
+    let cases = [
+        ("Visions of Dread", "{8}{B}{B}"),
+        ("Visions of Duplicity", "{8}{U}{U}"),
+        ("Visions of Dominance", "{8}{G}{G}"),
+        ("Visions of Glory", "{8}{W}{W}"),
+        ("Visions of Ruin", "{8}{R}{R}"),
+    ];
+    let reduction_text = "This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone.";
+
+    for (idx, (name, flashback_cost)) in cases.into_iter().enumerate() {
+        let oracle = format!("Flashback {flashback_cost}. {reduction_text}");
+        let def = CardDefinitionBuilder::new(CardId::from_raw(91_000 + idx as u32), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(&oracle)
+            .expect("Visions compound flashback line should parse strictly");
+
+        assert!(matches!(
+            def.alternative_casts.as_slice(),
+            [crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }]
+        ));
+        let reduction = def
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+                _ => None,
+            })
+            .expect("Visions line should retain a typed self cost reduction");
+        assert_eq!(
+            reduction.alternative_cast,
+            Some(crate::filter::AlternativeCastKind::Flashback)
+        );
+        assert_eq!(compiled_text_lines(&def), vec![oracle]);
     }
 }
 

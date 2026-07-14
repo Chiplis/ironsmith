@@ -531,11 +531,19 @@ pub(super) fn parse_postconditional_subject_verb_primitives_rule_lexed(
             .iter()
             .all(|primitive| primitive.stage == SubjectVerbPrimitiveStage::PostDiagnostic)
     );
-    run_subject_verb_primitives_lexed(
+    let Some(mut effects) = run_subject_verb_primitives_lexed(
         view.tokens,
         POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
         &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
-    )
+    )?
+    else {
+        return Ok(None);
+    };
+    super::super::chain_carry::append_missing_coordinated_return_discard_tail(
+        view.tokens,
+        &mut effects,
+    )?;
+    Ok(Some(effects))
 }
 
 pub(crate) const SUBJECT_VERB_PRIMITIVE_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<EffectAst>>;
@@ -645,6 +653,37 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     parse_you_and_target_player_each_draw_sentence(clause)
+}
+
+/// "You and that player each sacrifice a creature." Each actor makes an
+/// independent choice from the permanents they control, so lower two typed
+/// sacrifice actions inside one coordinated sentence boundary.
+pub(crate) fn parse_you_and_player_each_sacrifice_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = registry_shapes::parse_joint_sacrifice_shape(clause.tokens()) else {
+        return Ok(None);
+    };
+    let you = super::super::zone_handlers::parse_sacrifice(
+        shape.object_tokens,
+        Some(SubjectAst::Player(PlayerAst::You)),
+        None,
+    )?;
+    let other = super::super::zone_handlers::parse_sacrifice(
+        shape.object_tokens,
+        Some(SubjectAst::Player(shape.other_player)),
+        None,
+    )?;
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects: vec![you, other],
+        leading_duration: false,
+    }]))
+}
+
+pub(crate) fn parse_sentence_you_and_player_each_sacrifice(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_you_and_player_each_sacrifice_sentence(clause)
 }
 
 /// "You and that player each gain that much life." / "You and target opponent

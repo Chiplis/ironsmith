@@ -1,10 +1,9 @@
 use crate::runtime_backend::grammar::etb_static_lines::{
-    self as etb_grammar, EntersWithAddedAbilitiesTail,
-    EntersWithCounterConditionShape,
-    EntersWithCounterConditionTailKind, EntersWithCounterKnownForEachKind, EtbAggregateKind, EtbAggregateValueKind, EtbAmongMetric,
-    EtbAsLongAsClause, EtbGraveyardOwner, EtbNumberOffsetOperator, EtbReferenceValueKind,
-    EtbSourceStatFallback, EtbSourceStatKind, EtbTaggedManaValueReference, WhereXKnownValue,
-    WhereXPlayerMetric,
+    self as etb_grammar, EntersWithAddedAbilitiesTail, EntersWithCounterConditionShape,
+    EntersWithCounterConditionTailKind, EntersWithCounterKnownForEachKind, EtbAggregateKind,
+    EtbAggregateValueKind, EtbAmongMetric, EtbAsLongAsClause, EtbGraveyardOwner,
+    EtbNumberOffsetOperator, EtbReferenceValueKind, EtbSourceStatFallback, EtbSourceStatKind,
+    EtbTaggedManaValueReference, WhereXKnownValue, WhereXPlayerMetric,
 };
 use crate::runtime_backend::grammar::filters::parse_counter_type_from_tokens;
 use ironsmith_core::ValueSurfaceHint;
@@ -140,7 +139,14 @@ pub(crate) fn parse_enters_with_counters_line(
     else {
         return Ok(None);
     };
-    let _subject_tokens = captured.subject_tokens;
+    let subject_words = crate::runtime_backend::lexer::token_word_refs(captured.subject_tokens);
+    let source_name_subject = matches!(
+        crate::runtime_backend::util::source_reference_surface_for_words(&subject_words),
+        Some(
+            crate::target::SourceReferenceSurface::FullName(_)
+                | crate::target::SourceReferenceSurface::ShortName(_)
+        )
+    );
     let _action_tokens = captured.action_tokens;
     if captured.escaped {
         condition = Some((
@@ -175,7 +181,13 @@ pub(crate) fn parse_enters_with_counters_line(
         )]));
     }
 
-    let (mut count, used) = if after_with
+    let (mut count, used) = if after_with.len() >= 3
+        && etb_token_word_is(&after_with[0], "a")
+        && etb_token_word_is(&after_with[1], "number")
+        && etb_token_word_is(&after_with[2], "of")
+    {
+        (Value::Fixed(1), 3)
+    } else if after_with
         .first()
         .is_some_and(|token| etb_token_word_is_any(token, ETB_ARTICLE_WORDS))
         && after_with
@@ -299,13 +311,15 @@ pub(crate) fn parse_enters_with_counters_line(
             }
         } else if let Some(known_tail) = parse_enters_with_counter_known_for_each_tail_tokens(&tail)
         {
-            count = if known_tail.scale_by_base_count {
+            count = (if known_tail.scale_by_base_count {
                 scaled_for_each_count(known_tail.value, &count)
             } else {
                 known_tail.value
-            };
+            })
+            .with_surface_hint(ValueSurfaceHint::ForEach);
         } else if let Some(dynamic) = parse_enters_with_counter_for_each_tail_tokens(&tail)? {
-            count = dynamic;
+            count =
+                scaled_for_each_count(dynamic, &count).with_surface_hint(ValueSurfaceHint::ForEach);
         } else if matches!(
             tail_facts.prefix,
             crate::runtime_backend::grammar::static_line_support::CounterTailPrefix::ForEach
@@ -331,6 +345,15 @@ pub(crate) fn parse_enters_with_counters_line(
                     full_words.join(" ")
                 ))
             })?;
+        }
+    }
+
+    if source_name_subject {
+        count = count.with_surface_hint(ValueSurfaceHint::SourceNameSubject);
+        for (_, additional_count) in &mut additional_counters {
+            *additional_count = additional_count
+                .clone()
+                .with_surface_hint(ValueSurfaceHint::SourceNameSubject);
         }
     }
 
@@ -521,7 +544,51 @@ fn parse_enters_with_counter_for_each_tail_tokens(
             return Ok(None);
         };
 
+    if let Some(value) = parse_mana_from_source_spent_to_cast_value(for_each_tokens) {
+        return Ok(Some(value));
+    }
     parse_dynamic_cost_modifier_value(for_each_tokens)
+}
+
+fn parse_mana_from_source_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let mut words = tokens
+        .iter()
+        .filter(|token| token.as_word().is_some())
+        .cloned()
+        .collect::<Vec<_>>();
+    if words.len() < 9
+        || !words[0].is_word("for")
+        || !words[1].is_word("each")
+        || !words[2].is_word("mana")
+        || !words[3].is_word("from")
+    {
+        return None;
+    }
+
+    let tail = words.len().checked_sub(4)?;
+    if !words[tail].is_word("spent")
+        || !words[tail + 1].is_word("to")
+        || !words[tail + 2].is_word("cast")
+        || !(words[tail + 3].is_word("it") || words[tail + 3].is_word("them"))
+    {
+        return None;
+    }
+    words.truncate(tail);
+    let mut source_tokens = words.split_off(4);
+    let include_source_noun = source_tokens
+        .last()
+        .is_some_and(|token| token.is_word("source"));
+    if include_source_noun {
+        source_tokens.pop();
+    }
+    if source_tokens.is_empty() {
+        return None;
+    }
+    let source_filter = parse_object_filter(&source_tokens, false).ok()?;
+    Some(Value::ManaFromSourceSpentToCastThisSpell {
+        source_filter,
+        include_source_noun,
+    })
 }
 
 fn parse_enters_with_counter_equal_to_tail_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -725,6 +792,27 @@ fn parse_enters_with_counter_object_filter_tokens(
 fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     let trimmed = trim_edge_punctuation(tokens);
     let value_body = parse_equal_to_value_body_clause(&trimmed)?;
+    if value_body.len() >= 3
+        && value_body
+            .get(value_body.len() - 2)
+            .is_some_and(|token| etb_token_word_is(token, "minus"))
+        && value_body
+            .last()
+            .is_some_and(|token| etb_token_word_is(token, "x"))
+    {
+        let fixed_tokens = &value_body[..value_body.len() - 2];
+        if let Some((fixed, used)) = parse_number(fixed_tokens)
+            && used == fixed_tokens.len()
+        {
+            return Some(
+                Value::Add(
+                    Box::new(Value::Fixed(fixed as i32)),
+                    Box::new(Value::XTimes(-1)),
+                )
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+            );
+        }
+    }
     if let Some(value) = parse_equal_to_mana_spent_to_cast_value(&trimmed) {
         return Some(value);
     }
@@ -881,6 +969,11 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    // where X is the number of <objects> plus the number of <other objects>
+    if let Some(value) = parse_where_x_is_sum_of_number_of_filter_values(tokens) {
+        return Some(value);
+    }
+
     // where X is N plus the sacrificed creature's mana value / power / toughness
     if let Some(value) = parse_where_x_is_fixed_plus_reference_value(tokens) {
         return Some(value);
@@ -1021,12 +1114,24 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
 
     let reference_value = {
         let it = || ChooseSpec::Tagged(TagKey::from(IT_TAG));
-        match captured.reference_kind {
+        let value = match captured.reference_kind {
             EtbReferenceValueKind::SacrificedCreaturePower => Value::PowerOf(Box::new(it())),
             EtbReferenceValueKind::SacrificedCreatureToughness => {
                 Value::ToughnessOf(Box::new(it()))
             }
             EtbReferenceValueKind::TaggedCreatureManaValue => Value::ManaValueOf(Box::new(it())),
+        };
+        let refers_to_sacrificed_creature =
+            !matches!(
+                captured.reference_kind,
+                EtbReferenceValueKind::TaggedCreatureManaValue
+            ) || tokens.iter().any(|token| token.is_word("sacrificed"));
+        if refers_to_sacrificed_creature {
+            value.with_surface_hint(ValueSurfaceHint::SacrificedObject(
+                ironsmith_core::SacrificedObjectKind::Creature,
+            ))
+        } else {
+            value
         }
     };
 
@@ -1230,7 +1335,37 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
 
     let multiplier = captured.multiplier;
-    let filter_tokens = captured.filter_tokens;
+    let mut filter_tokens = captured.filter_tokens;
+    let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if let Some(as_cast_index) = filter_words
+        .windows(5)
+        .position(|words| words == ["as", "you", "cast", "this", "spell"])
+    {
+        filter_tokens = &filter_tokens[..as_cast_index];
+    }
+    let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if matches!(
+        filter_words.as_slice(),
+        [
+            "time" | "times",
+            "this" | "it",
+            "spell" | "creature" | "permanent" | "card",
+            "was",
+            "kicked"
+        ] | ["time" | "times", "this" | "it", "was", "kicked"]
+    ) {
+        return Some(scale_where_x_number_value(Value::KickCount, multiplier));
+    }
+    if let Some(player) =
+        crate::runtime_backend::grammar::shared_util::value_helper_shapes::parse_party_size_player(
+            &filter_words,
+        )
+    {
+        return Some(scale_where_x_number_value(
+            Value::PartySize(player),
+            multiplier,
+        ));
+    }
     if let Some(value) = etb_grammar::parse_number_of_counters_on_source_value_tokens(filter_tokens)
     {
         return Some(value);
@@ -1330,6 +1465,17 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
         return None;
     }
     let filter_tokens = captured.filter_tokens;
+    let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if let Some(player) =
+        crate::runtime_backend::grammar::shared_util::value_helper_shapes::parse_party_size_player(
+            &filter_words,
+        )
+    {
+        return Some(Value::Add(
+            Box::new(Value::Fixed(fixed_value as i32)),
+            Box::new(Value::PartySize(player)),
+        ));
+    }
     if let Some(counter_value) =
         etb_grammar::parse_number_of_counters_on_source_value_tokens(filter_tokens)
     {
@@ -1351,12 +1497,38 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     ))
 }
 
+pub(crate) fn parse_where_x_is_sum_of_number_of_filter_values(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let plus_idx = tokens.iter().position(|token| token.is_word("plus"))?;
+    let prefix = tokens.get(..3)?;
+    if crate::runtime_backend::token_word_refs(prefix) != ["where", "x", "is"] {
+        return None;
+    }
+    let left_tokens = trim_commas(tokens.get(..plus_idx)?);
+    let right_body = trim_commas(tokens.get(plus_idx + 1..)?);
+    if right_body.is_empty() {
+        return None;
+    }
+    let left = parse_where_x_is_number_of_filter_value(&left_tokens)?;
+    let mut right_tokens = prefix.to_vec();
+    right_tokens.extend_from_slice(&right_body);
+    let right = parse_where_x_is_number_of_filter_value(&right_tokens)?;
+    Some(Value::Add(Box::new(left), Box::new(right)))
+}
+
 pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let captured = etb_grammar::parse_where_x_number_of_filter_offset_tokens(tokens)?;
     let filter_tokens = trim_commas(captured.filter_tokens);
-    let count_value = if etb_grammar::etb_tokens_have_your_hand_count_value(&filter_tokens) {
+    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    let count_value = if let Some(player) =
+        crate::runtime_backend::grammar::shared_util::value_helper_shapes::parse_party_size_player(
+            &filter_words,
+        ) {
+        Value::PartySize(player)
+    } else if etb_grammar::etb_tokens_have_your_hand_count_value(&filter_tokens) {
         Value::CardsInHand(PlayerFilter::You)
     } else {
         let filter = parse_object_filter(&filter_tokens, false).ok()?;
@@ -1482,6 +1654,49 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
     }
     let filter = parse_object_filter(before_enter, false)?;
     Ok(Some(StaticAbility::enters_untapped_for_filter(filter)))
+}
+
+pub(crate) fn parse_x_at_most_enters_tapped_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(leading_if) =
+        crate::runtime_backend::grammar::static_line_support::parse_leading_if_clause(tokens)
+    else {
+        return Ok(None);
+    };
+    let condition_tokens = trim_edge_punctuation(leading_if.condition_tokens);
+    let Some(EntersWithCounterConditionShape::XValueAtLeast(amount_tokens)) =
+        etb_grammar::parse_enters_with_counter_condition_shape_tokens(&condition_tokens)
+    else {
+        return Ok(None);
+    };
+    let Some((comparison, used)) =
+        parse_quantity_comparison_prefix(amount_tokens, false, false, "conditional tapped entry")
+            .ok()
+    else {
+        return Ok(None);
+    };
+    if used != amount_tokens.len() {
+        return Ok(None);
+    }
+    let Some(maximum) =
+        crate::runtime_backend::util::comparison_to_strict_at_most_threshold(&comparison)
+    else {
+        return Ok(None);
+    };
+
+    let remainder = trim_edge_punctuation(leading_if.remainder_tokens);
+    let Some(entry_clause) = etb_grammar::parse_entry_filter_tokens(&remainder) else {
+        return Ok(None);
+    };
+    if !etb_grammar::etb_tokens_have_tapped_marker(entry_clause.tail_tokens) {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::enters_tapped_unless_condition(
+        crate::ConditionExpr::XValueAtLeast(maximum.saturating_add(1)),
+        format!("If X is {maximum} or less, it enters tapped"),
+    )))
 }
 
 pub(crate) fn parse_as_enters_reveal_from_hand_line(
@@ -1780,6 +1995,23 @@ mod etb_enters_tapped_with_counters_tests {
     }
 
     #[test]
+    fn enters_with_number_of_counters_equal_to_fixed_minus_x() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "This creature enters with a number of stun counters on it equal to three minus X.",
+            0,
+        )
+        .expect("lex");
+
+        let abilities = parse_enters_with_counters_line(&tokens)
+            .expect("parser should not error")
+            .expect("fixed-minus-X counter entry should parse");
+        assert_eq!(
+            abilities[0].id(),
+            crate::static_abilities::StaticAbilityId::EnterWithCounters
+        );
+    }
+
+    #[test]
     fn colors_of_mana_spent_condition_uses_capture_parser() {
         let tokens = crate::runtime_backend::lexer::lex_line(
             "Two or more colors of mana were spent to cast it.",
@@ -1916,6 +2148,34 @@ mod etb_enters_tapped_with_counters_tests {
             debug.contains("Graveyard") && debug.contains("Creature"),
             "expected creature-card-in-graveyard dynamic value, got {debug}"
         );
+    }
+
+    #[test]
+    fn for_each_mana_from_source_counter_tail_is_typed() {
+        for (text, expected_type, include_source_noun) in [
+            (
+                "for each mana from an artifact source spent to cast it",
+                "Artifact",
+                true,
+            ),
+            (
+                "for each mana from a Treasure spent to cast them",
+                "Treasure",
+                false,
+            ),
+        ] {
+            let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+            let value = parse_enters_with_counter_for_each_tail_tokens(&tokens)
+                .expect("tail parser should not error")
+                .expect("mana-source tail should parse");
+            let debug = format!("{value:?}");
+            assert!(
+                debug.contains("ManaFromSourceSpentToCastThisSpell")
+                    && debug.contains(expected_type)
+                    && debug.contains(&format!("include_source_noun: {include_source_noun}")),
+                "unexpected typed mana-source value for {text}: {debug}"
+            );
+        }
     }
 
     #[test]
@@ -2344,10 +2604,14 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return Ok(None);
     };
 
+    let where_x_tokens = static_mid_facts::parse_where_x_clause_tokens(tokens);
+    let entry_tokens = where_x_tokens.map_or(tokens, |where_x_tokens| {
+        &tokens[..tokens.len().saturating_sub(where_x_tokens.len())]
+    });
     let and_as_idx =
-        crate::runtime_backend::lexer::find_token_word_sequence_span(tokens, &["and", "as"])
+        crate::runtime_backend::lexer::find_token_word_sequence_span(entry_tokens, &["and", "as"])
             .map(|(idx, _)| idx);
-    let base_tokens = and_as_idx.map_or(tokens, |idx| &tokens[..idx]);
+    let base_tokens = and_as_idx.map_or(entry_tokens, |idx| &entry_tokens[..idx]);
 
     let additional_idx =
         crate::runtime_backend::grammar::primitives::locate_token_index(base_tokens, |token| {
@@ -2356,10 +2620,29 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         .ok_or_else(|| {
             CardTextError::ParseError("missing 'additional' keyword for ETB counters".to_string())
         })?;
-    let count = if let Some(equal_idx) =
+    let for_each_idx = base_tokens[additional_idx.saturating_add(1)..]
+        .windows(2)
+        .position(|window| {
+            etb_token_word_is(&window[0], "for") && etb_token_word_is(&window[1], "each")
+        })
+        .map(|idx| additional_idx + 1 + idx);
+    let count = if let Some(for_each_idx) = for_each_idx {
+        let for_each_tokens = trim_edge_punctuation(&base_tokens[for_each_idx..]);
+        let dynamic = parse_enters_with_additional_counter_for_each_value(&for_each_tokens)?
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported for-each ETB counter count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        let multiplier = parse_additional_counter_base_count(base_tokens, additional_idx);
+        scale_dynamic_cost_modifier_value(dynamic, multiplier)
+            .with_surface_hint(ValueSurfaceHint::ForEach)
+    } else if let Some(equal_idx) =
         crate::runtime_backend::grammar::primitives::locate_token_index(base_tokens, |token| {
             etb_token_word_is(token, ETB_EQUAL_WORD)
-        }) {
+        })
+    {
         let value_start = equal_idx + 2;
         let value_tokens = trim_commas(base_tokens.get(value_start..).unwrap_or_default());
         parse_value(&value_tokens)
@@ -2367,6 +2650,24 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported ETB counter count value (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?
+    } else if base_tokens
+        .get(additional_idx + 1)
+        .is_some_and(|token| etb_token_word_is(token, "x"))
+    {
+        let where_x_tokens = where_x_tokens.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing where-x clause for ETB counter count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        parse_value_binding_clause(where_x_tokens)
+            .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported where-x clause for ETB counter count (clause: '{}')",
                     clause_words.join(" ")
                 ))
             })?
@@ -2389,7 +2690,7 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
 
     let mut added_subtypes = Vec::new();
     if let Some(idx) = and_as_idx {
-        let mut addition_tokens = tokens[idx + 1..].to_vec();
+        let mut addition_tokens = entry_tokens[idx + 1..].to_vec();
         if let Some(first) = addition_tokens.first() {
             addition_tokens[0] = OwnedLexToken::word("is".to_string(), first.span());
         }
@@ -2419,6 +2720,158 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
             added_subtypes,
         ),
     ))
+}
+
+fn parse_enters_with_additional_counter_for_each_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
+    if let Some(value) = parse_mana_from_source_spent_to_cast_value(tokens) {
+        return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
+    }
+    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+    {
+        return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
+    }
+
+    parse_dynamic_cost_modifier_value(tokens)
+}
+
+fn parse_additional_counter_base_count(tokens: &[OwnedLexToken], additional_idx: usize) -> i32 {
+    if additional_idx > 0
+        && let Some((parsed, used)) = parse_number(&tokens[additional_idx - 1..additional_idx])
+        && used == 1
+    {
+        return parsed as i32;
+    }
+    if let Some((parsed, _)) = parse_number(&tokens[additional_idx + 1..]) {
+        return parsed as i32;
+    }
+    1
+}
+
+#[cfg(test)]
+mod filtered_turn_history_counter_tests {
+    use super::*;
+    use ironsmith_core::TurnHistoryCount;
+
+    fn lex(text: &str) -> Vec<OwnedLexToken> {
+        crate::runtime_backend::lexer::lex_line(text, 0).expect("ETB counter fixture should lex")
+    }
+
+    fn parse_line(text: &str) -> StaticAbility {
+        let tokens = lex(text);
+        parse_enters_with_additional_counter_for_filter_line(&tokens)
+            .expect("filter ETB counter parser should not hard-error")
+            .unwrap_or_else(|| panic!("filter ETB counter line should parse: {text}"))
+    }
+
+    #[test]
+    fn filter_etb_for_each_history_values_preserve_provenance() {
+        let lands = lex("for each land that entered the battlefield under your control this turn");
+        let lands = parse_enters_with_additional_counter_for_each_value(&lands)
+            .expect("land history should not hard-error")
+            .expect("land history should parse");
+        assert!(lands.has_surface_hint(ValueSurfaceHint::ForEach));
+        let Value::TurnHistoryCount(TurnHistoryCount::EnteredBattlefield(filter)) =
+            lands.unhinted()
+        else {
+            panic!("expected typed battlefield-entry history, got {lands:?}");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Land]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, None);
+
+        let deaths = lex("for each creature that died under your control this turn");
+        let deaths = parse_enters_with_additional_counter_for_each_value(&deaths)
+            .expect("death history should not hard-error")
+            .expect("death history should parse");
+        assert!(deaths.has_surface_hint(ValueSurfaceHint::ForEach));
+        let Value::TurnHistoryCount(TurnHistoryCount::Died(filter)) = deaths.unhinted() else {
+            panic!("expected typed death history, got {deaths:?}");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, None);
+
+        let opponents = lex("for each opponent who lost life this turn");
+        let opponents = parse_enters_with_additional_counter_for_each_value(&opponents)
+            .expect("life-loss history should not hard-error")
+            .expect("life-loss history should parse");
+        assert!(opponents.has_surface_hint(ValueSurfaceHint::ForEach));
+        assert!(matches!(
+            opponents.unhinted(),
+            Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(PlayerFilter::Opponent))
+        ));
+    }
+
+    #[test]
+    fn filtered_etb_counter_lines_keep_subject_and_history_filters() {
+        let future = parse_line(
+            "Each creature you control enters with an additional +1/+1 counter on it for each land that entered the battlefield under your control this turn.",
+        );
+        assert_eq!(
+            future.id(),
+            crate::static_abilities::StaticAbilityId::EnterWithCountersForFilter
+        );
+        let debug = format!("{future:#?}");
+        assert!(debug.contains("TurnHistoryCount"), "{debug}");
+        assert!(debug.contains("EnteredBattlefield"), "{debug}");
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("Land"), "{debug}");
+        assert!(debug.matches("controller: Some(").count() >= 2, "{debug}");
+
+        let gev = parse_line(
+            "Other creatures you control enter with an additional +1/+1 counter on them for each opponent who lost life this turn.",
+        );
+        let debug = format!("{gev:#?}");
+        assert!(debug.contains("other: true"), "{debug}");
+        assert!(debug.contains("PlayersLostLife"), "{debug}");
+        assert!(debug.contains("Opponent"), "{debug}");
+
+        let gorma = parse_line(
+            "Nontoken creatures you control enter with an additional +1/+1 counter on them for each creature that died under your control this turn.",
+        );
+        let debug = format!("{gorma:#?}");
+        assert!(debug.contains("nontoken: true"), "{debug}");
+        assert!(debug.contains("TurnHistoryCount"), "{debug}");
+        assert!(debug.contains("Died"), "{debug}");
+        assert!(debug.matches("controller: Some(").count() >= 2, "{debug}");
+    }
+
+    #[test]
+    fn filtered_etb_for_each_count_scales_explicit_counter_plurality() {
+        let ability = parse_line(
+            "Creatures you control enter with two additional +1/+1 counters on them for each opponent who lost life this turn.",
+        );
+        let debug = format!("{ability:#?}");
+        assert!(debug.contains("Add("), "{debug}");
+        assert_eq!(debug.matches("PlayersLostLife(").count(), 2, "{debug}");
+    }
+
+    #[test]
+    fn filtered_etb_mana_source_values_are_typed_for_coin_and_kalain() {
+        for (line, expected_type, include_source_noun) in [
+            (
+                "Each creature you control enters with an additional +1/+1 counter on it for each mana from an artifact source spent to cast it.",
+                "Artifact",
+                true,
+            ),
+            (
+                "Other creatures you control enter with an additional +1/+1 counter on them for each mana from a Treasure spent to cast them.",
+                "Treasure",
+                false,
+            ),
+        ] {
+            let ability = parse_line(line);
+            let debug = format!("{ability:#?}");
+            assert!(
+                debug.contains("ManaFromSourceSpentToCastThisSpell")
+                    && debug.contains(expected_type)
+                    && debug.contains(&format!("include_source_noun: {include_source_noun}")),
+                "unexpected typed mana-source ETB ability for {line}: {debug}"
+            );
+        }
+    }
 }
 
 fn parse_spell_cast_enters_with_additional_counter_for_filter_line(
@@ -2764,5 +3217,67 @@ fn render_pt_choice_characteristic_options(options: &[PowerToughnessChoiceOption
             text.push_str(rendered.last().expect("nonempty options"));
             text
         }
+    }
+}
+
+#[cfg(test)]
+mod party_value_tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    fn lex(text: &str) -> Vec<OwnedLexToken> {
+        lex_line(text, 0).expect("party value fixture should lex")
+    }
+
+    #[test]
+    fn where_x_direct_party_count_uses_party_size_value() {
+        assert_eq!(
+            parse_where_x_is_number_of_filter_value(&lex(
+                "where X is the number of creatures in your party"
+            )),
+            Some(Value::PartySize(PlayerFilter::You))
+        );
+    }
+
+    #[test]
+    fn where_x_fixed_plus_party_count_uses_party_size_value() {
+        let parsed = parse_where_x_is_fixed_plus_number_of_filter_value(&lex(
+            "where X is three plus the number of creatures in your party",
+        ))
+        .expect("fixed-plus party value");
+        assert_eq!(
+            parsed,
+            Value::Add(
+                Box::new(Value::Fixed(3)),
+                Box::new(Value::PartySize(PlayerFilter::You)),
+            )
+        );
+    }
+
+    #[test]
+    fn where_x_party_count_plus_fixed_uses_party_size_value() {
+        let parsed = parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(&lex(
+            "where X is the number of creatures in your party plus three",
+        ))
+        .expect("party-plus-fixed value");
+        assert_eq!(
+            parsed,
+            Value::Add(
+                Box::new(Value::PartySize(PlayerFilter::You)),
+                Box::new(Value::Fixed(3)),
+            )
+        );
+    }
+
+    #[test]
+    fn where_x_sum_keeps_party_size_as_one_typed_term() {
+        let parsed = parse_where_x_is_sum_of_number_of_filter_values(&lex(
+            "where X is the number of creatures in your party plus the number of artifacts you control",
+        ))
+        .expect("summed party value");
+        let Value::Add(left, _) = parsed else {
+            panic!("expected summed value, got {parsed:?}");
+        };
+        assert_eq!(*left, Value::PartySize(PlayerFilter::You));
     }
 }

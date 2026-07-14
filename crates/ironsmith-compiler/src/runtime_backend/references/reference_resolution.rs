@@ -1,6 +1,7 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, TriggerSpec,
+    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext, IfResultPredicate,
+    PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, THIS_WAY_SACRIFICED_TAG,
+    TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::TaggedOpbjectRelation;
@@ -21,16 +22,16 @@ use crate::filter::Comparison;
 use super::compile_support::{
     effect_references_event_derived_amount, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag,
-    effects_reference_tag_in_object_position, is_sentence_helper_exiled_collection_tag,
-    value_references_event_derived_amount,
+    effects_reference_tag_in_object_position, is_sentence_helper_consult_match_tag,
+    is_sentence_helper_exiled_collection_tag, value_references_event_derived_amount,
 };
 #[cfg(test)]
 use super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::effect_ast_traversal::{for_each_nested_effects, try_for_each_nested_effects_mut};
 use super::reference_helpers::{
-    choose_spec_targets_object, infer_player_filter_from_object_filter, is_you_player_filter,
-    object_filter_as_tagged_reference, resolve_it_tag, resolve_non_target_player_filter,
-    resolve_target_spec_with_choices,
+    as_followup_player_alias, choose_spec_targets_object, infer_player_filter_from_object_filter,
+    is_sacrificed_object_reference_tag, is_you_player_filter, object_filter_as_tagged_reference,
+    resolve_it_tag, resolve_non_target_player_filter, resolve_target_spec_with_choices,
 };
 use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, RefState, ReferenceEnv, ReferenceFrame,
@@ -65,42 +66,59 @@ struct EffectReferenceResolutionState {
 }
 
 fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
-    matches!(
-        trigger,
-        TriggerSpec::YouGainLife
-            | TriggerSpec::YouGainLifeDuringTurn(_)
-            | TriggerSpec::PlayerLosesLife(_)
-            | TriggerSpec::PlayersLoseLifeOneOrMore(_)
-            | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
-            | TriggerSpec::ThisIsDealtDamage
-            | TriggerSpec::ThisIsDealtCombatDamage
-            | TriggerSpec::IsDealtDamage(_)
-            | TriggerSpec::IsDealtCombatDamage(_)
-            | TriggerSpec::ThisDealsDamage
-            | TriggerSpec::ThisDealsDamageTo(_)
-            | TriggerSpec::DealsDamage(_)
-            | TriggerSpec::DealsDamageTo { .. }
-            | TriggerSpec::ThisDealsDamageToPlayer { .. }
-            | TriggerSpec::DealsDamageToPlayer { .. }
-            | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
-            | TriggerSpec::ThisDealsCombatDamage
-            | TriggerSpec::ThisDealsCombatDamageTo(_)
-            | TriggerSpec::DealsCombatDamage(_)
-            | TriggerSpec::DealsCombatDamageTo { .. }
-            | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
-            | TriggerSpec::DealsCombatDamageToPlayer { .. }
-            | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
-            | TriggerSpec::AttacksOneOrMore(_)
-            | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
-            | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
-            | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
-            | TriggerSpec::CounterPutOn { .. }
-            | TriggerSpec::EntersBattlefieldOneOrMore { .. }
-    ) || matches!(
-        trigger,
-        TriggerSpec::Either(left, right)
-            if trigger_supports_event_amount(left) && trigger_supports_event_amount(right)
-    )
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_amount(trigger),
+        TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        } => spell_cast_filter_binds_target_count(filter),
+        trigger => {
+            matches!(
+                trigger,
+                TriggerSpec::YouGainLife
+                    | TriggerSpec::YouGainLifeDuringTurn(_)
+                    | TriggerSpec::PlayerLosesLife(_)
+                    | TriggerSpec::PlayersLoseLifeOneOrMore(_)
+                    | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
+                    | TriggerSpec::ThisIsDealtDamage
+                    | TriggerSpec::ThisIsDealtCombatDamage
+                    | TriggerSpec::IsDealtDamage(_)
+                    | TriggerSpec::IsDealtCombatDamage(_)
+                    | TriggerSpec::ThisDealsDamage
+                    | TriggerSpec::ThisDealsDamageTo(_)
+                    | TriggerSpec::DealsDamage(_)
+                    | TriggerSpec::DealsDamageTo { .. }
+                    | TriggerSpec::ThisDealsDamageToPlayer { .. }
+                    | TriggerSpec::DealsDamageToPlayer { .. }
+                    | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
+                    | TriggerSpec::ThisDealsCombatDamage
+                    | TriggerSpec::ThisDealsCombatDamageTo(_)
+                    | TriggerSpec::DealsCombatDamage(_)
+                    | TriggerSpec::DealsCombatDamageTo { .. }
+                    | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
+                    | TriggerSpec::DealsCombatDamageToPlayer { .. }
+                    | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+                    | TriggerSpec::AttacksOneOrMore(_)
+                    | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+                    | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
+                    | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
+                    | TriggerSpec::CounterPutOn { .. }
+                    | TriggerSpec::EntersBattlefieldOneOrMore { .. }
+            ) || matches!(
+                trigger,
+                TriggerSpec::Either(left, right)
+                    if trigger_supports_event_amount(left) && trigger_supports_event_amount(right)
+            )
+        }
+    }
+}
+
+fn spell_cast_filter_binds_target_count(filter: &ObjectFilter) -> bool {
+    filter.targets_player.is_some()
+        || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some()
+        || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
 }
 
 pub(crate) fn annotate_effect_sequence(
@@ -155,6 +173,23 @@ fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str
         {
             Some("discovered")
         }
+        EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::CloakTopCardOfLibrary
+            ) =>
+        {
+            Some("cloaked")
+        }
+        EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::ManifestTopCardOfLibrary
+                    | SubjectVerbActionAst::ManifestCardFromHand
+            ) =>
+        {
+            Some("manifested")
+        }
         _ => None,
     }
 }
@@ -205,7 +240,13 @@ fn track_effect_player(
             .as_ref()
             .is_some_and(|existing| !is_you_player_filter(existing));
     if !preserve_existing_non_you {
-        frame.last_player_filter = Some(filter);
+        frame.last_player_filter = Some(
+            if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+                filter
+            } else {
+                as_followup_player_alias(filter)
+            },
+        );
     }
     Ok(())
 }
@@ -244,7 +285,7 @@ fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
 fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceFrame) {
     if let Some(tag) = frame.last_object_tag.as_deref() {
         if filter.owner.is_some() {
-            frame.last_player_filter = Some(PlayerFilter::OwnerOf(ObjectRef::tagged(tag)));
+            frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag)));
             return;
         }
         if filter.tagged_constraints.iter().any(|constraint| {
@@ -258,7 +299,8 @@ fn track_player_from_object_filter(filter: &ObjectFilter, frame: &mut ReferenceF
             return;
         }
         if filter.controller.is_some() {
-            frame.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
+            frame.last_player_filter =
+                Some(PlayerFilter::AliasedControllerOf(ObjectRef::tagged(tag)));
             return;
         }
     }
@@ -301,6 +343,10 @@ fn maybe_tag_target(
     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
     if matches!(spec.base(), ChooseSpec::Source) {
         frame.source_object_antecedent = true;
+        // An explicit source subject is the newest object antecedent. Do not
+        // let an older imported reference (notably an activation-cost object)
+        // capture a following elided `it` subject in the same effect chain.
+        frame.last_object_tag = None;
     }
     if frame.auto_tag_object_targets
         && let Some(tag) = propagated_or_generated_object_tag(&spec, id_gen, prefix)
@@ -337,6 +383,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then_some(spec.as_ref())
         }
@@ -413,13 +460,17 @@ fn advance_reference_frame_for_effect(
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
     match effect {
-        EffectAst::Sequence { effects } => {
+        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
         EffectAst::SubjectVerb(subject_verb) => {
             track_effect_player(subject_verb.subject.player, frame, true, true)?;
             match &subject_verb.action {
-                SubjectVerbActionAst::Mill { .. } | SubjectVerbActionAst::Discover { .. } => {
+                SubjectVerbActionAst::Mill { .. }
+                | SubjectVerbActionAst::Discover { .. }
+                | SubjectVerbActionAst::ManifestTopCardOfLibrary
+                | SubjectVerbActionAst::CloakTopCardOfLibrary
+                | SubjectVerbActionAst::ManifestCardFromHand => {
                     maybe_tag_generated_object_results(effect, frame, id_gen);
                 }
                 SubjectVerbActionAst::Populate { .. } => {
@@ -447,7 +498,8 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::GrantProtectionChoice { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "protected")?;
                 }
-                SubjectVerbActionAst::PreventAllCombatDamageFromSource { source, .. } => {
+                SubjectVerbActionAst::AssignNoCombatDamage { source, .. }
+                | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source, .. } => {
                     maybe_tag_target(source, frame, id_gen, "targeted")?;
                 }
                 SubjectVerbActionAst::RetargetStackObject { .. } => {
@@ -555,8 +607,13 @@ fn advance_reference_frame_for_effect(
                     if frame.auto_tag_object_targets {
                         if choose_spec_targets_object(&spec) {
                             if let ChooseSpec::Tagged(tag) = spec.base()
-                                && is_sentence_helper_exiled_collection_tag(tag.as_str())
+                                && (is_sentence_helper_consult_match_tag(tag.as_str())
+                                    || is_sentence_helper_exiled_collection_tag(tag.as_str()))
                             {
+                                // Consult matches and typed exiled collections keep
+                                // their identity across this move. Other tagged
+                                // selections use the canonical source-linked exile
+                                // bucket expected by search-and-play permissions.
                                 frame.last_object_tag = Some(tag.as_str().to_string());
                             } else if spec.is_target() {
                                 if let Some(tag) =
@@ -595,7 +652,7 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
                     if let Some(tag) = frame.last_object_tag.as_deref() {
-                        frame.last_player_filter = Some(PlayerFilter::ControllerOf(
+                        frame.last_player_filter = Some(PlayerFilter::AliasedControllerOf(
                             ObjectRef::tagged(tag.to_string()),
                         ));
                     }
@@ -654,7 +711,7 @@ fn advance_reference_frame_for_effect(
                     }
                     track_target_player(target, frame);
                 }
-                SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target } => {
+                SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "moved")?;
                 }
                 SubjectVerbActionAst::PutSticker { target, .. } => {
@@ -849,15 +906,11 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::ReturnToBattlefield { target, .. } => {
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
-                    if frame.auto_tag_object_targets {
-                        let tag = if matches!(spec.base(), ChooseSpec::Source) {
-                            Some(next_reference_tag(id_gen, "returned"))
-                        } else {
-                            propagated_or_generated_object_tag(&spec, id_gen, "returned")
-                        };
-                        if let Some(tag) = tag {
-                            frame.last_object_tag = Some(tag);
-                        }
+                    if frame.auto_tag_object_targets && choose_spec_targets_object(&spec) {
+                        // Returning an object across zones creates a new object. A follow-up
+                        // reference must name that result rather than propagate the pre-move
+                        // tagged snapshot's identity.
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "returned"));
                     }
                     track_target_player(target, frame);
                 }
@@ -986,6 +1039,7 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "set_base_power")?;
                 }
                 SubjectVerbActionAst::AddCardTypes { target, .. }
+                | SubjectVerbActionAst::SetCardTypes { target, .. }
                 | SubjectVerbActionAst::RemoveCardTypes { target, .. }
                 | SubjectVerbActionAst::BecomeAuraEnchantment { target, .. }
                 | SubjectVerbActionAst::BecomeBasicLandType { target, .. } => {
@@ -1021,7 +1075,11 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::GrantToTarget { target, .. }
                 | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
                 | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. } => {
-                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    // Lowering wraps these effects in a `granted_*` tag. Keep
+                    // pronoun/follow-up references on that same runtime tag so
+                    // clauses such as "and must be blocked" name the object
+                    // actually modified by the preceding grant.
+                    maybe_tag_target(target, frame, id_gen, "granted")?;
                 }
                 SubjectVerbActionAst::ConsultTopOfLibrary {
                     player, match_tag, ..
@@ -1210,6 +1268,7 @@ fn advance_reference_frame_for_effect(
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. } => {
@@ -1255,13 +1314,23 @@ fn advance_reference_frame_for_effect(
                 frame.iterated_player = saved.iterated_player;
             }
         }
+        EffectAst::TrailingUnless { predicate, effects } => {
+            let mut branch_frame = frame.clone();
+            if let Some(player_filter) = predicate_bound_player_filter(predicate) {
+                branch_frame.last_player_filter = Some(player_filter);
+            }
+            advance_reference_frames(&effects, id_gen, &mut branch_frame)?;
+            *frame = branch_frame;
+        }
         EffectAst::ResolvedIfResult {
-            condition, effects, ..
+            condition,
+            predicate,
+            effects,
         } => {
             let saved_last_effect = frame.last_effect_id;
             let saved_bind = frame.bind_unbound_x_to_last_effect;
             frame.last_effect_id = Some(*condition);
-            frame.bind_unbound_x_to_last_effect = true;
+            frame.bind_unbound_x_to_last_effect = *predicate != IfResultPredicate::AcceptedChoice;
             advance_reference_frames(&effects, id_gen, frame)?;
             frame.last_effect_id = saved_last_effect;
             frame.bind_unbound_x_to_last_effect = saved_bind;
@@ -1425,7 +1494,9 @@ fn annotate_effect_sequence_with_env_internal(
         } else {
             effects_reference_it_tag(remaining)
                 || effects_reference_its_controller(remaining)
+                || effects_reference_tag(remaining, crate::tag::SOURCE_EXILED_TAG)
                 || effects_reference_tag(remaining, "damaged_0")
+                || effects_reference_tag(remaining, THIS_WAY_SACRIFICED_TAG)
         };
         let auto_tag_object_targets_for_env = if effect_exports_damage_each_object_set(&effect) {
             !suppress_for_power_self_damage
@@ -1446,6 +1517,27 @@ fn annotate_effect_sequence_with_env_internal(
             auto_tag_object_targets_for_env,
             suppress_force_auto_tag_object_targets,
         )?;
+        let preserves_sacrifice_cost_reference = in_env
+            .known_last_object_tag()
+            .is_some_and(|tag| is_sacrificed_object_reference_tag(tag.as_str()))
+            && effects_reference_tag(remaining, THIS_WAY_SACRIFICED_TAG);
+        if preserves_sacrifice_cost_reference
+            && out_env.known_last_object_tag().is_none()
+            && out_env.source_object_antecedent
+        {
+            // A source-only instruction may become the newest ordinary `it`
+            // antecedent, but it did not perform the sacrifice named by a
+            // later "sacrificed this way" predicate. Keep that event binding
+            // available without changing ordinary source-pronoun behavior.
+            out_env.last_object_tag = in_env.last_object_tag.clone();
+        }
+        if suppress_for_power_self_damage {
+            // The following elided damage clause repeats this effect's
+            // explicit source. Keep that source antecedent ahead of the
+            // damaged-player fallback used for an otherwise-unbound `it`.
+            out_env.source_object_antecedent = true;
+            out_env.last_object_tag = in_env.last_object_tag.clone();
+        }
         if let Some(id) = assigned_effect_id
             && !matches!(
                 effect,
@@ -1483,6 +1575,32 @@ pub(crate) fn preserves_existing_it_for_power_self_damage_followup(
     effect: &EffectAst,
     next_effect: Option<&EffectAst>,
 ) -> bool {
+    if let (
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
+            ..
+        }),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: TargetAst::Tagged(next_source_tag, _),
+                    ..
+                },
+            ..
+        })),
+    ) = (effect, next_effect)
+        && next_source_tag.as_str() == IT_TAG
+        && (matches!(source, TargetAst::Source(_))
+            || matches!(source, TargetAst::Tagged(source_tag, _) if source_tag.as_str() == IT_TAG))
+    {
+        // An elided conjoined damage clause ("... to target player and that
+        // much damage to ...") repeats the same source. The parser represents
+        // an explicit source pronoun ("It deals ...") as the `it` tag too, so
+        // preserve both source-shaped forms across the sibling clause. Do not
+        // let the first damage target replace that source anaphor.
+        return true;
+    }
+
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::DealDamageEqualToPower {
@@ -1626,7 +1744,6 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::ReturnToHand { .. }
                 | SubjectVerbActionAst::ReturnAllToHand { .. }
                 | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
-                | SubjectVerbActionAst::PutIntoHand { .. }
                 | SubjectVerbActionAst::MayMoveToZone { .. }
                 | SubjectVerbActionAst::MoveToZone { .. }
                 | SubjectVerbActionAst::MoveToLibraryNthFromTop { .. }
@@ -1640,6 +1757,10 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::RevealCardsFromHand { .. }
                 | SubjectVerbActionAst::LookAtTopCards { .. }
                 | SubjectVerbActionAst::Draw { .. }
+                | SubjectVerbActionAst::DealDamage { .. }
+                | SubjectVerbActionAst::DealDamageEqualToPower { .. }
+                | SubjectVerbActionAst::DealDistributedDamage { .. }
+                | SubjectVerbActionAst::DealDamageEach { .. }
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayAnyLife { .. }
@@ -1658,6 +1779,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         }
         EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::TrailingUnless { effects, .. }
         | EffectAst::RepeatProcess { effects, .. }
         | EffectAst::RepeatEffects { effects, .. } => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
@@ -1763,6 +1885,13 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
         EffectAst::SubjectVerb(subject_verb) => {
             visit_subject_verb_action_values(&subject_verb.action, visit);
         }
+        EffectAst::ChooseObjects { count_value, .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { count_value, .. }
+        | EffectAst::ChooseObjectsAcrossZones { count_value, .. } => {
+            if let Some(count_value) = count_value {
+                visit(count_value);
+            }
+        }
         _ => {}
     }
     for_each_nested_effects(effect, true, |nested| {
@@ -1783,6 +1912,9 @@ fn visit_filter_values(filter: &ObjectFilter, visit: &mut impl FnMut(&Value)) {
     .flatten()
     {
         visit_comparison_values(comparison, visit);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref() {
+        visit_filter_values(attached_to, visit);
     }
     for child in &filter.any_of {
         visit_filter_values(child, visit);
@@ -1820,6 +1952,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::LoseLife { amount: count }
         | SubjectVerbActionAst::GainLife { amount: count }
         | SubjectVerbActionAst::DealDamage { amount: count, .. }
+        | SubjectVerbActionAst::DealDamageEqualToPower { amount: count, .. }
         | SubjectVerbActionAst::DealDistributedDamage { amount: count, .. }
         | SubjectVerbActionAst::DealDamageEach { amount: count, .. }
         | SubjectVerbActionAst::PreventDamage { amount: count, .. }
@@ -1892,7 +2025,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         SubjectVerbActionAst::DestroyAll { filter, .. }
         | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
         | SubjectVerbActionAst::ExileAll { filter, .. }
-        | SubjectVerbActionAst::ReturnAllToHand { filter }
+        | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
         | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
         | SubjectVerbActionAst::TapAll { filter }
         | SubjectVerbActionAst::UntapAll { filter }
@@ -1959,7 +2092,7 @@ fn resolve_effect_references_in_effect(
                 last_effect_id: Some(condition),
                 last_library_search_effect_id: state.last_library_search_effect_id,
                 allow_life_event_value: state.allow_life_event_value,
-                bind_unbound_x_to_last_effect: true,
+                bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
             },
         )?;
         return Ok(EffectAst::ResolvedIfResult {
@@ -2141,15 +2274,40 @@ fn advance_reference_env_for_effect(
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
         }
+        EffectAst::TrailingUnless { predicate, effects } => {
+            let mut branch_env = env.clone();
+            branch_env.source_object_antecedent |= predicate.establishes_source_object_antecedent();
+            if let Some(player_filter) = predicate_bound_player_filter(predicate) {
+                branch_env.last_player_filter = RefState::Known(player_filter);
+            }
+            Ok(
+                annotate_effect_sequence_with_env_internal(effects, branch_env, config, id_gen)?
+                    .final_env,
+            )
+        }
         EffectAst::ResolvedIfResult {
-            condition, effects, ..
+            condition,
+            predicate,
+            effects,
         } => {
             let mut nested_env = env.clone();
             nested_env.last_effect_id = RefState::Known(*condition);
-            nested_env.bind_unbound_x_to_last_effect = true;
+            nested_env.bind_unbound_x_to_last_effect =
+                *predicate != IfResultPredicate::AcceptedChoice;
             let nested =
                 annotate_effect_sequence_with_env_internal(effects, nested_env, config, id_gen)?;
             let mut out_env = nested.final_env;
+            if matches!(predicate, IfResultPredicate::Value(_)) {
+                // Numeric result rows are mutually exclusive siblings. Keep
+                // references created inside one row available throughout that
+                // row, but do not let them become the antecedent for the next
+                // row in the table.
+                out_env.last_object_tag = env.last_object_tag.clone();
+                out_env.snapshot_tag_aliases = env.snapshot_tag_aliases.clone();
+                out_env.last_it_choice_is_set = env.last_it_choice_is_set;
+                out_env.last_player_filter = env.last_player_filter.clone();
+                out_env.source_object_antecedent = env.source_object_antecedent;
+            }
             out_env.last_effect_id = env.last_effect_id.clone();
             out_env.bind_unbound_x_to_last_effect = env.bind_unbound_x_to_last_effect;
             Ok(out_env)
@@ -2199,6 +2357,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Populate { count: amount, .. }
             | SubjectVerbActionAst::Connive { count: amount, .. }
             | SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
             | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::PreventDamage { amount, .. }
@@ -2249,8 +2408,7 @@ fn resolve_effect_result_values_in_fields(
             } => {
                 resolve_effect_result_value(amount, state)?;
             }
-            SubjectVerbActionAst::DealDamageEqualToPower { .. }
-            | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
+            SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
@@ -2265,6 +2423,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
             | SubjectVerbActionAst::Earthbend { .. }
@@ -2366,15 +2525,14 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
-            | SubjectVerbActionAst::PutIntoHand { .. }
             | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-            | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
             | SubjectVerbActionAst::ScaleXValue { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
+            | SubjectVerbActionAst::AssignNoCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
@@ -2426,6 +2584,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::BecomeBasePtCreature { .. }
             | SubjectVerbActionAst::PumpByLastEffect { .. }
             | SubjectVerbActionAst::AddCardTypes { .. }
+            | SubjectVerbActionAst::SetCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { .. }
@@ -2539,6 +2698,7 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { count_value, .. }
         | EffectAst::ChooseObjectsAcrossZones { count_value, .. } => {
             if let Some(count_value) = count_value.as_mut() {
                 resolve_effect_result_value(count_value, state)?;
@@ -2785,6 +2945,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
             | SubjectVerbActionAst::Earthbend { .. }
@@ -2839,10 +3000,20 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::TicketCounters { count } => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }
-            SubjectVerbActionAst::DealDamage { amount, target, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { amount, target } => {
+            SubjectVerbActionAst::DealDamage { amount, target, .. } => {
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::DealDistributedDamage {
+                amount,
+                target,
+                source,
+                chooser,
+            } => {
+                bind_unresolved_it_in_value(amount, seed_tag)
+                    + bind_unresolved_it_in_target(target, seed_tag)
+                    + bind_unresolved_it_in_target(source, seed_tag)
+                    + bind_unresolved_it_in_player_filter(chooser, seed_tag)
             }
             SubjectVerbActionAst::ScaleXValue { target, .. } => {
                 bind_unresolved_it_in_target(target, seed_tag)
@@ -2900,7 +3071,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ExileAll { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
-            SubjectVerbActionAst::ReturnAllToHand { filter } => {
+            SubjectVerbActionAst::ReturnAllToHand { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
             SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter } => {
@@ -2947,7 +3118,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Counter { target }
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. }
-            | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
+            | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target, .. }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::Detain { target }
@@ -2969,8 +3140,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::RevealCardsFromHand { tag, .. } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
-            SubjectVerbActionAst::RearrangeLookedCardsInLibrary { tag, .. }
-            | SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
+            SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
             SubjectVerbActionAst::PutCounters { count, target, .. }
@@ -3016,13 +3186,11 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::LookAtTarget { target } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::PutIntoHand { object } => {
-                bind_unresolved_it_in_object_ref_ast(object, seed_tag)
-            }
             SubjectVerbActionAst::PutRestOnBottomOfLibrary
             | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => 0,
             SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
+            | SubjectVerbActionAst::AssignNoCombatDamage { source: target, .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
@@ -3337,6 +3505,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_tag(tag, seed_tag)
             }
             SubjectVerbActionAst::AddCardTypes { target, .. }
+            | SubjectVerbActionAst::SetCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { target, .. }
@@ -3442,7 +3611,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 0
             }
         }
-        EffectAst::Conditional { predicate, .. } | EffectAst::SelfReplacement { predicate, .. } => {
+        EffectAst::Conditional { predicate, .. }
+        | EffectAst::TrailingUnless { predicate, .. }
+        | EffectAst::SelfReplacement { predicate, .. } => {
             bind_unresolved_it_in_predicate(predicate, seed_tag)
         }
         EffectAst::ChooseObjects {
@@ -3458,8 +3629,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     .unwrap_or(0)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
-        EffectAst::ChooseObjectsWithAggregateConstraint { filter, tag, .. } => {
+        EffectAst::ChooseObjectsWithAggregateConstraint {
+            filter,
+            tag,
+            constraint,
+            ..
+        } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
+                + bind_unresolved_it_in_value(&mut constraint.maximum, seed_tag)
                 + bind_unresolved_it_in_tag(tag, seed_tag)
         }
         EffectAst::ChooseObjectsAcrossZones {
@@ -3524,7 +3701,9 @@ fn bind_unresolved_it_in_runtime_object_ref(
 #[cfg(test)]
 fn bind_unresolved_it_in_player_filter(filter: &mut PlayerFilter, seed_tag: &TagKey) -> usize {
     match filter {
-        PlayerFilter::Target(inner) => bind_unresolved_it_in_player_filter(inner, seed_tag),
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
+            bind_unresolved_it_in_player_filter(inner, seed_tag)
+        }
         PlayerFilter::Excluding { base, excluded } => {
             bind_unresolved_it_in_player_filter(base, seed_tag)
                 + bind_unresolved_it_in_player_filter(excluded, seed_tag)
@@ -3659,6 +3838,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => bind_unresolved_it_in_choose_spec(spec, seed_tag),
         _ => 0,
     }
@@ -3668,6 +3848,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
 fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagKey) -> usize {
     match predicate {
         PredicateAst::ItMatches(filter)
+        | PredicateAst::ItMatchedLastKnown(filter)
         | PredicateAst::TargetMatches(filter)
         | PredicateAst::TaggedMatches(_, filter) => {
             let mut replacements = bind_unresolved_it_in_filter(filter, seed_tag);
@@ -3753,7 +3934,8 @@ fn bind_unresolved_it_in_restriction(
 #[cfg(test)]
 mod tests {
     use super::super::reference_model::{
-        RefState as ModelRefState, ReferenceImports as ModelReferenceImports,
+        RefState as ModelRefState, ReferenceFrame as ModelReferenceFrame,
+        ReferenceImports as ModelReferenceImports,
     };
     use super::*;
     use crate::cards::TextSpan;
@@ -3903,6 +4085,23 @@ mod tests {
     }
 
     #[test]
+    fn explicit_target_player_is_preserved_until_a_followup_reference() {
+        let mut frame = ModelReferenceFrame::default();
+        track_effect_player(PlayerAst::TargetOpponent, &mut frame, true, true)
+            .expect("track explicit target opponent");
+
+        assert_eq!(
+            frame.last_player_filter,
+            Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
+        );
+        assert_eq!(
+            resolve_non_target_player_filter(PlayerAst::That, &lowering_reference_frame(&frame))
+                .expect("resolve follow-up player"),
+            PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent))
+        );
+    }
+
+    #[test]
     fn resolves_event_amount_to_prior_effect_value_when_trigger_context_disallows_it() {
         let effects = vec![
             EffectAst::subject_verb_investigate(PlayerAst::Implicit, Value::Fixed(1)),
@@ -4002,6 +4201,146 @@ mod tests {
     }
 
     #[test]
+    fn return_to_battlefield_followup_uses_the_new_zone_change_object() {
+        let effects = vec![
+            EffectAst::subject_verb_return_to_battlefield(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                false,
+                false,
+                false,
+                ReturnControllerAst::Owner,
+                None,
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::SetCardTypes {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    card_types: vec![CardType::Enchantment],
+                    duration: Until::Forever,
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::with_last_object_tag("triggering"),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate returned-object type follow-up");
+
+        assert_eq!(
+            annotated.effects[0].out_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("returned_0"))
+        );
+        assert_eq!(
+            annotated.effects[1].in_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("returned_0"))
+        );
+    }
+
+    #[test]
+    fn returned_object_followups_remain_references_without_new_target_choices() {
+        let mut graveyard_creature = ObjectFilter::creature();
+        graveyard_creature.zone = Some(Zone::Graveyard);
+        graveyard_creature.owner = Some(PlayerFilter::You);
+        let effects = vec![
+            EffectAst::subject_verb_return_to_battlefield(
+                TargetAst::Object(graveyard_creature, None, None),
+                false,
+                false,
+                false,
+                ReturnControllerAst::Preserve,
+                None,
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::SetCardTypes {
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    card_types: vec![CardType::Enchantment],
+                    duration: Until::EndOfTurn,
+                },
+            ),
+            EffectAst::DelayedUntilNextEndStep {
+                player: PlayerFilter::Any,
+                effects: vec![EffectAst::subject_verb_exile(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    false,
+                )],
+            },
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate returned-object follow-ups");
+
+        assert_eq!(
+            annotated.effects[0].out_env.last_object_tag,
+            ModelRefState::Known(TagKey::from("returned_0"))
+        );
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SetCardTypes { target, .. },
+            ..
+        }) = &annotated.effects[1].effect
+        else {
+            panic!("expected immediate returned-object follow-up");
+        };
+        let (spec, choices) =
+            resolve_target_spec_with_choices(target, &annotated.effects[1].in_env)
+                .expect("resolve immediate follow-up reference");
+        assert!(matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "returned_0"));
+        assert!(
+            choices.is_empty(),
+            "a pronoun reference is not a new target"
+        );
+
+        let EffectAst::DelayedUntilNextEndStep {
+            effects: delayed, ..
+        } = &annotated.effects[2].effect
+        else {
+            panic!("expected delayed returned-object follow-up");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { target, .. },
+                ..
+            }),
+        ] = delayed.as_slice()
+        else {
+            panic!("expected delayed exile");
+        };
+        let (spec, choices) =
+            resolve_target_spec_with_choices(target, &annotated.effects[2].in_env)
+                .expect("resolve delayed follow-up reference");
+        assert!(matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "returned_0"));
+        assert!(choices.is_empty(), "a delayed pronoun is not a new target");
+
+        let lowered = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+            .expect("lower returned-object follow-ups");
+        assert!(
+            lowered.iter().all(|effect| effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_none()),
+            "resolved follow-up references must not synthesize a target prelude"
+        );
+        let returned_tag = lowered.iter().find_map(|effect| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+                .map(|_| tagged.tag.as_str())
+        });
+        assert_eq!(returned_tag, Some("returned_0"));
+    }
+
+    #[test]
     fn annotate_effect_sequence_sets_followup_in_env_from_countered_tag() {
         let effects = vec![
             EffectAst::subject_verb_counter(TargetAst::Spell(Some(TextSpan::synthetic()))),
@@ -4026,6 +4365,7 @@ mod tests {
                     exile_at_next_end_step: false,
                     next_end_step_player: PlayerFilter::Any,
                     granted_abilities: Vec::new(),
+                    ability_presentation: None,
                 },
             ),
         ];
@@ -4176,6 +4516,115 @@ mod tests {
         }
     }
 
+    fn event_amount_library_search() -> EffectAst {
+        EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::land().in_zone(Zone::Library),
+            count: ChoiceCount::up_to_dynamic_x(),
+            count_value: Some(Value::EventValue(EventValueSpec::Amount)),
+            player: PlayerAst::You,
+            tag: TagKey::from("searched_0"),
+            zones: vec![Zone::Library],
+            search_mode: Some(crate::effect::SearchSelectionMode::Optional),
+        }
+    }
+
+    fn event_amount_subject_verb_library_search() -> EffectAst {
+        EffectAst::subject_verb_search_library(
+            ObjectFilter::land(),
+            Zone::Hand,
+            PlayerAst::You,
+            PlayerAst::You,
+            crate::effect::SearchSelectionMode::Optional,
+            true,
+            true,
+            ChoiceCount::up_to_dynamic_x(),
+            Some(Value::EventValue(EventValueSpec::Amount)),
+            None,
+            false,
+        )
+    }
+
+    fn search_count_value(effect: &EffectAst) -> &Value {
+        match effect {
+            EffectAst::ChooseObjectsAcrossZones {
+                count_value: Some(count_value),
+                ..
+            } => count_value,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::SearchLibrary {
+                        count_value: Some(count_value),
+                        ..
+                    },
+                ..
+            }) => count_value,
+            EffectAst::May { effects } => search_count_value(&effects[0]),
+            other => panic!("expected library search effect, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prior_discard_sacrifice_and_exile_bind_that_many_search_counts() {
+        let producers_and_consumers = [
+            (
+                EffectAst::subject_verb_discard_hand(PlayerAst::You),
+                event_amount_library_search(),
+            ),
+            (
+                EffectAst::subject_verb_sacrifice_all(
+                    PlayerAst::You,
+                    ObjectFilter::land().you_control(),
+                ),
+                event_amount_library_search(),
+            ),
+            (
+                EffectAst::subject_verb_exile_all(ObjectFilter::creature(), false),
+                EffectAst::May {
+                    effects: vec![event_amount_library_search()],
+                },
+            ),
+            (
+                EffectAst::subject_verb_discard_hand(PlayerAst::You),
+                event_amount_subject_verb_library_search(),
+            ),
+        ];
+
+        for (producer, consumer) in producers_and_consumers {
+            let annotated = annotate_effect_sequence(
+                &[producer, consumer],
+                &ModelReferenceImports::default(),
+                EffectReferenceResolutionConfig::default(),
+                IdGenContext::default(),
+            )
+            .expect("prior action should bind the search count");
+
+            assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+            assert_eq!(
+                search_count_value(&annotated.effects[1].effect),
+                &Value::EffectValue(EffectId(0))
+            );
+        }
+    }
+
+    #[test]
+    fn trigger_amount_remains_event_bound_for_that_many_search_count() {
+        let annotated = annotate_effect_sequence(
+            &[event_amount_library_search()],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig {
+                allow_life_event_value: true,
+                ..Default::default()
+            },
+            IdGenContext::default(),
+        )
+        .expect("trigger amount should remain event-bound");
+
+        assert_eq!(
+            search_count_value(&annotated.effects[0].effect),
+            &Value::EventValue(EventValueSpec::Amount)
+        );
+    }
+
     #[test]
     fn annotate_effect_sequence_binds_pending_effect_metric_to_prior_memory_effect() {
         let effects = vec![
@@ -4247,6 +4696,7 @@ mod tests {
                     exile_at_next_end_step: false,
                     next_end_step_player: PlayerFilter::Any,
                     granted_abilities: Vec::new(),
+                    ability_presentation: None,
                 },
             ),
             EffectAst::subject_verb(
@@ -4417,6 +4867,7 @@ mod tests {
                     exile_at_next_end_step: false,
                     next_end_step_player: PlayerFilter::Any,
                     granted_abilities: Vec::new(),
+                    ability_presentation: None,
                 },
             ),
         ];
@@ -4518,6 +4969,29 @@ mod tests {
         assert!(matches!(
             annotated.final_env.last_object_tag,
             ModelRefState::Ambiguous
+        ));
+    }
+
+    #[test]
+    fn conjoined_damage_preserves_anaphoric_source_pronoun() {
+        let source_it = TargetAst::Tagged(TagKey::from(IT_TAG), Some(TextSpan::synthetic()));
+        let first = EffectAst::subject_verb_damage_with_source(
+            source_it.clone(),
+            Value::Fixed(3),
+            TargetAst::Player(
+                PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+                Some(TextSpan::synthetic()),
+            ),
+        );
+        let second = EffectAst::subject_verb_damage_with_source(
+            source_it,
+            Value::Fixed(3),
+            TargetAst::Object(ObjectFilter::creature(), Some(TextSpan::synthetic()), None),
+        );
+
+        assert!(preserves_existing_it_for_power_self_damage_followup(
+            &first,
+            Some(&second)
         ));
     }
 }

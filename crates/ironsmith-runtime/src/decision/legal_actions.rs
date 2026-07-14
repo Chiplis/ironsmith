@@ -1226,6 +1226,29 @@ fn loyalty_negative_costs_payable(
     required == 0 || game.counter_count(source, crate::CounterType::Loyalty) >= required
 }
 
+fn activated_minimum_x_cost_is_payable(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    let minimum = activated.activation_x_minimum();
+    if minimum == 0 {
+        return true;
+    }
+
+    activated
+        .mana_cost
+        .costs()
+        .iter()
+        .filter_map(|cost| {
+            cost.effect_ref()
+                .and_then(|effect| effect.max_cost_x(game, source, controller))
+        })
+        .min()
+        .is_none_or(|maximum| maximum >= minimum)
+}
+
 fn is_equip_ability(
     game: &GameState,
     source: ObjectId,
@@ -1443,6 +1466,13 @@ fn activation_precheck_with_view(
     } else {
         source_facts.controller
     };
+
+    if !activated_minimum_x_cost_is_payable(game, controller, source, activated) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
 
     if activated.is_loyalty_ability() && controller != source_facts.controller {
         if let Some(perf_ctx) = perf_ctx {

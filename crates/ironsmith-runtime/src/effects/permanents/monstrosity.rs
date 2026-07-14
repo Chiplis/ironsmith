@@ -53,25 +53,14 @@ impl EffectExecutor for MonstrosityEffect {
 
         // Put N +1/+1 counters on it and mark as monstrous
         if n_value > 0 {
-            let counters_outcome =
-                ctx.with_temp_targets(vec![ResolvedTarget::Object(source_id)], |ctx| {
-                    let counters_effect = PutCountersEffect::new(
-                        CounterType::PlusOnePlusOne,
-                        n_value,
-                        ChooseSpec::AnyTarget,
-                    );
-                    execute_effect(game, &Effect::new(counters_effect), ctx)
-                })?;
-
-            if counters_outcome.has_marker_change(|event| {
-                event.is_added()
-                    && event.object() == Some(source_id)
-                    && event.marker == CounterType::PlusOnePlusOne.into()
-            }) {
-                game.effect_store
-                    .continuous_effects
-                    .record_counter_change(source_id);
-            }
+            ctx.with_temp_targets(vec![ResolvedTarget::Object(source_id)], |ctx| {
+                let counters_effect = PutCountersEffect::new(
+                    CounterType::PlusOnePlusOne,
+                    n_value,
+                    ChooseSpec::AnyTarget,
+                );
+                execute_effect(game, &Effect::new(counters_effect), ctx)
+            })?;
         }
         game.set_monstrous(source_id);
         if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {

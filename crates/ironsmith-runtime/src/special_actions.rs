@@ -1786,14 +1786,21 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         if let Some(player_data) = game.player_mut(player) {
             for symbol in mana.iter().copied() {
                 if mana_usage_restrictions.is_empty() {
-                    player_data.mana_pool.add(symbol, 1);
-                } else {
-                    player_data.add_restricted_mana(crate::ability::RestrictedManaUnit {
+                    player_data.add_unrestricted_mana(
                         symbol,
-                        source: permanent_id,
-                        source_chosen_creature_type,
-                        restrictions: mana_usage_restrictions.clone(),
-                    });
+                        permanent_id,
+                        Some(source_snapshot.clone()),
+                    );
+                } else {
+                    player_data.add_restricted_mana_with_snapshot(
+                        crate::ability::RestrictedManaUnit {
+                            symbol,
+                            source: permanent_id,
+                            source_chosen_creature_type,
+                            restrictions: mana_usage_restrictions.clone(),
+                        },
+                        Some(source_snapshot.clone()),
+                    );
                 }
             }
         }

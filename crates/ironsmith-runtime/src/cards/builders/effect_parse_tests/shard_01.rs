@@ -799,12 +799,22 @@ fn parse_skip_your_draw_step_inline_subject_from_text() {
         .parse_text("Skip your draw step.")
         .expect("parse inline-subject skip draw step");
 
-    let effects = def.spell_effect.expect("spell effect");
     assert!(
-        effects
-            .iter()
-            .any(|e| e.downcast_ref::<SkipDrawStepEffect>().is_some()),
-        "should include skip draw step effect"
+        def.spell_effect.is_none(),
+        "an active-source draw-step rule must not become a one-shot spell effect"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::PlayerSkipsDrawStep)
+        }),
+        "should include the typed draw-step-skipping static ability"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        ["Skip your draw step"],
+        "the static rule should retain its non-next-step Oracle surface"
     );
 }
 

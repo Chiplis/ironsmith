@@ -108,7 +108,10 @@ pub(crate) enum DamagePartShape {
     },
     TargetYou(Vec<OwnedLexToken>),
     TargetOpponent(Vec<OwnedLexToken>),
-    TargetTokens(Vec<OwnedLexToken>),
+    TargetTokens {
+        tokens: Vec<OwnedLexToken>,
+        controller: Option<ControllerSurface>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -743,7 +746,14 @@ pub(crate) fn parse_damage_part_shape(
     if exact_any(&tokens, &[&["opponent"], &["opponents"]]) {
         return Some(DamagePartShape::TargetOpponent(tokens));
     }
-    contains_word(&tokens, "target").then_some(DamagePartShape::TargetTokens(tokens))
+    if !contains_word(&tokens, "target") {
+        return None;
+    }
+    let (target_tokens, controller) = strip_controller_tail(&tokens);
+    (!target_tokens.is_empty()).then_some(DamagePartShape::TargetTokens {
+        tokens: target_tokens,
+        controller,
+    })
 }
 
 fn equal_damage_amount_and_targets(tokens: &[OwnedLexToken]) -> Option<(Value, &[OwnedLexToken])> {

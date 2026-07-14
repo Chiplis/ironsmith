@@ -120,9 +120,16 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
         ChoiceObjectCountSource::CardsDiscardedThisWay => {
             Value::Count(ObjectFilter::tagged(TagKey::from(IT_TAG)))
         }
+        ChoiceObjectCountSource::ThatMany => {
+            Value::EventValue(crate::effect::EventValueSpec::Amount)
+        }
     });
     let mut choose_filter = parsed.filter;
     let chooser = match parsed.actor {
+        // Preserve the implicit actor until the enclosing sentence shape is
+        // known. At top level lowering resolves it to you; inside
+        // `Each player/opponent chooses ...`, the participant loop binds it
+        // to the iterated player.
         ChoiceClauseActor::Implicit => PlayerAst::Implicit,
         ChoiceClauseActor::You => PlayerAst::You,
     };
@@ -882,4 +889,42 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
             None,
         ),
     ]))
+}
+
+#[cfg(test)]
+mod result_choice_tests {
+    use super::*;
+
+    #[test]
+    fn implicit_choice_actor_is_preserved_for_enclosing_sentence_binding() {
+        let tokens = crate::runtime_backend::lex_line("Choose a nonland card exiled this way.", 0)
+            .expect("lex choice");
+        let (chooser, filter, count, _) = parse_you_choose_objects_clause_with_count_value(&tokens)
+            .expect("parse choice")
+            .expect("match choice");
+        assert_eq!(chooser, PlayerAst::Implicit);
+        assert!(count.is_single());
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
+    fn up_to_prior_amount_choice_preserves_count_and_value_source() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose up to that many target creatures you control.",
+            0,
+        )
+        .expect("lex choice");
+        let (_, _, count, count_value) = parse_you_choose_objects_clause_with_count_value(&tokens)
+            .expect("parse choice")
+            .expect("match choice");
+
+        assert!(count.is_up_to_dynamic_x());
+        assert_eq!(
+            count_value,
+            Some(Value::EventValue(crate::effect::EventValueSpec::Amount))
+        );
+    }
 }

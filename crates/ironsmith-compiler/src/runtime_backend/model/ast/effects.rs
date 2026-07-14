@@ -15,6 +15,14 @@ pub(crate) enum EffectAst {
     Sequence {
         effects: Vec<EffectAst>,
     },
+    /// Effects printed as one coordinated Oracle clause (for example,
+    /// "destroy target artifact and target enchantment"). This remains a
+    /// real typed boundary through lowering so rendering never has to infer
+    /// coordination from unrelated adjacent effects.
+    Coordinated {
+        effects: Vec<EffectAst>,
+        leading_duration: bool,
+    },
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,
@@ -35,6 +43,10 @@ pub(crate) enum EffectAst {
     },
     DelayedUntilNextDrawStep {
         player: PlayerAst,
+        effects: Vec<EffectAst>,
+    },
+    DelayedUntilNextMainPhase {
+        player: PlayerFilter,
         effects: Vec<EffectAst>,
     },
     DelayedUntilEndStepOfExtraTurn {
@@ -58,6 +70,14 @@ pub(crate) enum EffectAst {
         predicate: PredicateAst,
         if_true: Vec<EffectAst>,
         if_false: Vec<EffectAst>,
+    },
+    /// A resolution-time gate printed after the effect as
+    /// "<effect> unless <positive predicate>". Keeping this distinct from a
+    /// sole ordinary conditional prevents triggered-ability preparation from
+    /// promoting it to an intervening-if condition.
+    TrailingUnless {
+        predicate: PredicateAst,
+        effects: Vec<EffectAst>,
     },
     ManaRestricted {
         effects: Vec<EffectAst>,
@@ -241,10 +261,12 @@ pub(crate) enum EffectAst {
     ForEachOpponentDid {
         effects: Vec<EffectAst>,
         predicate: Option<PredicateAst>,
+        result_predicate: IfResultPredicate,
     },
     ForEachPlayerDid {
         effects: Vec<EffectAst>,
         predicate: Option<PredicateAst>,
+        result_predicate: IfResultPredicate,
     },
     ForEachTaggedPlayer {
         tag: TagKey,
@@ -349,6 +371,7 @@ impl EffectAst {
         count: ChoiceCount,
         looked_tag: TagKey,
         chosen_tag: TagKey,
+        order: LibraryBottomOrderAst,
     ) -> Vec<Self> {
         let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
         choose_filter.zone = Some(Zone::Library);
@@ -370,7 +393,50 @@ impl EffectAst {
             Self::subject_verb_put_tagged_remainder_on_bottom_of_library(
                 looked_tag,
                 Some(chosen_tag),
-                LibraryBottomOrderAst::Random,
+                order,
+                player,
+            ),
+        ]
+    }
+
+    /// Composes "choose up to N of the looked-at cards for the top of the
+    /// library, put the rest on the bottom" while preserving the stated
+    /// random-versus-chosen ordering of the remainder.
+    pub(crate) fn compose_put_some_on_top_rest_on_bottom_of_library(
+        player: PlayerAst,
+        count: ChoiceCount,
+        looked_tag: TagKey,
+        chosen_tag: TagKey,
+        order: LibraryBottomOrderAst,
+    ) -> Vec<Self> {
+        let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
+        choose_filter.zone = Some(Zone::Library);
+        vec![
+            Self::SnapshotLastObjectTag {
+                into: looked_tag.clone(),
+            },
+            Self::ChooseTaggedObjectsInZone {
+                filter: choose_filter,
+                count,
+                player,
+                tag: chosen_tag.clone(),
+                zone: Zone::Library,
+            },
+            Self::ForEachTagged {
+                tag: chosen_tag.clone(),
+                effects: vec![Self::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                    Zone::Library,
+                    true,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            },
+            Self::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                looked_tag,
+                Some(chosen_tag),
+                order,
                 player,
             ),
         ]
@@ -439,6 +505,7 @@ impl EffectAst {
 
     pub(crate) fn subject_verb_grant_protection_choice(
         target: TargetAst,
+        chooser: PlayerAst,
         allow_colorless: bool,
         allow_artifacts: bool,
     ) -> Self {
@@ -447,6 +514,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::GrantProtectionChoice {
                 target,
+                chooser,
                 allow_colorless,
                 allow_artifacts,
             },
@@ -458,6 +526,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::PreventAllCombatDamage { duration },
+        )
+    }
+
+    pub(crate) fn subject_verb_assign_no_combat_damage(source: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::AssignNoCombatDamage { source, duration },
         )
     }
 
@@ -664,6 +740,7 @@ impl EffectAst {
         count: Value,
         player: PlayerAst,
         may_choose_new_targets: bool,
+        choose_new_target_singular: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
     ) -> Self {
         Self::subject_verb(
@@ -671,12 +748,30 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::CopySpell {
                 target,
+                all_matches: false,
                 count,
                 player,
                 may_choose_new_targets,
+                choose_new_target_singular,
                 removed_supertypes,
             },
         )
+    }
+
+    /// Preserve the set quantifier on a spell/ability-copy action.
+    pub(crate) fn with_copy_all_matches(mut self, all_matches: bool) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    all_matches: action_all_matches,
+                    ..
+                },
+            ..
+        }) = &mut self
+        {
+            *action_all_matches = all_matches;
+        }
+        self
     }
 
     pub(crate) fn subject_verb_copy_spell_for_each_target(
@@ -798,8 +893,9 @@ impl EffectAst {
         player: PlayerAst,
         allow_land: bool,
         without_paying_mana_cost: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
     ) -> Self {
+        let allow_any_color_for_cast = allow_any_color_for_cast.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -819,8 +915,9 @@ impl EffectAst {
         player: PlayerAst,
         allow_land: bool,
         without_paying_mana_cost: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
     ) -> Self {
+        let allow_any_color_for_cast = allow_any_color_for_cast.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -853,8 +950,9 @@ impl EffectAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
     ) -> Self {
+        let allow_any_color_for_cast = allow_any_color_for_cast.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -863,6 +961,27 @@ impl EffectAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                until_next_end_step: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_play_tagged_until_your_next_end_step(
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
+    ) -> Self {
+        let allow_any_color_for_cast = allow_any_color_for_cast.into();
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                tag,
+                player,
+                allow_land,
+                allow_any_color_for_cast,
+                until_next_end_step: true,
             },
         )
     }
@@ -872,9 +991,10 @@ impl EffectAst {
         player: PlayerAst,
         allow_land: bool,
         without_paying_mana_cost: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
         filter: Option<ObjectFilter>,
     ) -> Self {
+        let allow_any_color_for_cast = allow_any_color_for_cast.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -893,8 +1013,9 @@ impl EffectAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
-        allow_any_color_for_cast: bool,
+        allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
     ) -> Self {
+        let allow_any_color_for_cast = allow_any_color_for_cast.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -926,8 +1047,24 @@ impl EffectAst {
                 controller,
                 count_value,
                 as_aura: None,
+                top_only: false,
             },
         )
+    }
+
+    pub(crate) fn with_top_only_return_choice(mut self, top_only: bool) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ReturnToBattlefield {
+                    top_only: return_top_only,
+                    ..
+                },
+            ..
+        }) = &mut self
+        {
+            *return_top_only = top_only;
+        }
+        self
     }
 
     pub(crate) fn subject_verb_return_all_to_battlefield(
@@ -944,6 +1081,26 @@ impl EffectAst {
                 tapped,
                 face_down,
                 controller,
+                verb_surface: ironsmith_core::MoveToZoneVerbSurface::Return,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_all_onto_battlefield(
+        filter: ObjectFilter,
+        tapped: bool,
+        face_down: bool,
+        controller: ReturnControllerAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ReturnAllToBattlefield {
+                filter,
+                tapped,
+                face_down,
+                controller,
+                verb_surface: ironsmith_core::MoveToZoneVerbSurface::Put,
             },
         )
     }
@@ -1041,6 +1198,13 @@ impl EffectAst {
                 target,
                 zone,
                 to_top,
+                library_order: None,
+                library_order_chooser: PlayerAst::Implicit,
+                verb_surface: ironsmith_core::MoveToZoneVerbSurface::Put,
+                target_plural_surface: false,
+                destination_player_surface: None,
+                destination_player_reference_surface: None,
+                exiled_with_source_surface: None,
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
@@ -1067,6 +1231,13 @@ impl EffectAst {
                 target,
                 zone,
                 to_top,
+                library_order: None,
+                library_order_chooser: PlayerAst::Implicit,
+                verb_surface: ironsmith_core::MoveToZoneVerbSurface::Put,
+                target_plural_surface: true,
+                destination_player_surface: None,
+                destination_player_reference_surface: None,
+                exiled_with_source_surface: None,
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking: false,
@@ -1076,6 +1247,131 @@ impl EffectAst {
                 all: true,
             },
         )
+    }
+
+    pub(crate) fn with_destination_player_surface(mut self, player: Option<PlayerAst>) -> Self {
+        if let Some(player) = player
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::MoveToZone {
+                destination_player_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *destination_player_surface = Some(player);
+        }
+        self
+    }
+
+    pub(crate) fn with_library_order(
+        mut self,
+        order: Option<LibraryBottomOrderAst>,
+        chooser: PlayerAst,
+    ) -> Self {
+        if let Some(order) = order
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::MoveToZone {
+                library_order,
+                library_order_chooser,
+                ..
+            } = &mut subject_verb.action
+        {
+            *library_order = Some(order);
+            *library_order_chooser = chooser;
+        }
+        self
+    }
+
+    pub(crate) fn with_move_to_zone_verb_surface(
+        mut self,
+        surface: ironsmith_core::MoveToZoneVerbSurface,
+    ) -> Self {
+        if let Self::SubjectVerb(subject_verb) = &mut self {
+            match &mut subject_verb.action {
+                SubjectVerbActionAst::MoveToZone { verb_surface, .. }
+                | SubjectVerbActionAst::ReturnAllToBattlefield { verb_surface, .. } => {
+                    *verb_surface = surface;
+                }
+                _ => {}
+            }
+        }
+        self
+    }
+
+    pub(crate) fn with_move_to_zone_actor_surface(mut self, actor: PlayerAst) -> Self {
+        if matches!(actor, PlayerAst::Implicit) {
+            return self;
+        }
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::MoveToZone { .. },
+        }) = &mut self
+        {
+            subject.player = actor;
+        }
+        self
+    }
+
+    pub(crate) fn with_move_to_zone_plural_surface(mut self) -> Self {
+        if let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::MoveToZone {
+                target_plural_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *target_plural_surface = true;
+        }
+        self
+    }
+
+    pub(crate) fn with_move_to_zone_plural_surface_if(self, plural: bool) -> Self {
+        if plural {
+            self.with_move_to_zone_plural_surface()
+        } else {
+            self
+        }
+    }
+
+    pub(crate) fn with_destination_player_reference_surface(
+        mut self,
+        surface: Option<ironsmith_core::DestinationPlayerReferenceSurface>,
+    ) -> Self {
+        if let Some(surface) = surface
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::MoveToZone {
+                destination_player_reference_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *destination_player_reference_surface = Some(surface);
+        }
+        self
+    }
+
+    pub(crate) fn with_exiled_with_source_surface(
+        mut self,
+        surface: Option<ironsmith_core::ExiledWithSourceMoveSurface>,
+    ) -> Self {
+        let Some(surface) = surface else {
+            return self;
+        };
+        if let Self::SubjectVerb(subject_verb) = &mut self {
+            match &mut subject_verb.action {
+                SubjectVerbActionAst::MoveToZone {
+                    exiled_with_source_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::ReturnToHand {
+                    exiled_with_source_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::ReturnAllToHand {
+                    exiled_with_source_surface,
+                    ..
+                } => *exiled_with_source_surface = Some(surface),
+                _ => {}
+            }
+        }
+        self
     }
 
     pub(crate) fn subject_verb_move_to_library_top_or_bottom_choice(target: TargetAst) -> Self {
@@ -1122,6 +1418,7 @@ impl EffectAst {
                 target,
                 duration,
                 condition,
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1140,6 +1437,7 @@ impl EffectAst {
                 toughness,
                 target,
                 duration,
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1155,6 +1453,8 @@ impl EffectAst {
         colors: Option<ColorSet>,
         abilities: Vec<StaticAbility>,
         granted_abilities: Vec<GrantedAbilityAst>,
+        preserve_other_types: bool,
+        type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
         duration: Until,
     ) -> Self {
         Self::subject_verb(
@@ -1170,6 +1470,8 @@ impl EffectAst {
                 colors,
                 abilities,
                 granted_abilities,
+                preserve_other_types,
+                type_retention_surface,
                 duration,
             },
         )
@@ -1225,6 +1527,7 @@ impl EffectAst {
                 power,
                 toughness,
                 duration,
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1272,6 +1575,22 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::RemoveCardTypes {
+                target,
+                card_types,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_set_card_types(
+        target: TargetAst,
+        card_types: Vec<CardType>,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::SetCardTypes {
                 target,
                 card_types,
                 duration,
@@ -1510,6 +1829,7 @@ impl EffectAst {
                 abilities,
                 duration,
                 condition: None,
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1528,6 +1848,7 @@ impl EffectAst {
                 abilities,
                 duration,
                 condition: Some(condition),
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1544,6 +1865,7 @@ impl EffectAst {
                 filter,
                 abilities,
                 duration,
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1577,6 +1899,7 @@ impl EffectAst {
                 abilities,
                 duration,
                 condition: None,
+                set_quantifier_surface: None,
             },
         )
     }
@@ -1595,6 +1918,7 @@ impl EffectAst {
                 abilities,
                 duration,
                 condition: Some(condition),
+                set_quantifier_surface: None,
             },
         )
     }
@@ -2057,6 +2381,7 @@ impl EffectAst {
                 from_zone,
                 to_zone,
                 replacement_zone,
+                library_placement: None,
                 duration,
                 optional: false,
                 choice_description: None,
@@ -2081,10 +2406,36 @@ impl EffectAst {
                 from_zone,
                 to_zone,
                 replacement_zone,
+                library_placement: None,
                 duration,
                 optional: false,
                 choice_description: None,
                 counters,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_zone_replacement_with_library_placement(
+        target: TargetAst,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        placement: ironsmith_core::ZoneReplacementLibraryPlacement,
+        duration: ZoneReplacementDurationAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterZoneReplacement {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                library_placement: Some(placement),
+                duration,
+                optional: false,
+                choice_description: None,
+                counters: Vec::new(),
             },
         )
     }
@@ -2095,6 +2446,8 @@ impl EffectAst {
         to_zone: Option<Zone>,
         replacement_zone: Zone,
         duration: ZoneReplacementDurationAst,
+        cause_policy: FutureZoneReplacementCausePolicyAst,
+        link_exiled_to_source: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2105,6 +2458,8 @@ impl EffectAst {
                 to_zone,
                 replacement_zone,
                 duration,
+                cause_policy,
+                link_exiled_to_source,
             },
         )
     }
@@ -2234,10 +2589,29 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_distributed_damage(amount: Value, target: TargetAst) -> Self {
+        Self::subject_verb_distributed_damage_with_source(
+            amount,
+            target,
+            TargetAst::Source(None),
+            PlayerFilter::You,
+        )
+    }
+
+    pub(crate) fn subject_verb_distributed_damage_with_source(
+        amount: Value,
+        target: TargetAst,
+        source: TargetAst,
+        chooser: PlayerFilter,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DealDistributedDamage { amount, target },
+            SubjectVerbActionAst::DealDistributedDamage {
+                amount,
+                target,
+                source,
+                chooser,
+            },
         )
     }
 
@@ -2430,6 +2804,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_cloak_top_card(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::CloakTopCardOfLibrary,
+        )
+    }
+
     pub(crate) fn subject_verb_manifest_from_hand(player: PlayerAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2563,6 +2945,7 @@ impl EffectAst {
         land_filter: ObjectFilter,
         allow_colorless: bool,
         same_type: bool,
+        mana_type_source: crate::effects::ManaTypeSource,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -2572,6 +2955,7 @@ impl EffectAst {
                 land_filter,
                 allow_colorless,
                 same_type,
+                mana_type_source,
             },
         )
     }
@@ -2875,11 +3259,16 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_put_into_hand(player: PlayerAst, object: ObjectRefAst) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::AffectedPlayer,
-            player,
-            SubjectVerbActionAst::PutIntoHand { object },
+        let ObjectRefAst::Tagged(tag) = object;
+        Self::subject_verb_move_to_zone(
+            TargetAst::Tagged(tag, None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
         )
+        .with_destination_player_surface(Some(player))
     }
 
     pub(crate) fn subject_verb_additional_land_plays(
@@ -2905,18 +3294,6 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_rearrange_looked_cards_in_library(
-        player: PlayerAst,
-        tag: TagKey,
-        count: ChoiceCount,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::LibraryOwner,
-            player,
-            SubjectVerbActionAst::RearrangeLookedCardsInLibrary { tag, count },
-        )
-    }
-
     pub(crate) fn subject_verb_reorder_top_of_library(tag: TagKey) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2932,7 +3309,50 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
-            SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target },
+            SubjectVerbActionAst::ShuffleObjectsIntoLibrary {
+                target,
+                all: false,
+                owner_library_destination: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_shuffle_objects_into_owner_library(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::ItsOwner,
+            SubjectVerbActionAst::ShuffleObjectsIntoLibrary {
+                target,
+                all: false,
+                owner_library_destination: true,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_shuffle_all_objects_into_library(
+        player: PlayerAst,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::ShuffleObjectsIntoLibrary {
+                target,
+                all: true,
+                owner_library_destination: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_shuffle_all_objects_into_owner_library(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::ItsOwner,
+            SubjectVerbActionAst::ShuffleObjectsIntoLibrary {
+                target,
+                all: true,
+                owner_library_destination: true,
+            },
         )
     }
 
@@ -3456,7 +3876,14 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ReturnToHand { target, random },
+            SubjectVerbActionAst::ReturnToHand {
+                target,
+                random,
+                destination_player_surface: None,
+                exiled_with_source_surface: None,
+                set_quantifier_surface: None,
+                set_reference_surface: None,
+            },
         )
     }
 
@@ -3464,8 +3891,63 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ReturnAllToHand { filter },
+            SubjectVerbActionAst::ReturnAllToHand {
+                filter,
+                destination_player_surface: None,
+                exiled_with_source_surface: None,
+            },
         )
+    }
+
+    pub(crate) fn with_return_destination_player_surface(
+        mut self,
+        player: Option<PlayerAst>,
+    ) -> Self {
+        if let Some(player) = player
+            && let Self::SubjectVerb(subject_verb) = &mut self
+        {
+            match &mut subject_verb.action {
+                SubjectVerbActionAst::ReturnToHand {
+                    destination_player_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::ReturnAllToHand {
+                    destination_player_surface,
+                    ..
+                } => *destination_player_surface = Some(player),
+                _ => {}
+            }
+        }
+        self
+    }
+
+    pub(crate) fn with_return_set_quantifier_surface(
+        mut self,
+        surface: Option<ironsmith_core::SetQuantifierSurface>,
+    ) -> Self {
+        if let Some(surface) = surface
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ReturnToHand {
+                set_quantifier_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *set_quantifier_surface = Some(surface);
+        }
+        self
+    }
+
+    pub(crate) fn with_return_set_reference_surface(mut self, surface: Option<String>) -> Self {
+        if let Some(surface) = surface
+            && let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::ReturnToHand {
+                set_reference_surface,
+                ..
+            } = &mut subject_verb.action
+        {
+            *set_reference_surface = Some(surface);
+        }
+        self
     }
 
     pub(crate) fn subject_verb_return_all_to_hand_of_chosen_color(filter: ObjectFilter) -> Self {

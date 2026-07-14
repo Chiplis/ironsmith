@@ -54,6 +54,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
             modes,
+            chooser: choose_mode.chooser.clone(),
             min: choose_mode.min.clone(),
             max: choose_mode.max.clone(),
             allow_repeat: choose_mode.allow_repeat,
@@ -65,6 +66,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: choose_mode
                 .disallow_previously_chosen_modes_this_turn,
+            distinct_player_targets_per_mode: choose_mode.distinct_player_targets_per_mode,
         },
     ));
     true
@@ -88,6 +90,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         same_mode_more_than_once,
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
+        distinct_player_targets_per_mode,
         commander_allows_both,
         choose_both_control_card_types,
         choose_both_exact_life_total,
@@ -196,6 +199,9 @@ pub(crate) fn rewrite_lower_parsed_modal(
             } else {
                 choose_mode.with_previously_unchosen_modes_only()
             };
+        }
+        if distinct_player_targets_per_mode {
+            choose_mode = choose_mode.with_distinct_player_targets_per_mode();
         }
         crate::effect::Effect::new(choose_mode)
     };

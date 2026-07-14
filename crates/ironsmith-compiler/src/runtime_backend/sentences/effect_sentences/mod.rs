@@ -59,6 +59,8 @@ mod gain_ability;
 mod lex_chain_helpers;
 mod looked_cards_family;
 mod next_spell_family;
+mod optional_companion_fanout;
+mod player_subject_sequences;
 mod search_library;
 mod sentence_helpers;
 mod sentence_registry;
@@ -89,7 +91,8 @@ pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;
 pub(crate) use fanout_family::{
     parse_compound_damage_fanout_sentence, parse_same_name_gets_fanout_sentence,
-    parse_same_name_target_fanout_sentence, parse_shared_color_target_fanout_sentence,
+    parse_same_name_target_fanout_sentence, parse_serial_target_pt_modifiers_sentence,
+    parse_shared_color_target_fanout_sentence,
 };
 pub(crate) use gain_ability::*;
 pub(crate) use search_library::parse_search_library_sentence;

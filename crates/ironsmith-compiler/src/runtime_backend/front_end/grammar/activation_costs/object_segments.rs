@@ -24,6 +24,7 @@ struct SacrificeChosenShape {
 enum SacrificeCostShape {
     Source,
     Creature,
+    All { filter_first: usize },
     MissingFilter,
     Chosen(SacrificeChosenShape),
 }
@@ -77,17 +78,27 @@ enum DiscardCostShape {
 
 pub(crate) fn parse_sacrifice_segment_tokens(
     tokens: &[OwnedLexToken],
-    contextual_source_reference: impl FnOnce(&[&str]) -> bool,
+    contextual_source_reference: impl Fn(&[&str]) -> Option<crate::target::SourceReferenceSurface>,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let words = primitives::TokenWordView::new(tokens);
-    if words.len() > 1 && contextual_source_reference(&words.word_refs()[1..]) {
-        return Ok(ActivationCostSegmentCst::SacrificeSelf);
+    if words.len() > 1
+        && let Some(surface) = contextual_source_reference(&words.word_refs()[1..])
+    {
+        return Ok(ActivationCostSegmentCst::SacrificeSelf {
+            surface: Some(surface),
+        });
     }
     let shape = primitives::parse_all(tokens, parse_sacrifice_cost_shape_lexed, "sacrifice-cost")
         .map_err(|_| unsupported(tokens, "sacrifice"))?;
     Ok(match shape {
-        SacrificeCostShape::Source => ActivationCostSegmentCst::SacrificeSelf,
+        SacrificeCostShape::Source => ActivationCostSegmentCst::SacrificeSelf { surface: None },
         SacrificeCostShape::Creature => ActivationCostSegmentCst::SacrificeCreature,
+        SacrificeCostShape::All { filter_first } => ActivationCostSegmentCst::SacrificeAll {
+            filter: filters::parse_object_filter_with_grammar_entrypoint_lexed(
+                &tokens[filter_first..],
+                false,
+            )?,
+        },
         SacrificeCostShape::MissingFilter => {
             return Err(CardTextError::ParseError(
                 "rewrite sacrifice parser is missing an object filter".to_string(),
@@ -433,9 +444,23 @@ fn parse_sacrifice_cost_shape_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Sa
     alt((
         parse_sacrifice_source,
         parse_sacrifice_creature,
+        move |input: &mut LexStream<'a>| parse_sacrifice_all(input, initial_len),
         move |input: &mut LexStream<'a>| parse_sacrifice_chosen(input, initial_len),
     ))
     .parse_next(input)
+}
+
+fn parse_sacrifice_all<'a>(
+    input: &mut LexStream<'a>,
+    initial_len: usize,
+) -> WResult<SacrificeCostShape> {
+    primitives::kw("all").parse_next(input)?;
+    let filter_first = initial_len.saturating_sub(input.len());
+    let filter_tokens: Vec<&OwnedLexToken> = repeat(1.., any).parse_next(input)?;
+    if filter_tokens.is_empty() {
+        return Ok(SacrificeCostShape::MissingFilter);
+    }
+    Ok(SacrificeCostShape::All { filter_first })
 }
 
 fn parse_sacrifice_source<'a>(input: &mut LexStream<'a>) -> WResult<SacrificeCostShape> {

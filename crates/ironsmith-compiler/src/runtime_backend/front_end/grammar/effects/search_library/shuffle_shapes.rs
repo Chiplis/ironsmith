@@ -34,6 +34,7 @@ pub(crate) struct SearchShuffleObjectShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
     pub(crate) trailing_tokens: &'a [OwnedLexToken],
     pub(crate) reference: SearchShuffleObjectReference,
+    pub(crate) owner_library_destination: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,10 +88,14 @@ fn library_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 
 fn owner_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
-        primitives::kw("owner"),
-        primitives::kw("owners"),
-        primitives::kw("owner's"),
-        primitives::kw("owner’s"),
+        primitives::kw("owner").void(),
+        primitives::kw("owners").void(),
+        primitives::kw("owner's").void(),
+        primitives::kw("owner’s").void(),
+        primitives::kw("owners'").void(),
+        primitives::kw("owners’").void(),
+        primitives::phrase(&["that", "player's"]).void(),
+        primitives::phrase(&["that", "player’s"]).void(),
     ))
     .void()
     .parse_next(input)
@@ -244,7 +249,7 @@ pub(crate) fn parse_shuffle_object_shape_lexed(
         return None;
     }
     let destination = trim_lexed_commas(after_into);
-    let (_, (), after_library) = primitives::find_prefix(destination, || library_marker)?;
+    let (library_idx, (), after_library) = primitives::find_prefix(destination, || library_marker)?;
     let reference = if owner_subject_target_tokens.is_some()
         && complete_shape(target_tokens, singular_back_reference)
     {
@@ -261,6 +266,10 @@ pub(crate) fn parse_shuffle_object_shape_lexed(
         target_tokens,
         trailing_tokens: trim_lexed_commas(after_library),
         reference,
+        owner_library_destination: primitives::find_prefix(destination.get(..library_idx)?, || {
+            owner_marker
+        })
+        .is_some(),
     })
 }
 

@@ -68,6 +68,8 @@ impl GameState {
         self.turn_store.combat_phases_started_this_turn = 0;
         self.turn_store.skip_current_turn_combat_phases.clear();
         self.turn_store.skip_current_turn_main_phases.clear();
+        self.turn_store.no_combat_damage_this_turn.clear();
+        self.turn_store.no_combat_damage_this_combat.clear();
 
         // Clear turn-based tracking
         self.turn_store.entered_battlefield_last_turn = self
@@ -364,6 +366,7 @@ impl GameState {
             let Some(scopes) = scopes else {
                 player.mana_pool.empty();
                 player.restricted_mana.clear();
+                player.clear_mana_source_provenance();
                 continue;
             };
             if scopes.contains(&None) {
@@ -387,6 +390,7 @@ impl GameState {
             }
             pool.colorless = 0;
             player.restricted_mana.clear();
+            player.trim_mana_source_provenance_to_pool();
         }
     }
 
@@ -456,6 +460,32 @@ impl GameState {
             .combat_damage_assignments
             .remove(&attacker)
             .unwrap_or_default()
+    }
+
+    /// Suppress an object's combat-damage assignment for the requested duration.
+    pub fn suppress_combat_damage_assignment(
+        &mut self,
+        source: ObjectId,
+        until: crate::effect::Until,
+    ) {
+        match until {
+            crate::effect::Until::EndOfTurn => {
+                self.turn_store.no_combat_damage_this_turn.insert(source);
+            }
+            crate::effect::Until::EndOfCombat => {
+                self.turn_store.no_combat_damage_this_combat.insert(source);
+            }
+            _ => debug_assert!(false, "unsupported assignment suppression duration"),
+        }
+    }
+
+    /// Whether this object currently assigns no combat damage.
+    pub fn combat_damage_assignment_is_suppressed(&self, source: ObjectId) -> bool {
+        self.turn_store.no_combat_damage_this_turn.contains(&source)
+            || self
+                .turn_store
+                .no_combat_damage_this_combat
+                .contains(&source)
     }
 
     /// Check whether an object performed a specific keyword action this turn.
@@ -906,6 +936,17 @@ impl GameState {
 
     /// Pushes a spell or ability onto the stack.
     pub fn push_to_stack(&mut self, mut entry: StackEntry) {
+        if !entry.is_ability {
+            let tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+            let spent_sources = self
+                .object(entry.object_id)
+                .and_then(|source| source.cast_tagged_objects.get(&tag))
+                .filter(|snapshots| !snapshots.is_empty())
+                .cloned();
+            if let Some(spent_sources) = spent_sources {
+                entry.tagged_objects.entry(tag).or_insert(spent_sources);
+            }
+        }
         if entry.source_snapshot.is_none()
             && let Some(source) = self.object(entry.object_id)
         {
@@ -1325,6 +1366,7 @@ impl GameState {
             | crate::ConditionExpr::AttachedToSourceMatches(filter)
             | crate::ConditionExpr::TargetMatches(filter)
             | crate::ConditionExpr::TaggedObjectMatches(_, filter)
+            | crate::ConditionExpr::TaggedObjectMatchedLastKnown(_, filter)
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
                 Self::filter_reads_tapped_state(filter)
             }
@@ -1379,6 +1421,10 @@ impl GameState {
                 .as_deref()
                 .is_some_and(Self::filter_reads_tapped_state)
             || filter
+                .attached_to_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_tapped_state)
+            || filter
                 .no_shared_creature_types_with
                 .iter()
                 .any(Self::filter_reads_tapped_state)
@@ -1386,6 +1432,9 @@ impl GameState {
     }
 
     pub(super) fn mark_face_down_state_changed(&mut self, id: ObjectId) {
+        self.effect_store
+            .continuous_effects
+            .record_face_change(id);
         if self.face_down_state_change_can_stay_local(id) {
             self.mark_object_characteristics_dirty(id);
         } else {
@@ -1430,6 +1479,7 @@ impl GameState {
             | crate::ConditionExpr::AttachedToSourceMatches(filter)
             | crate::ConditionExpr::TargetMatches(filter)
             | crate::ConditionExpr::TaggedObjectMatches(_, filter)
+            | crate::ConditionExpr::TaggedObjectMatchedLastKnown(_, filter)
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
                 Self::filter_reads_face_down_state(filter)
             }
@@ -1480,6 +1530,10 @@ impl GameState {
                 .is_some_and(Self::filter_reads_face_down_state)
             || filter
                 .targets_only_object
+                .as_deref()
+                .is_some_and(Self::filter_reads_face_down_state)
+            || filter
+                .attached_to_object
                 .as_deref()
                 .is_some_and(Self::filter_reads_face_down_state)
             || filter
@@ -1541,6 +1595,7 @@ impl GameState {
             | crate::ConditionExpr::AttachedToSourceMatches(filter)
             | crate::ConditionExpr::TargetMatches(filter)
             | crate::ConditionExpr::TaggedObjectMatches(_, filter)
+            | crate::ConditionExpr::TaggedObjectMatchedLastKnown(_, filter)
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. }
             | crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_summoning_sickness_state(filter)

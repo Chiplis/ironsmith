@@ -17,6 +17,19 @@ pub use ironsmith_core::CastTaggedEffect;
 
 use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_event};
 
+fn spent_mana_source_tags(
+    game: &GameState,
+    object_id: crate::ids::ObjectId,
+) -> std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>> {
+    let tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+    game.object(object_id)
+        .and_then(|object| object.cast_tagged_objects.get(&tag))
+        .filter(|snapshots| !snapshots.is_empty())
+        .cloned()
+        .map(|snapshots| std::collections::HashMap::from([(tag, snapshots)]))
+        .unwrap_or_default()
+}
+
 fn build_target_assignments_for_cast_tagged_copy(
     requirements: &[crate::decision::TargetRequirement],
     targets: &[Target],
@@ -30,6 +43,7 @@ fn build_target_assignments_for_cast_tagged_copy(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect::<Vec<_>>();
@@ -75,6 +89,7 @@ fn choose_targets_for_cast_tagged_spell(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect::<Vec<_>>();
@@ -298,9 +313,12 @@ fn auto_add_mana_from_basic_lands_for_cast_tagged_cost(
         }) else {
             continue;
         };
+        let source_snapshot = game
+            .object(land_id)
+            .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game));
         game.tap(land_id);
         if let Some(player) = game.player_mut(payer) {
-            player.mana_pool.add(symbol, 1);
+            player.add_unrestricted_mana(symbol, land_id, source_snapshot);
         }
     }
 }
@@ -422,6 +440,7 @@ impl EffectExecutor for CastTaggedEffect {
                         legal_target_sets: requirement.legal_target_sets.clone(),
                         min_targets: requirement.min_targets,
                         max_targets: requirement.max_targets,
+                        distinct_player_group: requirement.distinct_player_group,
                     },
                 )
                 .collect::<Vec<_>>();
@@ -462,13 +481,14 @@ impl EffectExecutor for CastTaggedEffect {
                     return Ok(EffectOutcome::target_invalid());
                 };
                 let mut effective_cost =
-                    crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                    crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone(
                         game,
                         caster,
                         copy_obj,
                         cost,
                         &selected_targets,
                         &CastingMethod::Normal,
+                        from_zone,
                     );
                 if let Some(reduction) = self.cost_reduction.as_ref() {
                     effective_cost = crate::decision::reduce_mana_cost(&effective_cost, reduction);
@@ -491,6 +511,7 @@ impl EffectExecutor for CastTaggedEffect {
             stack_entry.source_name = Some(card_name);
             stack_entry.targets = selected_targets;
             stack_entry.target_assignments = target_assignments;
+            stack_entry.tagged_objects = spent_mana_source_tags(game, copy_id);
             game.push_to_stack(stack_entry);
             return Ok(with_spell_cast_event(
                 EffectOutcome::with_objects(vec![copy_id]),
@@ -550,13 +571,14 @@ impl EffectExecutor for CastTaggedEffect {
                 return Ok(EffectOutcome::impossible());
             };
             let mut effective_cost =
-                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone(
                     game,
                     caster,
                     cast_object,
                     cost,
                     &selected_targets,
                     &casting_method,
+                    from_zone,
                 );
             if let Some(reduction) = self.cost_reduction.as_ref() {
                 effective_cost = crate::decision::reduce_mana_cost(&effective_cost, reduction);
@@ -572,11 +594,13 @@ impl EffectExecutor for CastTaggedEffect {
             }
         }
 
+        let spent_mana_sources = spent_mana_source_tags(game, object_id);
         let Some(new_id) = game.move_object_by_effect(object_id, Zone::Stack) else {
             return Ok(EffectOutcome::impossible());
         };
         if let Some(obj) = game.object_mut(new_id) {
             obj.x_value = x_value;
+            obj.cast_tagged_objects.extend(spent_mana_sources.clone());
         }
 
         let stack_entry = StackEntry {
@@ -609,7 +633,7 @@ impl EffectExecutor for CastTaggedEffect {
             crew_contributors: vec![],
             saddle_contributors: vec![],
             chosen_modes: None,
-            tagged_objects: std::collections::HashMap::new(),
+            tagged_objects: spent_mana_sources,
             effect_outcomes: std::collections::HashMap::new(),
         };
 

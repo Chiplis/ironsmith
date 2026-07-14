@@ -176,6 +176,112 @@ pub(crate) fn downcast_return_all_to_battlefield<'a>(
         .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
 }
 
+pub(crate) fn describe_filtered_future_exile_delayed_return_bundle(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [replacement_effect, schedule_effect] = effects else {
+        return None;
+    };
+    let replacement = unwrap_render_wrappers(replacement_effect)
+        .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()?;
+    if replacement.filter != ObjectFilter::permanent().controlled_by(PlayerFilter::You)
+        || replacement.from_zone != Some(Zone::Battlefield)
+        || replacement.to_zone != Some(Zone::Graveyard)
+        || replacement.replacement_zone != Zone::Exile
+        || replacement.mode != crate::effects::ReplacementApplyMode::UntilEndOfTurn
+        || replacement.cause_filter.is_some()
+        || replacement.require_cause_source_match
+        || !replacement.link_exiled_to_source
+    {
+        return None;
+    }
+
+    let schedule = unwrap_render_wrappers(schedule_effect)
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    let end_step = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()?;
+    if !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || end_step.player != PlayerFilter::Any
+    {
+        return None;
+    }
+    let [return_effect] = schedule.effects.flattened_default_effects() else {
+        return None;
+    };
+    let return_all = downcast_return_all_to_battlefield(return_effect)?;
+    if return_all.filter != ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile)
+        || return_all.tapped
+        || return_all.face_down
+        || return_all.battlefield_controller != crate::effects::BattlefieldController::Owner
+    {
+        return None;
+    }
+
+    Some("If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. Return it to the battlefield under its owner's control at the beginning of the next end step".to_string())
+}
+
+pub(crate) fn describe_mass_creature_change_graveyard_exile_future_replacement_bundle(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [continuous_effect, exile_effect, replacement_effect] = effects else {
+        return None;
+    };
+    let continuous = unwrap_render_wrappers(continuous_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let affects_all_creatures = matches!(
+        &continuous.target,
+        crate::continuous::EffectTarget::AllCreatures
+    ) || matches!(
+        &continuous.target,
+        crate::continuous::EffectTarget::Filter(filter) if filter == &ObjectFilter::creature()
+    );
+    if continuous.until != Until::EndOfTurn || !affects_all_creatures {
+        return None;
+    }
+
+    let exile =
+        unwrap_render_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::All(exile_filter) = &exile.spec else {
+        return None;
+    };
+    if exile.face_down
+        || exile_filter.zone != Some(Zone::Graveyard)
+        || exile_filter.owner.is_some()
+        || exile_filter.single_graveyard
+        || exile_filter.card_types != vec![CardType::Creature]
+        || !exile_filter.entered_graveyard_from_battlefield_this_turn
+    {
+        return None;
+    }
+
+    let replacement = unwrap_render_wrappers(replacement_effect)
+        .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()?;
+    if replacement.filter != ObjectFilter::creature()
+        || replacement.from_zone != Some(Zone::Battlefield)
+        || replacement.to_zone != Some(Zone::Graveyard)
+        || replacement.replacement_zone != Zone::Exile
+        || replacement.mode != crate::effects::ReplacementApplyMode::UntilEndOfTurn
+        || replacement.cause_filter.is_some()
+        || replacement.require_cause_source_match
+        || replacement.link_exiled_to_source
+    {
+        return None;
+    }
+
+    let continuous = describe_effect(continuous_effect);
+    let exile = describe_effect(exile_effect);
+    let replacement = describe_effect(replacement_effect);
+    Some(format!(
+        "{}. {}. {}",
+        continuous.trim_end_matches('.'),
+        exile.trim_end_matches('.'),
+        replacement.trim_end_matches('.'),
+    ))
+}
+
 pub(crate) fn downcast_return_from_graveyard_to_battlefield<'a>(
     effect: &'a Effect,
 ) -> Option<&'a crate::effects::ReturnFromGraveyardToBattlefieldEffect> {
@@ -584,6 +690,390 @@ pub(crate) fn describe_damage_and_die_replacement_bundle(filtered: &[&Effect]) -
         "Deal 5 damage to target creature and 2 damage to that creature's controller. If that creature would die this turn, exile it instead."
             .to_string(),
     )
+}
+
+pub(crate) fn describe_compound_damage_regeneration_exile_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let [damage_effect, conditional_effect] = filtered else {
+        return None;
+    };
+    let damage_tag = wrapped_effect_tag(damage_effect)?;
+    unwrap_render_wrappers(damage_effect).downcast_ref::<crate::effects::DealDamageEffect>()?;
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [cant_effect, replacement_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+
+    let cant = unwrap_render_wrappers(cant_effect).downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::BeRegenerated(regeneration_filter) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != Until::EndOfTurn
+        || regeneration_filter.card_types != vec![CardType::Creature]
+        || !filter_is_tagged_as(regeneration_filter, damage_tag.as_str())
+    {
+        return None;
+    }
+
+    let replacement = unwrap_render_wrappers(replacement_effect)
+        .downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?;
+    if !matches!(replacement.target.base(), ChooseSpec::Tagged(tag) if tag == damage_tag)
+        || replacement.from_zone != Some(Zone::Battlefield)
+        || replacement.to_zone != Some(Zone::Graveyard)
+        || replacement.replacement_zone != Zone::Exile
+        || !matches!(
+            replacement.mode,
+            crate::effects::ReplacementApplyMode::OneShot
+                | crate::effects::ReplacementApplyMode::UntilEndOfTurn
+        )
+        || replacement.optional
+        || !replacement.counters.is_empty()
+    {
+        return None;
+    }
+
+    let followup = match &conditional.condition {
+        Condition::TaggedObjectMatches(tag, filter)
+            if tag == damage_tag && filter.card_types == vec![CardType::Creature] =>
+        {
+            "If it's a creature, it can't be regenerated this turn, and if it would die this turn, exile it instead"
+        }
+        Condition::ThisSpellWasKicked => {
+            "If this spell was kicked, that creature can't be regenerated this turn and if it would die this turn, exile it instead"
+        }
+        _ => return None,
+    };
+
+    let damage = describe_effect(damage_effect);
+    Some(format!("{}. {followup}", damage.trim_end_matches('.')))
+}
+
+fn effect_structurally_counters_spell(effect: &Effect) -> bool {
+    let effect = unwrap_render_wrappers(effect);
+    if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>() {
+        return matches!(
+            counter.target.base(),
+            ChooseSpec::Object(filter)
+                if filter.zone == Some(Zone::Stack)
+                    && filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        );
+    }
+    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+        return unless_pays
+            .effects
+            .iter()
+            .any(effect_structurally_counters_spell);
+    }
+    if let Some(local) = effect.downcast_ref::<crate::effects::LocalRewriteEffect>() {
+        return effect_structurally_counters_spell(&local.effect);
+    }
+    false
+}
+
+pub(crate) trait ZoneReplacementSurface {
+    fn target(&self) -> &ChooseSpec;
+    fn from_zone(&self) -> Option<Zone>;
+    fn to_zone(&self) -> Option<Zone>;
+    fn replacement_zone(&self) -> Zone;
+    fn library_placement(&self) -> Option<ironsmith_core::ZoneReplacementLibraryPlacement>;
+    fn mode(&self) -> crate::effects::ReplacementApplyMode;
+    fn optional(&self) -> bool;
+    fn has_counters(&self) -> bool;
+}
+
+macro_rules! impl_zone_replacement_surface {
+    ($ty:ty) => {
+        impl ZoneReplacementSurface for $ty {
+            fn target(&self) -> &ChooseSpec {
+                &self.target
+            }
+            fn from_zone(&self) -> Option<Zone> {
+                self.from_zone
+            }
+            fn to_zone(&self) -> Option<Zone> {
+                self.to_zone
+            }
+            fn replacement_zone(&self) -> Zone {
+                self.replacement_zone
+            }
+            fn library_placement(&self) -> Option<ironsmith_core::ZoneReplacementLibraryPlacement> {
+                self.library_placement
+            }
+            fn mode(&self) -> crate::effects::ReplacementApplyMode {
+                self.mode
+            }
+            fn optional(&self) -> bool {
+                self.optional
+            }
+            fn has_counters(&self) -> bool {
+                !self.counters.is_empty()
+            }
+        }
+    };
+}
+
+impl_zone_replacement_surface!(crate::effects::RegisterZoneReplacementEffect);
+impl_zone_replacement_surface!(ironsmith_core::RegisterZoneReplacementEffect);
+
+fn is_countered_spell_zone_replacement(replacement: &impl ZoneReplacementSurface) -> bool {
+    replacement.from_zone() == Some(Zone::Stack)
+        && replacement.to_zone() == Some(Zone::Graveyard)
+        && matches!(
+            replacement.mode(),
+            crate::effects::ReplacementApplyMode::OneShot
+        )
+        && !replacement.optional()
+        && !replacement.has_counters()
+        && match replacement.replacement_zone() {
+            Zone::Exile | Zone::Hand => replacement.library_placement().is_none(),
+            Zone::Library => replacement.library_placement().is_some(),
+            _ => false,
+        }
+}
+
+pub(crate) fn describe_countered_spell_exile_replacement_followup<R>(
+    producer: &Effect,
+    replacement: &R,
+) -> Option<String>
+where
+    R: ZoneReplacementSurface,
+{
+    if !is_countered_spell_zone_replacement(replacement)
+        || !effect_structurally_counters_spell(producer)
+    {
+        return None;
+    }
+    let ChooseSpec::Tagged(replacement_tag) = replacement.target() else {
+        return None;
+    };
+    if wrapped_effect_tag(producer) != Some(replacement_tag) {
+        return None;
+    }
+    match (
+        replacement.replacement_zone(),
+        replacement.library_placement(),
+    ) {
+        (Zone::Exile, None) => Some(
+            "If that spell is countered this way, exile it instead of putting it into its owner's graveyard"
+                .to_string(),
+        ),
+        (Zone::Hand, None) => Some(
+            "If that spell is countered this way, put it into its owner's hand instead of into that player's graveyard"
+                .to_string(),
+        ),
+        (
+            Zone::Library,
+            Some(ironsmith_core::ZoneReplacementLibraryPlacement::Top),
+        ) => Some(
+            "If that spell is countered this way, put it on top of its owner's library instead of into that player's graveyard"
+                .to_string(),
+        ),
+        (
+            Zone::Library,
+            Some(ironsmith_core::ZoneReplacementLibraryPlacement::Bottom),
+        ) => Some(
+            "If that spell is countered this way, put it on the bottom of its owner's library instead of into that player's graveyard"
+                .to_string(),
+        ),
+        (
+            Zone::Library,
+            Some(ironsmith_core::ZoneReplacementLibraryPlacement::TopOrBottom),
+        ) => Some(
+            "If that spell is countered this way, put that card on your choice of the top or bottom of its owner's library instead of into that player's graveyard"
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+pub(crate) fn describe_countered_spell_exile_replacement_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let (replacement_effect, prefix) = filtered.split_last()?;
+    let replacement =
+        replacement_effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?;
+    let followup = prefix.iter().rev().find_map(|producer| {
+        describe_countered_spell_exile_replacement_followup(producer, replacement)
+    })?;
+    let prefix = prefix
+        .iter()
+        .map(|effect| (*effect).clone())
+        .collect::<Vec<_>>();
+    let base = describe_effect_list(&prefix);
+    if base.trim().is_empty() {
+        return None;
+    }
+    Some(format!("{}. {followup}", base.trim_end_matches('.')))
+}
+
+fn describe_death_filter_subject(filter: &ObjectFilter, demonstrative: bool) -> Option<String> {
+    if !matches!(filter.zone, None | Some(Zone::Battlefield)) {
+        return None;
+    }
+    let description = filter.description();
+    let noun = strip_leading_article(&description).trim();
+    if noun.is_empty() || noun.contains("tagged '") {
+        return None;
+    }
+    if demonstrative {
+        Some(format!("that {noun}"))
+    } else {
+        Some(with_indefinite_article(noun))
+    }
+}
+
+fn describe_death_choose_referent(
+    target: &ChooseSpec,
+    qualify_non_target_as_damaged: bool,
+) -> Option<String> {
+    let filter = match target.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+        _ => return None,
+    };
+    let targeted = target.is_target();
+    let mut referent = describe_death_filter_subject(filter, targeted)?;
+    if !targeted && qualify_non_target_as_damaged {
+        referent.push_str(" dealt damage this way");
+    }
+    Some(referent)
+}
+
+fn describe_prior_action_death_referent(producer: &Effect) -> Option<String> {
+    let producer = unwrap_render_wrappers(producer);
+    if let Some(damage) = producer.downcast_ref::<crate::effects::DealDamageEffect>() {
+        return describe_death_choose_referent(&damage.target, true);
+    }
+    let apply = producer.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if let Some(target_spec) = &apply.target_spec {
+        return describe_death_choose_referent(target_spec, false);
+    }
+    match &apply.target {
+        crate::continuous::EffectTarget::Filter(filter) => {
+            describe_death_filter_subject(filter, false)
+        }
+        crate::continuous::EffectTarget::AllCreatures => Some("a creature".to_string()),
+        crate::continuous::EffectTarget::AllPermanents => Some("a permanent".to_string()),
+        _ => None,
+    }
+}
+
+pub(crate) fn describe_tagged_die_exile_replacement_followup<R>(
+    producer: &Effect,
+    replacement: &R,
+) -> Option<String>
+where
+    R: ZoneReplacementSurface,
+{
+    if replacement.from_zone() != Some(Zone::Battlefield)
+        || replacement.to_zone() != Some(Zone::Graveyard)
+        || replacement.replacement_zone() != Zone::Exile
+        || !matches!(
+            replacement.mode(),
+            crate::effects::ReplacementApplyMode::OneShot
+                | crate::effects::ReplacementApplyMode::UntilEndOfTurn
+        )
+        || replacement.optional()
+        || replacement.has_counters()
+    {
+        return None;
+    }
+    let referent = if let Some(fight) =
+        unwrap_render_wrappers(producer).downcast_ref::<crate::effects::FightEffect>()
+    {
+        if !target_specs_select_same_objects(&fight.creature2, replacement.target()) {
+            return None;
+        }
+        if !fight.creature1.is_target() {
+            "that creature".to_string()
+        } else {
+            let second_fighter = describe_choose_spec(&fight.creature2);
+            let second_fighter = second_fighter
+                .strip_prefix("target ")
+                .unwrap_or(second_fighter.as_str());
+            format!("the {second_fighter}")
+        }
+    } else {
+        let (replacement_tag, narrowed_filter) = match replacement.target().base() {
+            ChooseSpec::Tagged(tag) => (tag, None),
+            ChooseSpec::Object(filter) => {
+                let mut tagged = filter.tagged_constraints.iter().filter(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                });
+                let tag = &tagged.next()?.tag;
+                if tagged.next().is_some() {
+                    return None;
+                }
+                (tag, Some(filter))
+            }
+            _ => return None,
+        };
+        if wrapped_effect_tag(producer) != Some(replacement_tag) {
+            return None;
+        }
+        if let Some(filter) = narrowed_filter {
+            describe_death_filter_subject(filter, false)?
+        } else {
+            describe_prior_action_death_referent(producer)?
+        }
+    };
+    Some(format!(
+        "If {referent} would die this turn, exile it instead"
+    ))
+}
+
+pub(crate) fn describe_tagged_die_exile_replacement_bundle(filtered: &[&Effect]) -> Option<String> {
+    let (replacement_effect, prefix) = filtered.split_last()?;
+    let replacement =
+        replacement_effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?;
+    let followup = prefix.iter().rev().find_map(|producer| {
+        describe_tagged_die_exile_replacement_followup(producer, replacement)
+    })?;
+    let prefix = prefix
+        .iter()
+        .map(|effect| (*effect).clone())
+        .collect::<Vec<_>>();
+    let base = describe_effect_list(&prefix);
+    if base.trim().is_empty() {
+        return None;
+    }
+    Some(format!("{}. {followup}", base.trim_end_matches('.')))
+}
+
+pub(crate) fn describe_filtered_mill_then_draw_bundle(filtered: &[&Effect]) -> Option<String> {
+    let (draw_effect, prefix) = filtered.split_last()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You {
+        return None;
+    }
+    let Value::Count(filter) = &draw.count else {
+        return None;
+    };
+    let counted = describe_milled_graveyard_count_filter(filter)?;
+
+    let mill_effect = prefix.last()?;
+    let mill_tag = wrapped_effect_tag(mill_effect)?;
+    unwrap_render_wrappers(mill_effect).downcast_ref::<crate::effects::MillEffect>()?;
+    if !filter_is_tagged_as(filter, mill_tag.as_str()) {
+        return None;
+    }
+
+    let prefix = prefix
+        .iter()
+        .map(|effect| (*effect).clone())
+        .collect::<Vec<_>>();
+    let mill = describe_effect_list(&prefix);
+    if mill.trim().is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}. You draw a card for each {counted}",
+        mill.trim_end_matches('.')
+    ))
 }
 
 pub(crate) fn describe_reveal_hand_exile_same_name_search_bundle(
@@ -1401,7 +1891,7 @@ pub(crate) fn describe_each_player_choose_unselected_bounce_bundle(
     let ChooseSpec::All(filter) = &return_to_hand.spec else {
         return None;
     };
-    if choose.chooser != PlayerFilter::You
+    if choose.chooser != PlayerFilter::IteratedPlayer
         || choose_exact_count(choose) != Some(1)
         || choose_primary_zone(choose) != Some(Zone::Battlefield)
         || !choose.filter.excluded_card_types.contains(&CardType::Land)
@@ -1725,6 +2215,9 @@ pub(crate) fn describe_random_hand_reveal_damage_bundle(filtered: &[&Effect]) ->
     let reveal_subject = match &choose.chooser {
         PlayerFilter::You => "You reveal a card at random from your hand",
         PlayerFilter::Opponent => "Target opponent reveals a card at random from their hand",
+        player if is_target_opponent_player_filter(player) => {
+            "Target opponent reveals a card at random from their hand"
+        }
         PlayerFilter::Target(_) => "Target player reveals a card at random from their hand",
         PlayerFilter::IteratedPlayer => "That player reveals a card at random from their hand",
         _ if chooser == "the damaged player" => {
@@ -1764,6 +2257,7 @@ pub(crate) fn describe_random_hand_reveal_life_loss_bundle(filtered: &[&Effect])
     let player = match &choose.chooser {
         PlayerFilter::You => "You",
         PlayerFilter::Opponent => "Target opponent",
+        player if is_target_opponent_player_filter(player) => "Target opponent",
         PlayerFilter::Target(_) => "Target player",
         PlayerFilter::IteratedPlayer => "That player",
         _ => "That player",
@@ -1803,6 +2297,9 @@ pub(crate) fn describe_random_hand_reveal_bundle(filtered: &[&Effect]) -> Option
     let subject = match &choose.chooser {
         PlayerFilter::You => "You reveal a card at random from your hand",
         PlayerFilter::Opponent => "Target opponent reveals a card at random from their hand",
+        player if is_target_opponent_player_filter(player) => {
+            "Target opponent reveals a card at random from their hand"
+        }
         PlayerFilter::Target(_) => "Target player reveals a card at random from their hand",
         PlayerFilter::IteratedPlayer => "That player reveals a card at random from their hand",
         _ => "That player reveals a card at random from their hand",
@@ -1952,6 +2449,46 @@ pub(crate) fn describe_source_pump_unblockable_bundle(filtered: &[&Effect]) -> O
     ))
 }
 
+pub(crate) fn describe_target_pump_unblockable_bundle(filtered: &[&Effect]) -> Option<String> {
+    let [apply_effect, cant_effect] = filtered else {
+        return None;
+    };
+    let apply = apply_continuous_for_compaction(apply_effect)?;
+    if apply.until != Until::EndOfTurn
+        || apply.condition.is_some()
+        || apply.modification.is_some()
+        || !apply.additional_modifications.is_empty()
+    {
+        return None;
+    }
+    let [
+        crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness },
+    ] = apply.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    let target_spec = apply.target_spec.as_ref()?;
+    let target_text = describe_choose_spec(target_spec);
+    if !target_text.to_ascii_lowercase().starts_with("target ") {
+        return None;
+    }
+
+    let cant = cant_be_blocked_view(cant_effect)?;
+    let crate::effect::Restriction::BeBlocked(filter) = &cant.restriction else {
+        return None;
+    };
+    let pumped_tag = effect_tag(apply_effect)?;
+    if cant.duration != Until::EndOfTurn || !filter_is_tagged_as(filter, pumped_tag.as_str()) {
+        return None;
+    }
+
+    Some(format!(
+        "{target_text} gets {}/{} until end of turn and can't be blocked this turn",
+        describe_signed_value(power),
+        describe_toughness_delta_with_power_context(power, toughness),
+    ))
+}
+
 pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String> {
     let [tap_effect, cant_effect] = filtered else {
         return None;
@@ -1972,9 +2509,6 @@ pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String>
     let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
         return None;
     };
-    if cant.duration != Until::ControllersNextUntapStep {
-        return None;
-    }
     let target_text = match tap.target.base() {
         ChooseSpec::Tagged(tag) if tag.as_str() == "damaged" => "that creature".to_string(),
         _ => describe_choose_spec(&tap.target),
@@ -1990,27 +2524,37 @@ pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String>
     if !same_target {
         return None;
     }
-    if target_text == "that creature" {
-        if filter.card_types.contains(&CardType::Creature) || filter.zone == Some(Zone::Battlefield)
-        {
-            return Some(
-                "Tap that creature. That creature doesn't untap during its controller's next untap step"
-                    .to_string(),
-            );
-        }
-        return Some(
-            "Tap that creature and it doesn't untap during its controller's next untap step"
-                .to_string(),
-        );
-    }
-    if target_text == "it" {
-        return Some(
-            "Tap it. It doesn't untap during its controller's next untap step".to_string(),
-        );
-    }
-    Some(format!(
-        "Tap {target_text}. That permanent doesn't untap during its controller's next untap step"
-    ))
+
+    let singular_target = !tap.target.is_all()
+        && !tap.target.count().is_dynamic_x()
+        && tap.target.count().max.is_some_and(|max| max <= 1);
+    let followup = if tap.target.is_all() {
+        describe_untap_restriction_oracle(cant)?
+    } else {
+        let subject_text = if singular_target {
+            if target_text == "it" {
+                "It".to_string()
+            } else if target_text.starts_with("that ") {
+                capitalize_first(&target_text)
+            } else {
+                format!("That {}", untap_restriction_filter_noun(filter))
+            }
+        } else {
+            format!(
+                "Those {}",
+                pluralize_noun_phrase(untap_restriction_filter_noun(filter))
+            )
+        };
+        let subject = if filter.controller == Some(PlayerFilter::You) {
+            UntapRestrictionSubject::controlled_by_you(subject_text, !singular_target)
+        } else if !singular_target {
+            UntapRestrictionSubject::plural(subject_text, false)
+        } else {
+            UntapRestrictionSubject::singular(subject_text)
+        };
+        describe_untap_restriction_for_subject(cant, subject)?
+    };
+    Some(format!("Tap {target_text}. {followup}"))
 }
 
 pub(crate) fn describe_target_freeze_bundle(filtered: &[&Effect]) -> Option<String> {
@@ -2025,16 +2569,22 @@ pub(crate) fn describe_target_freeze_bundle(filtered: &[&Effect]) -> Option<Stri
     let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
         return None;
     };
-    if cant.duration != Until::ControllersNextUntapStep
-        || !filter_is_tagged_as(filter, tagged.tag.as_str())
-    {
+    if !filter_is_tagged_as(filter, tagged.tag.as_str()) {
         return None;
     }
 
-    Some(format!(
-        "{} doesn't untap during its controller's next untap step",
-        capitalize_first(&describe_choose_spec(&target_only.target))
-    ))
+    let subject_text = capitalize_first(&describe_choose_spec(&target_only.target));
+    let plural = target_only.target.is_all()
+        || target_only.target.count().is_dynamic_x()
+        || target_only.target.count().max.is_none_or(|max| max > 1);
+    let subject = if filter.controller == Some(PlayerFilter::You) {
+        UntapRestrictionSubject::controlled_by_you(subject_text, plural)
+    } else if plural {
+        UntapRestrictionSubject::plural(subject_text, false)
+    } else {
+        UntapRestrictionSubject::singular(subject_text)
+    };
+    describe_untap_restriction_for_subject(cant, subject)
 }
 
 pub(crate) fn describe_reveal_top_to_hand_bundle(filtered: &[&Effect]) -> Option<String> {
@@ -2642,4 +3192,32 @@ pub(crate) fn describe_exile_source_and_unless_pays_target(effects: &[&Effect]) 
     Some(format!(
         "Exile this card and {target} unless {controller} pays {payment_text}"
     ))
+}
+
+#[cfg(test)]
+mod random_hand_reveal_surface_tests {
+    use super::*;
+
+    #[test]
+    fn nested_target_opponent_keeps_opponent_surface() {
+        let tag = TagKey::from("random_reveal");
+        let opponent = PlayerFilter::target_opponent();
+        let choose = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::default()
+                    .in_zone(Zone::Hand)
+                    .owned_by(opponent.clone()),
+                ChoiceCount::exactly(1).at_random(),
+                opponent,
+                tag.clone(),
+            )
+            .in_zone(Zone::Hand),
+        );
+        let reveal = Effect::new(crate::effects::RevealTaggedEffect::new(tag));
+
+        assert_eq!(
+            describe_random_hand_reveal_bundle(&[&choose, &reveal]).as_deref(),
+            Some("Target opponent reveals a card at random from their hand")
+        );
+    }
 }

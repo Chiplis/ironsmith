@@ -552,6 +552,16 @@ where
         }
 
         fn castable_filter_description(filter: &ObjectFilter) -> String {
+            if *filter == ObjectFilter::noncreature_spell() {
+                return "noncreature spells".to_string();
+            }
+            if filter.excluded_card_types.contains(&CardType::Land) {
+                let mut spell_filter = filter.clone();
+                spell_filter
+                    .excluded_card_types
+                    .retain(|card_type| *card_type != CardType::Land);
+                return castable_filter_description(&spell_filter);
+            }
             if filter.card_types.as_slice() == [CardType::Creature]
                 && let Some(crate::filter_model::Comparison::GreaterThanOrEqual(power)) =
                     filter.power
@@ -573,9 +583,6 @@ where
                     .map(castable_filter_description)
                     .collect::<Vec<_>>()
                     .join(" or ");
-            }
-            if *filter == ObjectFilter::noncreature_spell() {
-                return "noncreature spells".to_string();
             }
             if is_simple_card_type_filter(filter) {
                 let permanent_types = [
@@ -607,10 +614,37 @@ where
             }
         }
 
-        fn filter_can_include_lands(filter: &ObjectFilter) -> bool {
-            if !filter.any_of.is_empty() {
-                return filter.any_of.iter().any(filter_can_include_lands);
+        fn pluralize_castable_spell_subject(subject: String) -> String {
+            if subject.ends_with(" spells") || subject.contains(" spells ") {
+                return subject;
             }
+            let subject = subject
+                .strip_prefix("an ")
+                .or_else(|| subject.strip_prefix("a "))
+                .unwrap_or(&subject)
+                .to_string();
+            if let Some(rest) = subject.strip_prefix("spell") {
+                return format!("spells{rest}");
+            }
+            if let Some((head, tail)) = subject.split_once(" spell") {
+                return format!("{head} spells{tail}");
+            }
+            subject
+        }
+
+        fn unlimited_zone_castable_filter_description(filter: &ObjectFilter) -> String {
+            if !filter.any_of.is_empty() {
+                return filter
+                    .any_of
+                    .iter()
+                    .map(unlimited_zone_castable_filter_description)
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+            }
+            pluralize_castable_spell_subject(castable_filter_description(filter))
+        }
+
+        fn filter_can_include_lands(filter: &ObjectFilter) -> bool {
             if filter.excluded_card_types.contains(&CardType::Land) {
                 return false;
             }
@@ -620,6 +654,9 @@ where
             if !filter.all_card_types.is_empty() && !filter.all_card_types.contains(&CardType::Land)
             {
                 return false;
+            }
+            if !filter.any_of.is_empty() {
+                return filter.any_of.iter().any(filter_can_include_lands);
             }
             true
         }
@@ -773,6 +810,7 @@ where
                 }
                 PlayerFilter::Excluding { .. } => "A player may".to_string(),
                 PlayerFilter::Target(_) => "Target player may".to_string(),
+                PlayerFilter::AliasedTarget(_) => "That player may".to_string(),
                 PlayerFilter::ControllerOf(_) => "That object's controller may".to_string(),
                 PlayerFilter::OwnerOf(_) => "That object's owner may".to_string(),
             }
@@ -993,7 +1031,11 @@ where
             {
                 return format!(
                     "{may_prefix} play lands and cast {} from the top of your library",
-                    castable_filter_description(other)
+                    if self.usage_limit.is_none() {
+                        unlimited_zone_castable_filter_description(other)
+                    } else {
+                        castable_filter_description(other)
+                    }
                 );
             }
         }
@@ -1006,7 +1048,11 @@ where
             }
             return format!(
                 "{may_prefix} cast {} from the top of your library",
-                castable_filter_description(&self.filter)
+                if self.usage_limit.is_none() {
+                    unlimited_zone_castable_filter_description(&self.filter)
+                } else {
+                    castable_filter_description(&self.filter)
+                }
             ) + &cast_this_way_suffix();
         }
         if let Grantable::AlternativeCast(method) = &self.grantable

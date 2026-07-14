@@ -20,7 +20,7 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::marker::CounterTypeExt;
 use crate::object::{CounterType, Object, SharedStr, SharedVec};
 use crate::object_query::candidate_ids_for_filter;
-use crate::snapshot::ObjectSnapshot;
+use crate::snapshot::{CopiableValues, ObjectSnapshot};
 use crate::static_abilities::StaticAbility;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
@@ -316,6 +316,9 @@ pub enum Modification {
     /// Become a copy of another object
     CopyOf {
         target_id: ObjectId,
+        /// Copiable values are determined once, when the copy effect begins.
+        /// Later changes to the source do not change the copy (CR 707.2).
+        copiable_values: Box<CopiableValues>,
         preserve_source_abilities: bool,
         name_override: Option<String>,
         name_override_surface: Option<SourceReferenceSurface>,
@@ -503,6 +506,9 @@ impl Modification {
             ironsmith_core::CompiledContinuousModification::RemoveCardTypes(card_types) => {
                 Self::RemoveCardTypes(card_types)
             }
+            ironsmith_core::CompiledContinuousModification::SetCardTypes(card_types) => {
+                Self::SetCardTypes(card_types)
+            }
             ironsmith_core::CompiledContinuousModification::AddSubtypes(subtypes) => {
                 Self::AddSubtypes(subtypes)
             }
@@ -666,7 +672,7 @@ pub struct ContinuousEffectManager {
     /// Timestamps for when counters were last modified on objects.
     /// Per Rule 613.7c, counters of the same type share a timestamp
     /// that's updated when new counters are added.
-    counter_timestamps: FxMap<ObjectId, u64>,
+    counter_timestamps: FxMap<(ObjectId, CounterType), u64>,
 
     /// Timestamps for when auras/equipment became attached.
     /// Per Rule 613.7e, attachments get a new timestamp when attached.
@@ -855,13 +861,19 @@ impl ContinuousEffectManager {
     }
 
     /// Snapshot counter timestamps in deterministic order.
-    pub fn counter_timestamps_snapshot(&self) -> Vec<(ObjectId, u64)> {
-        let mut entries: Vec<(ObjectId, u64)> = self
+    pub fn counter_timestamps_snapshot(&self) -> Vec<((ObjectId, CounterType), u64)> {
+        let mut entries: Vec<((ObjectId, CounterType), u64)> = self
             .counter_timestamps
             .iter()
-            .map(|(id, ts)| (*id, *ts))
+            .map(|(key, ts)| (*key, *ts))
             .collect();
-        entries.sort_by_key(|(id, _)| *id);
+        entries.sort_by(|((left_id, left_counter), _), ((right_id, right_counter), _)| {
+            left_id.cmp(right_id).then_with(|| {
+                left_counter
+                    .description()
+                    .cmp(&right_counter.description())
+            })
+        });
         entries
     }
 
@@ -887,9 +899,10 @@ impl ContinuousEffectManager {
 
     /// Record when counters are added to an object.
     /// Per Rule 613.7c, counters share a timestamp that's updated when new counters are added.
-    pub fn record_counter_change(&mut self, object_id: ObjectId) {
+    pub fn record_counter_change(&mut self, object_id: ObjectId, counter_type: CounterType) {
         let ts = self.next_timestamp();
-        self.counter_timestamps.insert(object_id, ts);
+        self.counter_timestamps
+            .insert((object_id, counter_type), ts);
     }
 
     /// Record when an aura/equipment becomes attached.
@@ -904,12 +917,41 @@ impl ContinuousEffectManager {
         self.object_entry_timestamps.get(&object_id).copied()
     }
 
+    /// Timestamp of the object's current characteristics for static effects.
+    /// Attachments and face changes can refresh it without a zone change.
+    pub fn get_object_timestamp(&self, object_id: ObjectId) -> Option<u64> {
+        self.get_entry_timestamp(object_id)
+            .into_iter()
+            .chain(self.get_attachment_timestamp(object_id))
+            .max()
+    }
+
+    /// Give an object a fresh timestamp after it turns face up or face down.
+    pub fn record_face_change(&mut self, object_id: ObjectId) {
+        let ts = self.next_timestamp();
+        self.object_entry_timestamps.insert(object_id, ts);
+    }
+
     /// Get the timestamp for an object's counters.
     /// If no specific counter timestamp exists, returns the entry timestamp.
-    pub fn get_counter_timestamp(&self, object_id: ObjectId) -> Option<u64> {
+    pub fn get_counter_timestamp(
+        &self,
+        object_id: ObjectId,
+        counter_type: CounterType,
+    ) -> Option<u64> {
         self.counter_timestamps
-            .get(&object_id)
+            .get(&(object_id, counter_type))
             .copied()
+            .or_else(|| self.object_entry_timestamps.get(&object_id).copied())
+    }
+
+    /// Latest timestamp among an object's counter types, for combined P/T
+    /// counter application where the arithmetic is commutative.
+    pub fn get_latest_counter_timestamp(&self, object_id: ObjectId) -> Option<u64> {
+        self.counter_timestamps
+            .iter()
+            .filter_map(|((id, _), timestamp)| (*id == object_id).then_some(*timestamp))
+            .max()
             .or_else(|| self.object_entry_timestamps.get(&object_id).copied())
     }
 
@@ -921,7 +963,8 @@ impl ContinuousEffectManager {
     /// Remove timestamp tracking for an object (when it leaves the zone).
     pub fn remove_timestamps(&mut self, object_id: ObjectId) {
         self.object_entry_timestamps.remove(&object_id);
-        self.counter_timestamps.remove(&object_id);
+        self.counter_timestamps
+            .retain(|(id, _), _| *id != object_id);
         self.attachment_timestamps.remove(&object_id);
     }
 }
@@ -1099,6 +1142,50 @@ pub struct CalculatedCharacteristics {
     pub controller: PlayerId,
 }
 
+fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
+    (subtype.is_land_subtype() && card_types.contains(&CardType::Land))
+        || (subtype.is_creature_type()
+            && (card_types.contains(&CardType::Creature)
+                || card_types.contains(&CardType::Kindred)))
+        || (subtype.is_artifact_subtype() && card_types.contains(&CardType::Artifact))
+        || (subtype.is_enchantment_subtype() && card_types.contains(&CardType::Enchantment))
+        || (subtype.is_spell_subtype()
+            && (card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery)))
+        || (subtype.is_planeswalker_subtype() && card_types.contains(&CardType::Planeswalker))
+        || (subtype.is_battle_subtype() && card_types.contains(&CardType::Battle))
+}
+
+/// Apply CR 205.1a card-type replacement, including the instant/sorcery
+/// exception and removal of subtypes that no longer correspond to a card type.
+pub(crate) fn replace_card_types_and_prune_subtypes(
+    card_types: &mut SharedVec<CardType>,
+    subtypes: &mut SharedVec<Subtype>,
+    replacement: &[CardType],
+) {
+    let prior_types = card_types.clone();
+    let mut replaced = replacement.to_vec();
+    for spell_type in [CardType::Instant, CardType::Sorcery] {
+        if prior_types.contains(&spell_type) && !replaced.contains(&spell_type) {
+            replaced.push(spell_type);
+        }
+    }
+    *card_types = replaced.into();
+    subtypes.retain(|subtype| card_types_support_subtype(card_types, *subtype));
+}
+
+pub(crate) fn replace_subtypes_in_family(
+    subtypes: &mut SharedVec<Subtype>,
+    replacement: &[Subtype],
+    family: SubtypeFamily,
+) {
+    subtypes.retain(|subtype| !subtype.belongs_to_family(family));
+    for subtype in replacement {
+        if !subtypes.contains(subtype) {
+            subtypes.push(*subtype);
+        }
+    }
+}
+
 fn ability_is_mana_for_object(
     ability: &Ability,
     game: &crate::game_state::GameState,
@@ -1174,12 +1261,20 @@ pub(crate) fn in_progress_characteristics(
 
 fn initial_characteristics(object: &Object) -> CalculatedCharacteristics {
     let mut chars = initial_text_box_characteristics(object);
-    add_abilities_from_counters(object, &mut chars);
     add_temporary_static_ability_grants(object, &mut chars);
     chars
 }
 
 fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristics {
+    // The object stores the face-down overlay directly for action/zone handling.
+    // Layer calculation must nevertheless begin with its underlying copiable
+    // values so that copy effects apply in 1a before face-down status in 1b.
+    let restored = object.face_down_cast_state.is_some().then(|| {
+        let mut restored = object.clone();
+        restored.end_face_down_cast_overlay();
+        restored
+    });
+    let object = restored.as_ref().unwrap_or(object);
     CalculatedCharacteristics {
         name: object.name.clone(),
         compiled_card_text: object.compiled_card_text.clone(),
@@ -1226,6 +1321,55 @@ fn apply_copy_effect_exceptions(
             chars.supertypes.push(*supertype);
         }
     }
+}
+
+fn copy_characteristics_from_copiable_values(
+    values: &CopiableValues,
+    chars: &mut CalculatedCharacteristics,
+    preserve_source_abilities: bool,
+    name_override: &Option<String>,
+    name_override_surface: &Option<SourceReferenceSurface>,
+    add_supertypes: &[Supertype],
+) {
+    let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
+
+    chars.name = values.name.clone().into();
+    chars.compiled_card_text = values.compiled_card_text.clone().into();
+    chars.power = values.power;
+    chars.toughness = values.toughness;
+    chars.card_types = values.card_types.clone().into();
+    chars.subtypes = values.subtypes.clone().into();
+    chars.supertypes = values.supertypes.clone().into();
+    chars.colors = values.colors;
+    chars.abilities = values.abilities.as_ref().clone().into();
+    chars.aura_attach_filter = values.aura_attach_filter.clone();
+
+    if let Some(preserved_abilities) = preserved_abilities {
+        for ability in preserved_abilities {
+            if !chars.abilities.contains(&ability) {
+                chars.abilities.push(ability);
+            }
+        }
+    }
+
+    apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
+    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+}
+
+/// Apply the face-down characteristics in layer 1b, after all copy effects.
+fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics) {
+    if object.face_down_cast_state.is_none() {
+        return;
+    }
+    let values = CopiableValues::from_object(object);
+    copy_characteristics_from_copiable_values(
+        &values,
+        chars,
+        false,
+        &None,
+        &None,
+        &[],
+    );
 }
 
 fn object_has_reconfigure_ability(object: &Object) -> bool {
@@ -1340,6 +1484,7 @@ pub fn calculate_characteristics_with_effects(
         commanders,
         game,
         DependencySortMode::Baseline,
+        true,
     ))
 }
 
@@ -1387,6 +1532,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                     commanders,
                     game,
                     DependencySortMode::Baseline,
+                    true,
                 );
                 assert_eq!(
                     format!("{chars:?}"),
@@ -1409,6 +1555,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                     commanders,
                     game,
                     DependencySortMode::Baseline,
+                    true,
                 );
                 calculated.insert(id, chars);
             }
@@ -1436,6 +1583,7 @@ pub(crate) fn calculate_characteristics_batch_with_effects(
                 commanders,
                 game,
                 DependencySortMode::Baseline,
+                true,
             ),
         );
     }
@@ -1493,6 +1641,23 @@ fn calculate_characteristics_layer_batch_with_effects(
     let mut abilities_removed = HashSet::new();
     let mut started_groups_by_object = HashSet::new();
     let mut started_groups_for_sort = HashSet::new();
+    let mut ability_counter_state: HashMap<ObjectId, (Vec<(u64, CounterType)>, usize)> = order
+        .iter()
+        .filter_map(|id| {
+            objects.get(id).map(|object| {
+                (
+                    *id,
+                    (
+                        ability_counter_timestamps(
+                            object,
+                            &game.effect_store.continuous_effects,
+                        ),
+                        0,
+                    ),
+                )
+            })
+        })
+        .collect();
 
     for layer in [
         Layer::Copy,
@@ -1503,6 +1668,18 @@ fn calculate_characteristics_layer_batch_with_effects(
         Layer::Ability,
     ] {
         let Some(layer_effects) = effects_by_layer.get(&layer) else {
+            if layer == Layer::Copy {
+                for (idx, &id) in order.iter().enumerate() {
+                    let Some(object) = objects.get(&id) else {
+                        continue;
+                    };
+                    let Some(chars) = chars_by_id.get_mut(&id) else {
+                        continue;
+                    };
+                    apply_face_down_layer(object, chars);
+                    guards[idx].update(chars);
+                }
+            }
             if layer == Layer::Type {
                 for (idx, &id) in order.iter().enumerate() {
                     let Some(object) = objects.get(&id) else {
@@ -1512,6 +1689,25 @@ fn calculate_characteristics_layer_batch_with_effects(
                         continue;
                     };
                     apply_reconfigure_attached_type_rule(object, chars);
+                    guards[idx].update(chars);
+                }
+            }
+            if layer == Layer::Ability {
+                for (idx, &id) in order.iter().enumerate() {
+                    let (Some(object), Some(chars), Some((counters, next_counter))) = (
+                        objects.get(&id),
+                        chars_by_id.get_mut(&id),
+                        ability_counter_state.get_mut(&id),
+                    ) else {
+                        continue;
+                    };
+                    apply_ability_counters_through(
+                        object,
+                        chars,
+                        counters,
+                        next_counter,
+                        None,
+                    );
                     guards[idx].update(chars);
                 }
             }
@@ -1543,6 +1739,25 @@ fn calculate_characteristics_layer_batch_with_effects(
 
         let mut applicability_cache = Vec::new();
         for effect in sorted_effects {
+            if layer == Layer::Ability {
+                for (idx, &id) in order.iter().enumerate() {
+                    let (Some(object), Some(chars), Some((counters, next_counter))) = (
+                        objects.get(&id),
+                        chars_by_id.get_mut(&id),
+                        ability_counter_state.get_mut(&id),
+                    ) else {
+                        continue;
+                    };
+                    apply_ability_counters_through(
+                        object,
+                        chars,
+                        counters,
+                        next_counter,
+                        Some(effect.timestamp),
+                    );
+                    guards[idx].update(chars);
+                }
+            }
             if !continuous_effect_duration_and_condition_are_active(effect, game) {
                 continue;
             }
@@ -1607,6 +1822,48 @@ fn calculate_characteristics_layer_batch_with_effects(
                 if let Some(chars) = chars_by_id.get(&id) {
                     guards[idx].update(chars);
                 }
+            }
+        }
+
+        if layer == Layer::Copy {
+            for (idx, &id) in order.iter().enumerate() {
+                let Some(object) = objects.get(&id) else {
+                    continue;
+                };
+                let Some(chars) = chars_by_id.get_mut(&id) else {
+                    continue;
+                };
+                apply_face_down_layer(object, chars);
+                guards[idx].update(chars);
+            }
+        } else if layer == Layer::Type {
+            for (idx, &id) in order.iter().enumerate() {
+                let Some(object) = objects.get(&id) else {
+                    continue;
+                };
+                let Some(chars) = chars_by_id.get_mut(&id) else {
+                    continue;
+                };
+                apply_reconfigure_attached_type_rule(object, chars);
+                guards[idx].update(chars);
+            }
+        } else if layer == Layer::Ability {
+            for (idx, &id) in order.iter().enumerate() {
+                let (Some(object), Some(chars), Some((counters, next_counter))) = (
+                    objects.get(&id),
+                    chars_by_id.get_mut(&id),
+                    ability_counter_state.get_mut(&id),
+                ) else {
+                    continue;
+                };
+                apply_ability_counters_through(
+                    object,
+                    chars,
+                    counters,
+                    next_counter,
+                    None,
+                );
+                guards[idx].update(chars);
             }
         }
     }
@@ -1767,6 +2024,26 @@ pub(crate) fn calculate_characteristics_with_effects_simple(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> Option<CalculatedCharacteristics> {
+    calculate_characteristics_with_effects_simple_internal(
+        object_id,
+        objects,
+        effects,
+        battlefield,
+        commanders,
+        game,
+        true,
+    )
+}
+
+pub(super) fn calculate_characteristics_with_effects_simple_internal(
+    object_id: ObjectId,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+    include_ability_counters: bool,
+) -> Option<CalculatedCharacteristics> {
     if let Some(chars) = in_progress_characteristics(object_id) {
         return Some(chars);
     }
@@ -1780,7 +2057,116 @@ pub(crate) fn calculate_characteristics_with_effects_simple(
         commanders,
         game,
         DependencySortMode::Heuristic,
+        include_ability_counters,
     ))
+}
+
+/// Calculate only the values established in layers 1a and 1b.
+///
+/// Copy effects freeze this result when they begin. In particular, this keeps
+/// later type, color, ability, and power/toughness effects out of the copied
+/// values while still preserving an earlier copy effect on the source.
+pub(crate) fn copiable_values_with_effects(
+    object_id: ObjectId,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+) -> Option<CopiableValues> {
+    let object = objects.get(&object_id)?;
+    let mut chars = initial_text_box_characteristics(object);
+    let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
+    let layer_effects: Vec<_> = effects
+        .iter()
+        .filter(|effect| effect.modification.layer() == Layer::Copy)
+        .collect();
+    let mut started_groups = HashSet::new();
+
+    if !layer_effects.is_empty() {
+        let needs_source_tracking =
+            layer_needs_source_activity_tracking(&layer_effects, effects.iter(), Layer::Copy);
+        let baseline = crate::dependency::needs_baseline_dependency_sort(&layer_effects).then(|| {
+            build_layer_baseline(
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                Layer::Copy,
+                None,
+            )
+        });
+        let tracked_source_ids =
+            needs_source_tracking.then(|| tracked_source_ids_for_layer(&layer_effects));
+        let mut source_state = if needs_source_tracking {
+            build_object_baseline_for_ids(
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                Layer::Copy,
+                None,
+                tracked_source_ids
+                    .as_ref()
+                    .expect("tracked sources should exist when source tracking is enabled"),
+            )
+        } else {
+            HashMap::new()
+        };
+        let sorted_effects = if let Some(baseline) = baseline.as_ref() {
+            crate::dependency::sort_layer_effects_with_baseline_and_started_groups(
+                &layer_effects,
+                baseline,
+                objects,
+                game,
+                &started_groups,
+            )
+        } else {
+            crate::dependency::sort_layer_effects(&layer_effects)
+        };
+
+        for effect in sorted_effects {
+            let effect_active = if needs_source_tracking {
+                continuous_effect_group_started(effect, &started_groups)
+                    || effect_source_is_active(effect, &source_state)
+            } else {
+                true
+            };
+            if needs_source_tracking && effect_active {
+                advance_layer_source_state(
+                    &mut source_state,
+                    effect,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                );
+            }
+            if !effect_active
+                || !effect_applies_to_direct_or_started(
+                    effect,
+                    &started_groups,
+                    object,
+                    &chars,
+                    objects,
+                    battlefield,
+                    commanders,
+                    game,
+                )
+            {
+                continue;
+            }
+            mark_continuous_effect_group_started(effect, &mut started_groups);
+            apply_text_box_modification_to_chars(&effect.modification, &mut chars, objects);
+            calc_guard.update(&chars);
+        }
+    }
+
+    apply_face_down_layer(object, &mut chars);
+    calc_guard.update(&chars);
+    Some(CopiableValues::from_calculated(&chars))
 }
 
 /// Calculate an object's effective text box after copy/control/text effects.
@@ -1814,6 +2200,10 @@ pub fn text_box_characteristics_with_effects(
 
     for layer in [Layer::Copy, Layer::Control, Layer::Text] {
         let Some(layer_effects) = effects_by_layer.get(&layer) else {
+            if layer == Layer::Copy {
+                apply_face_down_layer(object, &mut chars);
+                calc_guard.update(&chars);
+            }
             continue;
         };
         let needs_source_tracking =
@@ -1891,6 +2281,11 @@ pub fn text_box_characteristics_with_effects(
             apply_text_box_modification_to_chars(&effect.modification, &mut chars, objects);
             calc_guard.update(&chars);
         }
+
+        if layer == Layer::Copy {
+            apply_face_down_layer(object, &mut chars);
+            calc_guard.update(&chars);
+        }
     }
 
     Some(chars)
@@ -1899,58 +2294,25 @@ pub fn text_box_characteristics_with_effects(
 fn apply_text_box_modification_to_chars(
     modification: &Modification,
     chars: &mut CalculatedCharacteristics,
-    objects: &ObjectMap,
+    _objects: &ObjectMap,
 ) {
-    fn copy_characteristics_from_target(
-        target: &Object,
-        chars: &mut CalculatedCharacteristics,
-        preserve_source_abilities: bool,
-        name_override: &Option<String>,
-        name_override_surface: &Option<SourceReferenceSurface>,
-        add_supertypes: &[Supertype],
-    ) {
-        let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
-
-        chars.name = target.name.clone();
-        chars.compiled_card_text = target.compiled_card_text.clone();
-        chars.power = target.base_power.as_ref().map(|p| p.base_value());
-        chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-        chars.card_types = target.card_types.clone();
-        chars.subtypes = target.subtypes.clone();
-        chars.supertypes = target.supertypes.clone();
-        chars.colors = target.colors();
-        chars.abilities = target.abilities.clone().into();
-
-        if let Some(preserved_abilities) = preserved_abilities {
-            for ability in preserved_abilities {
-                if !chars.abilities.contains(&ability) {
-                    chars.abilities.push(ability);
-                }
-            }
-        }
-
-        apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
-        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
-    }
-
     match modification {
         Modification::CopyOf {
-            target_id,
+            copiable_values,
             preserve_source_abilities,
             name_override,
             name_override_surface,
             add_supertypes,
+            ..
         } => {
-            if let Some(target) = objects.get(target_id) {
-                copy_characteristics_from_target(
-                    target,
-                    chars,
-                    *preserve_source_abilities,
-                    name_override,
-                    name_override_surface,
-                    add_supertypes,
-                );
-            }
+            copy_characteristics_from_copiable_values(
+                copiable_values,
+                chars,
+                *preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+            );
         }
         Modification::ChangeController(new_controller) => {
             chars.controller = *new_controller;
@@ -1977,6 +2339,7 @@ fn calculate_with_layers_direct_internal(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
     sort_mode: DependencySortMode,
+    include_ability_counters: bool,
 ) -> CalculatedCharacteristics {
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
@@ -2007,13 +2370,33 @@ fn calculate_with_layers_direct_internal(
 
     // Track which abilities have been removed (for dependency detection)
     let mut abilities_removed = false;
+    let ability_counters = if include_ability_counters {
+        ability_counter_timestamps(object, &game.effect_store.continuous_effects)
+    } else {
+        Vec::new()
+    };
+    let mut next_ability_counter = 0;
 
     for layer in layers_1_to_6 {
         let layer_effects = match effects_by_layer.get(&layer) {
             Some(effects) => effects,
             None => {
+                if layer == Layer::Copy {
+                    apply_face_down_layer(object, &mut chars);
+                    calc_guard.update(&chars);
+                }
                 if layer == Layer::Type {
                     apply_reconfigure_attached_type_rule(object, &mut chars);
+                    calc_guard.update(&chars);
+                }
+                if layer == Layer::Ability {
+                    apply_ability_counters_through(
+                        object,
+                        &mut chars,
+                        &ability_counters,
+                        &mut next_ability_counter,
+                        None,
+                    );
                     calc_guard.update(&chars);
                 }
                 continue;
@@ -2068,6 +2451,16 @@ fn calculate_with_layers_direct_internal(
 
         // Apply effects in dependency order
         for effect in sorted_effects {
+            if layer == Layer::Ability {
+                apply_ability_counters_through(
+                    object,
+                    &mut chars,
+                    &ability_counters,
+                    &mut next_ability_counter,
+                    Some(effect.timestamp),
+                );
+                calc_guard.update(&chars);
+            }
             let effect_active = if needs_source_tracking {
                 continuous_effect_group_started(effect, &started_groups)
                     || effect_source_is_active(effect, &source_state)
@@ -2116,6 +2509,24 @@ fn calculate_with_layers_direct_internal(
                 battlefield,
                 commanders,
                 game,
+            );
+            calc_guard.update(&chars);
+        }
+
+
+        if layer == Layer::Copy {
+            apply_face_down_layer(object, &mut chars);
+            calc_guard.update(&chars);
+        } else if layer == Layer::Type {
+            apply_reconfigure_attached_type_rule(object, &mut chars);
+            calc_guard.update(&chars);
+        } else if layer == Layer::Ability {
+            apply_ability_counters_through(
+                object,
+                &mut chars,
+                &ability_counters,
+                &mut next_ability_counter,
+                None,
             );
             calc_guard.update(&chars);
         }
@@ -2558,6 +2969,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::IteratedPlayer
         | PlayerFilter::TargetPlayerOrControllerOfTarget
         | PlayerFilter::Target(_)
+        | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::ControllerOf(_)
         | PlayerFilter::OwnerOf(_)
         | PlayerFilter::AliasedOwnerOf(_)
@@ -2989,6 +3401,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.blocked
         || filter.blocked_by.is_some()
         || filter.blocked_by_source
+        || filter.attached_to_object.is_some()
         || filter.unblocked
         || filter.in_combat_with_source
         || filter.entered_since_your_last_turn_ended
@@ -3038,6 +3451,9 @@ fn bind_effect_controller_in_player_filter(
     match filter {
         PlayerFilter::EffectController => PlayerFilter::Specific(effect_controller),
         PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
+            bind_effect_controller_in_player_filter(inner, effect_controller),
+        )),
+        PlayerFilter::AliasedTarget(inner) => PlayerFilter::AliasedTarget(Box::new(
             bind_effect_controller_in_player_filter(inner, effect_controller),
         )),
         PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
@@ -3106,58 +3522,24 @@ fn apply_modification_to_chars(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) {
-    fn copy_characteristics_from_target(
-        target: &Object,
-        chars: &mut CalculatedCharacteristics,
-        preserve_source_abilities: bool,
-        name_override: &Option<String>,
-        name_override_surface: &Option<SourceReferenceSurface>,
-        add_supertypes: &[Supertype],
-    ) {
-        let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
-
-        chars.name = target.name.clone();
-        chars.compiled_card_text = target.compiled_card_text.clone();
-        chars.power = target.base_power.as_ref().map(|p| p.base_value());
-        chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-        chars.card_types = target.card_types.clone();
-        chars.subtypes = target.subtypes.clone();
-        chars.supertypes = target.supertypes.clone();
-        chars.colors = target.colors();
-        chars.abilities = target.abilities.clone().into();
-
-        if let Some(preserved_abilities) = preserved_abilities {
-            for ability in preserved_abilities {
-                if !chars.abilities.contains(&ability) {
-                    chars.abilities.push(ability);
-                }
-            }
-        }
-
-        apply_copy_effect_exceptions(chars, name_override, name_override_surface, add_supertypes);
-        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
-    }
-
     match modification {
         // Layer 1: Copy
         Modification::CopyOf {
-            target_id,
+            copiable_values,
             preserve_source_abilities,
             name_override,
             name_override_surface,
             add_supertypes,
+            ..
         } => {
-            if let Some(target) = objects.get(target_id) {
-                copy_characteristics_from_target(
-                    target,
-                    chars,
-                    *preserve_source_abilities,
-                    name_override,
-                    name_override_surface,
-                    add_supertypes,
-                );
-                add_abilities_from_counters(object, chars);
-            }
+            copy_characteristics_from_copiable_values(
+                copiable_values,
+                chars,
+                *preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+            );
         }
 
         // Layer 2: Control
@@ -3171,7 +3553,6 @@ fn apply_modification_to_chars(
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.abilities = overlay.abilities.clone().into();
             chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
-            add_abilities_from_counters(object, chars);
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
@@ -3189,7 +3570,11 @@ fn apply_modification_to_chars(
             chars.card_types.retain(|t| !types.contains(t));
         }
         Modification::SetCardTypes(types) => {
-            chars.card_types = types.clone().into();
+            replace_card_types_and_prune_subtypes(
+                &mut chars.card_types,
+                &mut chars.subtypes,
+                types,
+            );
         }
         Modification::AddSubtypes(subtypes) => {
             for st in subtypes {
@@ -3202,15 +3587,7 @@ fn apply_modification_to_chars(
             chars.subtypes.retain(|st| !subtypes.contains(st));
         }
         Modification::SetSubtypes(subtypes) => {
-            // SetSubtypes replaces land subtypes only, keeping non-land subtypes like Saga
-            let non_land_subtypes: Vec<_> = chars
-                .subtypes
-                .iter()
-                .filter(|st| !st.is_land_subtype())
-                .cloned()
-                .collect();
-            chars.subtypes = non_land_subtypes.into();
-            chars.subtypes.extend(subtypes.iter().cloned());
+            replace_subtypes_in_family(&mut chars.subtypes, subtypes, SubtypeFamily::Land);
         }
         Modification::SetAuraAttachmentFilter(filter) => {
             chars.aura_attach_filter = Some(filter.clone());

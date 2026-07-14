@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 use crate::decisions::context::TargetRequirementContext;
@@ -42,6 +42,37 @@ fn legal_pool_for_selected(
         })
 }
 
+fn selected_targets_satisfy_distinct_player_group(
+    req: &TargetRequirementContext,
+    selected: &[Target],
+    used_by_group: &HashMap<usize, HashSet<Target>>,
+) -> bool {
+    let Some(group) = req.distinct_player_group else {
+        return true;
+    };
+    let already_used = used_by_group.get(&group);
+    let mut selected_in_requirement = HashSet::new();
+
+    selected.iter().all(|target| {
+        matches!(target, Target::Player(_))
+            && selected_in_requirement.insert(*target)
+            && !already_used.is_some_and(|used| used.contains(target))
+    })
+}
+
+fn add_distinct_player_group_targets(
+    req: &TargetRequirementContext,
+    selected: &[Target],
+    used_by_group: &mut HashMap<usize, HashSet<Target>>,
+) {
+    if let Some(group) = req.distinct_player_group {
+        used_by_group
+            .entry(group)
+            .or_default()
+            .extend(selected.iter().copied());
+    }
+}
+
 fn assign_target_counts(
     requirements: &[TargetRequirementContext],
     targets: &[Target],
@@ -53,66 +84,79 @@ fn assign_target_counts(
         req_idx: usize,
         cursor: usize,
         allow_autofill: bool,
-        memo: &mut HashMap<(usize, usize), Option<Vec<usize>>>,
+        used_by_group: &mut HashMap<usize, HashSet<Target>>,
     ) -> Option<Vec<usize>> {
-        if let Some(cached) = memo.get(&(req_idx, cursor)) {
-            return cached.clone();
+        if req_idx == requirements.len() {
+            if cursor == targets.len() {
+                return Some(Vec::new());
+            } else {
+                return None;
+            }
         }
 
-        let result = if req_idx == requirements.len() {
-            if cursor == targets.len() {
-                Some(Vec::new())
-            } else {
-                None
-            }
+        let req = &requirements[req_idx];
+        let remaining = targets.len().saturating_sub(cursor);
+        let future_min: usize = if allow_autofill {
+            0
         } else {
-            let req = &requirements[req_idx];
-            let remaining = targets.len().saturating_sub(cursor);
-            let future_min: usize = requirements[req_idx + 1..]
+            requirements[req_idx + 1..]
                 .iter()
                 .map(|next| next.min_targets)
-                .sum();
-            let min_for_req = if allow_autofill { 0 } else { req.min_targets };
-            let max_for_req = req.max_targets.unwrap_or(remaining).min(remaining);
-            let mut found = None;
+                .sum()
+        };
+        let min_for_req = if allow_autofill { 0 } else { req.min_targets };
+        let max_for_req = req.max_targets.unwrap_or(remaining).min(remaining);
 
-            if min_for_req <= max_for_req {
-                for count in (min_for_req..=max_for_req).rev() {
-                    if remaining.saturating_sub(count) < future_min {
-                        continue;
-                    }
+        if min_for_req <= max_for_req {
+            for count in (min_for_req..=max_for_req).rev() {
+                if remaining.saturating_sub(count) < future_min {
+                    continue;
+                }
 
-                    let slice = &targets[cursor..cursor + count];
-                    if !selected_targets_satisfy_requirement(req, slice) {
-                        continue;
-                    }
+                let slice = &targets[cursor..cursor + count];
+                if !selected_targets_satisfy_requirement(req, slice)
+                    || !selected_targets_satisfy_distinct_player_group(req, slice, used_by_group)
+                {
+                    continue;
+                }
 
-                    if let Some(mut rest) = recurse(
-                        requirements,
-                        targets,
-                        req_idx + 1,
-                        cursor + count,
-                        allow_autofill,
-                        memo,
-                    ) {
-                        let mut counts = Vec::with_capacity(rest.len() + 1);
-                        counts.push(count);
-                        counts.append(&mut rest);
-                        found = Some(counts);
-                        break;
+                add_distinct_player_group_targets(req, slice, used_by_group);
+                let result = recurse(
+                    requirements,
+                    targets,
+                    req_idx + 1,
+                    cursor + count,
+                    allow_autofill,
+                    used_by_group,
+                );
+                if let Some(mut rest) = result {
+                    let mut counts = Vec::with_capacity(rest.len() + 1);
+                    counts.push(count);
+                    counts.append(&mut rest);
+                    return Some(counts);
+                }
+                if let Some(group) = req.distinct_player_group
+                    && let Some(used) = used_by_group.get_mut(&group)
+                {
+                    for target in slice {
+                        used.remove(target);
                     }
                 }
             }
+        }
 
-            found
-        };
-
-        memo.insert((req_idx, cursor), result.clone());
-        result
+        None
     }
 
-    let mut memo = HashMap::new();
-    recurse(requirements, targets, 0, 0, allow_autofill, &mut memo)
+    let mut used_by_group = HashMap::new();
+    recurse(
+        requirements,
+        targets,
+        0,
+        0,
+        allow_autofill,
+        &mut used_by_group,
+    )
 }
 
 pub fn normalize_targets_for_requirements(
@@ -122,6 +166,7 @@ pub fn normalize_targets_for_requirements(
     let counts = assign_target_counts(requirements, &proposed, true)?;
     let mut out = Vec::new();
     let mut cursor = 0usize;
+    let mut used_by_group = HashMap::new();
 
     for (req, count) in requirements.iter().zip(counts.into_iter()) {
         let mut selected = Vec::new();
@@ -138,7 +183,13 @@ pub fn normalize_targets_for_requirements(
                 if selected.len() >= req.min_targets {
                     break;
                 }
-                if !selected.contains(legal) {
+                if !selected.contains(legal)
+                    && selected_targets_satisfy_distinct_player_group(
+                        req,
+                        std::slice::from_ref(legal),
+                        &used_by_group,
+                    )
+                {
                     selected.push(*legal);
                 }
             }
@@ -152,6 +203,10 @@ pub fn normalize_targets_for_requirements(
         {
             return None;
         }
+        if !selected_targets_satisfy_distinct_player_group(req, &selected, &used_by_group) {
+            return None;
+        }
+        add_distinct_player_group_targets(req, &selected, &mut used_by_group);
 
         out.extend(selected);
     }
@@ -205,6 +260,7 @@ mod tests {
                 legal_target_sets: Vec::new(),
                 min_targets: 0,
                 max_targets: None,
+                distinct_player_group: None,
             },
             TargetRequirementContext {
                 description: "final target".to_string(),
@@ -212,6 +268,7 @@ mod tests {
                 legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
+                distinct_player_group: None,
             },
         ];
 
@@ -234,6 +291,7 @@ mod tests {
             legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
+            distinct_player_group: None,
         }];
 
         let normalized =
@@ -253,6 +311,7 @@ mod tests {
                 legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
+                distinct_player_group: None,
             },
             TargetRequirementContext {
                 description: "second".to_string(),
@@ -260,6 +319,7 @@ mod tests {
                 legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
+                distinct_player_group: None,
             },
         ];
 
@@ -278,6 +338,7 @@ mod tests {
             legal_target_sets: vec![vec![a, b], vec![c, d]],
             min_targets: 2,
             max_targets: Some(2),
+            distinct_player_group: None,
         }];
 
         assert!(validate_flat_target_assignment(&requirements, &[a, b]));
@@ -296,6 +357,7 @@ mod tests {
             legal_target_sets: vec![vec![a, b], vec![c, d]],
             min_targets: 2,
             max_targets: Some(2),
+            distinct_player_group: None,
         }];
 
         let normalized = normalize_targets_for_requirements(&requirements, vec![c]).expect("valid");

@@ -32,10 +32,9 @@ use crate::zone::Zone;
 pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
     tokens: &[OwnedLexToken],
 ) -> Result<
-    Option<(
-        Vec<EffectAst>,
+    Option<
         crate::runtime_backend::activation_and_restrictions::trigger_subject_filters::MayCastTaggedSpec,
-    )>,
+    >,
     CardTextError,
 >{
     use super::super::grammar::primitives as grammar;
@@ -59,8 +58,7 @@ pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
         return Ok(None);
     }
 
-    let copy_effects = effect_sentences::parse_effect_sentence_lexed(&copy_tokens)?;
-    Ok(Some((copy_effects, spec)))
+    Ok(Some(spec))
 }
 
 fn parse_exile_top_library_then_play_bundle(
@@ -125,12 +123,23 @@ fn parse_exile_top_library_then_play_bundle(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
-                    player, allow_land, ..
+                    player,
+                    allow_land,
+                    until_next_end_step,
+                    ..
                 },
             ..
-        }) => EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-            tag, player, allow_land, false,
-        ),
+        }) => {
+            if until_next_end_step {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
+                    tag, player, allow_land, false,
+                )
+            } else {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                    tag, player, allow_land, false,
+                )
+            }
+        }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
@@ -227,8 +236,10 @@ fn parse_choose_type_then_phase_out_bundle(
     {
         phase_out_filter.excluded_subtypes.push(Subtype::Aura);
     }
-    phase_out_filter =
-        phase_out_filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::SharesCardType);
+    phase_out_filter = phase_out_filter.match_tagged(
+        TagKey::from(IT_TAG),
+        TaggedOpbjectRelation::SharesPermanentType,
+    );
 
     let mut choose_filter = choose_filter;
     if choose_filter.controller.is_none() && choose_filter.owner.is_none() {
@@ -506,6 +517,81 @@ fn parse_discard_reveal_choose_discard_chosen_bundle(
             count_value,
             player: chooser,
             tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::subject_verb_discard(
+            PlayerAst::That,
+            Value::Count(discarded_filter.clone()),
+            false,
+            false,
+            Some(discarded_filter),
+            None,
+        ),
+    ]))
+}
+
+fn parse_selected_hand_double_choice_discard_bundle(
+    sentences: &[&[OwnedLexToken]],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [first, second, third] = sentences else {
+        return Ok(None);
+    };
+    let Some(shape) = bundle_grammar::parse_selected_hand_double_choice_shape(first, second, third)
+    else {
+        return Ok(None);
+    };
+    let revealed_player = match shape.revealed_player {
+        bundle_grammar::RevealedHandPlayer::TargetPlayer => PlayerAst::Target,
+        bundle_grammar::RevealedHandPlayer::TargetOpponent => PlayerAst::TargetOpponent,
+    };
+
+    let parse_choice = |choice_tokens: &[OwnedLexToken]| {
+        let mut clause = shape.choice_prefix.to_vec();
+        clause.extend_from_slice(choice_tokens);
+        parse_you_choose_objects_clause_with_count_value(&clause)
+    };
+    let Some((first_chooser, first_filter, first_count, first_count_value)) =
+        parse_choice(shape.first_choice)?
+    else {
+        return Ok(None);
+    };
+    let Some((second_chooser, second_filter, second_count, second_count_value)) =
+        parse_choice(shape.second_choice)?
+    else {
+        return Ok(None);
+    };
+    if first_chooser != PlayerAst::You
+        || second_chooser != PlayerAst::You
+        || !first_count.is_single()
+        || !second_count.is_single()
+        || first_count_value.is_some()
+        || second_count_value.is_some()
+        || first_filter.zone != Some(Zone::Hand)
+        || second_filter.zone != Some(Zone::Hand)
+    {
+        return Ok(None);
+    }
+
+    // A non-implicit shared tag accumulates both independent selections at
+    // runtime. The final discard therefore consumes their union without
+    // replacing the first choice when the second choice resolves.
+    let selected_tag = helper_tag_for_tokens(second, "selected_hand");
+    let discarded_filter = ObjectFilter::tagged(selected_tag.clone()).in_zone(Zone::Hand);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_reveal_hand(revealed_player),
+        EffectAst::ChooseObjects {
+            filter: first_filter,
+            count: first_count,
+            count_value: None,
+            player: PlayerAst::You,
+            tag: selected_tag.clone(),
+        },
+        EffectAst::ChooseObjects {
+            filter: second_filter,
+            count: second_count,
+            count_value: None,
+            player: PlayerAst::You,
+            tag: selected_tag.clone(),
         },
         EffectAst::subject_verb_discard(
             PlayerAst::That,
@@ -1059,6 +1145,11 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
         return Some(effects);
     }
     if sentences.len() == 3
+        && let Ok(Some(effects)) = parse_selected_hand_double_choice_discard_bundle(&sentences)
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 3
         && let Ok(Some(effects)) = parse_discard_reveal_choose_discard_chosen_bundle(&sentences)
     {
         return Some(effects);
@@ -1213,5 +1304,65 @@ mod tests {
             if_true.first().and_then(conditional_mana_value_limit),
             Some(7)
         );
+    }
+
+    #[test]
+    fn selected_hand_double_choice_builds_distinct_filters_with_one_accumulating_tag() {
+        let tokens = lex_line(
+            "Target opponent reveals their hand. You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater. That player discards those cards.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("selected-hand bundle");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RevealHand,
+                ..
+            }),
+            EffectAst::ChooseObjects {
+                filter: first_filter,
+                count: first_count,
+                tag: first_tag,
+                ..
+            },
+            EffectAst::ChooseObjects {
+                filter: second_filter,
+                count: second_count,
+                tag: second_tag,
+                ..
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Discard {
+                        count: Value::Count(discard_filter),
+                        filter: Some(card_filter),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected reveal, two choices, and one tagged discard, got {effects:#?}");
+        };
+
+        assert_eq!(first_count, &ChoiceCount::exactly(1));
+        assert_eq!(second_count, &ChoiceCount::exactly(1));
+        assert_eq!(first_tag, second_tag);
+        assert!(first_filter.excluded_card_types.contains(&CardType::Land));
+        assert!(matches!(
+            first_filter.mana_value.as_ref(),
+            Some(crate::target::Comparison::LessThanOrEqual(3))
+        ));
+        assert!(second_filter.excluded_card_types.is_empty());
+        assert!(matches!(
+            second_filter.mana_value.as_ref(),
+            Some(crate::target::Comparison::GreaterThanOrEqual(4))
+        ));
+        for filter in [discard_filter, card_filter] {
+            assert!(filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && &constraint.tag == first_tag
+            }));
+        }
     }
 }

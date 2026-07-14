@@ -465,7 +465,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 ctx,
                 |ctx| {
                     ctx.last_effect_id = Some(condition);
-                    ctx.bind_unbound_x_to_last_effect = true;
+                    ctx.bind_unbound_x_to_last_effect =
+                        *predicate != IfResultPredicate::AcceptedChoice;
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;

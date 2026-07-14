@@ -427,6 +427,39 @@ mod tests {
     }
 
     #[test]
+    fn contextual_destination_surface_does_not_change_physical_owner_hand() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(563), "Borrowed Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let borrowed = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = ReturnToHandEffect::with_spec(ChooseSpec::SpecificObject(borrowed))
+            .with_destination_player_surface(crate::filter::PlayerFilter::You);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("return should resolve");
+
+        assert!(game.player(bob).expect("Bob exists").hand.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Borrowed Relic")
+        }));
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .hand
+                .iter()
+                .all(|id| game
+                    .object(*id)
+                    .is_none_or(|object| object.name != "Borrowed Relic"))
+        );
+    }
+
+    #[test]
     fn tagged_return_to_hand_follows_stable_id_after_zone_change() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = game.players[0].id;

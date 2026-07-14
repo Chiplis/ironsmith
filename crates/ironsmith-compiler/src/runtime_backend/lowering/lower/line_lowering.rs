@@ -1317,6 +1317,27 @@ fn lower_parsed_ability_chunk(
     Ok(builder)
 }
 
+fn preserve_latest_self_replacement_presentation(
+    builder: &mut CardDefinitionBuilder,
+    statement_facts: &crate::runtime_backend::shared_types::StatementLineSemanticFacts,
+) {
+    let Some(presentation_label) = statement_facts.presentation_label.as_ref() else {
+        return;
+    };
+    let Some(branch) = builder
+        .spell_effect
+        .as_mut()
+        .and_then(|program| program.last_segment_mut())
+        .and_then(|segment| segment.self_replacements.last_mut())
+    else {
+        return;
+    };
+    if branch.presentation_label.is_none() {
+        branch.presentation_label = Some(presentation_label.clone());
+    }
+    branch.condition_after_replacement = statement_facts.leading_condition_intro.is_none();
+}
+
 fn lower_statement_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -1415,6 +1436,7 @@ fn lower_statement_chunk(
         } else {
             builder.spell_effect = Some(compiled);
         }
+        preserve_latest_self_replacement_presentation(&mut builder, &semantic_facts.statement);
         return Ok(builder);
     }
 
@@ -1433,15 +1455,18 @@ fn lower_statement_chunk(
     };
     if let Some(program) = back_for_seconds_style_replacement_program(&compiled, statement_facts) {
         builder.spell_effect = Some(program);
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     }
     if attach_back_for_seconds_style_replacement(&mut builder, &compiled, statement_facts) {
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     }
     if let Some(program) =
         kicked_count_override_self_replacement_program(&compiled, statement_facts)
     {
         builder.spell_effect = Some(program);
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     }
     if let Some(program) = kicked_multi_zone_search_to_battlefield_program(&compiled) {
@@ -1453,13 +1478,16 @@ fn lower_statement_chunk(
         &compiled,
         statement_facts,
     ) {
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     }
     if let Some(program) = clash_win_optional_top_replacement_program(&compiled, statement_facts) {
         builder.spell_effect = Some(program);
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     }
     if attach_morbid_search_to_battlefield_self_replacement(&mut builder, statement_facts) {
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     }
     if let Some(program) = creature_type_choice_program(statement_facts, &compiled) {
@@ -1497,6 +1525,7 @@ fn lower_statement_chunk(
                 replacement.if_true,
             ));
         builder.spell_effect = Some(spell_effect);
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     } else if matches!(
         instead_semantics,
@@ -1531,6 +1560,7 @@ fn lower_statement_chunk(
                 replacement.condition,
                 replacement.if_true,
             ));
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     } else if matches!(
         instead_semantics,
@@ -1564,6 +1594,7 @@ fn lower_statement_chunk(
                 replacement_effects,
             ));
         builder.spell_effect = Some(spell_effect);
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     } else if matches!(
         instead_semantics,
@@ -1599,6 +1630,7 @@ fn lower_statement_chunk(
                 condition,
                 replacement_effects,
             ));
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     } else if matches!(
         instead_semantics,
@@ -1633,6 +1665,7 @@ fn lower_statement_chunk(
                 condition,
                 replacement_effects,
             ));
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     } else if matches!(
         instead_semantics,
@@ -1658,6 +1691,7 @@ fn lower_statement_chunk(
             ));
         };
         segment.self_replacements.push(replacement);
+        preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
         return Ok(builder);
     } else if matches!(
         instead_semantics,
@@ -1735,6 +1769,7 @@ fn lower_statement_chunk(
     } else {
         builder.spell_effect = Some(compiled);
     }
+    preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
     Ok(builder)
 }
 
@@ -2135,10 +2170,17 @@ fn lower_triggered_chunk(
         unreachable!("triggered lowerer received mismatched chunk");
     };
 
-    let contains_haunted_creature_dies = matches!(
-        &trigger,
-        TriggerSpec::Either(_, right) if matches!(**right, TriggerSpec::HauntedCreatureDies)
-    ) || matches!(&trigger, TriggerSpec::HauntedCreatureDies);
+    fn contains_haunted_creature_dies(trigger: &TriggerSpec) -> bool {
+        match trigger {
+            TriggerSpec::HauntedCreatureDies => true,
+            TriggerSpec::WithIntro { trigger, .. } => contains_haunted_creature_dies(trigger),
+            TriggerSpec::Either(left, right) => {
+                contains_haunted_creature_dies(left) || contains_haunted_creature_dies(right)
+            }
+            _ => false,
+        }
+    }
+    let contains_haunted_creature_dies = contains_haunted_creature_dies(&trigger);
     let trigger_facts = &semantic_facts.triggered_ability;
     let functional_zones = super::infer_triggered_ability_functional_zones_from_facts(
         &trigger,

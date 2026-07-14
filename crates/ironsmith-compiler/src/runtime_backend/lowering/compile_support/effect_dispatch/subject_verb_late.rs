@@ -1,5 +1,33 @@
 use super::*;
 
+fn attachment_reference_tag(spec: &ChooseSpec) -> Option<TagKey> {
+    if spec.is_target() {
+        return None;
+    }
+    match spec.base() {
+        ChooseSpec::Tagged(tag) => Some(tag.clone()),
+        ChooseSpec::Object(filter) => watch_tag_from_filter(filter),
+        _ => None,
+    }
+}
+
+fn return_graveyard_player_surface(
+    target: &TargetAst,
+    ctx: &EffectLoweringContext,
+) -> Result<Option<PlayerFilter>, CardTextError> {
+    let target = match target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => inner.as_ref(),
+        target => target,
+    };
+    let TargetAst::Object(filter, _, _) = target else {
+        return Ok(None);
+    };
+    if filter.zone != Some(Zone::Graveyard) {
+        return Ok(None);
+    }
+    Ok(resolve_it_tag(filter, &current_reference_env(ctx))?.owner)
+}
+
 pub(super) fn compile_subject_verb_late(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -75,15 +103,30 @@ pub(super) fn compile_subject_verb_late(
             );
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::DealDistributedDamage { amount, target } => {
+        SubjectVerbActionAst::DealDistributedDamage {
+            amount,
+            target,
+            source,
+            chooser,
+        } => {
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let (source_spec, source_choices) =
+                resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
             let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
-                    Effect::new(crate::effects::DealDistributedDamageEffect::new(
-                        resolved_amount.clone(),
-                        spec,
-                    ))
+                    Effect::new(
+                        crate::effects::DealDistributedDamageEffect::new(
+                            resolved_amount.clone(),
+                            spec,
+                        )
+                        .with_source(source_spec.clone())
+                        .with_chooser(chooser.clone()),
+                    )
                 })?;
+            let mut choices = choices;
+            for choice in source_choices {
+                push_choice(&mut choices, choice);
+            }
             if target_is_any_damage_target(target) {
                 let tag = ctx.next_tag("damaged");
                 ctx.last_object_tag = Some(tag.clone());
@@ -215,7 +258,13 @@ pub(super) fn compile_subject_verb_late(
             Ok((prelude, choices))
         }
         SubjectVerbActionAst::UntapAll { filter } => {
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let refs = current_reference_env(ctx);
+            let unresolved_demonstrative_set = refs.known_last_object_tag().is_none()
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == IT_TAG
+                        && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                });
+            let resolved_filter = resolve_it_tag(filter, &refs)?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
             if ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("untapped");
@@ -225,7 +274,16 @@ pub(super) fn compile_subject_verb_late(
                 )));
                 ctx.last_object_tag = Some(tag);
             }
-            prelude.push(Effect::untap_all(resolved_filter));
+            // If "those permanents" arrived without a usable antecedent, do
+            // not broaden it into every matching permanent.  A single
+            // non-target choice is the conservative executable fallback and
+            // preserves the old surface until the missing choice loop is
+            // represented explicitly.
+            if unresolved_demonstrative_set {
+                prelude.push(Effect::untap(ChooseSpec::Object(resolved_filter)));
+            } else {
+                prelude.push(Effect::untap_all(resolved_filter));
+            }
             Ok((prelude, choices))
         }
         SubjectVerbActionAst::TapOrUntap { target } => {
@@ -411,7 +469,7 @@ pub(super) fn compile_subject_verb_late(
                 resolved_filter.attached_to_player = Some(player_filter);
                 ctx.last_object_tag = None;
             } else {
-                let target_tag = if let ChooseSpec::Tagged(tag) = &target_spec {
+                let target_tag = if let Some(tag) = attachment_reference_tag(&target_spec) {
                     tag.as_str().to_string()
                 } else {
                     if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
@@ -463,7 +521,7 @@ pub(super) fn compile_subject_verb_late(
             let mut prelude = Vec::new();
             let mut choices = choices;
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let target_tag = if let ChooseSpec::Tagged(tag) = &target_spec {
+            let target_tag = if let Some(tag) = attachment_reference_tag(&target_spec) {
                 tag.as_str().to_string()
             } else {
                 if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
@@ -622,7 +680,7 @@ pub(super) fn compile_subject_verb_late(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::CounterUnlessPays { target, cost } => {
-            let cost = cost.clone();
+            let cost = resolve_total_cost_it_tags(cost, &current_reference_env(ctx))?;
             let compiled = compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
                 Effect::counter_unless_pays_total_cost(spec, cost.clone())
             })?;
@@ -640,12 +698,13 @@ pub(super) fn compile_subject_verb_late(
         } => {
             let (base_spec, _) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let mut spec = base_spec;
             if let Some(target_count) = target_count {
                 spec = spec.with_count(*target_count);
             }
             let mut put_counters =
-                crate::effects::PutCountersEffect::new(*counter_type, count.clone(), spec.clone());
+                crate::effects::PutCountersEffect::new(*counter_type, resolved_count, spec.clone());
             if let Some(target_count) = target_count {
                 put_counters = put_counters.with_target_count(*target_count);
             }
@@ -672,6 +731,7 @@ pub(super) fn compile_subject_verb_late(
 
             let (base_spec, _) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let mut spec = base_spec;
             if let Some(target_count) = target_count {
                 spec = spec.with_count(*target_count);
@@ -687,7 +747,7 @@ pub(super) fn compile_subject_verb_late(
                         .unwrap_or_else(|| format!("Put a {} counter", counter_type.description())),
                     effects: vec![Effect::put_counters(
                         *counter_type,
-                        count.clone(),
+                        resolved_count.clone(),
                         spec.clone(),
                     )],
                 })
@@ -848,24 +908,48 @@ pub(super) fn compile_subject_verb_late(
                 choices,
             ))
         }
-        SubjectVerbActionAst::ReturnToHand { target, random } => {
+        SubjectVerbActionAst::ReturnToHand {
+            target,
+            random,
+            destination_player_surface,
+            exiled_with_source_surface,
+            set_quantifier_surface,
+            set_reference_surface,
+        } => {
+            let graveyard_player_surface = return_graveyard_player_surface(target, ctx)?;
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let destination_player_surface = destination_player_surface
+                .map(|player| resolve_non_target_player_filter(player, &current_reference_env(ctx)))
+                .transpose()?;
             let from_graveyard = target_mentions_graveyard(target);
             if from_graveyard && !ctx.iterated_player && choose_spec_mentions_iterated_player(&spec)
             {
                 replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
             }
-            let effect = tag_object_target_effect(
-                if from_graveyard {
-                    Effect::return_from_graveyard_to_hand_with_random(spec.clone(), *random)
-                } else {
-                    Effect::new(crate::effects::ReturnToHandEffect::with_spec(spec.clone()))
-                },
-                &spec,
-                ctx,
-                "returned",
-            );
+            let move_effect = if from_graveyard {
+                let mut effect =
+                    crate::effects::ReturnFromGraveyardToHandEffect::new(spec.clone(), *random);
+                if let Some(player) = graveyard_player_surface {
+                    effect = effect.with_graveyard_player_surface(player);
+                }
+                if let Some(player) = destination_player_surface.clone() {
+                    effect = effect.with_destination_player_surface(player);
+                }
+                Effect::new(effect)
+            } else {
+                let mut effect = crate::effects::ReturnToHandEffect::with_spec(spec.clone());
+                if let Some(player) = destination_player_surface.clone() {
+                    effect = effect.with_destination_player_surface(player);
+                }
+                if let Some(surface) = exiled_with_source_surface {
+                    effect = effect.with_exiled_with_source_surface(surface.clone());
+                }
+                effect = effect.with_set_quantifier_surface(*set_quantifier_surface);
+                effect = effect.with_set_reference_surface(set_reference_surface.clone());
+                Effect::new(effect)
+            };
+            let effect = tag_object_target_effect(move_effect, &spec, ctx, "returned");
             ctx.last_player_filter = Some(if spec.is_target() {
                 PlayerFilter::AliasedOwnerOf(ObjectRef::Target)
             } else if let Some(tag) = ctx.last_object_tag.clone() {
@@ -875,12 +959,23 @@ pub(super) fn compile_subject_verb_late(
             });
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::ReturnAllToHand { filter } => {
+        SubjectVerbActionAst::ReturnAllToHand {
+            filter,
+            destination_player_surface,
+            exiled_with_source_surface,
+        } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            Ok((
-                vec![Effect::return_all_to_hand(resolved_filter)],
-                Vec::new(),
-            ))
+            let destination_player_surface = destination_player_surface
+                .map(|player| resolve_non_target_player_filter(player, &current_reference_env(ctx)))
+                .transpose()?;
+            let mut effect = crate::effects::ReturnToHandEffect::all(resolved_filter);
+            if let Some(player) = destination_player_surface {
+                effect = effect.with_destination_player_surface(player);
+            }
+            if let Some(surface) = exiled_with_source_surface {
+                effect = effect.with_exiled_with_source_surface(surface.clone());
+            }
+            Ok((vec![Effect::new(effect)], Vec::new()))
         }
         SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -1068,6 +1163,14 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 None
             };
+            let explicit_full_hand_owner = count
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::AllCardsInHand)
+                .then(|| match count.unhinted() {
+                    Value::CardsInHand(player) => Some(player.clone()),
+                    Value::Count(filter) => filter.owner.clone(),
+                    _ => None,
+                })
+                .flatten();
             let (resolved_player, choices) =
                 if matches!(subject_verb.subject.player, PlayerAst::Implicit) {
                     if let Some(inferred_player) = resolved_filter
@@ -1081,6 +1184,10 @@ pub(super) fn compile_subject_verb_late(
                                 infer_player_filter_from_object_filter(filter)
                             }
                         })
+                        // An explicit possessive full-hand phrase supplies its
+                        // own actor. Do not let a prior damaged/targeted player
+                        // rebind `Discard all the cards in your hand`.
+                        .or(explicit_full_hand_owner)
                         .or_else(|| {
                             ctx.last_player_filter
                                 .clone()
@@ -1659,7 +1766,8 @@ pub(super) fn compile_subject_verb_late(
             let chooser = subject.clone_player_filter();
             let target_prelude = subject.target_prelude();
             let refs = current_reference_env(ctx);
-            let bare_it_with_source_antecedent = refs.has_source_object_antecedent()
+            let bare_it_with_source_antecedent = !refs.iterated_object
+                && refs.has_source_object_antecedent()
                 && refs
                     .known_last_object_tag()
                     .is_none_or(|tag| tag.as_str() == IT_TAG && !refs.last_it_choice_is_set)

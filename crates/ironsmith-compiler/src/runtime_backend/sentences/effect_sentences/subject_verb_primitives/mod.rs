@@ -34,8 +34,9 @@ use super::{
     parse_gain_life_equal_to_age_sentence, parse_gain_x_plus_life_sentence,
     parse_look_at_hand_sentence, parse_look_at_top_then_exile_one_sentence,
     parse_same_name_gets_fanout_sentence, parse_same_name_target_fanout_sentence,
-    parse_search_library_sentence, parse_shared_color_target_fanout_sentence,
-    parse_shuffle_graveyard_into_library_sentence, parse_shuffle_object_into_library_sentence,
+    parse_search_library_sentence, parse_serial_target_pt_modifiers_sentence,
+    parse_shared_color_target_fanout_sentence, parse_shuffle_graveyard_into_library_sentence,
+    parse_shuffle_object_into_library_sentence,
     parse_target_player_exiles_creature_and_graveyard_sentence,
 };
 use crate::cards::builders::{

@@ -2,6 +2,25 @@ use super::shard_00::*;
 use super::*;
 
 #[test]
+pub(super) fn cant_untap_renders_distributive_compound_filter_subject() {
+    let mut attacking = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    attacking.attacking = true;
+    let mut blocking = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    blocking.blocking = true;
+    let mut compound = ObjectFilter::default();
+    compound.any_of = vec![attacking, blocking];
+    let effect = Effect::cant_until(
+        crate::effect::Restriction::Untap(compound),
+        Until::ControllersNextUntapStep,
+    );
+
+    assert_eq!(
+        describe_effect(&effect),
+        "Each attacking creature and each blocking creature doesn't untap during its controller's next untap step"
+    );
+}
+
+#[test]
 pub(super) fn describe_effect_clause_list_compacts_draw_then_choose_sacrifice() {
     let tag = TagKey::from("sacrificed_0");
     let choose = crate::effects::ChooseObjectsEffect::new(
@@ -247,6 +266,22 @@ pub(super) fn describe_effect_list_compacts_remove_counter_then_no_counters_tran
 }
 
 #[test]
+pub(super) fn your_turn_followup_uses_an_independent_if_sentence() {
+    let effects = vec![
+        Effect::draw(7),
+        Effect::new(crate::effects::ConditionalEffect::if_only(
+            Condition::YourTurn,
+            vec![Effect::scry(2)],
+        )),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "You draw seven cards. If it's your turn, scry 2"
+    );
+}
+
+#[test]
 pub(super) fn describe_for_each_counter_then_untap_accepts_tagged_current_object() {
     let tag = TagKey::from("counters_0");
     let counters = Effect::new(crate::effects::ForEachObject::new(
@@ -351,6 +386,40 @@ pub(super) fn describe_effect_list_compacts_return_with_counter_and_static_follo
             Effect::new(add_angel),
         ]),
         "Return that card to the battlefield under its owner's control with a +1/+1 counter on it. It has flying and is an Angel in addition to its other types"
+    );
+}
+
+#[test]
+pub(super) fn describe_return_followups_track_the_returned_object_result_tag() {
+    let triggering = TagKey::from("triggering");
+    let returned = TagKey::from("returned_0");
+    let mut return_to_battlefield = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(triggering.clone()),
+        Zone::Battlefield,
+        false,
+    );
+    return_to_battlefield.battlefield_controller = crate::effects::BattlefieldController::Owner;
+    let return_effect = Effect::new(return_to_battlefield).tag(returned.clone());
+    let counters = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        2,
+        ChooseSpec::Tagged(returned.clone()),
+    ));
+    let mut add_demon = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddSubtypes(vec![crate::types::Subtype::Demon]),
+        Until::Forever,
+    );
+    add_demon.target_spec = Some(ChooseSpec::Tagged(returned));
+
+    assert_eq!(
+        describe_effect_list(&[
+            Effect::tag_triggering_object(triggering),
+            return_effect,
+            counters,
+            Effect::new(add_demon),
+        ]),
+        "Return that card to the battlefield under its owner's control with two +1/+1 counters on it. It is a Demon in addition to its other types"
     );
 }
 
@@ -527,6 +596,38 @@ pub(super) fn describe_effect_list_compacts_source_exile_with_all_source_counter
     );
 }
 
+#[test]
+pub(super) fn describe_effect_list_compacts_linked_same_source_damage() {
+    let source = ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
+        ),
+    );
+    let first = Effect::with_id(
+        7,
+        Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            source.clone(),
+            Effect::deal_damage(
+                Value::CountersOnSource(CounterType::Charge),
+                ChooseSpec::target_player(),
+            ),
+        )),
+    );
+    let second = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        source,
+        Effect::deal_damage(
+            Value::EffectValue(crate::effect::EffectId(7)),
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+                .with_count(ChoiceCount::up_to(1)),
+        ),
+    ));
+
+    assert_eq!(
+        describe_effect_list(&[first, second]),
+        "This artifact deals damage equal to the number of charge counters on it to target player and that much damage to up to one target creature"
+    );
+}
+
 pub(super) fn keyword_and_unblockable_effects(
     target_filter: ObjectFilter,
     ability: crate::static_abilities::StaticAbility,
@@ -674,6 +775,25 @@ pub(super) fn describe_effect_list_compacts_tagged_token_copy_then_sacrifice() {
             sacrifice
         ]),
         "Create a token that's a copy of it. Sacrifice that token"
+    );
+}
+
+#[test]
+pub(super) fn describe_token_copy_preserves_typed_antecedent_surface() {
+    let target = ChooseSpec::Tagged(TagKey::from("triggering")).with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("that creature".to_string()),
+        ),
+    );
+    let create = Effect::new(crate::effects::CreateTokenCopyEffect::new(
+        target,
+        1,
+        PlayerFilter::You,
+    ));
+
+    assert_eq!(
+        describe_effect(&create),
+        "Create a token that's a copy of that creature"
     );
 }
 
@@ -864,6 +984,146 @@ pub(super) fn describe_effect_list_compacts_counted_looked_battlefield_rest_bott
         Effect::new(rest),
     ];
     let expected = "Look at the top seven cards of your library. Put up to two planeswalker cards from among them onto the battlefield. Put the rest on the bottom of your library in a random order";
+
+    assert_eq!(describe_effect_list(&effects), expected);
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(expected)
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_clause_list_compacts_may_wrapped_looked_choice_then_shuffle() {
+    let looked = TagKey::from("looked_0");
+    let chosen = TagKey::from("chosen_0");
+    let look = crate::effects::LookAtTopCardsEffect::new(
+        PlayerFilter::You,
+        Value::Fixed(5),
+        looked.clone(),
+    );
+    let mut choose_filter = ObjectFilter::creature().in_zone(Zone::Library);
+    choose_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            choose_filter,
+            ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            chosen.clone(),
+        )
+        .in_zone(Zone::Library),
+    );
+    let move_chosen = Effect::for_each_tagged(
+        chosen,
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Iterated,
+            Zone::Battlefield,
+            false,
+        ))],
+    );
+    let effects = vec![
+        Effect::new(look),
+        Effect::may_player(PlayerFilter::You, vec![choose, move_chosen]),
+        Effect::shuffle_library_player(PlayerFilter::You),
+    ];
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(
+            "Look at the top five cards of your library. You may put a creature card from among them onto the battlefield. Then shuffle"
+        )
+    );
+}
+
+#[test]
+pub(super) fn lowered_looked_group_moves_compact_two_stage_selection_and_graveyard_remainder() {
+    let looked = TagKey::from("looked_0");
+    let hand_choice = TagKey::from("hand_choice_0");
+    let land_choice = TagKey::from("land_choice_0");
+    let kept = TagKey::from("kept_0");
+    let look = Effect::new(crate::effects::LookAtTopCardsEffect::new(
+        PlayerFilter::You,
+        Value::EventValue(EventValueSpec::Amount),
+        looked.clone(),
+    ));
+
+    let mut hand_filter = ObjectFilter::default().in_zone(Zone::Library);
+    hand_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let choose_hand = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            hand_filter,
+            ChoiceCount::up_to(1),
+            PlayerFilter::You,
+            hand_choice.clone(),
+        )
+        .in_zone(Zone::Library),
+    );
+    let move_hand = Effect::for_each_tagged(
+        hand_choice.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Iterated,
+            Zone::Hand,
+            false,
+        ))],
+    )
+    .tag_all(kept.clone());
+
+    let mut land_filter = ObjectFilter::default()
+        .with_type(CardType::Land)
+        .in_zone(Zone::Library);
+    land_filter.tagged_constraints.extend([
+        TaggedObjectConstraint {
+            tag: looked.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        },
+        TaggedObjectConstraint {
+            tag: hand_choice,
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        },
+    ]);
+    let choose_lands = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            land_filter,
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            land_choice.clone(),
+        )
+        .in_zone(Zone::Library),
+    );
+    let mut put_lands =
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Battlefield, false);
+    put_lands.enters_tapped = true;
+    let move_lands =
+        Effect::for_each_tagged(land_choice, vec![Effect::new(put_lands)]).tag_all(kept.clone());
+
+    let mut iterated_is_kept = ObjectFilter::default();
+    iterated_is_kept
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from("__it__"),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+    let rest = Effect::for_each_tagged(
+        looked,
+        vec![Effect::conditional(
+            Condition::TaggedObjectMatches(kept, iterated_is_kept),
+            Vec::new(),
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Graveyard,
+                false,
+            ))],
+        )],
+    );
+    let effects = vec![look, choose_hand, move_hand, choose_lands, move_lands, rest];
+    let expected = "Look at that many cards from the top of your library. You may put one of them into your hand. Then put any number of land cards from among them onto the battlefield tapped and the rest into your graveyard";
 
     assert_eq!(describe_effect_list(&effects), expected);
     assert_eq!(
@@ -1089,6 +1349,24 @@ pub(super) fn describe_effect_list_compacts_targeted_delayed_unblocked_trigger()
 }
 
 #[test]
+pub(super) fn describe_assign_no_combat_damage_preserves_assignment_wording_and_duration() {
+    let source = Effect::assign_no_combat_damage(ChooseSpec::Source, Until::EndOfTurn);
+    assert_eq!(
+        describe_effect_list(&[source]),
+        "this creature assigns no combat damage this turn"
+    );
+
+    let tagged = Effect::assign_no_combat_damage(
+        ChooseSpec::Tagged(TagKey::from("__it__")),
+        Until::EndOfCombat,
+    );
+    assert_eq!(
+        describe_effect_list(&[tagged]),
+        "it assigns no combat damage this combat"
+    );
+}
+
+#[test]
 pub(super) fn describe_effect_list_compacts_optional_draw_then_drawn_card_choice() {
     let tag = TagKey::from("__it__");
     let may_draw = Effect::with_id(
@@ -1127,6 +1405,55 @@ pub(super) fn describe_effect_list_compacts_optional_draw_then_drawn_card_choice
                 true,
             )],
             vec![Effect::lose_life(4)],
+            PlayerFilter::You,
+        )],
+    );
+
+    assert_eq!(
+        describe_effect_list(&[may_draw, if_chose, Effect::new(for_each)]),
+        "You may draw two additional cards. If you do, choose two cards in your hand drawn this turn. For each of those cards, pay 4 life or put the card on top of your library"
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_list_compacts_optional_draw_with_iterated_unless_alternative() {
+    let tag = TagKey::from("__it__");
+    let may_draw = Effect::with_id(
+        0,
+        Effect::may_player(PlayerFilter::You, vec![Effect::draw(2)]),
+    );
+
+    let mut choose_filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(PlayerFilter::You);
+    choose_filter.drawn_this_turn = true;
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        choose_filter,
+        ChoiceCount::exactly(2),
+        PlayerFilter::You,
+        tag.clone(),
+    )
+    .in_zone(Zone::Hand);
+    let if_chose = Effect::if_then(
+        crate::effect::EffectId(0),
+        EffectPredicate::Happened,
+        vec![Effect::new(choose)],
+    );
+
+    let mut each_filter = ObjectFilter::default();
+    each_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag,
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let for_each = crate::effects::ForEachObject::new(
+        each_filter,
+        vec![Effect::unless_action(
+            vec![Effect::lose_life(4)],
+            vec![Effect::move_to_zone(
+                ChooseSpec::Iterated,
+                Zone::Library,
+                true,
+            )],
             PlayerFilter::You,
         )],
     );
@@ -1482,8 +1809,9 @@ pub(super) fn describe_effect_list_compacts_chosen_name_consult_after_top_exile(
 pub(super) fn describe_effect_list_compacts_reveal_hand_choose_discard_then_random() {
     let chosen_tag = TagKey::from("__it__");
     let look = crate::effects::LookAtHandEffect::reveal(ChooseSpec::target_opponent());
+    let aliased_opponent = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent));
     let mut choice_filter = ObjectFilter::default().in_zone(Zone::Hand);
-    choice_filter.owner = Some(PlayerFilter::target_opponent());
+    choice_filter.owner = Some(aliased_opponent.clone());
     let choose = crate::effects::ChooseObjectsEffect::new(
         choice_filter,
         ChoiceCount::exactly(1),
@@ -1492,7 +1820,7 @@ pub(super) fn describe_effect_list_compacts_reveal_hand_choose_discard_then_rand
     )
     .in_zone(Zone::Hand);
     let mut discard_filter = ObjectFilter::default().in_zone(Zone::Hand);
-    discard_filter.owner = Some(PlayerFilter::target_opponent());
+    discard_filter.owner = Some(aliased_opponent.clone());
     discard_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
@@ -1501,12 +1829,12 @@ pub(super) fn describe_effect_list_compacts_reveal_hand_choose_discard_then_rand
         });
     let discard_chosen = crate::effects::DiscardEffect::new_with_filter(
         Value::Fixed(1),
-        PlayerFilter::target_opponent(),
+        aliased_opponent.clone(),
         false,
         Some(discard_filter),
     );
     let discard_random =
-        crate::effects::DiscardEffect::new(Value::Fixed(1), PlayerFilter::target_opponent(), true);
+        crate::effects::DiscardEffect::new(Value::Fixed(1), aliased_opponent, true);
 
     let effects = vec![
         Effect::new(look),
@@ -1837,6 +2165,101 @@ pub(super) fn describe_effect_list_compacts_search_two_split_hand_graveyard() {
 }
 
 #[test]
+pub(super) fn describe_effect_list_compacts_optional_search_battlefield_hand_partition() {
+    let searched = TagKey::from("searched_split");
+    let battlefield = TagKey::from("searched_split_battlefield");
+    let mut search_filter = ObjectFilter::land()
+        .with_supertype(Supertype::Basic)
+        .in_zone(Zone::Library);
+    search_filter.owner = Some(PlayerFilter::You);
+    let search = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::up_to(2),
+        PlayerFilter::You,
+        searched.clone(),
+    )
+    .in_zone(Zone::Library)
+    .as_optional_search();
+    let choose_battlefield = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::tagged(searched.clone()).in_zone(Zone::Library),
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        battlefield.clone(),
+    )
+    .in_zone(Zone::Library);
+    let put_battlefield = crate::effects::ForEachTaggedEffect::new(
+        battlefield.clone(),
+        vec![Effect::new(
+            crate::effects::PutOntoBattlefieldEffect::you_control(ChooseSpec::Iterated, true),
+        )],
+    );
+    let put_hand = crate::effects::ForEachTaggedEffect::new(
+        searched.clone(),
+        vec![Effect::new(crate::effects::ConditionalEffect::new(
+            Condition::TaggedObjectMatches(
+                battlefield,
+                ObjectFilter::default().same_stable_id_as_tagged(TagKey::from("__it__")),
+            ),
+            vec![],
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Hand,
+                false,
+            ))],
+        ))],
+    );
+    let effects = vec![
+        Effect::new(search),
+        Effect::new(crate::effects::RevealTaggedEffect::new(searched)),
+        Effect::new(choose_battlefield),
+        Effect::new(put_battlefield),
+        Effect::new(put_hand),
+        Effect::new(crate::effects::ShuffleLibraryEffect::new(PlayerFilter::You)),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle"
+    );
+
+    let mut with_scry = effects;
+    with_scry.push(Effect::new(crate::effects::ScryEffect::you(1)));
+    assert_eq!(
+        describe_effect_list(&with_scry),
+        "Search your library for up to two basic land cards, reveal those cards, and put one onto the battlefield tapped and the other into your hand. Shuffle, then scry 1"
+    );
+}
+
+#[test]
+pub(super) fn unselected_remainder_accepts_iterated_membership_condition_orientation() {
+    let looked = TagKey::from("revealed");
+    let chosen = TagKey::from("matched");
+    let rest = crate::effects::ForEachTaggedEffect::new(
+        looked.clone(),
+        vec![Effect::new(crate::effects::ConditionalEffect::new(
+            Condition::TaggedObjectMatches(
+                TagKey::from("__it__"),
+                ObjectFilter::default()
+                    .match_tagged(chosen.clone(), TaggedOpbjectRelation::IsTaggedObject),
+            ),
+            vec![],
+            vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Iterated,
+                Zone::Graveyard,
+                false,
+            ))],
+        ))],
+    );
+
+    assert!(for_each_moves_unselected_to_zone(
+        &rest,
+        looked.as_str(),
+        chosen.as_str(),
+        Zone::Graveyard,
+    ));
+}
+
+#[test]
 pub(super) fn describe_effect_list_compacts_search_two_split_with_broad_chosen_zone() {
     let searched = TagKey::from("searched");
     let hand = TagKey::from("hand");
@@ -1990,14 +2413,15 @@ pub(super) fn structural_provoke_keyword_uses_trigger_and_effect_shape() {
 
 #[test]
 pub(super) fn describe_effect_list_compacts_gain_control_untap_haste_structurally() {
-    let controlled = TagKey::from("controlled");
+    let controlled = TagKey::from("controlled_0");
+    let untapped = TagKey::from("untapped_1");
     let mut control = crate::effects::ApplyContinuousEffect::new(
         crate::continuous::EffectTarget::Source,
         crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
         Until::EndOfTurn,
     );
     control.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(
-        ObjectFilter::creature(),
+        ObjectFilter::creature().in_zone(Zone::Battlefield),
     )));
     control.modification = None;
     control.runtime_modifications =
@@ -2008,7 +2432,20 @@ pub(super) fn describe_effect_list_compacts_gain_control_untap_haste_structurall
         crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
         Until::EndOfTurn,
     );
-    haste.target_spec = Some(ChooseSpec::Tagged(controlled.clone()));
+    haste.target_spec = Some(ChooseSpec::Tagged(untapped.clone()).with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+        ),
+    ));
+
+    let untap_target = ChooseSpec::Object(
+        ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(controlled.clone(), TaggedOpbjectRelation::IsTaggedObject),
+    )
+    .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+        crate::target::SourceReferenceSurface::ThisPermanentType("that creature".to_string()),
+    ));
 
     let effects = vec![
         Effect::new(crate::effects::TaggedEffect::new(
@@ -2016,10 +2453,8 @@ pub(super) fn describe_effect_list_compacts_gain_control_untap_haste_structurall
             Effect::new(control),
         )),
         Effect::new(crate::effects::TaggedEffect::new(
-            "untapped",
-            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Tagged(
-                controlled.clone(),
-            ))),
+            untapped,
+            Effect::new(crate::effects::UntapEffect::with_spec(untap_target)),
         )),
         Effect::new(crate::effects::TaggedEffect::new(
             "granted",
@@ -2030,6 +2465,140 @@ pub(super) fn describe_effect_list_compacts_gain_control_untap_haste_structurall
     assert_eq!(
         describe_effect_list(&effects),
         "Gain control of target creature until end of turn. Untap that creature. It gains haste until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn draw_effect_preserves_fixed_and_dynamic_additional_card_surfaces() {
+    let fixed = Effect::new(crate::effects::DrawCardsEffect::you(
+        Value::Fixed(2).with_surface_hint(ValueSurfaceHint::AdditionalCards),
+    ));
+    assert_eq!(describe_effect(&fixed), "Draw two additional cards");
+
+    let source = ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ShortName("ED-E".to_string()),
+        ),
+    );
+    let dynamic = Effect::new(crate::effects::DrawCardsEffect::you(
+        Value::CountersOn(Box::new(source), Some(CounterType::Quest))
+            .with_surface_hint(ValueSurfaceHint::AdditionalCards),
+    ));
+    assert_eq!(
+        describe_effect(&dynamic),
+        "Draw an additional card for each quest counter on ED-E"
+    );
+}
+
+#[test]
+pub(super) fn draw_then_additional_draw_keeps_temporal_sequence_punctuation() {
+    let source = ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ShortName("ED-E".to_string()),
+        ),
+    );
+    let effects = vec![
+        Effect::new(crate::effects::DrawCardsEffect::you(1)),
+        Effect::new(crate::effects::DrawCardsEffect::you(
+            Value::CountersOn(Box::new(source), Some(CounterType::Quest))
+                .with_surface_hint(ValueSurfaceHint::AdditionalCards),
+        )),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Draw a card, then draw an additional card for each quest counter on ED-E"
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_list_compacts_gain_control_then_untap_before_other_effects() {
+    let controlled = TagKey::from("controlled");
+    let mut control = crate::effects::ApplyContinuousEffect::new_runtime(
+        crate::continuous::EffectTarget::Source,
+        crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+        Until::EndOfTurn,
+    );
+    control.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::creature(),
+    )));
+    let effects = vec![
+        Effect::new(crate::effects::TaggedEffect::new(
+            controlled.clone(),
+            Effect::new(control),
+        )),
+        Effect::new(crate::effects::TaggedEffect::new(
+            "untapped",
+            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Tagged(
+                controlled,
+            ))),
+        )),
+        Effect::new(crate::effects::GainLifeEffect::you(Value::Fixed(2))),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Gain control of target creature until end of turn. Untap that creature. Gain 2 life"
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_clause_list_dispatches_gain_control_then_untap_structurally() {
+    let controlled = TagKey::from("controlled");
+    let mut control = crate::effects::ApplyContinuousEffect::new_runtime(
+        crate::continuous::EffectTarget::Source,
+        crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+        Until::EndOfTurn,
+    );
+    control.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::creature(),
+    )));
+    let effects = vec![
+        Effect::new(crate::effects::TaggedEffect::new(
+            controlled.clone(),
+            Effect::new(control),
+        )),
+        Effect::new(crate::effects::TaggedEffect::new(
+            "untapped",
+            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Tagged(
+                controlled,
+            ))),
+        )),
+        Effect::new(crate::effects::GainLifeEffect::you(Value::Fixed(2))),
+    ];
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some("gain control of target creature until end of turn. Untap that creature. Gain 2 life")
+    );
+}
+
+#[test]
+pub(super) fn describe_effect_clause_list_dispatches_untap_then_gain_control_structurally() {
+    let untapped = TagKey::from("untapped");
+    let mut control = crate::effects::ApplyContinuousEffect::new_runtime(
+        crate::continuous::EffectTarget::Source,
+        crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+        Until::EndOfTurn,
+    );
+    control.target_spec = Some(ChooseSpec::Tagged(untapped.clone()));
+    let effects = vec![
+        Effect::new(crate::effects::TaggedEffect::new(
+            untapped,
+            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::target(
+                ChooseSpec::Object(ObjectFilter::creature()),
+            ))),
+        )),
+        Effect::new(crate::effects::TaggedEffect::new(
+            "controlled",
+            Effect::new(control),
+        )),
+        Effect::new(crate::effects::GainLifeEffect::you(Value::Fixed(2))),
+    ];
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some("untap target creature and gain control of it until end of turn. Gain 2 life")
     );
 }
 
@@ -2194,7 +2763,7 @@ pub(super) fn describe_effect_list_compacts_choose_top_exile_play_until_next_end
         Effect::new(crate::effects::GrantPlayTaggedEffect::new(
             TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             PlayerFilter::You,
-            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep,
             true,
             false,
         )),
@@ -2243,7 +2812,7 @@ pub(super) fn describe_effect_list_keeps_target_modifications_and_exile_permissi
         Effect::new(crate::effects::GrantPlayTaggedEffect::new(
             exiled,
             PlayerFilter::You,
-            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep,
             true,
             false,
         )),
@@ -2494,6 +3063,39 @@ pub(super) fn describe_shuffle_objects_into_library_uses_owner_and_graveyard_wor
 }
 
 #[test]
+pub(super) fn describe_owner_library_destination_uses_imperative_owner_surface() {
+    let target = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::permanent()
+            .nontoken()
+            .controlled_by(PlayerFilter::You),
+    ));
+    let targeted = Effect::new(
+        crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+            target,
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
+        )
+        .with_owner_library_destination(),
+    );
+    assert_eq!(
+        describe_effect(&targeted),
+        "Shuffle target nontoken permanent you control into its owner's library"
+    );
+
+    let triggering = TagKey::from("triggering");
+    let tagged = Effect::new(
+        crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+            ChooseSpec::Tagged(triggering.clone()),
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(triggering)),
+        )
+        .with_owner_library_destination(),
+    );
+    assert_eq!(
+        describe_effect(&tagged),
+        "Shuffle it into its owner's library"
+    );
+}
+
+#[test]
 pub(super) fn describe_unless_any_player_pays_search_sequence_uses_prefix() {
     let tag = TagKey::from("searched");
     let choose = crate::effects::ChooseObjectsEffect::new(
@@ -2578,6 +3180,20 @@ pub(super) fn return_subtype_cards_from_your_graveyard_compacts_do_the_same_list
 }
 
 #[test]
+pub(super) fn source_return_from_contextual_graveyard_uses_card_surface() {
+    let effect = Effect::new(
+        crate::effects::ReturnFromGraveyardToHandEffect::new(ChooseSpec::Source, false)
+            .with_graveyard_player_surface(PlayerFilter::You)
+            .with_destination_player_surface(PlayerFilter::You),
+    );
+
+    assert_eq!(
+        describe_effect(&effect),
+        "Return this card from your graveyard to your hand"
+    );
+}
+
+#[test]
 pub(super) fn describe_may_unless_pay_mana_uses_or_surface() {
     let effect = Effect::may_single(Effect::unless_action(
         vec![Effect::discard_player_filtered(
@@ -2596,6 +3212,24 @@ pub(super) fn describe_may_unless_pay_mana_uses_or_surface() {
     assert_eq!(
         describe_effect(&effect),
         "You may discard a card or pay {2}"
+    );
+}
+
+#[test]
+pub(super) fn describe_unless_source_damage_matches_tagged_primary_target_controller() {
+    let tag = TagKey::from("damaged_0");
+    let effect = Effect::unless_action(
+        vec![Effect::deal_damage(3, ChooseSpec::target_creature()).tag(tag.clone())],
+        vec![Effect::deal_damage(
+            5,
+            ChooseSpec::Player(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+        )],
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)),
+    );
+
+    assert_eq!(
+        describe_effect(&effect),
+        "Deal 3 damage to target creature unless that object's controller has this source deal 5 damage to them"
     );
 }
 

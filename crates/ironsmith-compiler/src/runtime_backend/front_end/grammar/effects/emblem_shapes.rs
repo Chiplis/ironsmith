@@ -1,6 +1,7 @@
 use winnow::combinator::{alt, eof, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
+use winnow::stream::Stream;
 use winnow::token::any;
 
 use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenKind};
@@ -31,46 +32,44 @@ fn emblem_with_prefix<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     .parse_next(input)
 }
 
+fn quoted_emblem_group_span<'a>(
+    input: &mut LexStream<'a>,
+    initial_len: usize,
+) -> WResult<EmblemGroupSpan> {
+    primitives::quote().parse_next(input)?;
+    let first = initial_len.saturating_sub(input.len());
+    repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::quote()))
+        .void()
+        .parse_next(input)?;
+    let end = initial_len.saturating_sub(input.len());
+    primitives::quote().parse_next(input)?;
+    Ok(EmblemGroupSpan { first, end })
+}
+
 fn quoted_emblem_payload<'a>(
     input: &mut LexStream<'a>,
     initial_len: usize,
 ) -> WResult<Vec<EmblemGroupSpan>> {
-    primitives::quote().parse_next(input)?;
-    let mut groups = Vec::new();
-    let mut inside_quote = true;
-    let mut first = initial_len.saturating_sub(input.len());
-    while !input.is_empty() {
-        let token_idx = initial_len.saturating_sub(input.len());
-        let token: &OwnedLexToken = any.parse_next(input)?;
-        if token.kind != TokenKind::Quote {
-            continue;
+    let mut groups = vec![quoted_emblem_group_span(input, initial_len)?];
+    loop {
+        let checkpoint = input.checkpoint();
+        if primitives::kw("and").parse_next(input).is_err() {
+            input.reset(&checkpoint);
+            break;
         }
-        if inside_quote {
-            if token_idx > first {
-                groups.push(EmblemGroupSpan {
-                    first,
-                    end: token_idx,
-                });
+        match quoted_emblem_group_span(input, initial_len) {
+            Ok(group) => groups.push(group),
+            Err(_) => {
+                input.reset(&checkpoint);
+                break;
             }
-            inside_quote = false;
-        } else {
-            first = initial_len.saturating_sub(input.len());
-            inside_quote = true;
         }
     }
-    if inside_quote && initial_len > first {
-        groups.push(EmblemGroupSpan {
-            first,
-            end: initial_len,
-        });
-    }
-    eof.parse_next(input)?;
-    if groups.is_empty() {
-        return Err(primitives::backtrack_err(
-            "emblem ability payload",
-            "one or more quoted ability groups",
-        ));
-    }
+    // Statement grouping appends one synthetic sentence terminator after a
+    // sentence whose real terminator lives inside the closing quote. Accept
+    // only that optional terminator here; an unquoted continuation (for
+    // example Kiora's `Then create ...`) must remain outside the emblem.
+    primitives::sentence_end().parse_next(input)?;
     Ok(groups)
 }
 
@@ -91,11 +90,14 @@ fn unquoted_emblem_payload<'a>(
 fn emblem_payload<'a>(input: &mut LexStream<'a>) -> WResult<(bool, Vec<EmblemGroupSpan>)> {
     let initial_len = input.len();
     let explicit_you = emblem_with_prefix.parse_next(input)?;
-    let spans = alt((
-        |input: &mut LexStream<'a>| quoted_emblem_payload(input, initial_len),
-        |input: &mut LexStream<'a>| unquoted_emblem_payload(input, initial_len),
-    ))
-    .parse_next(input)?;
+    let spans = if input
+        .peek_token()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+    {
+        quoted_emblem_payload(input, initial_len)?
+    } else {
+        unquoted_emblem_payload(input, initial_len)?
+    };
     Ok((explicit_you, spans))
 }
 
@@ -108,10 +110,11 @@ pub(crate) fn parse_emblem_payload_tokens(
         .into_iter()
         .map(|span| tokens.get(span.first..span.end))
         .collect::<Option<Vec<_>>>()?;
-    let requires_whole_sentence_dispatch = ability_groups.len() > 1
-        || ability_groups
-            .iter()
-            .any(|group| group.iter().any(|token| token.kind == TokenKind::Colon));
+    // Generic sentence dispatch trims terminal punctuation, including the
+    // closing quote, before subject/verb routing. Every complete emblem shape
+    // therefore needs the quote-preserving whole-sentence path, not just
+    // triggered or activated emblem abilities.
+    let requires_whole_sentence_dispatch = true;
     (!ability_groups.is_empty()).then_some(EmblemPayloadShape {
         explicit_you,
         ability_groups,

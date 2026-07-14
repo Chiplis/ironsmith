@@ -11,11 +11,12 @@ use crate::mana::ManaCost;
 pub use crate::model::reference::RefState;
 pub use crate::model::{
     AdditionalCostChoiceOptionAst, ClashOpponentAst, ControlDurationAst, DamageBySpec,
-    ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RedirectNextTimeDamageDestinationAst, RetargetModeAst, ReturnControllerAst,
-    SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
+    ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
+    FutureZoneReplacementCausePolicyAst, LibraryBottomOrderAst, LibraryConsultModeAst,
+    LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst, PreventNextTimeDamageSourceAst,
+    PreventNextTimeDamageTargetAst, RedirectNextTimeDamageDestinationAst, RetargetModeAst,
+    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
+    ZoneReplacementDurationAst,
 };
 use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
@@ -116,6 +117,11 @@ impl CardDefinitionBuilder {
 
     pub fn mana_cost(mut self, cost: ManaCost) -> Self {
         self.card_builder = self.card_builder.mana_cost(cost);
+        self
+    }
+
+    pub fn first_printed_set_name(mut self, set_name: impl Into<String>) -> Self {
+        self.card_builder = self.card_builder.first_printed_set_name(set_name);
         self
     }
 
@@ -468,6 +474,14 @@ impl CardDefinitionBuilder {
                 }
                 if !subtypes.is_empty() {
                     self.card_builder = self.card_builder.subtypes(subtypes);
+                }
+            }
+            crate::front_end::MetadataLine::FirstPrintedSet(raw) => {
+                let set_name = raw.trim();
+                if !set_name.is_empty() {
+                    self.card_builder = self
+                        .card_builder
+                        .first_printed_set_name(set_name.to_string());
                 }
             }
             crate::front_end::MetadataLine::PowerToughness(raw) => {
@@ -1335,6 +1349,7 @@ impl CardDefinitionBuilder {
                 intervening_if: Some(crate::ConditionExpr::SourceHasCounterAtLeast {
                     counter_type: crate::object::CounterType::Time,
                     count: 1,
+                    surface: crate::SourceCounterThresholdSurface::SourceHas,
                 }),
                 presentation_label: None,
             }),
@@ -1638,23 +1653,6 @@ impl CardDefinitionBuilder {
     }
 
     pub fn ascend(self) -> Self {
-        let controls_ten = crate::ConditionExpr::PlayerHasAtLeast {
-            player: crate::target::PlayerFilter::You,
-            filter: crate::target::ObjectFilter::permanent().you_control(),
-            count: 10,
-        };
-        let not_blessed =
-            crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::PlayerHasCitysBlessing {
-                player: crate::target::PlayerFilter::You,
-            }));
-        let bless_condition =
-            crate::ConditionExpr::And(Box::new(controls_ten), Box::new(not_blessed));
-        let get_blessing =
-            crate::effect::Effect::create_emblem(crate::effect::EmblemDescription::new(
-                "City's Blessing",
-                "You have the city's blessing for the rest of the game.",
-            ));
-
         let is_nonpermanent_spell = self
             .card_builder
             .card_types_ref()
@@ -1665,25 +1663,15 @@ impl CardDefinitionBuilder {
             let mut effects = out.spell_effect.take().unwrap_or_default();
             effects.insert(
                 0,
-                crate::effect::Effect::conditional_only(bless_condition, vec![get_blessing]),
+                crate::effect::Effect::new(ironsmith_core::AscendEffect::new()),
             );
             out.spell_effect = Some(effects);
             return out;
         }
 
-        self.with_ability(crate::ability::Ability {
-            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::enters_battlefield(
-                    crate::target::ObjectFilter::permanent().you_control(),
-                    None,
-                ),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![get_blessing]),
-                choices: vec![],
-                intervening_if: Some(bless_condition),
-                presentation_label: None,
-            }),
-            functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::ascend(),
+        ))
     }
 
     pub fn daybound(self) -> Self {
@@ -2415,5 +2403,6 @@ impl CardDefinitionBuilder {
 }
 
 pub const IT_TAG: &str = crate::host::IT_TAG;
+pub const THIS_WAY_SACRIFICED_TAG: &str = crate::host::THIS_WAY_SACRIFICED_TAG;
 pub const CHOSEN_OBJECTS_TAG: &str = crate::host::CHOSEN_OBJECTS_TAG;
 pub const COPIED_STACK_OBJECT_TAG: &str = crate::host::COPIED_STACK_OBJECT_TAG;

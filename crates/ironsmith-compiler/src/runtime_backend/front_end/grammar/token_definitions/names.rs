@@ -3,7 +3,9 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, render_token_slice};
+use crate::runtime_backend::front_end::lexer::{
+    LexStream, OwnedLexToken, parser_token_word_refs, render_token_slice,
+};
 
 use super::super::{leaf, primitives};
 use super::common;
@@ -342,6 +344,61 @@ pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
     }
 
     Some(title_case_words(&piece_words[named_idx + 1..end]))
+}
+
+/// Parses the named-token template whose proper name precedes a comma, as in
+/// `Tamiyo's Notebook, a legendary ... token`. Keeping the original token
+/// slice here is important: parser words intentionally normalize apostrophes,
+/// but the token's runtime/display name must retain them.
+pub(super) fn leading_comma_name(tokens: &[OwnedLexToken]) -> Option<String> {
+    // The separator belongs to the appositive token description, not
+    // necessarily the first comma: proper token names themselves can contain
+    // commas (for example, `Name, Epithet, a legendary ... token`).
+    let comma = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_comma())
+        .filter_map(|(idx, _)| {
+            let suffix_words = parser_token_word_refs(tokens.get(idx + 1..)?);
+            let starts_appositive = suffix_words
+                .first()
+                .is_some_and(|word| matches!(*word, "a" | "an"));
+            let describes_token = suffix_words.iter().any(|word| *word == "token");
+            (starts_appositive && describes_token).then_some(idx)
+        })
+        .next()?;
+    let prefix = tokens.get(..comma)?;
+    let words = parser_token_word_refs(prefix);
+    let first = *words.first()?;
+    if matches!(first, "a" | "an")
+        || (first != "the" && explicit_name_descriptor(first))
+        || is_token_pt(first)
+        || is_card_type(first)
+    {
+        return None;
+    }
+    if words.iter().any(|word| {
+        is_token_pt(word)
+            || is_card_type(word)
+            || matches!(
+                *word,
+                "token"
+                    | "tokens"
+                    | "legendary"
+                    | "white"
+                    | "blue"
+                    | "black"
+                    | "red"
+                    | "green"
+                    | "colorless"
+            )
+    }) {
+        return None;
+    }
+
+    let raw = render_token_slice(prefix);
+    let titled = title_case_phrase_preserving_punctuation(raw.trim());
+    (!titled.is_empty()).then_some(titled)
 }
 
 pub(super) fn referenced_card_name(tokens: &[OwnedLexToken]) -> Option<String> {

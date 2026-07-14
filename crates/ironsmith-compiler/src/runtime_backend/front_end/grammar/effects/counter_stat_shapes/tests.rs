@@ -58,3 +58,24 @@ fn returns_typed_payment_possessive_and_half_life_shapes() {
         Some(Value::LifeTotalAsTurnBegan(PlayerFilter::target_opponent()))
     );
 }
+
+#[test]
+fn parses_normalized_possessive_top_library_owners() {
+    for (text, expected) in [
+        (
+            "Reveal the top card of target opponent's library",
+            PlayerAst::TargetOpponent,
+        ),
+        (
+            "Reveal the top card of target player's library",
+            PlayerAst::Target,
+        ),
+        (
+            "Reveal the top card of that player's library",
+            PlayerAst::That,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).expect("lex");
+        assert_eq!(parse_top_library_owner(&tokens), Some(expected), "{text}");
+    }
+}

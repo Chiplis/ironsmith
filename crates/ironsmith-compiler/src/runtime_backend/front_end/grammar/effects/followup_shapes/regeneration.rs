@@ -13,6 +13,17 @@ pub(crate) struct CantBeRegeneratedFollowupShape {
     pub(crate) this_turn: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DamageRegenerationExileGate {
+    DamagedObjectIsCreature,
+    ThisSpellWasKicked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DamageRegenerationExileFollowupShape {
+    pub(crate) gate: DamageRegenerationExileGate,
+}
+
 fn regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<CantBeRegeneratedSubject> {
     alt((
         primitives::kw("it").value(CantBeRegeneratedSubject::It),
@@ -61,6 +72,65 @@ pub(crate) fn parse_cant_be_regenerated_followup(
     .ok()
 }
 
+fn damage_regeneration_exile_gate<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<DamageRegenerationExileGate> {
+    alt((
+        (
+            primitives::kw("if"),
+            alt((
+                primitives::kw("it's"),
+                primitives::kw("it’s"),
+                primitives::kw("its"),
+            )),
+            primitives::phrase(&["a", "creature"]),
+            primitives::comma(),
+        )
+            .value(DamageRegenerationExileGate::DamagedObjectIsCreature),
+        (
+            primitives::phrase(&["if", "this", "spell", "was", "kicked"]),
+            primitives::comma(),
+        )
+            .value(DamageRegenerationExileGate::ThisSpellWasKicked),
+    ))
+    .parse_next(input)
+}
+
+fn damage_regeneration_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        primitives::kw("it").void(),
+        primitives::phrase(&["that", "creature"]),
+    ))
+    .parse_next(input)
+}
+
+fn parse_damage_regeneration_exile_followup_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<DamageRegenerationExileFollowupShape> {
+    let gate = damage_regeneration_exile_gate.parse_next(input)?;
+    damage_regeneration_subject.parse_next(input)?;
+    cant.parse_next(input)?;
+    primitives::phrase(&["be", "regenerated", "this", "turn"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    primitives::phrase(&["if", "it", "would", "die", "this", "turn"]).parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["exile", "it", "instead"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(DamageRegenerationExileFollowupShape { gate })
+}
+
+pub(crate) fn parse_damage_regeneration_exile_followup(
+    tokens: &[OwnedLexToken],
+) -> Option<DamageRegenerationExileFollowupShape> {
+    primitives::parse_all(
+        tokens,
+        parse_damage_regeneration_exile_followup_lexed,
+        "damage regeneration/exile followup",
+    )
+    .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +157,33 @@ mod tests {
             Some(CantBeRegeneratedFollowupShape {
                 subject: CantBeRegeneratedSubject::CreatureDestroyedThisWay,
                 this_turn: true,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_compound_damage_regeneration_exile_gates() {
+        let creature_gate = lex_line(
+            "If it's a creature, it can't be regenerated this turn, and if it would die this turn, exile it instead.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_damage_regeneration_exile_followup(&creature_gate),
+            Some(DamageRegenerationExileFollowupShape {
+                gate: DamageRegenerationExileGate::DamagedObjectIsCreature,
+            })
+        );
+
+        let kicked_gate = lex_line(
+            "If this spell was kicked, that creature can't be regenerated this turn and if it would die this turn, exile it instead.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_damage_regeneration_exile_followup(&kicked_gate),
+            Some(DamageRegenerationExileFollowupShape {
+                gate: DamageRegenerationExileGate::ThisSpellWasKicked,
             })
         );
     }

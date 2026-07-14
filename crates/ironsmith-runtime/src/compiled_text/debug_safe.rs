@@ -132,6 +132,35 @@ fn normalize_debug_safe_mana_symbol_case(line: &str) -> String {
     normalized
 }
 
+fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
+    let mut normalized = String::with_capacity(line.len());
+    for (index, segment) in line.split('"').enumerate() {
+        if index > 0 {
+            normalized.push('"');
+        }
+        if index % 2 == 1 {
+            normalized.push_str(segment);
+            continue;
+        }
+        normalized.push_str(
+            &segment
+                .replace("You draw a card", "Draw a card")
+                .replace("you draw a card", "draw a card")
+                .replace("You draw two cards", "Draw two cards")
+                .replace("you draw two cards", "draw two cards")
+                .replace("You draw 2 cards", "Draw two cards")
+                .replace("you draw 2 cards", "draw two cards")
+                .replace(". you draw a card", ". Draw a card")
+                .replace(". draw a card", ". Draw a card")
+                .replace(". you draw two cards", ". Draw two cards")
+                .replace(". you draw 2 cards", ". Draw two cards")
+                .replace(". draw two cards", ". Draw two cards")
+                .replace(". draw 2 cards", ". Draw two cards"),
+        );
+    }
+    normalized
+}
+
 fn normalize_debug_safe_spelling_surface(line: &str) -> String {
     let mut normalized = line
         .trim()
@@ -152,14 +181,6 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("Return all other permanent cards exiled with this artifact", "return all other permanent cards exiled with this artifact")
         .replace("If that doesn't happen, draw a card", "If that doesn't happen, you draw a card")
         .replace(": up to one target", ": Up to one target")
-        .replace(
-            "you may gain life equal to its power. If you do, it assigns no combat damage this turn",
-            "you gain life equal to this artifact's power. prevent all combat damage that would be dealt by this artifact this turn",
-        )
-        .replace(
-            "You may gain life equal to its power. If you do, it assigns no combat damage this turn",
-            "you gain life equal to this artifact's power. prevent all combat damage that would be dealt by this artifact this turn",
-        )
         .replace(
             "if it matches card in exile, put it into its owner's graveyard",
             "if any of those cards remain exiled, return them to their owners' graveyards",
@@ -216,18 +237,6 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
             "loses that card's mana value life",
             "loses life equal to that card's mana value",
         )
-        .replace("You draw a card", "Draw a card")
-        .replace("you draw a card", "draw a card")
-        .replace("You draw two cards", "Draw two cards")
-        .replace("you draw two cards", "draw two cards")
-        .replace("You draw 2 cards", "Draw two cards")
-        .replace("you draw 2 cards", "draw two cards")
-        .replace(". you draw a card", ". Draw a card")
-        .replace(". draw a card", ". Draw a card")
-        .replace(". you draw two cards", ". Draw two cards")
-        .replace(". you draw 2 cards", ". Draw two cards")
-        .replace(". draw two cards", ". Draw two cards")
-        .replace(". draw 2 cards", ". Draw two cards")
         .replace("fateseal {1}", "fateseal 1")
         .replace("Fateseal {1}", "Fateseal 1")
         .replace(" hand :", " hand:")
@@ -251,6 +260,7 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
             "Soldiers or Knight creatures you control get +1/+1 as long as this creature is equipped",
             "As long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1",
         );
+    normalized = normalize_imperative_draw_subject_outside_quotes(&normalized);
 
     if normalized.eq_ignore_ascii_case(
         "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller.",
@@ -261,25 +271,6 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         normalized =
             "Undaunted — Spells cost {X} less to cast, where X is the number of opponents."
                 .to_string();
-    }
-    let lower = normalized.to_ascii_lowercase();
-    if lower.contains("discard this card: put two +1/+1 counters on target creature") {
-        let before_discard = normalized
-            .split_once(", Discard this card:")
-            .map(|(head, _)| head)
-            .or_else(|| {
-                normalized
-                    .split_once(", discard this card:")
-                    .map(|(head, _)| head)
-            })
-            .unwrap_or(normalized.as_str())
-            .trim();
-        let cost = before_discard
-            .split_whitespace()
-            .last()
-            .unwrap_or(before_discard)
-            .trim();
-        normalized = format!("Reinforce 2—{cost}");
     }
     let lower = normalized.to_ascii_lowercase();
     if lower.contains("exile this card from your graveyard:")
@@ -458,6 +449,16 @@ mod tests {
                 "Target that player discards that card. Target that permanent doesn't untap."
             ),
             "That player discards that card. That permanent doesn't untap."
+        );
+    }
+
+    #[test]
+    fn cleanup_preserves_explicit_draw_subject_inside_rules_quotes() {
+        let emblem = "−6: You get an emblem with \"Whenever you cast an Elf spell, it gains haste until end of turn and you draw two cards.\"";
+        assert_eq!(normalize_debug_safe_spelling_surface(emblem), emblem);
+        assert_eq!(
+            normalize_debug_safe_spelling_surface("You draw two cards."),
+            "Draw two cards."
         );
     }
 }

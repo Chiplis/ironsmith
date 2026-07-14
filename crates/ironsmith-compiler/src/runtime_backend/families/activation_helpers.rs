@@ -51,6 +51,19 @@ fn first_non_comma_token_index(tokens: &[OwnedLexToken]) -> usize {
     tokens.len()
 }
 
+fn parse_add_mana_amount(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let amount_tokens = match tokens {
+        [article, additional, rest @ ..]
+            if article.is_word("an") && additional.is_word("additional") =>
+        {
+            rest
+        }
+        [additional, rest @ ..] if additional.is_word("additional") => rest,
+        _ => tokens,
+    };
+    parse_value(amount_tokens).map(|(value, _)| value)
+}
+
 pub(crate) fn parse_add_mana(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -90,27 +103,21 @@ pub(crate) fn parse_add_mana(
     }
 
     if facts.commander_identity {
-        let amount = parse_value(tokens)
-            .map(|(value, _)| value)
-            .unwrap_or(Value::Fixed(1));
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_commander_identity(
             player, amount,
         ));
     }
 
     if facts.different_colors {
-        let amount = parse_value(tokens)
-            .map(|(value, _)| value)
-            .unwrap_or(Value::Fixed(1));
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_any_color_with_distinct(
             player, amount, None, true,
         ));
     }
 
     if let Some(available_colors) = parse_any_combination_mana_colors(tokens)? {
-        let amount = parse_value(tokens)
-            .map(|(value, _)| value)
-            .unwrap_or(Value::Fixed(1));
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_any_color(
             player,
             amount,
@@ -128,9 +135,7 @@ pub(crate) fn parse_add_mana(
 
     let fixed_output = activation_grammar::parse_fixed_mana_output(tokens);
     if !fixed_output.has_explicit_symbol && facts.chosen_color_reference {
-        let amount = parse_value(tokens)
-            .map(|(value, _)| value)
-            .unwrap_or(Value::Fixed(1));
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
             player, amount, None,
         ));
@@ -164,9 +169,7 @@ pub(crate) fn parse_add_mana(
     }
 
     if let Some(mana_choice) = facts.choice {
-        let mut amount = parse_value(tokens)
-            .map(|(value, _)| value)
-            .unwrap_or(Value::Fixed(1));
+        let mut amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         let any_one = mana_choice.kind.any_one();
         let any_type = mana_choice.kind.allow_colorless();
         let tail_tokens = mana_choice.tail_tokens;
@@ -188,9 +191,14 @@ pub(crate) fn parse_add_mana(
             ));
         }
 
-        if let Some(filter) = parse_land_could_produce_filter(tail_tokens)? {
+        if let Some((filter, mana_type_source)) = parse_land_could_produce_filter(tail_tokens)? {
             return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
-                player, amount, filter, any_type, any_one,
+                player,
+                amount,
+                filter,
+                any_type,
+                any_one,
+                mana_type_source,
             ));
         }
 
@@ -435,13 +443,22 @@ pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
 
 pub(crate) fn parse_land_could_produce_filter(
     tokens: &[OwnedLexToken],
-) -> Result<Option<ObjectFilter>, CardTextError> {
+) -> Result<Option<(ObjectFilter, crate::effects::ManaTypeSource)>, CardTextError> {
     let words = TokenWordView::new(tokens).to_word_refs();
     let Some(shape) = activation_grammar::parse_land_could_produce_shape(tokens) else {
         return Ok(None);
     };
-    let filter_tokens = match shape {
-        activation_grammar::LandCouldProduceShape::Filter(filter_tokens) => filter_tokens,
+    let (filter_tokens, mana_type_source) = match shape {
+        activation_grammar::LandCouldProduceShape::CouldProduceFilter(filter_tokens) => (
+            filter_tokens,
+            crate::effects::ManaTypeSource::MatchingLandsCouldProduce,
+        ),
+        activation_grammar::LandCouldProduceShape::TriggeringEventProducedFilter(filter_tokens) => {
+            (
+                filter_tokens,
+                crate::effects::ManaTypeSource::TriggeringEventProduced,
+            )
+        }
         activation_grammar::LandCouldProduceShape::UnsupportedTrailing => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing mana clause (tail: '{}')",
@@ -456,5 +473,5 @@ pub(crate) fn parse_land_could_produce_filter(
         )));
     }
     let filter = parse_object_filter(filter_tokens, false)?;
-    Ok(Some(filter))
+    Ok(Some((filter, mana_type_source)))
 }

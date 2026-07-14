@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
 import { getVisibleTopStackObject } from "@/lib/stack-targets";
 import { useHover } from "@/context/HoverContext";
@@ -165,6 +166,48 @@ function optionsSignature(options) {
         `${Number(option?.index)}:${String(option?.description || "")}`,
     )
     .join("|");
+}
+
+function buildPaymentOptionGroups(options, players) {
+  const familyByObjectId = new Map();
+  for (const player of players || []) {
+    for (const card of player?.battlefield || []) {
+      const familyIds = [card?.id, ...(card?.member_ids || [])]
+        .filter((id) => id != null)
+        .map(String);
+      if (familyIds.length === 0) continue;
+      const familyKey = familyIds.slice().sort().join(",");
+      for (const id of familyIds) familyByObjectId.set(id, familyKey);
+    }
+  }
+
+  const groups = new Map();
+  const ordered = [];
+  for (const option of options || []) {
+    const objectId = option?.object_id == null ? null : String(option.object_id);
+    const familyKey = objectId ? familyByObjectId.get(objectId) : null;
+    if (!familyKey) {
+      ordered.push(option);
+      continue;
+    }
+    const actionKey = String(option.description || "").trim().toLowerCase();
+    const key = `${familyKey}|${actionKey}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { ...option, grouped_options: [option], group_count: 1 };
+      groups.set(key, group);
+      ordered.push(group);
+    } else {
+      group.grouped_options.push(option);
+      group.group_count += 1;
+      if (group.legal === false && option.legal !== false) {
+        group.index = option.index;
+        group.object_id = option.object_id;
+        group.legal = option.legal;
+      }
+    }
+  }
+  return ordered;
 }
 
 function optionAccent(state, objectControllerById, opt, accentOverrides = null) {
@@ -429,6 +472,7 @@ export default function SelectOptionsDecision({
   onSubmitActionChange = null,
   hideDescription = false,
   layout = "panel",
+  toolbarSearchTarget = null,
 }) {
   const reason = (decision.reason || "").toLowerCase();
 
@@ -499,6 +543,7 @@ export default function SelectOptionsDecision({
         onSubmitActionChange={onSubmitActionChange}
         hideDescription={hideDescription}
         layout={layout}
+        toolbarSearchTarget={toolbarSearchTarget}
       />
     );
   }
@@ -524,6 +569,7 @@ function SingleSelectDecision({
   onSubmitActionChange = null,
   hideDescription = false,
   layout = "panel",
+  toolbarSearchTarget = null,
 }) {
   const { dispatch, state, playerAccentOverrides } = useGame();
   const { hoveredObjectId, hoverCard, clearHover } = useHover();
@@ -624,7 +670,9 @@ function SingleSelectDecision({
       : options;
 
     if (!searchableLargeOptionDecision) {
-      return visible;
+      return paymentDecision
+        ? buildPaymentOptionGroups(visible, state?.players)
+        : visible;
     }
 
     const normalizedQuery = String(searchQuery || "").trim().toLowerCase();
@@ -632,17 +680,21 @@ function SingleSelectDecision({
       return visible.slice(0, 80);
     }
 
-    return visible
+    const matches = visible
       .filter((opt) =>
         String(opt.description || "").toLowerCase().includes(normalizedQuery),
       )
       .slice(0, 200);
+    return paymentDecision
+      ? buildPaymentOptionGroups(matches, state?.players)
+      : matches;
   }, [
     options,
     paymentDecision,
     autoSubmitPayOption,
     searchableLargeOptionDecision,
     searchQuery,
+    state?.players,
   ]);
   const searchSummary = useMemo(() => {
     if (!searchableLargeOptionDecision) return "";
@@ -657,7 +709,7 @@ function SingleSelectDecision({
       ? "Search card names"
       : "Search options";
   const searchField = searchableLargeOptionDecision ? (
-    <div className="px-1.5 pb-1">
+    <div className={cn("decision-search-field", stripLayout && toolbarSearchTarget ? "decision-search-field--toolbar" : "px-1.5 pb-1")}>
       <Input
         value={searchQuery}
         onChange={(event) =>
@@ -666,11 +718,14 @@ function SingleSelectDecision({
         placeholder={searchPlaceholder}
         className="decision-inline-input h-8 w-full bg-transparent text-[13px]"
       />
-      <div className="px-1 pt-1 text-[11px] text-[#bfae8e]">
+      <div className={cn("px-1 pt-1 text-[11px] text-[#bfae8e]", stripLayout && toolbarSearchTarget && "sr-only")}>
         {searchSummary}
       </div>
     </div>
   ) : null;
+  const renderedSearchField = searchField && stripLayout && toolbarSearchTarget
+    ? createPortal(searchField, toolbarSearchTarget)
+    : searchField;
   const selectedObjectFamilyIds = useMemo(
     () => buildObjectFamilyIds(state?.players, selectedObjectId),
     [selectedObjectId, state?.players]
@@ -770,7 +825,7 @@ function SingleSelectDecision({
             )}
           </div>
         )}
-        {searchField}
+        {renderedSearchField}
         <div
           className={cn(
             "w-full min-w-0 max-w-full",
@@ -803,25 +858,40 @@ function SingleSelectDecision({
                 <OptionButton
                   key={opt.index}
                   opt={opt}
-                  content={optionLabelContent(
-                    state,
-                    objectNameById,
-                    objectControllerById,
-                    opt,
-                    playerAccentOverrides,
-                  )}
+                  content={
+                    <span className="flex min-w-0 w-full items-center gap-2">
+                      {optionLabelContent(
+                        state,
+                        objectNameById,
+                        objectControllerById,
+                        opt,
+                        playerAccentOverrides,
+                      )}
+                      {opt.group_count > 1 && (
+                        <span
+                          className="decision-option-group-count ml-auto shrink-0"
+                          aria-label={`${opt.group_count} equivalent options`}
+                        >
+                          x{opt.group_count}
+                        </span>
+                      )}
+                    </span>
+                  }
                   canAct={canAct}
                   isHighlighted={
                     objId != null && String(activeObjectId) === objId
                   }
                   horizontal={stripLayout && !compactStripLayout}
                   className={mobileOverlayLayout ? "decision-option-row--mobile-overlay" : ""}
-                  onClick={() =>
+                  onClick={() => {
+                    const selectedOption = opt.grouped_options?.find(
+                      (candidate) => candidate.legal !== false,
+                    ) || opt;
                     dispatch(
-                      { type: "select_options", option_indices: [opt.index] },
-                      opt.description,
-                    )
-                  }
+                      { type: "select_options", option_indices: [selectedOption.index] },
+                      selectedOption.description,
+                    );
+                  }}
                   onMouseEnter={() => {
                     if (hoverSuppressed || !hoverObjectId) return;
                     hoverCard(hoverObjectId);

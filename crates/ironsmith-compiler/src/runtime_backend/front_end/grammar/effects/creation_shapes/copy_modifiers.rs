@@ -92,6 +92,16 @@ pub(crate) fn parse_copy_modifier_words(
     if grants_keyword(CreationPhrase::WithTrample, "trample") {
         spec.granted_abilities.push(StaticAbility::trample());
     }
+    if let Some(amount) = modifier_words
+        .windows(2)
+        .find(|pair| pair[0] == "toxic")
+        .and_then(|pair| pair[1].parse::<u32>().ok())
+    {
+        push_unique(
+            &mut spec.granted_abilities,
+            StaticAbility::keyword_marker(format!("toxic {amount}")),
+        );
+    }
 
     if let Some(idx) = surface.phrase_location(CreationPhrase::GetsForEach) {
         let mut tail = modifier_words.get(idx + 6..).unwrap_or_default();
@@ -116,7 +126,12 @@ pub(crate) fn parse_copy_modifier_words(
     }
 
     if let Some(addition) = surface.phrase_location(CreationPhrase::AdditionToOtherTypes) {
+        let mut colors = ColorSet::new();
         for word in &modifier_words[..addition] {
+            if let Some(color) = crate::runtime_backend::front_end::shared::util::parse_color(word)
+            {
+                colors = colors.union(color);
+            }
             if let Some(card_type) =
                 crate::runtime_backend::front_end::shared::util::parse_card_type(word)
             {
@@ -128,6 +143,7 @@ pub(crate) fn parse_copy_modifier_words(
                 push_unique(&mut spec.added_subtypes, subtype);
             }
         }
+        spec.set_colors = (!colors.is_empty()).then_some(colors);
     } else if surface.starts(CreationPhrase::IdentityClause) {
         let descriptor_end = surface
             .location(CreationWordClass::DescriptorEnd)
@@ -202,5 +218,15 @@ mod tests {
         assert_eq!(spec.set_subtypes, Some(vec![Subtype::Dragon]));
         assert_eq!(spec.removed_supertypes, vec![Supertype::Legendary]);
         assert_eq!(spec.granted_abilities, vec![StaticAbility::flying()]);
+    }
+
+    #[test]
+    fn parses_counted_keyword_copy_modifier() {
+        let spec = parse_copy_modifier_words(&["except", "its", "1/1", "and", "has", "toxic", "1"])
+            .unwrap();
+        assert_eq!(
+            spec.granted_abilities,
+            vec![StaticAbility::keyword_marker("toxic 1")]
+        );
     }
 }

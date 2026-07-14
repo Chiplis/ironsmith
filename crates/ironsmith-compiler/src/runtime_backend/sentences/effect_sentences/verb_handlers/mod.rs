@@ -1,8 +1,8 @@
 use crate::cards::builders::{
     CardTextError, ControlDurationAst, EffectAst, EventValueSpec, ExtraTurnAnchorAst, IT_TAG,
-    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey,
-    TargetAst, TextSpan, Verb,
+    IfResultPredicate, ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, ReturnControllerAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
+    SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;

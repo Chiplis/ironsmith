@@ -19,7 +19,7 @@ use crate::filter::{
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
+use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -255,6 +255,27 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     subject
 }
 
+fn exact_one_condition_antecedent_subject(
+    filter: &ObjectFilter,
+    condition: Option<&crate::ConditionExpr>,
+) -> Option<String> {
+    let Some(crate::ConditionExpr::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(counted_filter),
+        comparison: Comparison::Equal(1),
+        ..
+    }) = condition
+    else {
+        return None;
+    };
+    if filter != counted_filter {
+        return None;
+    }
+    let [card_type] = filter.card_types.as_slice() else {
+        return None;
+    };
+    Some(format!("that {}", card_type.name()))
+}
+
 fn subtype_creature_anthem_subject(filter: &ObjectFilter) -> Option<String> {
     if filter.zone != Some(Zone::Battlefield)
         || filter.controller != Some(PlayerFilter::You)
@@ -456,6 +477,26 @@ fn grant_subject_text(filter: &ObjectFilter) -> String {
         return subject;
     }
     pluralized_subject_text(filter)
+}
+
+fn grant_subject_with_set_quantifier(
+    filter: &ObjectFilter,
+    surface: Option<ironsmith_core::SetQuantifierSurface>,
+) -> (String, bool) {
+    match surface {
+        Some(ironsmith_core::SetQuantifierSurface::Each) => (
+            format!(
+                "Each {}",
+                lowercase_first_ascii(&strip_article(filter.description()))
+            ),
+            true,
+        ),
+        Some(ironsmith_core::SetQuantifierSurface::All) => (
+            format!("All {}", lowercase_first_ascii(&grant_subject_text(filter))),
+            false,
+        ),
+        None => (grant_subject_text(filter), false),
+    }
 }
 
 fn describe_filter_comparison(cmp: &crate::filter::Comparison) -> String {
@@ -690,6 +731,40 @@ fn strip_article(text: String) -> String {
     text
 }
 
+/// Bare battlefield filters need an explicit zone when they are used as a
+/// count subject. Controller, owner, combat, and attachment predicates already
+/// make the battlefield provenance clear.
+fn anthem_count_filter_needs_battlefield_surface(filter: &ObjectFilter, subject: &str) -> bool {
+    filter.zone == Some(Zone::Battlefield)
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && !subject.contains(" in ")
+        && !subject.contains(" on ")
+        && !filter.attacking
+        && !filter.nonattacking
+        && !filter.blocking
+        && !filter.nonblocking
+        && !filter.blocked
+        && !filter.unblocked
+        && !filter.entered_battlefield_this_turn
+        && filter.entered_battlefield_controller.is_none()
+        && !filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+}
+
+fn describe_anthem_for_each_matching_filter(filter: &ObjectFilter) -> String {
+    let mut subject = strip_article(filter.description());
+    if let Some(rest) = subject.strip_prefix("another ") {
+        subject = format!("other {rest}");
+    }
+    if anthem_count_filter_needs_battlefield_surface(filter, &subject) {
+        subject.push_str(" on the battlefield");
+    }
+    subject
+}
+
 fn describe_source_reference_surface(surface: &SourceReferenceSurface) -> String {
     surface.display_text()
 }
@@ -761,6 +836,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
                     subject.push_str(" in all graveyards");
                 }
             }
+            if anthem_count_filter_needs_battlefield_surface(filter, &subject) {
+                subject.push_str(" on the battlefield");
+            }
             subject
         }
         AnthemCountExpression::GreatestManaValueAmong(filter) => {
@@ -804,7 +882,7 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             format!("{} counter on it", counter_type.description())
         }
         AnthemCountExpression::CountersAmong(filter, counter_type) => format!(
-            "{} counter among {}",
+            "{} counter on {}",
             counter_type.description(),
             pluralized_subject_text(filter)
         ),
@@ -854,6 +932,16 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
 
 fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Option<String> {
     if let AnthemCountExpression::MatchingFilter(filter) = expr
+        && filter.zone == Some(Zone::Hand)
+        && matches!(
+            filter.owner.as_ref(),
+            Some(PlayerFilter::ControllerOf(ObjectRef::Target))
+        )
+    {
+        return Some("card in its controller's hand".to_string());
+    }
+
+    if let AnthemCountExpression::MatchingFilter(filter) = expr
         && !filter.any_of.is_empty()
         && filter
             .any_of
@@ -885,7 +973,7 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
 
     match expr {
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
-            Some(strip_article(filter.description()))
+            Some(describe_anthem_for_each_matching_filter(filter))
         }
         AnthemCountExpression::MatchingFilter(filter)
             if filter.zone == Some(Zone::Graveyard)
@@ -931,7 +1019,7 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             Some(format!("{} counter on it", counter_type.description()))
         }
         AnthemCountExpression::CountersAmong(filter, counter_type) => Some(format!(
-            "{} counter among {}",
+            "{} counter on {}",
             counter_type.description(),
             pluralized_subject_text(filter)
         )),
@@ -1078,6 +1166,26 @@ fn describe_static_condition_value(value: &Value) -> String {
         ),
         other => format!("{other:?}"),
     }
+}
+
+fn describe_attached_subject_static_condition(
+    condition: &crate::ConditionExpr,
+    subject: &str,
+) -> Option<String> {
+    let (filter, negative) = match condition {
+        crate::ConditionExpr::AttachedToSourceMatches(filter) => (filter, false),
+        crate::ConditionExpr::Not(inner) => match inner.as_ref() {
+            crate::ConditionExpr::AttachedToSourceMatches(filter) => (filter, true),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let descriptor = strip_article(filter.description());
+    let article = indefinite_article_for(&descriptor);
+    let verb = if negative { "isn't" } else { "is" };
+    Some(format!(
+        "as long as {subject} {verb} {article} {descriptor}"
+    ))
 }
 
 fn flatten_static_condition_and(
@@ -1405,6 +1513,43 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             right: Value::Fixed(4),
         } => "as long as you have max speed".to_string(),
         crate::ConditionExpr::ValueComparison {
+            left: Value::PlayerCounters(player, counter_type),
+            operator,
+            right: Value::Fixed(count),
+        } if *count >= 0 => {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            let comparison = match operator {
+                crate::effect::ValueComparisonOperator::GreaterThan => {
+                    format!("more than {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                    format!("{count_text} or more")
+                }
+                crate::effect::ValueComparisonOperator::Equal => {
+                    format!("exactly {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::LessThan => {
+                    format!("fewer than {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                    format!("{count_text} or fewer")
+                }
+                crate::effect::ValueComparisonOperator::NotEqual => {
+                    format!("not exactly {count_text}")
+                }
+            };
+            let subject = describe_static_player(player);
+            let verb = if matches!(player, crate::target::PlayerFilter::You) {
+                "have"
+            } else {
+                "has"
+            };
+            format!(
+                "as long as {subject} {verb} {comparison} {} counters",
+                counter_type.description()
+            )
+        }
+        crate::ConditionExpr::ValueComparison {
             left: Value::CardsInGraveyard(player),
             operator,
             right: Value::Fixed(count),
@@ -1581,6 +1726,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::Target(_) => {
                 "as long as that player is the monarch".to_string()
             }
+            crate::target::PlayerFilter::AliasedTarget(_) => {
+                "as long as that player is the monarch".to_string()
+            }
             crate::target::PlayerFilter::Excluding { .. } => {
                 "as long as that player is the monarch".to_string()
             }
@@ -1631,6 +1779,17 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             (_, Some(name)) => format!("as long as that player completed {name}"),
         },
         _ => format!("as long as {condition:?}"),
+    }
+}
+
+fn describe_same_source_static_condition(condition: &crate::ConditionExpr) -> String {
+    match condition {
+        crate::ConditionExpr::SourceIsEquipped => "as long as it's equipped".to_string(),
+        crate::ConditionExpr::SourceIsEnchanted => "as long as it's enchanted".to_string(),
+        crate::ConditionExpr::SourceIsMonstrous => "as long as it's monstrous".to_string(),
+        crate::ConditionExpr::SourceIsAttacking => "as long as it's attacking".to_string(),
+        crate::ConditionExpr::SourceIsUntapped => "as long as it's untapped".to_string(),
+        other => describe_static_condition(other),
     }
 }
 
@@ -1689,7 +1848,11 @@ fn entered_battlefield_this_turn_count(
     source: ObjectId,
     controller: PlayerId,
 ) -> i32 {
-    let filter_ctx = game.filter_context_for(controller, Some(source));
+    let mut filter_ctx = game.filter_context_for(controller, Some(source));
+    if let Some(affected) = game.object(source) {
+        filter_ctx.target_objects =
+            vec![crate::snapshot::ObjectSnapshot::from_object(affected, game)];
+    }
     let type_effects = game.cached_continuous_effects_snapshot();
     game.turn_store
         .turn_history
@@ -1781,7 +1944,11 @@ fn entered_battlefield_this_turn_count(
                                     .retain(|card_type| !card_types.contains(card_type));
                             }
                             Modification::SetCardTypes(card_types) => {
-                                adjusted.card_types = card_types.clone().into();
+                                crate::continuous::replace_card_types_and_prune_subtypes(
+                                    &mut adjusted.card_types,
+                                    &mut adjusted.subtypes,
+                                    card_types,
+                                );
                             }
                             _ => {}
                         }
@@ -1800,7 +1967,11 @@ pub(crate) fn resolve_anthem_count_expression(
     source: ObjectId,
     controller: PlayerId,
 ) -> i32 {
-    let filter_ctx = game.filter_context_for(controller, Some(source));
+    let mut filter_ctx = game.filter_context_for(controller, Some(source));
+    if let Some(affected) = game.object(source) {
+        filter_ctx.target_objects =
+            vec![crate::snapshot::ObjectSnapshot::from_object(affected, game)];
+    }
     match count {
         AnthemCountExpression::MatchingFilter(filter)
             if filter.entered_battlefield_this_turn
@@ -2022,6 +2193,8 @@ pub struct Anthem {
     pub toughness: AnthemValue,
     /// Optional activation condition.
     pub condition: Option<crate::ConditionExpr>,
+    /// Original leading set quantifier, retained only for compiled-text surface.
+    pub set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     /// True when the original oracle text scaled with a "where X is …" clause
     /// rather than "for each …". Surface hint for rendering only.
     pub count_uses_where_x: bool,
@@ -2038,6 +2211,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            set_quantifier_surface: None,
             count_uses_where_x: false,
             replacement_surface: None,
         }
@@ -2050,6 +2224,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            set_quantifier_surface: None,
             count_uses_where_x: false,
             replacement_surface: None,
         }
@@ -2063,6 +2238,14 @@ impl Anthem {
 
     pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
         self.count_uses_where_x = uses_where_x;
+        self
+    }
+
+    pub fn with_set_quantifier_surface(
+        mut self,
+        surface: Option<ironsmith_core::SetQuantifierSurface>,
+    ) -> Self {
+        self.set_quantifier_surface = surface;
         self
     }
 
@@ -2091,6 +2274,22 @@ impl StaticAbilityKind for Anthem {
     fn display(&self) -> String {
         let subject = if self.source_only {
             "this creature".to_string()
+        } else if let Some(surface) = self.set_quantifier_surface {
+            let mut subject = subject_text(&self.filter);
+            if let Some(rest) = subject.strip_prefix("another ") {
+                subject = format!("other {rest}");
+            }
+            let subject = strip_plural_subject_article(&subject);
+            match surface {
+                ironsmith_core::SetQuantifierSurface::All => {
+                    format!("All {}", pluralize_subject_clause(subject))
+                }
+                ironsmith_core::SetQuantifierSurface::Each => format!("Each {subject}"),
+            }
+        } else if let Some(subject) =
+            exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
+        {
+            subject
         } else {
             subtype_creature_anthem_subject(&self.filter)
                 .unwrap_or_else(|| pluralized_subject_text(&self.filter))
@@ -2141,29 +2340,23 @@ impl StaticAbilityKind for Anthem {
                 signed(toughness)
             }
         };
+        let dynamic_for_each = |value: &Value| {
+            value
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+                .then(|| {
+                    crate::compiled_text::describe_party_size_for_each_basis(value)
+                        .or_else(|| crate::compiled_text::describe_counter_for_each_basis(value))
+                })
+                .flatten()
+        };
 
         if let (Some(surface), Some(condition)) = (self.replacement_surface, &self.condition) {
-            let condition_text = match condition {
-                crate::ConditionExpr::AttachedToSourceMatches(filter) => {
-                    let filter_text = filter.description();
-                    let article = if matches!(
-                        filter_text.chars().next().map(|ch| ch.to_ascii_lowercase()),
-                        Some('a' | 'e' | 'i' | 'o' | 'u')
-                    ) {
-                        "an"
-                    } else {
-                        "a"
-                    };
-                    format!("{subject} is {article} {filter_text}")
-                }
-                _ => {
-                    let described = describe_static_condition(condition);
-                    described
-                        .strip_prefix("as long as ")
-                        .unwrap_or(&described)
-                        .to_string()
-                }
-            };
+            let described = describe_attached_subject_static_condition(condition, &subject)
+                .unwrap_or_else(|| describe_static_condition(condition));
+            let condition_text = described
+                .strip_prefix("as long as ")
+                .unwrap_or(&described)
+                .to_string();
             return format!(
                 "If {condition_text}, {subject} {verb} {}/{} instead",
                 signed(surface.power),
@@ -2177,6 +2370,43 @@ impl StaticAbilityKind for Anthem {
                     "{subject} {verb} {}/{}",
                     signed(*power),
                     signed_toughness(*power, *toughness),
+                )
+            }
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
+                if dynamic_for_each(power).is_some()
+                    && dynamic_for_each(power).map(|(_, subject)| subject)
+                        == dynamic_for_each(toughness).map(|(_, subject)| subject) =>
+            {
+                let (power, basis) =
+                    dynamic_for_each(power).expect("for-each value checked in match guard");
+                let (toughness, _) = dynamic_for_each(toughness)
+                    .expect("matching for-each value checked in match guard");
+                format!(
+                    "{subject} {verb} {}/{} for each {basis}",
+                    signed(power),
+                    signed_toughness(power, toughness),
+                )
+            }
+            (AnthemValue::Dynamic(power), AnthemValue::Fixed(toughness))
+                if dynamic_for_each(power).is_some() =>
+            {
+                let (power, basis) =
+                    dynamic_for_each(power).expect("for-each value checked in match guard");
+                format!(
+                    "{subject} {verb} {}/{} for each {basis}",
+                    signed(power),
+                    signed_toughness(power, *toughness),
+                )
+            }
+            (AnthemValue::Fixed(power), AnthemValue::Dynamic(toughness))
+                if dynamic_for_each(toughness).is_some() =>
+            {
+                let (toughness, basis) =
+                    dynamic_for_each(toughness).expect("for-each value checked in match guard");
+                format!(
+                    "{subject} {verb} {}/{} for each {basis}",
+                    signed(*power),
+                    signed_toughness(*power, toughness),
                 )
             }
             (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
@@ -2259,6 +2489,12 @@ impl StaticAbilityKind for Anthem {
                     count: toughness_count,
                 },
             ) if power_count == toughness_count && *power == 1 && *toughness == 1 => {
+                if self.count_uses_where_x {
+                    return format!(
+                        "{subject} {verb} +X/+X, where X is {}",
+                        describe_anthem_where_x_count_expression(power_count),
+                    );
+                }
                 if let Some(count_subject) = describe_anthem_for_each_count_expression(power_count)
                 {
                     if matches!(power_count, AnthemCountExpression::CommanderCastCount(_))
@@ -2322,7 +2558,21 @@ impl StaticAbilityKind for Anthem {
                 },
                 AnthemValue::Fixed(toughness),
             ) if *toughness == 0 => {
-                if let Some(count_subject) = describe_anthem_for_each_count_expression(count) {
+                if self.count_uses_where_x {
+                    format!(
+                        "{subject} {verb} {}/+0, where X is {}",
+                        x_component(*power),
+                        describe_anthem_where_x_count_expression(count),
+                    )
+                } else if let Some(count_subject) = describe_anthem_for_each_count_expression(count)
+                {
+                    format!(
+                        "{subject} {verb} {}/+0 for each {count_subject}",
+                        signed(*power),
+                    )
+                } else if let Some(count_subject) =
+                    describe_anthem_for_each_graveyard_count_expression(count)
+                {
                     format!(
                         "{subject} {verb} {}/+0 for each {count_subject}",
                         signed(*power),
@@ -2356,6 +2606,13 @@ impl StaticAbilityKind for Anthem {
                 },
             ) if *power == 0 => {
                 if let Some(count_subject) = describe_anthem_for_each_count_expression(count) {
+                    format!(
+                        "{subject} {verb} +0/{} for each {count_subject}",
+                        signed(*toughness),
+                    )
+                } else if let Some(count_subject) =
+                    describe_anthem_for_each_graveyard_count_expression(count)
+                {
                     format!(
                         "{subject} {verb} +0/{} for each {count_subject}",
                         signed(*toughness),
@@ -2398,7 +2655,15 @@ impl StaticAbilityKind for Anthem {
         };
 
         if let Some(condition) = &self.condition {
-            let condition_text = describe_static_condition(condition);
+            let condition_text = if self.source_only {
+                describe_same_source_static_condition(condition)
+            } else if let Some(described) =
+                describe_attached_subject_static_condition(condition, &subject)
+            {
+                described
+            } else {
+                describe_static_condition(condition)
+            };
             if static_condition_is_during_your_turn(condition) {
                 return format!("During your turn, {text}");
             }
@@ -2557,6 +2822,8 @@ pub struct GrantAbility {
     pub ability: StaticAbility,
     /// Optional activation condition.
     pub condition: Option<crate::ConditionExpr>,
+    /// Original leading set quantifier, retained only for compiled-text surface.
+    pub set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
 }
 
 impl GrantAbility {
@@ -2566,6 +2833,7 @@ impl GrantAbility {
             source_only: false,
             ability,
             condition: None,
+            set_quantifier_surface: None,
         }
     }
 
@@ -2575,11 +2843,20 @@ impl GrantAbility {
             source_only: true,
             ability,
             condition: None,
+            set_quantifier_surface: None,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
         self.condition = Some(condition);
+        self
+    }
+
+    pub fn with_set_quantifier_surface(
+        mut self,
+        surface: Option<ironsmith_core::SetQuantifierSurface>,
+    ) -> Self {
+        self.set_quantifier_surface = surface;
         self
     }
 
@@ -2594,6 +2871,7 @@ impl PartialEq for GrantAbility {
             && self.source_only == other.source_only
             && self.ability == other.ability
             && self.condition == other.condition
+            && self.set_quantifier_surface == other.set_quantifier_surface
     }
 }
 
@@ -2604,10 +2882,14 @@ impl StaticAbilityKind for GrantAbility {
 
     fn display(&self) -> String {
         let applies_to_source = self.applies_to_source();
-        let subject = if applies_to_source {
-            "this creature".to_string()
+        let (subject, explicitly_singular_subject) = if applies_to_source {
+            ("this creature".to_string(), true)
+        } else if let Some(subject) =
+            exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
+        {
+            (subject, false)
         } else {
-            grant_subject_text(&self.filter)
+            grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface)
         };
         if applies_to_source
             && self.ability.id() == StaticAbilityId::CanAttackAsThoughHaste
@@ -2634,15 +2916,36 @@ impl StaticAbilityKind for GrantAbility {
         {
             ability_text = format!("\"{ability_text}\"");
         }
+        let singular_subject = explicitly_singular_subject
+            || subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ");
+        let ability_text_lower = ability_text.to_ascii_lowercase();
         let mut text = match self.ability.id() {
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
+            // These restrictions are complete verb phrases, not abilities
+            // introduced by "has"/"have". Keeping them structural here also
+            // gives token-carried anthems the right surface (for example,
+            // "Creatures you control attack each combat if able").
+            StaticAbilityId::MustAttack => format!(
+                "{subject} {} each combat if able",
+                if singular_subject {
+                    "attacks"
+                } else {
+                    "attack"
+                }
+            ),
+            StaticAbilityId::MustBlock => format!(
+                "{subject} {} each combat if able",
+                if singular_subject { "blocks" } else { "block" }
+            ),
+            _ if ability_text_lower.starts_with("can't ") => {
+                format!("{subject} {}", lowercase_first_ascii(&ability_text))
+            }
             _ => {
-                let singular_subject = subject.starts_with("enchanted ")
-                    || subject.starts_with("equipped ")
-                    || subject.starts_with("this ")
-                    || subject.starts_with("that ");
                 let verb = if singular_subject { "has" } else { "have" };
                 // Oracle quantifies unscoped grants ("All creatures with an
                 // odd mana value have haste"); scoped subjects ("Creatures
@@ -2708,13 +3011,18 @@ impl StaticAbilityKind for GrantAbility {
                 && self.ability.is_keyword()
                 && leading_source_keyword_condition(condition)
             {
-                let condition_text =
-                    normalize_source_counter_condition_text(&describe_static_condition(condition));
+                let condition_text = normalize_source_counter_condition_text(
+                    &describe_same_source_static_condition(condition),
+                );
                 if let Some(rest) = condition_text.strip_prefix("as long as ") {
                     return format!("as long as {rest}, {subject} has {ability_text}");
                 }
             }
-            let condition_text = describe_static_condition(condition);
+            let condition_text = if applies_to_source {
+                describe_same_source_static_condition(condition)
+            } else {
+                describe_static_condition(condition)
+            };
             if static_condition_is_during_your_turn(condition) {
                 return format!("During your turn, {text}");
             }
@@ -2801,9 +3109,7 @@ impl StaticAbilityKind for GrantAbility {
 
 fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
     match condition {
-        crate::ConditionExpr::SourceIsEquipped
-        | crate::ConditionExpr::SourceIsUntapped
-        | crate::ConditionExpr::OwnsCardExiledWithCounter(_) => true,
+        crate::ConditionExpr::OwnsCardExiledWithCounter(_) => true,
         crate::ConditionExpr::CountComparison {
             display: Some(display),
             ..
@@ -4041,6 +4347,30 @@ impl StaticAbilityKind for AddSubtypesForFilter {
     }
 
     fn display(&self) -> String {
+        if self.filter == ObjectFilter::land()
+            && let [subtype] = self.subtypes.as_slice()
+            && subtype.is_land_subtype()
+        {
+            let subtype = subtype.to_string();
+            let mut text = format!(
+                "Each land is {} {subtype} in addition to its other land types",
+                indefinite_article_for(&subtype)
+            );
+            if let Some(condition) = &self.condition {
+                let condition_text =
+                    normalize_source_counter_condition_text(&describe_static_condition(condition));
+                if static_condition_is_during_your_turn(condition) {
+                    return format!("During your turn, {text}");
+                }
+                if condition_text.starts_with("as long as ") {
+                    return format!("{condition_text}, {text}");
+                }
+                text.push(' ');
+                text.push_str(&condition_text);
+            }
+            return text;
+        }
+
         let subject = if self.filter == ObjectFilter::source() {
             "this creature".to_string()
         } else {
@@ -4241,18 +4571,35 @@ impl StaticAbilityKind for SetLandSubtypesForFilter {
     fn display(&self) -> String {
         let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
-        let subtypes = self
-            .subtypes
-            .iter()
-            .map(|subtype| {
-                let name = subtype.to_string().to_ascii_lowercase();
-                if verb == "are" {
-                    simple_pluralize(&name)
-                } else {
-                    format!("{} {name}", indefinite_article_for(&name))
-                }
-            })
-            .collect::<Vec<_>>();
+        let subtypes = if verb == "is"
+            && self.subtypes.iter().all(Subtype::is_land_subtype)
+            && !self.subtypes.is_empty()
+        {
+            self.subtypes
+                .iter()
+                .enumerate()
+                .map(|(index, subtype)| {
+                    let name = subtype.to_string();
+                    if index == 0 {
+                        format!("{} {name}", indefinite_article_for(&name))
+                    } else {
+                        name
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            self.subtypes
+                .iter()
+                .map(|subtype| {
+                    let name = subtype.to_string().to_ascii_lowercase();
+                    if verb == "are" {
+                        simple_pluralize(&name)
+                    } else {
+                        format!("{} {name}", indefinite_article_for(&name))
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
         let mut text = format!("{subject} {verb} {}", join_with_and(&subtypes));
         if let Some(condition) = &self.condition {
             text.push(' ');

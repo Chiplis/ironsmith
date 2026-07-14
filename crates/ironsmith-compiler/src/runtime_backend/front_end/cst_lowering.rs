@@ -120,6 +120,7 @@ fn lower_activated_line(
         activated.effect_parse_tokens,
         ActivationTiming::AnyTime,
         activation_cost_cst_is_loyalty(&activated.cost),
+        activated.presentation,
         activated.chosen_option,
     )?;
     Ok(parsed_line_item(

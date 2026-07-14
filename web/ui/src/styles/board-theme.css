@@ -4,7 +4,6 @@
   --ironsmith-chamfer-md: 12px;
   --ironsmith-chamfer-lg: 18px;
 }
-
 body {
   font-family: var(--ironsmith-ui-font);
   letter-spacing: 0.015em;
@@ -1719,6 +1718,36 @@ textarea,
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.94;
+}
+
+.action-strip-decision-toolbar-search:empty {
+  display: none;
+}
+
+.action-strip-decision-toolbar-search:not(:empty) {
+  display: flex;
+  flex: 0 1 360px;
+  align-items: center;
+}
+
+.decision-search-field--toolbar {
+  width: 100%;
+  min-width: 150px;
+}
+
+.decision-search-field--toolbar .decision-inline-input {
+  height: 100%;
+  min-height: 36px;
+}
+
+.decision-option-group-count {
+  border: 1px solid rgba(196, 165, 112, 0.48);
+  background: rgba(12, 10, 8, 0.46);
+  color: #ead7aa;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
 }
 
 .priority-inline-panel > .action-strip-decision-stack {
@@ -4060,4 +4089,3 @@ select::-ms-expand {
     padding: 8px;
   }
 }
-

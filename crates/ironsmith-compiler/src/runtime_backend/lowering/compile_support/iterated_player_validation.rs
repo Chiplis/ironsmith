@@ -53,6 +53,10 @@ pub(crate) fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> b
             .as_deref()
             .is_some_and(object_filter_mentions_iterated_player)
         || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(object_filter_mentions_iterated_player)
+        || filter
             .no_shared_creature_types_with
             .iter()
             .any(object_filter_mentions_iterated_player)
@@ -168,6 +172,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_mentions_iterated_player(spec),
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
@@ -205,6 +210,44 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::Devotion { player, .. } => player.mentions_iterated_player(),
         Value::SpellsCastThisTurnMatching { player, filter, .. } => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
+        }
+        Value::TurnHistoryCount(query) => {
+            use ironsmith_core::TurnHistoryCount;
+
+            match query {
+                TurnHistoryCount::Died(filter)
+                | TurnHistoryCount::EnteredBattlefield(filter)
+                | TurnHistoryCount::MovedZones { filter, .. }
+                | TurnHistoryCount::CountersPutOn { filter, .. } => {
+                    object_filter_mentions_iterated_player(filter)
+                }
+                TurnHistoryCount::TokensCreated(player)
+                | TurnHistoryCount::OpponentsAttacked(player)
+                | TurnHistoryCount::PlayersDiscarded(player)
+                | TurnHistoryCount::PlayersDealtDamage(player)
+                | TurnHistoryCount::DiscardedOrCycled(player)
+                | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::PlayersLostLife(player)
+                | TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
+                    player.mentions_iterated_player()
+                }
+                TurnHistoryCount::PutIntoGraveyard { owner, .. } => {
+                    owner.mentions_iterated_player()
+                }
+                TurnHistoryCount::Sacrificed { player, filter }
+                | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+                    player.mentions_iterated_player()
+                        || object_filter_mentions_iterated_player(filter)
+                }
+                TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => {
+                    players.mentions_iterated_player()
+                        || object_filter_mentions_iterated_player(sources)
+                }
+                TurnHistoryCount::SpellsCast { player, filter, .. } => {
+                    player.mentions_iterated_player()
+                        || object_filter_mentions_iterated_player(filter)
+                }
+            }
         }
         _ => false,
     }
@@ -245,6 +288,7 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => choose_spec_contains_pending_effect_metric(spec),
         Value::SpellsCastThisTurnMatching { filter, .. } => {
             object_filter_contains_pending_effect_metric(filter)
@@ -332,6 +376,7 @@ pub(crate) fn condition_mentions_iterated_player(condition: &Condition) -> bool 
         | PlayerTappedLandForManaThisTurn { player }
         | PlayerGainedLifeThisTurnOrMore { player, .. }
         | PlayerHadLandEnterBattlefieldThisTurn { player }
+        | PlayerDescendedThisTurn { player }
         | PlayerHasCardTypesInGraveyardOrMore { player, .. }
         | PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, .. }
         | TaggedObjectIsTopOfLibrary { player, .. }

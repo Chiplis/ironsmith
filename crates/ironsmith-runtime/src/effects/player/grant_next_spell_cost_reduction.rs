@@ -78,6 +78,12 @@ fn lock_target_player_filters_for_player(
     if let Some(entered_controller) = &mut filter.entered_battlefield_controller {
         lock_target_player_filter(entered_controller, player);
     }
+    if let Some(attached_to_player) = &mut filter.attached_to_player {
+        lock_target_player_filter(attached_to_player, player);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+        lock_target_player_filters_for_player(attached_to, player);
+    }
     for nested in &mut filter.any_of {
         lock_target_player_filters_for_player(nested, player);
     }

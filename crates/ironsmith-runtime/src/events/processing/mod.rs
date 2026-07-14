@@ -1231,6 +1231,7 @@ fn resolve_madness_discard(
                             legal_target_sets: requirement.legal_target_sets.clone(),
                             min_targets: requirement.min_targets,
                             max_targets: requirement.max_targets,
+                            distinct_player_group: requirement.distinct_player_group,
                         },
                     )
                     .collect(),

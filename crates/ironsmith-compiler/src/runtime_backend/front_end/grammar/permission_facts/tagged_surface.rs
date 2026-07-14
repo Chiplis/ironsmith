@@ -68,6 +68,7 @@ pub(crate) enum PermissionLifetimeFact {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
     Static,
@@ -90,6 +91,7 @@ pub(crate) enum ManaSpendCastReference {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AllowAnyColorForCastSuffixFact<'a> {
     pub(crate) body_tokens: &'a [OwnedLexToken],
+    pub(crate) mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
     pub(crate) reference: ManaSpendCastReference,
 }
 
@@ -204,11 +206,11 @@ pub(crate) fn parse_permission_lifetime_prefix_tokens(
 pub(crate) fn parse_permission_duration_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PermissionLifetimePrefixFact<'_>> {
-    if let Some((duration, rest_tokens)) =
-        primitives::parse_prefix(tokens, leaf::parse_leaf_turn_duration_phrase_lexed)
+    if let Some((lifetime, rest_tokens)) =
+        primitives::parse_prefix(tokens, parse_permission_turn_duration_lexed)
     {
         return Some(PermissionLifetimePrefixFact {
-            lifetime: lifetime_from_turn_duration(duration),
+            lifetime,
             rest_tokens,
         });
     }
@@ -507,34 +509,41 @@ fn parse_allow_any_color_for_cast_suffix_lexed<'a>(
     .map(|((), _reference)| ())
     .take()
     .parse_next(input)?;
-    let reference = parse_allow_any_color_for_cast_lexed.parse_next(input)?;
+    let (mana_spend_mode, reference) = parse_allow_any_color_for_cast_lexed.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(AllowAnyColorForCastSuffixFact {
         body_tokens,
+        mana_spend_mode,
         reference,
     })
 }
 
 fn parse_allow_any_color_for_cast_lexed<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<ManaSpendCastReference> {
-    alt((
+) -> WResult<(
+    ironsmith_core::value_model::ManaSpendMode,
+    ManaSpendCastReference,
+)> {
+    let mode = alt((
         primitives::phrase(&[
             "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast",
-        ]),
+        ])
+        .value(ironsmith_core::value_model::ManaSpendMode::AnyType),
         primitives::phrase(&[
             "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
             "any", "color", "to", "cast",
-        ]),
+        ])
+        .value(ironsmith_core::value_model::ManaSpendMode::AnyColor),
     ))
     .parse_next(input)?;
-    alt((
+    let reference = alt((
         primitives::kw("it").value(ManaSpendCastReference::It),
         primitives::phrase(&["that", "spell"]).value(ManaSpendCastReference::ThatSpell),
         primitives::kw("them").value(ManaSpendCastReference::Them),
         primitives::phrase(&["those", "spells"]).value(ManaSpendCastReference::ThoseSpells),
     ))
-    .parse_next(input)
+    .parse_next(input)?;
+    Ok((mode, reference))
 }
 
 fn parse_without_paying_mana_cost_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -556,17 +565,17 @@ fn parse_permission_tail_lexed<'a>(
 ) -> WResult<(PermissionLifetimeFact, bool)> {
     alt((
         (
-            leaf::parse_leaf_turn_duration_phrase_lexed,
+            parse_permission_turn_duration_lexed,
             opt(parse_without_paying_mana_cost_lexed),
             primitives::sentence_end(),
         )
-            .map(|(duration, free, ())| (lifetime_from_turn_duration(duration), free.is_some())),
+            .map(|(duration, free, ())| (duration, free.is_some())),
         (
             parse_without_paying_mana_cost_lexed,
-            leaf::parse_leaf_turn_duration_phrase_lexed,
+            parse_permission_turn_duration_lexed,
             primitives::sentence_end(),
         )
-            .map(|(_, duration, ())| (lifetime_from_turn_duration(duration), true)),
+            .map(|(_, duration, ())| (duration, true)),
         (parse_permission_lifetime_lexed, primitives::sentence_end())
             .map(|(lifetime, ())| (lifetime, false)),
         (
@@ -575,6 +584,17 @@ fn parse_permission_tail_lexed<'a>(
         )
             .value((default_lifetime, true)),
         eof.value((default_lifetime, false)),
+    ))
+    .parse_next(input)
+}
+
+fn parse_permission_turn_duration_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PermissionLifetimeFact> {
+    alt((
+        primitives::phrase(&["until", "your", "next", "end", "step"])
+            .value(PermissionLifetimeFact::UntilYourNextEndStep),
+        leaf::parse_leaf_turn_duration_phrase_lexed.map(lifetime_from_turn_duration),
     ))
     .parse_next(input)
 }
@@ -790,6 +810,20 @@ mod tests {
         assert_eq!(parsed.lifetime, PermissionLifetimeFact::ThisTurn);
         assert!(parsed.without_paying_mana_cost);
         assert!(parsed.allow_any_color_for_cast);
+
+        let any_type = parse_allow_any_color_for_cast_suffix_tokens(&tail).unwrap();
+        assert_eq!(
+            any_type.mana_spend_mode,
+            ironsmith_core::value_model::ManaSpendMode::AnyType
+        );
+
+        let any_color =
+            lex("this turn, and you may spend mana as though it were mana of any color to cast it");
+        let any_color = parse_allow_any_color_for_cast_suffix_tokens(&any_color).unwrap();
+        assert_eq!(
+            any_color.mana_spend_mode,
+            ironsmith_core::value_model::ManaSpendMode::AnyColor
+        );
     }
 
     #[test]

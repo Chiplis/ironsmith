@@ -4,7 +4,10 @@ use crate::{
     ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, StaticAbilityId, Subtype, TagKey,
     ValueComparisonOperator, Zone,
 };
-use crate::{ChooseSpec, ChooseSpecSurfaceHint, Color, ColorSet, SourceReferenceSurface};
+use crate::{
+    ChooseSpec, ChooseSpecSurfaceHint, Color, ColorSet, SacrificedObjectKind,
+    SourceReferenceSurface,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectMetricSource {
@@ -21,6 +24,10 @@ pub enum EffectMetric {
     LifeLost,
     LifeGained,
     DamageDealt,
+    /// Total damage in excess of lethal damage dealt by the referenced
+    /// effect. This is recorded as an execution fact because DamageEvent
+    /// intentionally carries the applied amount, not the lethal threshold.
+    ExcessDamage,
     DamagePrevented,
     FirstPower,
     FirstToughness,
@@ -43,14 +50,136 @@ pub enum EffectMetric {
 pub enum ValueSurfaceHint {
     WhereXIs,
     EqualTo,
+    /// Preserve counter wording where the target precedes the equality basis:
+    /// "put a number of counters on it equal to ...". This is presentation
+    /// metadata only; the numeric value remains unchanged.
+    EqualToAfterTarget,
+    /// Preserve an explicit "then" before a counter-placement follow-up.
+    /// This is presentation metadata only; the numeric value is unchanged.
+    CounterFollowupThen,
+    /// Preserve a sentence boundary before a counter-placement follow-up.
+    /// This is presentation metadata only; the numeric value is unchanged.
+    CounterFollowupSeparateSentence,
+    /// Preserve an authored full or short card-name subject on a static
+    /// enters-with-counters clause. The counter value remains unchanged.
+    SourceNameSubject,
     ForEach,
+    /// Preserve an explicit prefix comparison such as "less than or equal
+    /// to <value>" instead of the semantically equivalent postfix surface
+    /// "<value> or less". This is presentation metadata only.
+    ExplicitComparison,
+    /// Preserve an explicit Oracle reference to "the revealed card" after
+    /// reference resolution has mapped it to the reusable revealed-object
+    /// tag. This is presentation metadata only; the tagged object remains
+    /// the source of the characteristic value.
+    RevealedCardReference,
+    /// Preserve Oracle's "additional card(s)" wording on a draw count.
+    /// This is presentation metadata only; resolving the value still yields
+    /// the same number of cards.
+    AdditionalCards,
+    CardsDrawnThisWay,
+    CardsRevealedThisWay,
     CardsExiledThisWay,
     CardsDiscardedThisWay,
+    /// Preserve an explicit reference to damage dealt when the runtime value
+    /// is supplied by the triggering event's generic numeric payload.
+    DamageDealt,
+    AllCardsInHand,
     PermanentsSacrificedThisWay,
     CountersRemovedThisWay,
+    /// Preserve the aggregate wording of counts distributed across a set of
+    /// objects ("counters among creatures") rather than an explicit
+    /// per-object reference ("counters on that creature").
+    CountersAmong,
+    EnergyPaidThisWay,
+    PriorEffectResult,
+    ManaValueOfPermanentExiledThisWay,
     Difference,
     UpTo,
     BlightKeywordAction,
+    SacrificedObject(SacrificedObjectKind),
+}
+
+/// A count derived from immutable observations in the current turn's event
+/// history.  These queries deliberately carry the same typed object/player
+/// filters used by the rest of the engine: a creature which died, a spell
+/// which left the stack, or a token which no longer exists must still be
+/// counted from its event snapshot rather than from the current zone state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TurnHistoryCount {
+    /// Objects matching the filter which moved from the battlefield to a
+    /// graveyard this turn.
+    Died(ObjectFilter),
+    /// Objects matching the filter which entered the battlefield this turn.
+    EnteredBattlefield(ObjectFilter),
+    /// Tokens created under the control of matching players this turn.
+    TokensCreated(PlayerFilter),
+    /// Cards owned by matching players which were put into a graveyard this
+    /// turn. An empty `from` list means "from anywhere".
+    PutIntoGraveyard {
+        owner: PlayerFilter,
+        from: Vec<Zone>,
+    },
+    /// Objects matching the LKI filter which changed between the requested
+    /// zones this turn. `None` on either side means any origin/destination.
+    MovedZones {
+        filter: ObjectFilter,
+        from: Option<Zone>,
+        to: Option<Zone>,
+    },
+    /// Permanents matching the filter sacrificed by matching players.
+    Sacrificed {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
+    /// Counters of the requested kind put on matching objects this turn.
+    CountersPutOn {
+        counter_type: Option<CounterType>,
+        filter: ObjectFilter,
+    },
+    /// Distinct creatures matching the filter a matching player attacked with
+    /// this turn.
+    CreaturesAttackedWith {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
+    /// Distinct opposing players attacked by matching players this turn.
+    OpponentsAttacked(PlayerFilter),
+    /// Distinct matching players who discarded one or more cards this turn.
+    PlayersDiscarded(PlayerFilter),
+    /// Distinct matching players who were dealt damage this turn.
+    PlayersDealtDamage(PlayerFilter),
+    /// Distinct matching players dealt combat damage by a matching source this
+    /// turn.
+    PlayersDealtCombatDamageBy {
+        players: PlayerFilter,
+        sources: ObjectFilter,
+    },
+    /// Cards discarded or cycled by matching players this turn, de-duplicated
+    /// by stable object identity so cycling a card is not counted twice.
+    DiscardedOrCycled(PlayerFilter),
+    /// Cards cycled by matching players this turn.
+    Cycled(PlayerFilter),
+    /// Matching players who lost life this turn.
+    PlayersLostLife(PlayerFilter),
+    /// Spells matching the filter cast by matching players this turn.  The
+    /// origin switch supports Paradox-style "from anywhere other than your
+    /// hand" counts without pretending origin is a current-zone property.
+    SpellsCast {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        from_zone: Option<Zone>,
+        from_outside_hand: bool,
+        exclude_source: bool,
+        /// Only count casts which occurred before the spell-cast event that
+        /// triggered the currently resolving ability. This is an event-order
+        /// boundary, not `total - 1`: spells cast in response to the trigger
+        /// must not be included.
+        before_triggering_spell: bool,
+    },
+    /// Colors among matching permanents currently controlled by the player and
+    /// spells that player cast this turn.
+    ColorsAmongPermanentsAndSpellsCast(PlayerFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +215,7 @@ pub enum Value {
     ColorsAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
     DistinctPowers(ObjectFilter),
+    TurnHistoryCount(TurnHistoryCount),
     CreaturesDiedThisTurn,
     CreaturesDiedThisTurnControlledBy(PlayerFilter),
     PlayersBeingAttacked,
@@ -97,6 +227,13 @@ pub enum Value {
     PowerOf(Box<ChooseSpec>),
     ToughnessOf(Box<ChooseSpec>),
     ManaValueOf(Box<ChooseSpec>),
+    /// The number of mana symbols of `color` in the referenced object's
+    /// printed mana cost. A hybrid or Phyrexian pip containing that color is
+    /// one symbol, regardless of how many payment alternatives it has.
+    ManaSymbolsInManaCostOf {
+        spec: Box<ChooseSpec>,
+        color: Color,
+    },
     LifeTotal(PlayerFilter),
     LifeTotalAsTurnBegan(PlayerFilter),
     LifeTotalDifference(PlayerFilter),
@@ -141,6 +278,16 @@ pub enum Value {
         color: Color,
     },
     ManaSpentToCastThisSpell,
+    /// Mana spent to cast this spell whose producing source matched the
+    /// captured last-known-information filter. The surface flag preserves
+    /// whether oracle used the generic noun "source" after the filter.
+    ManaFromSourceSpentToCastThisSpell {
+        source_filter: ObjectFilter,
+        include_source_noun: bool,
+    },
+    /// Total mana spent to cast the spell whose cast event triggered the
+    /// currently resolving ability.
+    ManaSpentToCastTriggeringObject,
     ColorsOfManaSpentToCastThisSpell,
     EffectValue(EffectId),
     EffectValueOffset(EffectId, i32),
@@ -357,10 +504,48 @@ pub enum Restriction {
     AttackOrBlockAlone(ObjectFilter),
 }
 
+/// How mana may be spent relative to its produced type.
+///
+/// "Any color" permits mana to satisfy any colored symbol, but does not let
+/// colored mana satisfy a colorless `{C}` symbol. "Any type" includes
+/// colorless, so it permits either conversion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum ManaSpendMode {
+    #[default]
+    Normal,
+    AnyColor,
+    AnyType,
+}
+
+impl ManaSpendMode {
+    pub fn allows_any_color(self) -> bool {
+        matches!(self, Self::AnyColor | Self::AnyType)
+    }
+
+    pub fn allows_any_type(self) -> bool {
+        self == Self::AnyType
+    }
+
+    pub fn combine(self, other: Self) -> Self {
+        self.max(other)
+    }
+}
+
+impl From<bool> for ManaSpendMode {
+    fn from(allow_any_color: bool) -> Self {
+        if allow_any_color {
+            Self::AnyColor
+        } else {
+            Self::Normal
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManaSpendPermission {
     pub player: PlayerFilter,
     pub scope: ManaSpendScope,
+    pub mode: ManaSpendMode,
     pub mana_source_filter: Option<ObjectFilter>,
     pub any_color_mana_symbol: Option<ManaSymbol>,
     pub other_mana_only_as_colorless: bool,
@@ -371,6 +556,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::AllCosts,
+            mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
             other_mana_only_as_colorless: false,
@@ -384,6 +570,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::AllCosts,
+            mode: ManaSpendMode::Normal,
             mana_source_filter: None,
             any_color_mana_symbol: Some(symbol),
             other_mana_only_as_colorless: true,
@@ -394,6 +581,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::ActivationCostsOf(filter),
+            mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
             other_mana_only_as_colorless: false,
@@ -407,6 +595,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
+            mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
             other_mana_only_as_colorless: false,
@@ -417,6 +606,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::CastingSpellsMatching(filter),
+            mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
             other_mana_only_as_colorless: false,
@@ -431,6 +621,7 @@ impl ManaSpendPermission {
         Self {
             player,
             scope: ManaSpendScope::CastingSpellsMatching(filter),
+            mode: ManaSpendMode::AnyColor,
             mana_source_filter: Some(mana_source_filter),
             any_color_mana_symbol: None,
             other_mana_only_as_colorless: false,
@@ -440,6 +631,31 @@ impl ManaSpendPermission {
     pub fn with_mana_source_filter(mut self, filter: ObjectFilter) -> Self {
         self.mana_source_filter = Some(filter);
         self
+    }
+
+    pub fn any_type_for_casting_stable_ids(
+        player: PlayerFilter,
+        stable_ids: Vec<StableId>,
+    ) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
+            mode: ManaSpendMode::AnyType,
+            mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
+        }
+    }
+
+    pub fn any_type_for_casting_matching(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::CastingSpellsMatching(filter),
+            mode: ManaSpendMode::AnyType,
+            mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
+        }
     }
 }
 
@@ -671,6 +887,19 @@ impl Restriction {
     }
 }
 
+/// Oracle-facing wording for a typed counter threshold on the source.
+///
+/// This does not affect condition evaluation. It preserves whether the text
+/// described the source as having counters or used an existential
+/// "there are ... counters on ..." clause, including that clause's source
+/// reference.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum SourceCounterThresholdSurface {
+    #[default]
+    SourceHas,
+    ThereAreOn(SourceReferenceSurface),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     YouControl(ObjectFilter),
@@ -837,6 +1066,11 @@ pub enum Condition {
     PlayerHadLandEnterBattlefieldThisTurn {
         player: PlayerFilter,
     },
+    /// The player descended this turn: one or more permanent cards were put
+    /// into that player's graveyard from anywhere this turn.
+    PlayerDescendedThisTurn {
+        player: PlayerFilter,
+    },
     ValueComparison {
         left: Value,
         operator: ValueComparisonOperator,
@@ -894,6 +1128,7 @@ pub enum Condition {
     SourceHasCounterAtLeast {
         counter_type: CounterType,
         count: u32,
+        surface: SourceCounterThresholdSurface,
     },
     SourceHasCountersAtLeast(u32),
     SourcePowerAtLeast(u32),
@@ -911,6 +1146,12 @@ pub enum Condition {
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     YouControlCommander,
     TaggedObjectMatches(TagKey, ObjectFilter),
+    /// Match only the snapshot stored for a tagged object.
+    ///
+    /// Used for past-tense zone-change predicates such as "if it was a
+    /// creature". Unlike `TaggedObjectMatches`, this never falls back to the
+    /// object's current characteristics.
+    TaggedObjectMatchedLastKnown(TagKey, ObjectFilter),
     TaggedObjectIsTopOfLibrary {
         tag: TagKey,
         player: PlayerFilter,

@@ -618,7 +618,10 @@ impl WasmGame {
             snapshot_object_view_cache: SnapshotObjectViewCache::default(),
             #[cfg(target_arch = "wasm32")]
             snapshot_js_encoding_cache: SnapshotJsEncodingCache::default(),
-            manabrew_overlay_cache: ManabrewOverlayCache::default(),
+            manabrew_game_id: "ironsmith-uninitialized".to_string(),
+            manabrew_human_players: vec![true, true],
+            manabrew_next_prompt_id: 1,
+            manabrew_open_prompt: None,
             cached_snapshot: None,
         }
     }

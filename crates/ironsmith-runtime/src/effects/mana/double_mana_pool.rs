@@ -42,7 +42,7 @@ impl EffectExecutor for DoubleManaPoolEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let (unrestricted_symbols, restricted_units) = {
+        let (unrestricted_symbols, restricted_units, source_provenance) = {
             let Some(player) = game.player(player_id) else {
                 return Err(ExecutionError::InvalidTarget);
             };
@@ -67,7 +67,11 @@ impl EffectExecutor for DoubleManaPoolEffect {
             })
             .collect::<Vec<_>>();
 
-            (unrestricted_symbols, restricted_units)
+            (
+                unrestricted_symbols,
+                restricted_units,
+                player.mana_source_provenance.clone(),
+            )
         };
 
         let mut added = unrestricted_symbols.clone();
@@ -80,8 +84,10 @@ impl EffectExecutor for DoubleManaPoolEffect {
             player.mana_pool.add(*symbol, 1);
         }
         for unit in restricted_units {
-            player.add_restricted_mana(unit);
+            player.mana_pool.add(unit.symbol, 1);
+            player.restricted_mana.push(unit);
         }
+        player.mana_source_provenance.extend(source_provenance);
 
         Ok(mana_added_value_outcome(ctx, player_id, added))
     }

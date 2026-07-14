@@ -9,9 +9,35 @@ fn parses_shuffle_shapes() {
     assert!(shape.each_player_subject);
     assert!(!shape.has_target_selector);
 
+    let tokens = lex_line(
+        "Shuffle all creature cards from target player's graveyard into that player's library",
+        0,
+    )
+    .unwrap();
+    let shape = parse_shuffle_graveyard_shape_lexed(&tokens).unwrap();
+    assert!(shape.has_target_selector);
+    assert!(shape.owner_library_destination);
+
     let tokens = lex_line("Its owner shuffles it into their library", 0).unwrap();
     let shape = parse_shuffle_object_shape_lexed(&tokens).unwrap();
     assert_eq!(shape.reference, SearchShuffleObjectReference::General);
+    assert!(!shape.owner_library_destination);
+
+    let tokens = lex_line("Shuffle it into its owner's library", 0).unwrap();
+    let shape = parse_shuffle_object_shape_lexed(&tokens).unwrap();
+    assert!(shape.owner_library_destination);
+
+    let tokens = lex_line(
+        "Shuffle target nontoken permanent you control into its owner's library",
+        0,
+    )
+    .unwrap();
+    let shape = parse_shuffle_object_shape_lexed(&tokens).unwrap();
+    assert!(shape.owner_library_destination);
+
+    let tokens = lex_line("Shuffle it into your library", 0).unwrap();
+    let shape = parse_shuffle_object_shape_lexed(&tokens).unwrap();
+    assert!(!shape.owner_library_destination);
 
     let tokens = lex_line(
         "The owner of target creature shuffles it into their library",

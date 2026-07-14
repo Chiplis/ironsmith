@@ -25,6 +25,7 @@ fn test_modification_layer() {
     assert_eq!(
         Modification::CopyOf {
             target_id: ObjectId::from_raw(1),
+            copiable_values: Box::new(crate::snapshot::CopiableValues::default()),
             preserve_source_abilities: false,
             name_override: None,
             name_override_surface: None,
@@ -56,6 +57,37 @@ fn test_modification_layer() {
         }
         .layer(),
         Layer::PowerToughness
+    );
+}
+
+#[test]
+fn card_type_setting_prunes_incompatible_subtypes_but_preserves_spell_types() {
+    let mut card_types = vec![CardType::Enchantment, CardType::Creature].into();
+    let mut subtypes = vec![Subtype::Aura, Subtype::Soldier].into();
+
+    replace_card_types_and_prune_subtypes(&mut card_types, &mut subtypes, &[CardType::Enchantment]);
+    assert_eq!(&*card_types, &[CardType::Enchantment]);
+    assert_eq!(&*subtypes, &[Subtype::Aura]);
+
+    let mut card_types = vec![CardType::Instant].into();
+    let mut subtypes = vec![Subtype::Arcane].into();
+    replace_card_types_and_prune_subtypes(&mut card_types, &mut subtypes, &[CardType::Creature]);
+    assert!(card_types.contains(&CardType::Creature));
+    assert!(card_types.contains(&CardType::Instant));
+    assert_eq!(&*subtypes, &[Subtype::Arcane]);
+}
+
+#[test]
+fn land_subtype_setting_replaces_only_prior_land_subtypes() {
+    let mut subtypes = vec![Subtype::Island, Subtype::Forest, Subtype::Saga].into();
+    replace_subtypes_in_family(
+        &mut subtypes,
+        &[Subtype::Mountain, Subtype::Plains],
+        SubtypeFamily::Land,
+    );
+    assert_eq!(
+        &*subtypes,
+        &[Subtype::Saga, Subtype::Mountain, Subtype::Plains]
     );
 }
 

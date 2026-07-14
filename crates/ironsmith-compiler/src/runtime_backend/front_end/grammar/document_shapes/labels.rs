@@ -53,9 +53,38 @@ pub(crate) fn parse_preserved_keyword_label_tokens(
 pub(crate) fn parse_numeric_result_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NumericResultPrefixShape> {
+    if tokens
+        .first()
+        .is_some_and(token_is_compact_ascii_numeric_range)
+        && tokens
+            .get(1)
+            .is_some_and(|token| token.kind == TokenKind::Pipe)
+    {
+        return Some(NumericResultPrefixShape);
+    }
     let (_, remaining) = primitives::parse_prefix(tokens, numeric_result_head)?;
     primitives::find_prefix(remaining, || primitives::token_kind(TokenKind::Pipe).void())?;
     Some(NumericResultPrefixShape)
+}
+
+fn token_is_compact_ascii_numeric_range(token: &OwnedLexToken) -> bool {
+    if token.kind != TokenKind::Word {
+        return false;
+    }
+    let Some((min, max)) = token.parser_text().split_once('-') else {
+        return false;
+    };
+    if min.is_empty()
+        || max.is_empty()
+        || !min.bytes().all(|byte| byte.is_ascii_digit())
+        || !max.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return false;
+    }
+    matches!(
+        (min.parse::<i32>(), max.parse::<i32>()),
+        (Ok(min), Ok(max)) if min <= max
+    )
 }
 
 pub(crate) fn parse_statement_label_split_tokens(
@@ -168,6 +197,10 @@ mod tests {
         let numeric = lex_line("1—4 | Create a token", 0).unwrap();
         assert!(parse_numeric_result_prefix_tokens(&numeric).is_some());
         assert!(parse_statement_label_split_tokens(&numeric).is_none());
+
+        let compact_ascii_numeric = lex_line("1-9 | Draw a card", 0).unwrap();
+        assert!(parse_numeric_result_prefix_tokens(&compact_ascii_numeric).is_some());
+        assert!(parse_statement_label_split_tokens(&compact_ascii_numeric).is_none());
 
         let labeled = lex_line("Landfall — Draw a card", 0).unwrap();
         let stripped = parse_statement_label_strip_tokens(&labeled);

@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
@@ -22,6 +23,11 @@ pub(crate) enum LookExileFaceDownShape {
         count: ChoiceCount,
         bottom_order: LibraryBottomOrderAst,
     },
+    CountedGraveyardRemainder {
+        look: Range<usize>,
+        exile: Range<usize>,
+        count: ChoiceCount,
+    },
     Single {
         look: Range<usize>,
     },
@@ -29,8 +35,23 @@ pub(crate) enum LookExileFaceDownShape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LookedCardDisposition {
-    HandAndLibraryBottom,
+    HandAndLibraryBottom(LibraryBottomOrderAst),
     HandAndGraveyard,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LookedPartitionDestination {
+    Hand,
+    Graveyard,
+    LibraryTop(LibraryBottomOrderAst),
+    LibraryBottom(LibraryBottomOrderAst),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LookedCardPartitionShape {
+    pub(crate) selected_count: ChoiceCount,
+    pub(crate) selected_destination: LookedPartitionDestination,
+    pub(crate) remainder_destination: LookedPartitionDestination,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +88,14 @@ const SINGLE_FACE_DOWN: &[&[&str]] = &[
     &["exile", "it", "face", "down"],
     &["exile", "that", "card", "face", "down"],
 ];
+const GRAVEYARDS_REST: &[&[&str]] = &[
+    &["put", "rest", "into", "graveyard"],
+    &["put", "rest", "into", "your", "graveyard"],
+    &["put", "rest", "into", "their", "graveyard"],
+    &["put", "the", "rest", "into", "graveyard"],
+    &["put", "the", "rest", "into", "your", "graveyard"],
+    &["put", "the", "rest", "into", "their", "graveyard"],
+];
 
 pub(crate) fn parse_bottom_order(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrderAst> {
     if !contains_sequence_word(tokens, "bottom") || !contains_sequence_word(tokens, "library") {
@@ -99,6 +128,16 @@ fn counted_face_down_shape(
     Some((count, parse_bottom_order(tail)?))
 }
 
+fn counted_face_down_graveyard_shape(tokens: &[OwnedLexToken]) -> Option<ChoiceCount> {
+    let (count, tail) = primitives::parse_prefix(tokens, parse_counted_face_down_head)?;
+    if !starts_content_sequence(tail, COUNTED_FACE_DOWN_PREFIXES)
+        || !contains_content_sequence(tail, GRAVEYARDS_REST)
+    {
+        return None;
+    }
+    Some(count)
+}
+
 pub(crate) fn parse_look_exile_face_down_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookExileFaceDownShape> {
@@ -111,6 +150,13 @@ pub(crate) fn parse_look_exile_face_down_shape(
             exile,
             count,
             bottom_order,
+        });
+    }
+    if let Some(count) = counted_face_down_graveyard_shape(&tokens[exile.clone()]) {
+        return Some(LookExileFaceDownShape::CountedGraveyardRemainder {
+            look: 0..exile_at,
+            exile,
+            count,
         });
     }
 
@@ -152,12 +198,143 @@ pub(crate) fn parse_looked_card_disposition(
     }
     if contains_content_sequence(tokens, OTHER_BOTTOM) && contains_sequence_word(tokens, "library")
     {
-        return Some(LookedCardDisposition::HandAndLibraryBottom);
+        return Some(LookedCardDisposition::HandAndLibraryBottom(
+            parse_bottom_order(tokens)?,
+        ));
     }
     if contains_content_sequence(tokens, OTHER_GRAVEYARD) {
         return Some(LookedCardDisposition::HandAndGraveyard);
     }
     None
+}
+
+fn looked_partition_count(input: &mut LexStream<'_>) -> WResult<ChoiceCount> {
+    alt((
+        alt((
+            primitives::phrase(&["any", "number", "of", "them"]),
+            primitives::phrase(&["any", "number", "of", "those", "cards"]),
+        ))
+        .value(ChoiceCount::any_number()),
+        (
+            leaf::parse_leaf_choice_count_prefix_lexed,
+            alt((
+                primitives::phrase(&["of", "them"]),
+                primitives::phrase(&["of", "those", "cards"]),
+            )),
+        )
+            .map(|(count, _)| count),
+    ))
+    .parse_next(input)
+}
+
+fn looked_partition_order(input: &mut LexStream<'_>) -> WResult<LibraryBottomOrderAst> {
+    alt((
+        primitives::phrase(&["in", "any", "order"]).value(LibraryBottomOrderAst::ChooserChooses),
+        primitives::phrase(&["in", "a", "random", "order"]).value(LibraryBottomOrderAst::Random),
+        primitives::phrase(&["in", "random", "order"]).value(LibraryBottomOrderAst::Random),
+    ))
+    .parse_next(input)
+}
+
+fn looked_partition_library_reference(input: &mut LexStream<'_>) -> WResult<()> {
+    alt((
+        primitives::phrase(&["your", "library"]),
+        primitives::phrase(&["their", "library"]),
+        primitives::phrase(&["that", "library"]),
+        primitives::phrase(&["the", "library"]),
+        primitives::phrase(&["that", "players", "library"]),
+        primitives::phrase(&["that", "player's", "library"]),
+    ))
+    .parse_next(input)
+}
+
+fn looked_partition_library_destination(
+    input: &mut LexStream<'_>,
+) -> WResult<LookedPartitionDestination> {
+    primitives::kw("on").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    let top = alt((
+        primitives::kw("top").value(true),
+        primitives::kw("bottom").value(false),
+    ))
+    .parse_next(input)?;
+    primitives::kw("of").parse_next(input)?;
+    looked_partition_library_reference.parse_next(input)?;
+    let order = looked_partition_order.parse_next(input)?;
+    Ok(if top {
+        LookedPartitionDestination::LibraryTop(order)
+    } else {
+        LookedPartitionDestination::LibraryBottom(order)
+    })
+}
+
+fn looked_partition_destination(input: &mut LexStream<'_>) -> WResult<LookedPartitionDestination> {
+    alt((
+        primitives::phrase(&["into", "your", "hand"]).value(LookedPartitionDestination::Hand),
+        alt((
+            primitives::phrase(&["into", "your", "graveyard"]),
+            primitives::phrase(&["into", "their", "graveyard"]),
+            primitives::phrase(&["into", "that", "players", "graveyard"]),
+            primitives::phrase(&["into", "that", "player's", "graveyard"]),
+        ))
+        .value(LookedPartitionDestination::Graveyard),
+        looked_partition_library_destination,
+    ))
+    .parse_next(input)
+}
+
+fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartitionShape> {
+    primitives::kw("put").parse_next(input)?;
+    let selected_count = looked_partition_count.parse_next(input)?;
+    let selected_destination = looked_partition_destination.parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    alt((primitives::kw("rest"), primitives::kw("other")))
+        .void()
+        .parse_next(input)?;
+    let remainder_destination = looked_partition_destination.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+
+    let selected_then_library_top = matches!(
+        selected_destination,
+        LookedPartitionDestination::Hand
+            | LookedPartitionDestination::Graveyard
+            | LookedPartitionDestination::LibraryBottom(_)
+    ) && matches!(
+        remainder_destination,
+        LookedPartitionDestination::LibraryTop(_)
+    );
+    let selected_hand_then_graveyard = matches!(
+        (selected_destination, remainder_destination),
+        (
+            LookedPartitionDestination::Hand,
+            LookedPartitionDestination::Graveyard
+        )
+    );
+    if !(selected_then_library_top || selected_hand_then_graveyard) {
+        return Err(primitives::backtrack_err(
+            "looked-card partition",
+            "supported destinations for a selected subset and its exact remainder",
+        ));
+    }
+
+    Ok(LookedCardPartitionShape {
+        selected_count,
+        selected_destination,
+        remainder_destination,
+    })
+}
+
+/// Parses a complete two-way partition of a previously looked-at card set.
+///
+/// Requiring the sentence to end after both destinations prevents this rule
+/// from swallowing longer looked-card procedures. Library placements retain
+/// their own order modes so the selected subset and its complement can be
+/// ordered independently.
+pub(crate) fn parse_looked_card_partition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedCardPartitionShape> {
+    looked_card_partition.parse(LexStream::new(tokens)).ok()
 }
 
 pub(crate) fn is_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
@@ -214,12 +391,6 @@ pub(crate) fn parse_looked_card_into_hand_shape(
     Some(LookedCardIntoHandShape {
         filter: 0..filter_end,
     })
-}
-
-pub(crate) fn has_rest_on_library_bottom_surface(tokens: &[OwnedLexToken]) -> bool {
-    contains_sequence_word(tokens, "rest")
-        && contains_sequence_word(tokens, "bottom")
-        && contains_sequence_word(tokens, "library")
 }
 
 const PUT_ALL: &[&[&str]] = &[&["put", "all"], &["puts", "all"]];
@@ -282,7 +453,17 @@ mod tests {
             parse_looked_card_disposition(&lex(
                 "Put one of them into your hand and the rest on the bottom of your library in any order"
             )),
-            Some(LookedCardDisposition::HandAndLibraryBottom)
+            Some(LookedCardDisposition::HandAndLibraryBottom(
+                LibraryBottomOrderAst::ChooserChooses
+            ))
+        );
+        assert_eq!(
+            parse_looked_card_disposition(&lex(
+                "Put one of them into your hand and the rest on the bottom of your library in a random order"
+            )),
+            Some(LookedCardDisposition::HandAndLibraryBottom(
+                LibraryBottomOrderAst::Random
+            ))
         );
         let shape = parse_looked_card_into_hand_shape(&lex(
             "a creature card from among those cards into your hand",
@@ -299,5 +480,86 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn parses_face_down_selection_with_exact_graveyard_remainder() {
+        assert!(matches!(
+            parse_look_exile_face_down_shape(&lex(
+                "Look at the top three cards of that player's library, exile one of them face down, then put the rest into their graveyard"
+            )),
+            Some(LookExileFaceDownShape::CountedGraveyardRemainder {
+                count,
+                ..
+            }) if count == ChoiceCount::exactly(1)
+        ));
+    }
+
+    #[test]
+    fn parses_complete_looked_card_partitions_with_independent_orders() {
+        assert_eq!(
+            parse_looked_card_partition_shape(&lex(
+                "Put one of them into your hand and the rest on top of your library in any order"
+            )),
+            Some(LookedCardPartitionShape {
+                selected_count: ChoiceCount::exactly(1),
+                selected_destination: LookedPartitionDestination::Hand,
+                remainder_destination: LookedPartitionDestination::LibraryTop(
+                    LibraryBottomOrderAst::ChooserChooses
+                ),
+            })
+        );
+        assert_eq!(
+            parse_looked_card_partition_shape(&lex(
+                "Put one of those cards into that player's graveyard and the rest on top of their library in any order"
+            )),
+            Some(LookedCardPartitionShape {
+                selected_count: ChoiceCount::exactly(1),
+                selected_destination: LookedPartitionDestination::Graveyard,
+                remainder_destination: LookedPartitionDestination::LibraryTop(
+                    LibraryBottomOrderAst::ChooserChooses
+                ),
+            })
+        );
+        assert_eq!(
+            parse_looked_card_partition_shape(&lex(
+                "Put any number of them on the bottom of that library in a random order and the rest on top of the library in any order"
+            )),
+            Some(LookedCardPartitionShape {
+                selected_count: ChoiceCount::any_number(),
+                selected_destination: LookedPartitionDestination::LibraryBottom(
+                    LibraryBottomOrderAst::Random
+                ),
+                remainder_destination: LookedPartitionDestination::LibraryTop(
+                    LibraryBottomOrderAst::ChooserChooses
+                ),
+            })
+        );
+        assert_eq!(
+            parse_looked_card_partition_shape(&lex(
+                "Put two of them into your hand and the other into your graveyard"
+            )),
+            Some(LookedCardPartitionShape {
+                selected_count: ChoiceCount::exactly(2),
+                selected_destination: LookedPartitionDestination::Hand,
+                remainder_destination: LookedPartitionDestination::Graveyard,
+            })
+        );
+    }
+
+    #[test]
+    fn looked_card_partition_requires_full_consumption_and_top_remainder() {
+        assert!(
+            parse_looked_card_partition_shape(&lex(
+                "Put one of them into your hand and the rest on top of your library in any order, then draw a card"
+            ))
+            .is_none()
+        );
+        for control in [
+            "Put one of them into your hand and the rest on the bottom of your library in any order",
+            "Put them back in any order",
+        ] {
+            assert!(parse_looked_card_partition_shape(&lex(control)).is_none());
+        }
     }
 }

@@ -26,6 +26,82 @@ use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn alien_invasion_preserves_source_counter_count_and_created_token_target() {
+    let def = parse_oracle_card_definition("Alien Invasion");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Alien Invasion should have a combat trigger");
+    let effects = triggered.effects.flattened_default_effects();
+
+    let (created_tag, create) = effects
+        .iter()
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<TaggedEffect>()?;
+            let create = tagged.effect.downcast_ref::<CreateTokenEffect>()?;
+            Some((&tagged.tag, create))
+        })
+        .expect("Alien Invasion should tag the created Alien for its follow-up");
+    assert!(
+        format!("{:#?}", create.token.abilities).contains("MustAttack"),
+        "the Alien token must retain its quoted attacks-each-combat ability"
+    );
+
+    let plus_one = effects
+        .iter()
+        .filter_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<TaggedEffect>()?
+                        .effect
+                        .downcast_ref::<crate::effects::PutCountersEffect>()
+                })
+        })
+        .find(|put| put.counter_type == CounterType::PlusOnePlusOne)
+        .expect("Alien Invasion should put +1/+1 counters on the created token");
+    assert!(
+        matches!(plus_one.target.unhinted(), ChooseSpec::Tagged(tag) if tag == created_tag),
+        "the +1/+1 counter target should be the created Alien, got {:?}",
+        plus_one.target
+    );
+    let Value::CountersOn(source, Some(CounterType::Named("invasion"))) =
+        plus_one.amount.unhinted()
+    else {
+        panic!(
+            "the +1/+1 amount should count invasion counters on the source, got {:?}",
+            plus_one.amount
+        );
+    };
+    assert!(matches!(source.unhinted(), ChooseSpec::Source));
+    assert_eq!(
+        source
+            .source_reference_surface()
+            .map(SourceReferenceSurface::display_text),
+        Some("this enchantment".to_string())
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("This token attacks each combat if able")
+            && rendered.contains(
+                "Put a +1/+1 counter on it for each invasion counter on this enchantment"
+            ),
+        "Alien Invasion should preserve both the nested token rule and source-counter basis: {rendered}"
+    );
+    assert!(
+        !rendered.contains("for each enchantment on the battlefield"),
+        "the invasion-counter count must not degrade into a battlefield filter: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn render_vanguard_seraph_preserves_first_time_trigger_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanguard Seraph")
         .card_types(vec![CardType::Creature])

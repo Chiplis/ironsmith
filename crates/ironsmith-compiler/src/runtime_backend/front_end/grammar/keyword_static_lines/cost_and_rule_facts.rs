@@ -32,6 +32,7 @@ pub(crate) enum EquipCostPayer {
 pub(crate) struct EquipCostModifierHead {
     pub(crate) cost_token: usize,
     pub(crate) payer: EquipCostPayer,
+    pub(crate) source_relative_equipment: bool,
 }
 
 pub(crate) fn parse_starting_life_bonus_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -100,7 +101,21 @@ pub(crate) fn parse_cost_prefix_condition_tokens(
 pub(crate) fn parse_equip_cost_modifier_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquipCostModifierHead> {
-    primitives::parse_prefix(tokens, primitives::phrase(&["equip", "costs"]))?;
+    let words = crate::runtime_backend::util::possessive_normalized_word_refs(
+        &crate::runtime_backend::token_word_refs(tokens),
+    );
+    let source_relative_equipment = words.len() >= 5
+        && words[0] == "this"
+        && words[1] == "equipment"
+        && words[2] == "equip"
+        && words[3] == "abilities"
+        && matches!(words[4], "cost" | "costs");
+    let has_equip_cost_head = words.starts_with(&["equip", "costs"])
+        || words.starts_with(&["equip", "cost"])
+        || source_relative_equipment;
+    if !has_equip_cost_head {
+        return None;
+    }
     let cost_token = static_keyword_cost_shapes::parse_last_cost_verb(tokens)?.token;
     let payer = if primitives::find_prefix(tokens, || primitives::phrase(&["you", "pay"]).void())
         .is_some()
@@ -120,7 +135,11 @@ pub(crate) fn parse_equip_cost_modifier_head_tokens(
     } else {
         EquipCostPayer::Unspecified
     };
-    Some(EquipCostModifierHead { cost_token, payer })
+    Some(EquipCostModifierHead {
+        cost_token,
+        payer,
+        source_relative_equipment,
+    })
 }
 
 pub(crate) fn parse_that_much_value_marker_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -183,5 +202,19 @@ mod tests {
         assert_eq!(parse_buyback_cost_reduction_tokens(&tokens), Some(2));
         let tokens = lex_line("The legend rule doesn't apply to you.", 0).unwrap();
         assert!(parse_legend_rule_doesnt_apply_tokens(&tokens));
+    }
+
+    #[test]
+    fn parses_source_relative_equipment_equip_cost_modifier_head() {
+        let tokens = lex_line(
+            "This Equipment's equip abilities cost {2} less to activate.",
+            0,
+        )
+        .unwrap();
+        let head = parse_equip_cost_modifier_head_tokens(&tokens)
+            .expect("source-relative equip cost modifier head");
+        assert!(head.source_relative_equipment);
+        assert_eq!(tokens[head.cost_token].as_word(), Some("cost"));
+        assert_eq!(head.payer, EquipCostPayer::Unspecified);
     }
 }

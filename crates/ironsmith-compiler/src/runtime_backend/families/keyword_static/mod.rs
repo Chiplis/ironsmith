@@ -45,8 +45,8 @@ use super::grammar::abilities::{
     is_prevent_damage_to_other_creature_you_control_put_counters_line_lexed,
     is_protection_mana_value_marker_line_lexed, is_remove_snow_line_lexed,
     is_sab_sunen_cant_attack_or_block_unless_line_lexed,
-    is_shuffle_into_library_from_graveyard_line_lexed, is_skulk_rules_text_line_lexed,
-    is_this_creature_cant_attack_alone_line_lexed,
+    is_shuffle_into_library_from_graveyard_line_lexed, is_skip_your_draw_step_line_lexed,
+    is_skulk_rules_text_line_lexed, is_this_creature_cant_attack_alone_line_lexed,
     is_this_creature_cant_attack_its_owner_line_lexed, is_this_subject_reference_lexed,
     is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed,
     is_you_have_shroud_line_lexed,
@@ -623,6 +623,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
         single_static_ability_ast_rule!(parse_note_life_total_as_enters_line),
+        single_static_ability_ast_rule!(parse_discard_hand_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_color_as_becomes_attached_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
@@ -733,6 +734,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_damage_amount_replacement_line),
         single_static_ability_ast_rule!(parse_foretelling_cards_cost_modifier_line),
         single_static_ability_ast_rule!(parse_players_skip_upkeep_line),
+        single_static_ability_ast_rule!(parse_skip_your_draw_step_static_line),
         single_static_ability_ast_rule!(parse_legend_rule_doesnt_apply_line),
         multi_static_ability_ast_rule!(parse_source_counter_threshold_keyword_and_subtype_line),
         multi_static_ability_ast_rule!(
@@ -757,6 +759,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             rule: StaticAbilityLineRuleAst::Multi(parse_granted_keyword_static_line),
         },
         multi_static_ability_ast_rule!(parse_equipment_you_control_have_equip_line),
+        multi_static_ability_ast_passthrough_rule!(parse_attached_gets_and_cant_block_line),
         multi_static_ability_ast_rule!(parse_lose_all_abilities_and_transform_base_pt_line),
         multi_static_ability_ast_rule!(parse_lose_all_abilities_and_base_pt_line),
         multi_static_ability_ast_passthrough_rule!(parse_subject_loses_keywords_line),
@@ -810,7 +813,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_to_attached_line
         ),
-        multi_static_ability_ast_passthrough_rule!(parse_attached_gets_and_cant_block_line),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_attached_has_keywords_and_triggered_ability_line),
             rule: StaticAbilityLineRuleAst::Multi(
@@ -893,6 +895,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
         single_static_ability_ast_rule!(parse_enters_untapped_for_filter_line),
         single_static_ability_ast_rule!(parse_enters_tapped_for_filter_line),
+        single_static_ability_ast_rule!(parse_x_at_most_enters_tapped_line),
         single_static_ability_ast_rule!(parse_enters_tapped_line),
         multi_static_ability_ast_rule!(parse_additional_land_play_line),
         single_static_ability_ast_rule!(parse_you_may_look_top_card_any_time_line),
@@ -1100,6 +1103,9 @@ fn parse_static_ability_ast_line_early_lexed(
             keyword_static_lines::EarlyStaticMarkerKind::DayNightStartsDay => {
                 StaticAbility::day_night_starts_day_as_enters()
             }
+            keyword_static_lines::EarlyStaticMarkerKind::LivingMetal => {
+                StaticAbility::living_metal()
+            }
             keyword_static_lines::EarlyStaticMarkerKind::VehicleRulesMarker => {
                 keyword_static_marker(tokens)
             }
@@ -1188,6 +1194,9 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(ability) = parse_pregame_reveal_from_opening_hand_line(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     // Compound "as this enters ... if you do ..." replacement text is one
     // semantic unit even though it contains a sentence boundary.
     if let Some(ability) = parse_enter_as_copy_as_enters_line(tokens)? {
@@ -1421,6 +1430,56 @@ pub(crate) fn parse_pregame_begin_on_battlefield_line(
         ),
         clause_display,
     )))
+}
+
+fn parse_pregame_reveal_from_opening_hand_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(spec) = keyword_static_lines::parse_pregame_reveal_from_opening_hand_tokens(tokens)
+    else {
+        return Ok(None);
+    };
+
+    let effect_tokens = trim_lexed_commas(&tokens[spec.effect_tokens]);
+    let effects = super::clause_support::parse_effect_sentences_lexed(effect_tokens)?;
+    let (trigger, one_shot, first_spell_of_game) = match spec.timing {
+        keyword_static_lines::PregameRevealTiming::FirstUpkeep => (
+            crate::cards::builders::TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any),
+            true,
+            false,
+        ),
+        keyword_static_lines::PregameRevealTiming::YourFirstUpkeep => (
+            crate::cards::builders::TriggerSpec::BeginningOfUpkeep(PlayerFilter::You),
+            true,
+            false,
+        ),
+        keyword_static_lines::PregameRevealTiming::YourFirstPrecombatMainPhase => (
+            crate::cards::builders::TriggerSpec::BeginningOfPrecombatMain(PlayerFilter::You),
+            true,
+            false,
+        ),
+        keyword_static_lines::PregameRevealTiming::EachOpponentFirstSpellOfGame => (
+            crate::cards::builders::TriggerSpec::SpellCast {
+                filter: None,
+                caster: PlayerFilter::Opponent,
+                during_turn: None,
+                min_spells_this_turn: None,
+                exact_spells_this_turn: None,
+                from_not_hand: false,
+            },
+            false,
+            true,
+        ),
+    };
+
+    Ok(Some(StaticAbilityAst::PregameRevealFromOpeningHand {
+        trigger,
+        effects,
+        one_shot,
+        first_spell_of_game,
+        effect_before_timing: spec.effect_before_timing,
+        display: render_token_slice(tokens),
+    }))
 }
 
 pub(crate) fn parse_pregame_mulligan_redraw_line(
@@ -2167,6 +2226,24 @@ pub(crate) fn parse_note_life_total_as_enters_line(
     ))))
 }
 
+pub(crate) fn parse_discard_hand_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some((tail_tokens, display_subject)) =
+        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    let tail_words = LexedClause::new(tail_tokens).word_refs();
+    if tail_words.as_slice() != ["discard", "your", "hand"] {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::discard_hand_as_enters(format!(
+        "As {display_subject} enters, discard your hand."
+    ))))
+}
+
 pub(crate) fn parse_source_is_chosen_type_in_addition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2292,9 +2369,21 @@ pub(crate) fn parse_choose_named_options_as_enters_line(
         return Ok(None);
     }
 
+    let display_options = options
+        .iter()
+        .map(|option| {
+            let mut chars = option.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" or ");
+
     Ok(Some(StaticAbility::choose_named_option_as_enters(
         options,
-        format!("As {display_subject} enters, {}.", choice_words.join(" ")),
+        format!("As {display_subject} enters, choose {display_options}."),
     )))
 }
 
@@ -3336,6 +3425,27 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
         });
     }
 
+    // Preserve specialized aggregate semantics before consulting the broad
+    // shared value grammar. The latter can otherwise accept text such as
+    // "the number of card types among cards in all graveyards" as a generic
+    // object count and erase the card-types-among metric.
+    if keyword_static_lines::characteristic_tokens_have_card_types_among_marker(trimmed)
+        && let Some(value) = parse_characteristic_defining_pt_value(trimmed)
+    {
+        return Some(value);
+    }
+
+    // Keep characteristic-defining values on the same shared value grammar
+    // used by dynamic token definitions. This covers player-relative values
+    // such as life totals and player counters, and preserves source-relative
+    // zone scopes before the broader object-filter fallback can erase them.
+    let value_words = words.word_refs();
+    if let Some((value, used)) = parse_value_expr_words(&value_words)
+        && used == value_words.len()
+    {
+        return Some(value);
+    }
+
     let mut equal_prefixed = Vec::with_capacity(trimmed.len() + 2);
     equal_prefixed.push(OwnedLexToken::word(
         "equal".to_string(),
@@ -3343,12 +3453,6 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
     ));
     equal_prefixed.push(OwnedLexToken::word("to".to_string(), TextSpan::synthetic()));
     equal_prefixed.extend(trimmed.iter().cloned());
-
-    if keyword_static_lines::characteristic_tokens_have_card_types_among_marker(trimmed)
-        && let Some(value) = parse_characteristic_defining_pt_value(trimmed)
-    {
-        return Some(value);
-    }
 
     parse_equal_to_aggregate_filter_value(&equal_prefixed)
         .or_else(|| parse_add_mana_equal_amount_value(&equal_prefixed))

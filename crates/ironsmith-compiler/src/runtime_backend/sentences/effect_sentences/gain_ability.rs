@@ -4,7 +4,9 @@ use super::super::clause_support::{
 };
 #[cfg(test)]
 use super::super::compile_support::compile_statement_effects;
-use super::super::grammar::primitives::{TokenWordView, split_lexed_slices_on_and};
+use super::super::grammar::primitives::{
+    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
+};
 use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
 use super::super::lexer::{
     OwnedLexToken, TokenKind, contains_token_kind, locate_token_kind, locate_token_word,
@@ -19,8 +21,9 @@ use super::super::token_primitives::str_contains as string_contains;
 use super::super::token_primitives::strip_leading_if_you_do_lexed;
 use super::super::util::{
     is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    preferred_source_reference_self_surface, source_reference_surface_for_words, span_from_tokens,
-    strip_leading_token_words_any, this_source_surface_for_words, trim_commas,
+    preferred_source_reference_self_surface, source_reference_surface_for_possessive_words,
+    source_reference_surface_for_words, span_from_tokens, strip_leading_token_words_any,
+    this_source_surface_for_words, trim_commas,
 };
 use super::clause_dispatch::parse_become_clause;
 use super::dispatch_inner::trim_edge_punctuation;
@@ -38,8 +41,10 @@ use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
 use crate::runtime_backend::front_end::grammar::effects::gain_ability_shapes as gain_shapes;
 use crate::runtime_backend::front_end::grammar::trigger_surface;
+use crate::runtime_backend::token_definition::TokenDefinitionSpec;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::target::{ObjectFilter, PlayerFilter, SourceReferenceSurface};
+use crate::types::CardType;
 use crate::zone::Zone;
 
 type GainAbilityWordView<'a> = TokenWordView<'a>;
@@ -52,6 +57,7 @@ type SharedSubjectPump = (
     Option<(i32, i32, Value)>,
 );
 type SharedSubjectBasePt = (Value, Value, usize, Until);
+type SharedSubjectGrant = (Vec<GrantedAbilityAst>, bool);
 
 fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut tokens = trim_edge_punctuation(tokens);
@@ -85,7 +91,11 @@ fn single_or_sequence_effect(mut effects: Vec<EffectAst>) -> Option<EffectAst> {
 fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
     let mut text = String::new();
     let mut needs_space = false;
-    let mut in_effect_text = false;
+    let mut in_effect_text = tokens.first().is_some_and(|token| {
+        token.kind == TokenKind::Word
+            && (gain_shapes::gain_word_is_when_intro(token.parser_text())
+                || gain_shapes::gain_word_is_trigger_intro(token.parser_text()))
+    });
 
     for token in tokens {
         if let Some(word) = token.as_word() {
@@ -171,6 +181,65 @@ fn append_shared_subject_base_pt_to_target(
         target.clone(),
         duration.clone(),
     ));
+}
+
+fn append_shared_subject_grant_to_target(
+    effects: &mut Vec<EffectAst>,
+    target: &TargetAst,
+    grant: &Option<SharedSubjectGrant>,
+    duration: &Until,
+) {
+    let Some((abilities, is_choice)) = grant else {
+        return;
+    };
+    if *is_choice {
+        effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
+            target.clone(),
+            abilities.clone(),
+            duration.clone(),
+        ));
+    } else {
+        effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            target.clone(),
+            abilities.clone(),
+            duration.clone(),
+        ));
+    }
+}
+
+fn coordinated_gain_surface(tokens: &[OwnedLexToken], effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    if effects.len() < 2 {
+        return effects;
+    }
+    let words = GainAbilityWordView::new(tokens).to_word_refs();
+    let Some((gain_idx, gain_verb)) = gain_shapes::find_primary_gain_ability_verb(&words) else {
+        return effects;
+    };
+    let preceding_action = words[..gain_idx].iter().any(|word| {
+        matches!(
+            *word,
+            "get" | "gets" | "has" | "have" | "become" | "becomes"
+        )
+    });
+    let following_action = gain_shapes::find_shared_ability_tail(
+        words.get(gain_idx + 1..).unwrap_or_default(),
+        gain_shapes::SharedAbilityTail::Get,
+    )
+    .is_some()
+        || (gain_verb == gain_shapes::GainAbilityVerb::Lose
+            && gain_shapes::find_shared_ability_tail(
+                words.get(gain_idx + 1..).unwrap_or_default(),
+                gain_shapes::SharedAbilityTail::Gain,
+            )
+            .is_some());
+    if !preceding_action && !following_action {
+        return effects;
+    }
+    let leading_duration = gain_shapes::parse_leading_gain_duration_shape(&words).is_some();
+    vec![EffectAst::Coordinated {
+        effects,
+        leading_duration,
+    }]
 }
 
 fn parse_shared_subject_base_pt_from_has_tail(
@@ -479,9 +548,18 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
     allow_choice: bool,
 ) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
     let segments = split_lexed_slices_on_and(ability_tokens);
-    if contains_token_kind(ability_tokens, TokenKind::Quote) && segments.len() > 1 {
+    if contains_token_kind(ability_tokens, TokenKind::Quote) {
+        // Oracle can coordinate unlike ability forms as a comma-delimited
+        // list, with a quoted rules sentence as one item. Split commas first
+        // and conjunctions second so conjunctions and punctuation inside the
+        // quoted sentence remain part of that ability.
+        let comma_segments = split_lexed_slices_on_comma(ability_tokens);
+        let mixed_segments: Vec<_> = comma_segments
+            .iter()
+            .flat_map(|segment| split_lexed_slices_on_and(segment))
+            .collect();
         let mut abilities = Vec::new();
-        for segment in &segments {
+        for segment in &mixed_segments {
             let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)?
             else {
                 abilities.clear();
@@ -489,7 +567,7 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
             };
             abilities.extend(parsed);
         }
-        if !abilities.is_empty() {
+        if mixed_segments.len() > 1 && !abilities.is_empty() {
             return Ok((abilities, false));
         }
     }
@@ -520,6 +598,128 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
     }
 
     Ok((abilities, false))
+}
+
+fn token_definition_source_identity(
+    definition: &TokenDefinitionSpec,
+) -> (String, Vec<CardType>, Vec<crate::types::Subtype>) {
+    match definition {
+        TokenDefinitionSpec::Creature(creature) => (
+            creature.name.clone(),
+            creature.card_types.clone(),
+            creature.subtypes.clone(),
+        ),
+        TokenDefinitionSpec::Artifact(artifact) => (
+            artifact.name.clone(),
+            vec![CardType::Artifact],
+            artifact.subtypes.clone(),
+        ),
+        TokenDefinitionSpec::Vehicle(vehicle) => {
+            (vehicle.name.clone(), vec![CardType::Artifact], Vec::new())
+        }
+        TokenDefinitionSpec::Construct(_) => (
+            "Construct".to_string(),
+            vec![CardType::Artifact, CardType::Creature],
+            Vec::new(),
+        ),
+        _ => ("Token".to_string(), vec![CardType::Creature], Vec::new()),
+    }
+}
+
+fn token_rule_is_already_lowered_by_specialized_shape(
+    definition: &TokenDefinitionSpec,
+    ability_tokens: &[OwnedLexToken],
+    token_name: &str,
+) -> bool {
+    let words = crate::runtime_backend::token_word_refs(ability_tokens);
+    let has = |word: &str| words.iter().any(|candidate| *candidate == word);
+    let all = |expected: &[&str]| expected.iter().all(|word| has(word));
+
+    if super::super::grammar::token_definitions::parse_embedded_token_rule_tokens(
+        ability_tokens,
+        Some(token_name),
+    )
+    .is_some()
+    {
+        return true;
+    }
+
+    if matches!(definition, TokenDefinitionSpec::Construct(_))
+        && all(&["artifact", "control"])
+        && (all(&["gets", "+1/+1", "each"]) || all(&["power", "toughness", "equal", "number"]))
+    {
+        // The typed Construct blueprint already carries the source rule. A
+        // second generic ability would double its power and toughness.
+        return true;
+    }
+
+    let TokenDefinitionSpec::Creature(creature) = definition else {
+        return false;
+    };
+    let rules = &creature.rules;
+    if rules.cumulative_upkeep_mana_symbols.is_some() && all(&["cumulative", "upkeep"])
+        || rules.tap_mana_ability.is_some() && all(&["t", "add"])
+        || rules.saddle_crew_power_bonus.is_some() && all(&["saddles", "crews"])
+        || rules.sacrifice_return.is_some() && all(&["sacrifice", "return", "graveyard"])
+        || rules.upkeep_return_name.is_some() && all(&["upkeep", "sacrifice", "return"])
+        || rules.dies_create_firebreathing_dragon && all(&["dies", "create", "dragon"])
+        || rules.dies_damage_any_target.is_some() && all(&["dies", "damage", "target"])
+        || rules.dies_minus_one_target_creature && all(&["dies", "target", "-1/-1"])
+        || rules.leaves_damage_you_and_creatures.is_some()
+            && all(&["leaves", "damage", "each", "creature"])
+        || rules.red_pump && all(&["r", "+1/+0"])
+        || rules.white_tap_target_creature && all(&["w", "tap", "target", "creature"])
+        || rules.combat_damage_poison && all(&["combat", "damage", "poison"])
+        || rules.noncreature_spell_each_opponent_damage.is_some()
+            && all(&["noncreature", "spell", "each", "opponent", "damage"])
+        || rules.becomes_tapped_damage_player.is_some()
+            && all(&["becomes", "tapped", "damage", "player"])
+        || rules.combat_damage_gain_artifact && all(&["combat", "damage", "gain", "artifact"])
+        || rules.leaves_return_named_to_hand.is_some()
+            && all(&["leaves", "return", "named", "hand"])
+        || rules.pest_dies_gain_life && all(&["dies", "gain", "life"])
+        || rules.can_block_only_flying && all(&["block", "only", "flying"])
+        || rules.counter_noncreature_unless_pays
+            && all(&["counter", "noncreature", "unless", "pays"])
+        || rules.graveyard_anthem_card_name.is_some()
+            && all(&["gets", "+1/+1", "graveyard", "named"])
+        || rules.landfall_pump && all(&["land", "enters", "+1/+0", "turn"])
+    {
+        return true;
+    }
+
+    if rules.combat_restriction.is_some() {
+        let qualified_blocking_rule = has("by") || all(&["more", "than"]);
+        if !qualified_blocking_rule {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Parses rules text that belongs to a token under the token's own source
+/// identity. The outer card's source-reference context must not leak into a
+/// nested token ability (for example, `this creature` must mean the token).
+pub(crate) fn parse_granted_abilities_for_token_definition(
+    definition: &TokenDefinitionSpec,
+    ability_tokens: &[OwnedLexToken],
+) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
+    let (name, card_types, subtypes) = token_definition_source_identity(definition);
+    if token_rule_is_already_lowered_by_specialized_shape(definition, ability_tokens, &name) {
+        return Ok(Vec::new());
+    }
+    let clause_words = crate::runtime_backend::token_word_refs(ability_tokens);
+    crate::runtime_backend::util::with_token_source_reference_context(
+        &name,
+        &card_types,
+        &subtypes,
+        || {
+            let (abilities, is_choice) =
+                parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
+            Ok(if is_choice { Vec::new() } else { abilities })
+        },
+    )
 }
 
 pub(crate) fn parse_simple_ability_duration(
@@ -690,6 +890,13 @@ fn trim_trailing_also(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 
 fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
+    if let Some(surface) = source_reference_surface_for_possessive_words(&subject_words) {
+        return Some(TargetAst::Object(
+            ObjectFilter::source().with_source_surface(surface),
+            None,
+            None,
+        ));
+    }
     for prefix_len in (1..=subject_words.len()).rev() {
         if !is_source_reference_words(&subject_words[..prefix_len]) {
             continue;
@@ -985,14 +1192,18 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gain_ability_sentence_with_subject(tokens, None)
+    Ok(parse_gain_ability_sentence_with_subject(tokens, None)?
+        .map(|effects| coordinated_gain_surface(tokens, effects)))
 }
 
 pub(crate) fn parse_gain_ability_sentence_with_typed_subject(
     tokens: &[OwnedLexToken],
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gain_ability_sentence_with_subject(tokens, Some(subject_tokens))
+    Ok(
+        parse_gain_ability_sentence_with_subject(tokens, Some(subject_tokens))?
+            .map(|effects| coordinated_gain_surface(tokens, effects)),
+    )
 }
 
 fn parse_gain_ability_sentence_with_subject(
@@ -1106,6 +1317,11 @@ fn parse_gain_ability_sentence_with_subject(
     } else {
         None
     };
+    let shared_gain_tail_word_idx = if losing {
+        gain_shapes::find_shared_ability_tail(after_gain, gain_shapes::SharedAbilityTail::Gain)
+    } else {
+        None
+    };
     let shared_has_tail_word_idx = if losing {
         gain_shapes::find_shared_ability_tail(after_gain, gain_shapes::SharedAbilityTail::Has)
     } else {
@@ -1134,6 +1350,34 @@ fn parse_gain_ability_sentence_with_subject(
     if shared_has_tail_word_idx.is_some() && following_base_pt_effect.is_none() {
         return Ok(None);
     }
+    let following_grant = if let Some(shared_idx) = shared_gain_tail_word_idx {
+        let ability_start_word_idx = gain_idx + 1 + shared_idx + 2;
+        let ability_end_word_idx = duration_phrase
+            .as_ref()
+            .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel)
+            .unwrap_or(word_list.len());
+        let Some(ability_start_token_idx) =
+            word_view.token_boundary_for_word_or_end(ability_start_word_idx)
+        else {
+            return Ok(None);
+        };
+        let ability_end_token_idx = word_view
+            .token_boundary_for_word_or_end(ability_end_word_idx)
+            .unwrap_or(tokens.len());
+        let ability_tokens = trim_commas(
+            tokens
+                .get(ability_start_token_idx..ability_end_token_idx)
+                .unwrap_or_default(),
+        );
+        let (abilities, is_choice) =
+            parse_granted_abilities_for_gain_clause(&ability_tokens, &word_list, false)?;
+        if abilities.is_empty() {
+            return Ok(None);
+        }
+        Some((abilities, is_choice))
+    } else {
+        None
+    };
 
     let mut trailing_tail_tokens: Vec<OwnedLexToken> = Vec::new();
     if shared_get_tail_word_idx.is_none()
@@ -1173,7 +1417,8 @@ fn parse_gain_ability_sentence_with_subject(
     let ability_end_word_idx = duration_phrase
         .as_ref()
         .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel);
-    let ability_end_word_idx = shared_get_tail_word_idx
+    let ability_end_word_idx = shared_gain_tail_word_idx
+        .or(shared_get_tail_word_idx)
         .or(shared_has_tail_word_idx)
         .map(|idx| gain_idx + 1 + idx)
         .or(ability_end_word_idx);
@@ -1434,26 +1679,32 @@ fn parse_gain_ability_sentence_with_subject(
         };
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
-                grant_target,
+                grant_target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
-                grant_target,
+                grant_target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else {
             effects.push(
                 subject_verb_grant_abilities_to_target_with_optional_condition(
-                    grant_target,
+                    grant_target.clone(),
                     abilities,
-                    duration,
+                    duration.clone(),
                     &duration_condition,
                 ),
             );
         }
+        append_shared_subject_grant_to_target(
+            &mut effects,
+            &grant_target,
+            &following_grant,
+            &duration,
+        );
         let following_pump_target =
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens));
         append_shared_subject_pump_to_target(
@@ -1483,24 +1734,25 @@ fn parse_gain_ability_sentence_with_subject(
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
                 target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
                 target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else {
             effects.push(
                 subject_verb_grant_abilities_to_target_with_optional_condition(
                     target.clone(),
                     abilities,
-                    duration,
+                    duration.clone(),
                     &duration_condition,
                 ),
             );
         }
+        append_shared_subject_grant_to_target(&mut effects, &target, &following_grant, &duration);
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         append_shared_subject_base_pt_to_target(&mut effects, &target, &following_base_pt_effect);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
@@ -1517,24 +1769,25 @@ fn parse_gain_ability_sentence_with_subject(
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
                 target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
                 target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else {
             effects.push(
                 subject_verb_grant_abilities_to_target_with_optional_condition(
                     target.clone(),
                     abilities,
-                    duration,
+                    duration.clone(),
                     &duration_condition,
                 ),
             );
         }
+        append_shared_subject_grant_to_target(&mut effects, &target, &following_grant, &duration);
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         append_shared_subject_base_pt_to_target(&mut effects, &target, &following_base_pt_effect);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
@@ -1554,24 +1807,25 @@ fn parse_gain_ability_sentence_with_subject(
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
                 target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else if grant_is_choice {
             effects.push(EffectAst::subject_verb_grant_abilities_choice_to_target(
                 target.clone(),
                 abilities,
-                duration,
+                duration.clone(),
             ));
         } else {
             effects.push(
                 subject_verb_grant_abilities_to_target_with_optional_condition(
                     target.clone(),
                     abilities,
-                    duration,
+                    duration.clone(),
                     &duration_condition,
                 ),
             );
         }
+        append_shared_subject_grant_to_target(&mut effects, &target, &following_grant, &duration);
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         append_shared_subject_base_pt_to_target(&mut effects, &target, &following_base_pt_effect);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
@@ -1666,21 +1920,36 @@ fn parse_gain_ability_sentence_with_subject(
         effects.push(EffectAst::subject_verb_remove_abilities_all(
             filter.clone(),
             abilities,
-            duration,
+            duration.clone(),
         ));
     } else if grant_is_choice {
         effects.push(EffectAst::subject_verb_grant_abilities_choice_all(
             filter.clone(),
             abilities,
-            duration,
+            duration.clone(),
         ));
     } else {
         effects.push(subject_verb_grant_abilities_all_with_optional_condition(
             filter.clone(),
             abilities,
-            duration,
+            duration.clone(),
             &duration_condition,
         ));
+    }
+    if let Some((abilities, is_choice)) = &following_grant {
+        if *is_choice {
+            effects.push(EffectAst::subject_verb_grant_abilities_choice_all(
+                filter.clone(),
+                abilities.clone(),
+                duration.clone(),
+            ));
+        } else {
+            effects.push(EffectAst::subject_verb_grant_abilities_all(
+                filter.clone(),
+                abilities.clone(),
+                duration.clone(),
+            ));
+        }
     }
     if let Some((power, toughness, _, pump_duration, _condition, _for_each)) = following_pump_effect
     {
@@ -1746,6 +2015,10 @@ fn apply_gain_clause_duration_to_leading_effect(effect: &mut EffectAst, duration
                     ..
                 }
                 | SubjectVerbActionAst::AddCardTypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::SetCardTypes {
                     duration: effect_duration,
                     ..
                 }
@@ -2030,6 +2303,41 @@ mod tests {
     use crate::cards::builders::CardDefinitionBuilder;
 
     #[test]
+    fn triggered_grant_display_keeps_fixed_numbers_out_of_mana_braces() {
+        let tokens = lex_line(
+            "whenever this creature dies, each opponent loses 1 life and you gain 2 life",
+            0,
+        )
+        .expect("granted trigger should lex");
+
+        assert_eq!(
+            display_text_for_tokens(&tokens),
+            "whenever this creature dies, each opponent loses 1 life and you gain 2 life"
+        );
+    }
+
+    #[test]
+    fn quoted_mixed_ability_list_splits_only_at_top_level_separators() {
+        let ability_tokens = lex_line(
+            "indestructible, \"Equipped creature gets +5/+5 and has double strike,\" and equip {0}.",
+            0,
+        )
+        .expect("mixed granted-ability list should lex");
+        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let (abilities, is_choice) =
+            parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)
+                .expect("mixed granted-ability list should parse");
+        assert!(!is_choice);
+        let debug = format!("{abilities:#?}");
+        assert!(debug.contains("Indestructible"), "{debug}");
+        assert!(
+            debug.contains("Equipped creature gets +5/+5 and has double strike"),
+            "{debug}"
+        );
+        assert!(debug.contains("Equip {0}"), "{debug}");
+    }
+
+    #[test]
     fn gain_ability_to_source_keeps_parsed_ability_until_lowering() {
         let tokens = tokenize_line("This creature gains {T}: Draw a card.", 0);
         let effect = parse_gain_ability_to_source_sentence(&tokens)
@@ -2189,6 +2497,57 @@ mod tests {
             debug.matches("YourNextTurn").count() >= 2,
             "expected shared duration to apply to both effects, got {debug}"
         );
+    }
+
+    #[test]
+    fn pump_then_gain_is_preserved_as_one_coordinated_typed_clause() {
+        let tokens = tokenize_line(
+            "This creature gets +2/+2 and gains trample until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("pump-and-grant sentence should parse")
+            .expect("pump-and-grant sentence should produce effects");
+
+        let [
+            EffectAst::Coordinated {
+                effects: coordinated,
+                leading_duration: false,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected coordinated pump-and-grant clause, got {effects:#?}");
+        };
+        let debug = format!("{coordinated:#?}");
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+        assert!(debug.contains("Trample"), "{debug}");
+    }
+
+    #[test]
+    fn leading_become_lose_then_gain_keeps_the_trailing_keyword() {
+        let tokens = tokenize_line(
+            "Until end of turn, target creature you control becomes a blue Dragon Illusion with base power and toughness 4/4, loses all abilities, and gains flying.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("become-lose-gain sentence should parse")
+            .expect("become-lose-gain sentence should produce effects");
+
+        let [
+            EffectAst::Coordinated {
+                effects: coordinated,
+                leading_duration: true,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected leading-duration coordinated clause, got {effects:#?}");
+        };
+        let debug = format!("{coordinated:#?}");
+        assert!(debug.contains("BecomeBasePtCreature"), "{debug}");
+        assert!(debug.contains("RemoveAbilitiesFromTarget"), "{debug}");
+        assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+        assert!(debug.contains("Flying"), "{debug}");
     }
 
     #[test]

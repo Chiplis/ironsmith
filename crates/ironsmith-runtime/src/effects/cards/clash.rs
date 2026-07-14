@@ -302,6 +302,7 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
+    use crate::effect::{Comparison, EffectPredicate, EffectPredicateRuntimeExt};
     use crate::effects::ExecutionContext;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -549,6 +550,38 @@ mod tests {
         assert_eq!(
             library_names_bottom_to_top(&game, bob),
             vec!["B1".to_string()]
+        );
+    }
+
+    #[test]
+    fn clash_win_predicate_uses_the_result_count_not_the_emitted_events() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        add_library_card(&mut game, alice, "Alice Low", 1);
+        add_library_card(&mut game, bob, "Bob High", 5);
+
+        let source = game.new_object_id();
+        let mut dm = ClashDecisionMaker::default();
+        let outcome = ClashEffect::against_any_opponent()
+            .execute(
+                &mut game,
+                &mut ExecutionContext::new(source, alice, &mut dm),
+            )
+            .expect("losing clash should resolve");
+
+        assert!(
+            !outcome.events.is_empty(),
+            "the clash still emits its events"
+        );
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
+        assert!(
+            EffectPredicate::Happened.evaluate_outcome(&outcome),
+            "generic happened semantics see the clash events and cannot represent winning"
+        );
+        assert!(
+            !EffectPredicate::Value(Comparison::GreaterThan(0)).evaluate_outcome(&outcome),
+            "the typed clash-win predicate must be false when the opponent wins"
         );
     }
 }

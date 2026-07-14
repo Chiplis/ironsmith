@@ -13,7 +13,7 @@ use super::super::super::lexer::{
     token_slice_first_is,
 };
 use super::super::super::token_primitives::locate_index as locate_token_index;
-use super::super::super::util::is_source_reference_words;
+use super::super::super::util::{is_source_reference_words, source_reference_surface_for_words};
 use super::super::activated_lines::{
     ActivatedLoyaltyShorthand, parse_loyalty_shorthand_activation_tokens,
 };
@@ -115,7 +115,7 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::Mill => Some(parse_mill_segment_tokens(tokens)),
         ActivationCostSegmentKind::Sacrifice => Some(parse_typed_sacrifice_segment_tokens(
             tokens,
-            is_source_reference_words,
+            named_source_reference_surface_for_words,
         )),
         ActivationCostSegmentKind::Unattach => Some(parse_unattach_segment_tokens(
             tokens,
@@ -136,6 +136,16 @@ fn parse_activation_cost_segment_tokens(
             Some(parse_remove_counter_segment_tokens(tokens))
         }
         ActivationCostSegmentKind::BareSymbol => parse_bare_symbol_segment_tokens(tokens).map(Ok),
+    }
+}
+
+fn named_source_reference_surface_for_words(
+    words: &[&str],
+) -> Option<crate::target::SourceReferenceSurface> {
+    match source_reference_surface_for_words(words)? {
+        surface @ (crate::target::SourceReferenceSurface::FullName(_)
+        | crate::target::SourceReferenceSurface::ShortName(_)) => Some(surface),
+        crate::target::SourceReferenceSurface::ThisPermanentType(_) => None,
     }
 }
 
@@ -431,6 +441,26 @@ mod tests {
         assert_eq!(
             parse_activation_cost_tokens_rewrite(&tokens).unwrap(),
             parse_activation_cost_rewrite(raw).unwrap()
+        );
+    }
+
+    #[test]
+    fn named_source_sacrifice_keeps_exact_short_name_surface() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "ED-E",
+            || {
+                let parsed = parse("{2}, Sacrifice ED-E");
+                let [
+                    ActivationCostSegmentCst::Mana(_),
+                    ActivationCostSegmentCst::SacrificeSelf {
+                        surface: Some(surface),
+                    },
+                ] = parsed.segments.as_slice()
+                else {
+                    panic!("expected mana plus named-source sacrifice, got {parsed:?}");
+                };
+                assert_eq!(surface.display_text(), "ED-E");
+            },
         );
     }
 }

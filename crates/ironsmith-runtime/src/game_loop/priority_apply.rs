@@ -29,6 +29,7 @@ fn build_target_assignments(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect::<Vec<_>>();
@@ -1000,6 +1001,9 @@ pub fn apply_priority_response_with_dm(
                             source: *source,
                             controller: player,
                         });
+                let source_snapshot = game
+                    .object(*source)
+                    .map(|obj| ObjectSnapshot::from_object(obj, game));
 
                 if can_pay_mana {
                     // Pay all costs immediately
@@ -1021,9 +1025,6 @@ pub fn apply_priority_response_with_dm(
                     drain_pending_trigger_events(game, trigger_queue);
 
                     // Add fixed mana to player's pool
-                    let source_snapshot = game
-                        .object(*source)
-                        .map(|obj| ObjectSnapshot::from_object(obj, game));
                     let mana_to_add = crate::events::mana::apply_mana_replacements(
                         game,
                         *source,
@@ -1038,9 +1039,13 @@ pub fn apply_priority_response_with_dm(
                         if let Some(player_obj) = game.player_mut(player) {
                             for symbol in &mana_to_add {
                                 if mana_usage_restrictions.is_empty() {
-                                    player_obj.mana_pool.add(*symbol, 1);
+                                    player_obj.add_unrestricted_mana(
+                                        *symbol,
+                                        *source,
+                                        source_snapshot.clone(),
+                                    );
                                 } else {
-                                    player_obj.add_restricted_mana(
+                                    player_obj.add_restricted_mana_with_snapshot(
                                         crate::ability::RestrictedManaUnit {
                                             symbol: *symbol,
                                             source: *source,
@@ -1048,6 +1053,7 @@ pub fn apply_priority_response_with_dm(
                                                 mana_source_chosen_creature_type,
                                             restrictions: mana_usage_restrictions.clone(),
                                         },
+                                        source_snapshot.clone(),
                                     );
                                 }
                             }
@@ -1469,6 +1475,21 @@ pub(super) fn apply_x_value_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
+        let min_x = game
+            .current_ability(pending.source, pending.ability_index)
+            .and_then(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Activated(activated) => {
+                    Some(activated.activation_x_minimum())
+                }
+                _ => None,
+            })
+            .unwrap_or(0);
+        if x_value < min_x {
+            state.pending_activation = Some(pending);
+            return Err(GameLoopError::InvalidState(format!(
+                "X must be at least {min_x} for this activation"
+            )));
+        }
         // Store the X value
         pending.x_value = Some(x_value as usize);
         if let Some(obj) = game.object_mut(pending.source) {

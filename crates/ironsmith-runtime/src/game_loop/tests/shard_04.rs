@@ -51,16 +51,18 @@ pub(super) fn test_triggered_mana_ability_resolves_immediately_without_stack() {
         ));
     }
 
-    queue_ability_activated_event(
-        &mut game,
-        &mut trigger_queue,
-        &mut dm,
+    let snapshot =
+        crate::snapshot::ObjectSnapshot::from_object(game.object(swamp_id).expect("swamp"), &game);
+    let event = crate::events::ManaAddedEvent::new(
         swamp_id,
         alice,
-        true,
-        None,
-        true,
-    );
+        alice,
+        vec![crate::mana::ManaSymbol::Black],
+    )
+    .with_snapshot(Some(snapshot))
+    .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana)
+    .into_trigger_event();
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
     assert!(
         trigger_queue.is_empty(),
@@ -74,6 +76,78 @@ pub(super) fn test_triggered_mana_ability_resolves_immediately_without_stack() {
         game.player(alice).expect("alice").mana_pool.black,
         1,
         "triggered mana ability should add mana immediately"
+    );
+}
+
+#[test]
+pub(super) fn tap_for_mana_trigger_requires_tapped_source_provenance_and_credits_land_controller() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let land_card = CardBuilder::new(CardId::new(), "Triggered Mana Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land_card, bob, Zone::Battlefield);
+
+    let enchantment_card = CardBuilder::new(CardId::new(), "Additional Mana Aura")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let enchantment_id = game.create_object_from_card(&enchantment_card, alice, Zone::Battlefield);
+    let triggering_tag = crate::TagKey::from("triggering");
+    if let Some(enchantment) = game.object_mut(enchantment_id) {
+        enchantment.abilities_mut().push(Ability::triggered(
+            Trigger::player_taps_for_mana(PlayerFilter::Any, crate::filter::ObjectFilter::land()),
+            vec![
+                Effect::tag_triggering_object(triggering_tag.clone()),
+                Effect::add_mana_of_any_color_player(
+                    Value::Fixed(1),
+                    PlayerFilter::ControllerOf(ObjectRef::Tagged(triggering_tag)),
+                ),
+            ],
+        ));
+    }
+
+    let snapshot =
+        crate::snapshot::ObjectSnapshot::from_object(game.object(land_id).expect("land"), &game);
+    let event =
+        crate::events::ManaAddedEvent::new(land_id, bob, bob, vec![crate::mana::ManaSymbol::Green])
+            .with_snapshot(Some(snapshot.clone()))
+            .into_trigger_event();
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    assert!(
+        trigger_queue.is_empty() && game.stack.is_empty(),
+        "a non-tap mana ability must not queue the tap-for-mana trigger"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").mana_pool.white,
+        0,
+        "a non-tap mana ability must not receive additional mana"
+    );
+
+    let event =
+        crate::events::ManaAddedEvent::new(land_id, bob, bob, vec![crate::mana::ManaSymbol::Green])
+            .with_snapshot(Some(snapshot))
+            .with_production_provenance(
+                crate::events::mana::ManaProductionProvenance::TappedSourceForMana,
+            )
+            .into_trigger_event();
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    assert!(
+        trigger_queue.is_empty() && game.stack.is_empty(),
+        "the triggered mana ability should resolve immediately"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice").mana_pool.white,
+        0,
+        "the Aura controller must not receive the land's additional mana"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").mana_pool.white,
+        1,
+        "the triggering land's controller should receive one mana of the chosen color"
     );
 }
 
@@ -343,16 +417,18 @@ pub(super) fn test_non_mana_tap_for_mana_trigger_still_uses_stack() {
         ));
     }
 
-    queue_ability_activated_event(
-        &mut game,
-        &mut trigger_queue,
-        &mut dm,
+    let snapshot =
+        crate::snapshot::ObjectSnapshot::from_object(game.object(swamp_id).expect("swamp"), &game);
+    let event = crate::events::ManaAddedEvent::new(
         swamp_id,
         alice,
-        true,
-        None,
-        true,
-    );
+        alice,
+        vec![crate::mana::ManaSymbol::Black],
+    )
+    .with_snapshot(Some(snapshot))
+    .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana)
+    .into_trigger_event();
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
 
     assert!(
         !trigger_queue.is_empty(),

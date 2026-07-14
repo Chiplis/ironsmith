@@ -33,6 +33,14 @@ fn parses_conditional_followup_continuation() {
     assert_eq!(shape.kind, ConditionalFollowupKind::IfYouWin);
     assert!(!shape.continuation_tokens.is_empty());
 
+    let clash = lex_line("If you win the clash, draw a card.", 0).unwrap();
+    let shape = parse_conditional_followup(&clash).expect("explicit clash result shape");
+    assert_eq!(shape.kind, ConditionalFollowupKind::IfYouWinClash);
+
+    let flip = lex_line("If you win the flip, draw a card.", 0).unwrap();
+    let shape = parse_conditional_followup(&flip).expect("explicit coin-flip result shape");
+    assert_eq!(shape.kind, ConditionalFollowupKind::IfYouWinFlip);
+
     let game = lex_line("If you win the game, draw a card.", 0).unwrap();
     assert!(parse_conditional_followup(&game).is_none());
 }

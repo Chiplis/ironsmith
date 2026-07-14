@@ -747,6 +747,18 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
             if ability_tokens.is_empty() {
                 return Ok(None);
             }
+            if crate::runtime_backend::lexer::token_word_refs(&ability_tokens).as_slice()
+                == ["all", "abilities"]
+            {
+                let filter = match &clause.subject {
+                    AnthemSubjectAst::Source => ObjectFilter::source(),
+                    AnthemSubjectAst::Filter(filter) => filter.clone(),
+                };
+                return Ok(Some(vec![
+                    anthem.into(),
+                    StaticAbility::remove_all_abilities(filter).into(),
+                ]));
+            }
             let Some(actions) = parse_ability_line(&ability_tokens) else {
                 return Ok(None);
             };
@@ -932,6 +944,7 @@ pub(crate) fn parse_attached_type_transform_line(
     }
 
     let descriptor_has_card_types = !set_card_types.is_empty();
+    let descriptor_sets_land_type = set_card_types.contains(&CardType::Land);
     if descriptor_has_card_types {
         if preserve_other_types {
             out.push(StaticAbility::add_card_types(filter.clone(), set_card_types).into());
@@ -941,6 +954,14 @@ pub(crate) fn parse_attached_type_transform_line(
     }
     if !add_subtypes.is_empty() {
         if !preserve_other_types
+            && add_subtypes
+                .iter()
+                .all(crate::types::Subtype::is_land_subtype)
+            && (descriptor_sets_land_type
+                || parsed.subject == attached_grammar::AttachedSubject::EnchantedLand)
+        {
+            out.push(StaticAbility::set_land_subtypes(filter.clone(), add_subtypes).into());
+        } else if !preserve_other_types
             && !descriptor_has_card_types
             && add_subtypes
                 .iter()
@@ -1270,6 +1291,7 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
         toughness: AnthemValue::Fixed(toughness),
         condition: None,
         count_uses_where_x: false,
+        set_quantifier_surface: None,
     };
     out.push(build_anthem_static_ability(&anthem_clause).into());
 

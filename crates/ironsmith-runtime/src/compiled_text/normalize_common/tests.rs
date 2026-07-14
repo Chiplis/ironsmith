@@ -2,6 +2,121 @@ use super::*;
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 
 #[test]
+fn cast_spell_filter_renders_instant_or_sorcery_restriction() {
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![
+        ObjectFilter::default().with_type(CardType::Instant),
+        ObjectFilter::default().with_type(CardType::Sorcery),
+    ];
+
+    assert_eq!(
+        describe_cast_ban_spell_filter(&filter),
+        "instant or sorcery spells"
+    );
+}
+
+#[test]
+fn cast_spell_filter_suppresses_permission_context_without_mutating_filter() {
+    let mut filter = ObjectFilter::nonland().owned_by(PlayerFilter::You);
+    filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(4));
+    let original = filter.clone();
+
+    assert_eq!(
+        describe_cast_spell_filter(&filter, CastSpellFilterContext::EnclosingPermission),
+        "spell with mana value 4 or less"
+    );
+    assert_eq!(
+        filter, original,
+        "rendering must not alter runtime legality"
+    );
+}
+
+#[test]
+fn cast_spell_filter_places_subtype_before_spell_noun() {
+    let mut filter = ObjectFilter::nonland().owned_by(PlayerFilter::You);
+    filter.subtypes.push(Subtype::Hero);
+
+    assert_eq!(
+        describe_cast_spell_filter(&filter, CastSpellFilterContext::EnclosingPermission),
+        "Hero spell"
+    );
+}
+
+#[test]
+fn cast_spell_filter_keeps_flashback_and_graveyard_origin() {
+    let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Flashback);
+
+    let described = describe_cast_limit_spell_filter(&filter);
+    assert_eq!(described, "spell with flashback from a graveyard");
+    assert_eq!(
+        pluralize_cast_spell_description(&described),
+        "spells with flashback from a graveyard"
+    );
+    assert_eq!(
+        pluralize_cast_spell_description(
+            "spell with mana value less than or equal to that spell's mana value"
+        ),
+        "spells with mana value less than or equal to that spell's mana value"
+    );
+    assert_eq!(
+        pluralize_cast_spell_description("spell with flying or spell with haste"),
+        "spells with flying or spells with haste"
+    );
+    assert!(!described.contains("spell matching"));
+}
+
+#[test]
+fn your_turn_condition_uses_oracle_contraction() {
+    assert_eq!(describe_condition(&Condition::YourTurn), "it's your turn");
+}
+
+#[test]
+fn negated_source_tapped_condition_renders_as_untapped() {
+    let condition = Condition::Not(Box::new(Condition::SourceIsTapped));
+
+    assert_eq!(describe_condition(&condition), "this source is untapped");
+}
+
+#[test]
+fn negated_source_creature_condition_uses_a_readable_permanent_subject() {
+    let condition = Condition::Not(Box::new(Condition::SourceMatches(ObjectFilter::creature())));
+
+    assert_eq!(
+        describe_condition(&condition),
+        "this permanent isn't a creature"
+    );
+}
+
+#[test]
+fn aliased_object_relative_player_uses_contextual_possessive_pronoun() {
+    for player in [
+        PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Target),
+        PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Target),
+    ] {
+        assert_eq!(describe_player_filter(&player), "that player");
+        assert_eq!(describe_possessive_player_filter(&player), "their");
+        assert_eq!(describe_possessive_graveyard_owner_filter(&player), "their");
+    }
+}
+
+#[test]
+fn describe_single_basic_land_subtype_choice_uses_singular_articles() {
+    let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    filter.subtypes = vec![Subtype::Island, Subtype::Swamp];
+    let condition = Condition::PlayerHasAtLeast {
+        player: PlayerFilter::You,
+        filter,
+        count: 1,
+    };
+
+    assert_eq!(
+        describe_condition(&condition),
+        "you control an Island or a Swamp"
+    );
+}
+
+#[test]
 fn attached_and_related_creatures_render_as_a_plural_conjunction() {
     let mut attached = ObjectFilter::creature();
     attached.zone = Some(Zone::Battlefield);
@@ -64,6 +179,53 @@ fn describe_total_power_of_sacrificed_objects_keeps_the_sacrifice_link() {
         describe_value(&Value::TotalPower(filter)),
         "the total power of the sacrificed creatures"
     );
+}
+
+#[test]
+fn typed_sacrificed_object_references_render_characteristics_and_copy_sources() {
+    let tagged = ChooseSpec::Tagged(TagKey::from("sacrificed_0"));
+    let mana_value = Value::ManaValueOf(Box::new(tagged.clone())).with_surface_hints([
+        ValueSurfaceHint::EqualTo,
+        ValueSurfaceHint::SacrificedObject(ironsmith_core::SacrificedObjectKind::Permanent),
+    ]);
+    assert_eq!(
+        describe_card_count(&mana_value),
+        "cards equal to the sacrificed permanent's mana value"
+    );
+
+    let copy_source =
+        tagged.with_surface_hint(crate::target::ChooseSpecSurfaceHint::SacrificedObject(
+            ironsmith_core::SacrificedObjectKind::Creature,
+        ));
+    assert_eq!(
+        describe_choose_spec(&copy_source),
+        "the sacrificed creature"
+    );
+}
+
+#[test]
+fn explicit_revealed_card_reference_renders_without_losing_tag_identity() {
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+        crate::effects::PUBLIC_REVEALED_TAG,
+    ))))
+    .with_surface_hints([
+        ValueSurfaceHint::WhereXIs,
+        ValueSurfaceHint::RevealedCardReference,
+    ]);
+
+    assert_eq!(describe_value(&value), "the revealed card's mana value");
+}
+
+#[test]
+fn counter_set_values_distinguish_among_from_explicit_on_surface() {
+    let filter = ObjectFilter::creature().you_control();
+    let explicit_on = Value::CountersOn(Box::new(ChooseSpec::All(filter.clone())), None);
+    let aggregate_among = explicit_on
+        .clone()
+        .with_surface_hint(ValueSurfaceHint::CountersAmong);
+
+    assert!(describe_value(&explicit_on).contains("counters on"));
+    assert!(describe_value(&aggregate_among).contains("counters among"));
 }
 
 #[test]
@@ -374,6 +536,67 @@ fn describe_triggering_power_check_uses_event_object_pronoun() {
 }
 
 #[test]
+fn describe_last_known_tagged_conditions_preserves_past_tense_and_negation() {
+    let triggering = TagKey::from("triggering");
+
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            triggering.clone(),
+            ObjectFilter::creature(),
+        )),
+        "it was a creature"
+    );
+
+    let horror = ObjectFilter::default().with_subtype(Subtype::Horror);
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            triggering.clone(),
+            horror,
+        )),
+        "it was a Horror"
+    );
+
+    let mut power = ObjectFilter::default();
+    power.power = Some(ironsmith_core::FilterComparison::GreaterThanOrEqual(3));
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            triggering.clone(),
+            power,
+        )),
+        "its power was 3 or greater"
+    );
+
+    let demon = ObjectFilter::default().with_subtype(Subtype::Demon);
+    assert_eq!(
+        describe_condition(&Condition::Not(Box::new(
+            Condition::TaggedObjectMatchedLastKnown(triggering, demon),
+        ))),
+        "it wasn't a Demon"
+    );
+
+    let mut legendary_spell = ObjectFilter::spell();
+    legendary_spell.supertypes = vec![crate::types::Supertype::Legendary];
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            TagKey::from("countered_0"),
+            legendary_spell,
+        )),
+        "it was a legendary spell"
+    );
+
+    let jace_spell = ObjectFilter::spell()
+        .with_type(CardType::Planeswalker)
+        .with_subtype(Subtype::Jace);
+    assert_eq!(
+        describe_condition(&Condition::TaggedObjectMatchedLastKnown(
+            TagKey::from("countered_0"),
+            jace_spell,
+        )),
+        "it was a Jace planeswalker spell"
+    );
+}
+
+#[test]
 fn describe_tagged_object_matches_all_card_types_uses_is_clause() {
     let mut filter = ObjectFilter::default();
     filter.all_card_types = vec![CardType::Artifact, CardType::Creature];
@@ -392,6 +615,83 @@ fn describe_revealed_tagged_object_matches_all_card_types_uses_card_clause() {
     assert_eq!(
         describe_condition(&condition),
         "it's an artifact creature card"
+    );
+}
+
+#[test]
+fn describe_revealed_tagged_object_action_keeps_card_type_qualifiers() {
+    let mut filter = ObjectFilter::creature();
+    filter.mana_value = Some(ironsmith_core::FilterComparison::LessThanOrEqual(3));
+    let condition =
+        Condition::TaggedObjectMatches(TagKey::from("__sentence_helper_revealed_l0_s0_e0"), filter);
+
+    assert_eq!(
+        describe_condition(&condition),
+        "a creature card with mana value 3 or less was revealed this way"
+    );
+}
+
+#[test]
+fn graveyard_scoped_discard_tag_preserves_put_this_way_surface() {
+    let any_graveyard = ObjectFilter::land()
+        .in_zone(Zone::Graveyard)
+        .match_tagged("discarded_0", TaggedOpbjectRelation::IsTaggedObject);
+    assert_eq!(
+        describe_for_each_count_filter(&any_graveyard),
+        "land card put into a graveyard this way"
+    );
+
+    let your_graveyard = any_graveyard.owned_by(PlayerFilter::You);
+    assert_eq!(
+        describe_for_each_count_filter(&your_graveyard),
+        "land card put into your graveyard this way"
+    );
+}
+
+#[test]
+fn describe_revealed_tagged_object_keeps_shared_creature_type_relation() {
+    let mut filter = ObjectFilter::creature();
+    filter.shares_creature_type_with_source = true;
+    let condition =
+        Condition::TaggedObjectMatches(TagKey::from("__sentence_helper_revealed_l0_s0_e0"), filter);
+
+    assert_eq!(
+        describe_condition(&condition),
+        "it shares a creature type with this creature"
+    );
+}
+
+#[test]
+fn describe_tagged_object_same_name_comparison_preserves_the_comparison_set() {
+    let mut graveyard = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    graveyard.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("__it__"),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    let condition = Condition::TaggedObjectMatches(
+        TagKey::from("__sentence_helper_revealed_l0_s0_e0"),
+        graveyard,
+    );
+
+    assert_eq!(
+        describe_condition(&condition),
+        "it has the same name as a card in your graveyard"
+    );
+
+    let mut permanents = ObjectFilter::permanent();
+    permanents.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("__it__"),
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    let condition = Condition::TaggedObjectMatches(
+        TagKey::from("__sentence_helper_revealed_l0_s0_e0"),
+        permanents,
+    );
+    assert_eq!(
+        describe_condition(&condition),
+        "it has the same name as a permanent"
     );
 }
 
@@ -502,7 +802,7 @@ fn normalize_named_library_graveyard_search_to_hand_surfaces() {
         normalize_common_semantic_phrasing(
             "When this creature enters, you may search your library and/or graveyard for a card named huatli dinosaur knight, reveal it, and put it into your hand. If you do, shuffle your library."
         ),
-        "When this creature enters, you may search your library and/or graveyard for a card named Huatli Dinosaur Knight, reveal it, then put it into your hand. If you searched your library this way, shuffle."
+        "When this creature enters, you may search your library and/or graveyard for a card named Huatli Dinosaur Knight, reveal it, and put it into your hand. If you search your library this way, shuffle."
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
@@ -527,6 +827,54 @@ fn normalize_named_library_graveyard_search_to_hand_surfaces() {
             "Spell effects: Search your library for a basic land card, put it onto the battlefield tapped. You search your library and/or graveyard for a card named nissa natures artisan. Reveal it. Put it into your hand. Then if you search your library this way, shuffle."
         ),
         "Spell effects: Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Search your library for a basic land card, put it onto the battlefield tapped. You search your library and/or graveyard for a card named nissa natures artisan. Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library."
+        ),
+        "Search your library for a basic land card and put it onto the battlefield tapped. Search your library and graveyard for a card named Nissa Natures Artisan, reveal it, put it into your hand, then shuffle."
+    );
+}
+
+#[test]
+fn normalize_split_multi_zone_search_reveal_hand_shuffle_surface() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, you search your library and/or graveyard for an artifact with mana value 2 or less you own. Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library."
+        ),
+        "When this creature enters, search your library and/or graveyard for an artifact card with mana value 2 or less you own, reveal it, and put it into your hand. If you search your library this way, shuffle."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this siege enters, you search your library, graveyard, and/or outside the game for an instant or sorcery you own. Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library."
+        ),
+        "When this Siege enters, search your library, graveyard, and/or outside the game for an instant or sorcery card you own, reveal it, and put it into your hand. If you search your library this way, shuffle."
+    );
+}
+
+#[test]
+fn normalize_optional_multi_zone_search_shuffle_linkage() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, you may search your graveyard, hand, and/or library for an Aura card and put it onto the battlefield attached to this creature. If you do, shuffle your library."
+        ),
+        "When this creature enters, you may search your graveyard, hand, and/or library for an Aura card and put it onto the battlefield attached to this creature. If you search your library this way, shuffle."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "When this creature enters, you may search your library and/or graveyard for a Rune card, reveal it, and put it into your hand. If you do, shuffle your library."
+        ),
+        "When this creature enters, you may search your library and/or graveyard for a Rune card, reveal it, and put it into your hand. If you search your library this way, shuffle."
+    );
+}
+
+#[test]
+fn normalize_bionic_blow_omits_tautological_x_tail() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Target creature you control gets +X/+0 until end of turn, where X is X, then that creature deals damage equal to its power to up to one other target creature."
+        ),
+        "Target creature you control gets +X/+0 until end of turn, then that creature deals damage equal to its power to up to one other target creature."
     );
 }
 
@@ -783,6 +1131,12 @@ fn normalize_bottom_batch_look_choose_and_hand_choice_surfaces() {
             "{2}, {T}, Sacrifice this artifact: Search target player's library for exactly 3 cards, exile them. Target player shuffles."
         ),
         "{2}, {T}, Sacrifice this artifact: Search target player's library for three cards and exile them. Then that player shuffles."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Search target player's library for a card, exile it, then shuffle target player's library."
+        ),
+        "Search target player's library for a card and exile it. Then that player shuffles."
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
@@ -1145,13 +1499,32 @@ fn normalize_defender_attack_permission_surface() {
 }
 
 #[test]
+fn tagged_set_with_each_surface_renders_each_of_them() {
+    let effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(TagKey::from("untapped_0")),
+        crate::continuous::Modification::ModifyPowerToughness {
+            power: 1,
+            toughness: 1,
+        },
+        Until::EndOfTurn,
+    )
+    .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+
+    assert_eq!(
+        describe_apply_continuous_target(&effect),
+        ("each of them".to_string(), false)
+    );
+}
+
+#[test]
 fn land_animation_prefers_still_land_surface_for_land_targets() {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
     let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
         target,
         crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
         Until::EndOfTurn,
-    );
+    )
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand));
     effect
         .additional_modifications
         .push(crate::continuous::Modification::SetPowerToughness {
@@ -1175,6 +1548,113 @@ fn land_animation_prefers_still_land_surface_for_land_targets() {
 }
 
 #[test]
+fn attached_land_animation_is_singular_and_quotes_its_granted_ability() {
+    let mut filter = ObjectFilter::default().with_subtype(Subtype::Swamp);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("enchanted"),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Object(filter),
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    )
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(2),
+            toughness: Value::Fixed(2),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Spirit]),
+        crate::continuous::Modification::AddAbilityGeneric(Ability::static_ability(
+            crate::static_abilities::StaticAbility::trample(),
+        )),
+    ]);
+
+    let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+    let rendered = describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+        .expect("attached land animation should render structurally");
+
+    assert!(
+        rendered.starts_with("Until end of turn, enchanted Swamp becomes"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("\"Trample.\""), "{rendered}");
+    assert!(rendered.ends_with("It's still a land"), "{rendered}");
+    assert!(!rendered.contains("All enchanted"), "{rendered}");
+}
+
+#[test]
+fn plain_type_setting_animation_omits_addition_surface() {
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::SetCardTypes(vec![CardType::Creature]),
+        Until::Forever,
+    );
+    effect
+        .additional_modifications
+        .push(crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(5),
+            toughness: Value::Fixed(3),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        });
+    effect.additional_modifications.push(
+        crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+            crate::types::SubtypeFamily::Creature,
+        ),
+    );
+    effect
+        .additional_modifications
+        .push(crate::continuous::Modification::AddSubtypes(vec![
+            Subtype::Soldier,
+        ]));
+    effect
+        .additional_modifications
+        .push(crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::trample(),
+        ));
+
+    let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+    let rendered = describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+        .expect("type-setting animation should render structurally");
+    assert!(rendered.contains("soldier creature"), "{rendered}");
+    assert!(
+        rendered.contains("base power and toughness 5/3"),
+        "{rendered}"
+    );
+    assert!(!rendered.contains("in addition to"), "{rendered}");
+
+    let reset = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::SetCardTypes(vec![CardType::Enchantment]),
+        Until::Forever,
+    );
+    assert_eq!(
+        describe_apply_continuous_effect(&reset).as_deref(),
+        Some("This permanent becomes an enchantment")
+    );
+
+    let mut land_reset = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land())),
+        crate::continuous::Modification::SetCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    );
+    land_reset
+        .additional_modifications
+        .push(crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(3),
+            toughness: Value::Fixed(3),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        });
+    let (target_text, plural_target) = describe_apply_continuous_target(&land_reset);
+    let rendered =
+        describe_apply_continuous_animation_effect(&land_reset, &target_text, plural_target)
+            .expect("land type-setting animation should render structurally");
+    assert!(!rendered.contains("still a land"), "{rendered}");
+}
+
+#[test]
 fn subtype_dynamic_land_animation_keeps_addition_surface() {
     let target = ChooseSpec::target(ChooseSpec::Object(
         ObjectFilter::default().with_subtype(Subtype::Forest),
@@ -1183,7 +1663,10 @@ fn subtype_dynamic_land_animation_keeps_addition_surface() {
         target,
         crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
         Until::EndOfTurn,
-    );
+    )
+    .with_type_retention_surface(Some(
+        ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes,
+    ));
     effect
         .additional_modifications
         .push(crate::continuous::Modification::SetPowerToughness {
@@ -1222,7 +1705,10 @@ fn plural_subtype_land_animation_keeps_addition_surface() {
         target,
         crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
         Until::EndOfTurn,
-    );
+    )
+    .with_type_retention_surface(Some(
+        ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes,
+    ));
     effect
         .additional_modifications
         .push(crate::continuous::Modification::SetPowerToughness {
@@ -1289,6 +1775,72 @@ fn cant_block_token_blueprint_uses_with_clause() {
     assert_eq!(
         describe_token_blueprint(&token),
         "1/1 black Fungus creature token with \"This token can't block.\""
+    );
+}
+
+#[test]
+fn inline_token_rule_surfaces_prefer_with_and_trim_nonfinal_periods() {
+    assert!(token_extra_abilities_prefer_with_clause(&[
+        "\"This token gets +2/+2 as long as an artifact entered this turn.\"".to_string(),
+    ]));
+    assert!(token_extra_abilities_prefer_with_clause(&[
+        "\"Spells you cast cost {2} less to cast.\"".to_string(),
+        "\"{T}: Draw a card.\"".to_string(),
+    ]));
+
+    let mut abilities = vec![
+        "\"Spells you cast cost {2} less to cast.\"".to_string(),
+        "\"{T}: Draw a card.\"".to_string(),
+    ];
+    strip_nonfinal_quoted_ability_periods(&mut abilities);
+    assert_eq!(abilities[0], "\"Spells you cast cost {2} less to cast\"");
+    assert_eq!(abilities[1], "\"{T}: Draw a card.\"");
+}
+
+#[test]
+fn characteristic_defining_token_blueprint_omits_placeholder_zero_zero() {
+    let count = Value::Count(ObjectFilter::land().you_control());
+    let token =
+        crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::from_raw(1), "Ox")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Ox])
+            .color_indicator(crate::ColorSet::BLUE)
+            .power_toughness(crate::PowerToughness::fixed(0, 0))
+            .with_ability(Ability::static_ability(
+                crate::static_abilities::StaticAbility::characteristic_defining_pt(
+                    count.clone(),
+                    count,
+                ),
+            ))
+            .build();
+
+    let blueprint = describe_token_blueprint(&token);
+    assert!(!blueprint.contains("0/0"), "{blueprint}");
+    assert!(
+        blueprint.starts_with("blue Ox creature token with "),
+        "{blueprint}"
+    );
+}
+
+#[test]
+fn legendary_named_artifact_token_blueprint_uses_leading_name_surface() {
+    let token = crate::cards::builders::CardDefinitionBuilder::new(
+        crate::ids::CardId::from_raw(1),
+        "Tamiyo's Notebook",
+    )
+    .token()
+    .supertypes(vec![crate::types::Supertype::Legendary])
+    .card_types(vec![CardType::Artifact])
+    .subtypes(vec![Subtype::Book])
+    .with_ability(Ability::static_ability(
+        crate::static_abilities::StaticAbility::make_colorless(ObjectFilter::source()),
+    ))
+    .build();
+
+    assert_eq!(
+        describe_token_blueprint(&token),
+        "Tamiyo's Notebook, a legendary colorless Book artifact token"
     );
 }
 

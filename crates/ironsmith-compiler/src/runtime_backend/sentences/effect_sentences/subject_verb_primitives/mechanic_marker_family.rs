@@ -159,6 +159,17 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_you_and_target_player_each_draw
     ),
     primitive!(
+        "you-and-player-each-sacrifice",
+        92,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        parse_sentence_you_and_player_each_sacrifice
+    ),
+    primitive!(
         "you-and-player-each-gain-or-lose-life",
         95,
         PreDiagnostic,
@@ -512,6 +523,16 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         parse_sentence_cant_effect
     ),
     primitive!(
+        "serial-target-pt-modifiers",
+        375,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("until"),
+            LexRuleHeadHint::Single("target"),
+        ],
+        parse_sentence_serial_target_pt_modifiers
+    ),
+    primitive!(
         "compound-damage-fanout",
         380,
         PostDiagnostic,
@@ -598,10 +619,13 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         parse_sentence_delayed_next_step_unless_pays
     ),
     primitive!(
-        "search-delayed-next-upkeep-unless-pays-lose-game",
+        "delayed-next-upkeep-unless-pays-lose-game",
         520,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("search")],
+        &[
+            LexRuleHeadHint::Single("search"),
+            LexRuleHeadHint::Single("the"),
+        ],
         parse_sentence_delayed_next_upkeep_unless_pays_lose_game
     ),
     primitive!(

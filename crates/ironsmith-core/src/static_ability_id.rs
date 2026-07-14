@@ -47,11 +47,13 @@ pub enum StaticAbilityId {
     Wither,
     Infect,
     Changeling,
+    LivingMetal,
     Partner,
     PartnerWith,
     StartYourEngines,
     DoctorsCompanion,
     Assist,
+    Ascend,
     SplitSecond,
     Rebound,
     Cascade,
@@ -157,6 +159,7 @@ pub enum StaticAbilityId {
     CantBeCountered,
     PlayersCantCycle,
     PlayersSkipUpkeep,
+    PlayerSkipsDrawStep,
     DamageNotRemovedDuringCleanup,
     BlackManaMayBePaidWithLife,
     DieRollResultAdjustment,
@@ -166,6 +169,7 @@ pub enum StaticAbilityId {
     ChooseColorAsBecomesAttached,
     ChoosePlayerAsEnters,
     NoteLifeTotalAsEnters,
+    DiscardHandAsEnters,
     RevealFromHandAsEnters,
     ChooseCardNameAsEnters,
     ChooseBasicLandTypeAsEnters,
@@ -325,11 +329,13 @@ impl StaticAbilityId {
             | Wither
             | Infect
             | Changeling
+            | LivingMetal
             | Partner
             | PartnerWith
             | StartYourEngines
             | DoctorsCompanion
             | Assist
+            | Ascend
             | SplitSecond
             | Rebound
             | Cascade
@@ -435,6 +441,7 @@ impl StaticAbilityId {
             | CantBeCountered
             | PlayersCantCycle
             | PlayersSkipUpkeep
+            | PlayerSkipsDrawStep
             | DamageNotRemovedDuringCleanup
             | BlackManaMayBePaidWithLife
             | DieRollResultAdjustment
@@ -444,6 +451,7 @@ impl StaticAbilityId {
             | ChooseColorAsBecomesAttached
             | ChoosePlayerAsEnters
             | NoteLifeTotalAsEnters
+            | DiscardHandAsEnters
             | RevealFromHandAsEnters
             | ChooseCardNameAsEnters
             | ChooseBasicLandTypeAsEnters
@@ -599,6 +607,7 @@ impl StaticAbilityId {
                 | Wither
                 | Infect
                 | Changeling
+                | LivingMetal
                 | Partner
                 | PartnerWith
                 | DoctorsCompanion
@@ -711,6 +720,7 @@ impl StaticAbilityId {
                 | GrantObjectAbilityForFilter
                 | ControlAttachedPermanent
                 | CharacteristicDefiningPT
+                | LivingMetal
                 | AddCardTypes
                 | RemoveCardTypes
                 | SetCardTypes

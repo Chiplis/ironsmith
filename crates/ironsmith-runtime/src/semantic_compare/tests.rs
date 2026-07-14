@@ -1,8 +1,9 @@
 use super::{
     EmbeddingConfig, compare_card_semantics_scored, compare_semantics_scored,
     compiled_comparison_tokens, conjunction_flips_between,
-    normalize_card_self_references_for_compare, normalize_trigger_subject_for_compare,
-    reminder_clauses, semantic_clauses, strip_reminder_text_for_comparison,
+    normalize_card_self_references_for_compare, normalize_repeated_you_after_draw,
+    normalize_trigger_subject_for_compare, reminder_clauses, semantic_clauses,
+    semantic_clauses_for_compare, strip_reminder_text_for_comparison,
 };
 
 fn strict_embedding() -> Option<EmbeddingConfig> {
@@ -22,6 +23,295 @@ fn exact_normalized_clause_match_beats_special_mismatch_penalties() {
     assert_eq!(similarity, 1.0);
     assert_eq!(delta, 0);
     assert!(!mismatch);
+}
+
+#[test]
+fn d20_numeric_ranges_ignore_typographic_dash_choice() {
+    let oracle = "Roll a d20.\n1-9 | Each player draws a card.\n10-19 | You draw a card.";
+    let compiled = vec![
+        "Roll a d20.".to_string(),
+        "1—9 | Each player draws a card.".to_string(),
+        "10—19 | draw a card.".to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) = compare_card_semantics_scored(
+        "Mathise, Surge Channeler",
+        oracle,
+        &compiled,
+        strict_embedding(),
+    );
+
+    assert_eq!(delta, 0);
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "similarity={similarity} mismatch={mismatch}"
+    );
+}
+
+#[test]
+fn repeated_you_subject_in_draw_life_clause_compares_to_implied_subject() {
+    for (card_name, oracle, compiled) in [
+        (
+            "Phyrexian Gargantua",
+            "When this creature enters, you draw two cards and you lose 2 life.",
+            "When this creature enters, draw two cards and lose 2 life.",
+        ),
+        (
+            "Infernal Idol",
+            "{1}{B}{B}, {T}, Sacrifice this artifact: You draw two cards and you lose 2 life.",
+            "{1}{B}{B}, {T}, Sacrifice this artifact: Draw two cards and lose 2 life.",
+        ),
+        (
+            "Cut of the Profits",
+            "You draw X cards and you lose X life.",
+            "Draw X cards and you lose X life.",
+        ),
+    ] {
+        let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+            compare_card_semantics_scored(
+                card_name,
+                oracle,
+                &[compiled.to_string()],
+                strict_embedding(),
+            );
+
+        assert_eq!(delta, 0, "{card_name}");
+        assert!(
+            similarity >= 0.99 && !mismatch,
+            "{card_name}: similarity={similarity} mismatch={mismatch}"
+        );
+    }
+}
+
+#[test]
+fn draw_subject_normalization_does_not_merge_a_serial_effect_list() {
+    let oracle = "At the beginning of your upkeep, sacrifice a creature.\nWhen you sacrifice this creature, each opponent discards a card, you draw a card, and you gain 2 life.";
+    let compiled = vec![
+        "At the beginning of your upkeep, sacrifice a creature.".to_string(),
+        "When you sacrifice this creature, draw a card, then gain 2 life.".to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_card_semantics_scored("Daemogoth Woe-Eater", oracle, &compiled, strict_embedding());
+
+    assert!(mismatch, "the missing opponent discard must remain visible");
+    assert!(
+        similarity >= 0.97,
+        "unexpected score regression: {similarity}"
+    );
+}
+
+#[test]
+fn draw_subject_normalization_handles_direct_and_triggered_draw_heads() {
+    assert_eq!(
+        normalize_repeated_you_after_draw(
+            "Draw two cards, then discard a card and you lose 2 life."
+        ),
+        "Draw two cards, then discard a card and lose 2 life."
+    );
+    assert_eq!(
+        normalize_repeated_you_after_draw(
+            "Whenever you draw a card, put a +1/+1 counter on this and you gain 1 life."
+        ),
+        "Whenever you draw a card, put a +1/+1 counter on this and gain 1 life."
+    );
+    assert_eq!(
+        normalize_repeated_you_after_draw(
+            "When you sacrifice this creature, each opponent discards a card, you draw a card, and you gain 2 life."
+        ),
+        "When you sacrifice this creature, each opponent discards a card, you draw a card, and you gain 2 life."
+    );
+}
+
+#[test]
+fn carried_player_coreferences_compare_without_hiding_missing_effects() {
+    for (card_name, oracle, compiled, prior_score) in [
+        (
+            "Cloak and Dagger, Entwined",
+            "Deathtouch, lifelink\nWhen Cloak and Dagger enter, choose target opponent and up to one target creature they control. They reveal their hand. You may exile a nonland card from their hand or the chosen creature until Cloak and Dagger leave the battlefield.",
+            "Deathtouch, lifelink\nWhen Cloak and Dagger enters, target opponent reveals their hand. You may exile a nonland creature card from that player's hand.",
+            0.8861,
+        ),
+        (
+            "Covetous Urge",
+            "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+            "Target opponent reveals their hand, choose a nonland permanent that player owns in a graveyard or in a hand, exile it, then you may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+            0.8392,
+        ),
+        (
+            "Psychic Intrusion",
+            "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+            "Target opponent reveals their hand, choose a nonland permanent that player owns in a graveyard or in a hand, exile it, then you may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+            0.8392,
+        ),
+    ] {
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(
+                card_name,
+                oracle,
+                &[compiled.to_string()],
+                strict_embedding(),
+            );
+        assert!(
+            similarity + f32::EPSILON >= prior_score,
+            "{card_name}: score regressed to {similarity}"
+        );
+        assert!(
+            mismatch,
+            "{card_name}: genuine missing semantics were hidden"
+        );
+    }
+
+    let oracle = "Target player reveals their hand. You gain life equal to the number of cards in that player's hand.";
+    let compiled = vec![
+        "Target player reveals their hand, then gain life equal to the number of cards in their hand."
+            .to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        compare_card_semantics_scored("Search Warrant", oracle, &compiled, strict_embedding());
+    assert_eq!(delta, 0);
+    assert!(similarity >= 0.99 && !mismatch, "similarity={similarity}");
+}
+
+#[test]
+fn antecedent_normalization_preserves_identical_text_score_baselines() {
+    let cases: [(&str, &str, &[&str], f32); 6] = [
+        (
+            "Breathkeeper Seraph",
+            "Flying, soulbond\nAs long as Breathkeeper Seraph is paired with another creature, each of those creatures has \"When this creature dies, you may return it to the battlefield under its owner's control at the beginning of your next upkeep.\"",
+            &[
+                "Flying",
+                "Soulbond",
+                "As long as this creature is paired with another creature, each of those creatures has \"When this creature dies, may At the beginning of your next upkeep, return it to the battlefield under its owner's control.\"",
+            ],
+            0.9045,
+        ),
+        (
+            "Cabal Interrogator",
+            "{X}{B}, {T}: Target player reveals X cards from their hand and you choose one of them. That player discards that card. Activate only as a sorcery.",
+            &[
+                "{X}{B}, {T}: Reveal it, choose a permanent revealed this way on the battlefield, in a hand, in a graveyard, in a library, or in exile, then discard that card. Activate only as a sorcery.",
+            ],
+            0.9222,
+        ),
+        (
+            "Conqueror's Flail",
+            "Equipped creature gets +1/+1 for each color among permanents you control.\nAs long as this Equipment is attached to a creature, your opponents can't cast spells during your turn.\nEquip {2}",
+            &[
+                "Equipped creature gets +1/+1 for each permanent you control.",
+                "Your opponents can't cast spells as long as this creature is equipped and during your turn.",
+                "Equip {2}",
+            ],
+            0.9728,
+        ),
+        (
+            "Raksha Golden Cub",
+            "Vigilance\nAs long as Raksha Golden Cub is equipped, Cat creatures you control get +2/+2 and have double strike.",
+            &[
+                "Vigilance",
+                "Cat creatures you control get +2/+2 as long as this creature is equipped.",
+                "As long as Raksha Golden Cub is equipped, Cat creatures you control have double strike.",
+            ],
+            0.9822,
+        ),
+        (
+            "Rhystic Syphon",
+            "Unless target player pays {3}, that player loses 5 life and you gain 5 life.",
+            &["That player loses 5 life. You gain 5 life unless target player pays {3}."],
+            0.8622,
+        ),
+        (
+            "Thieving Sprite",
+            "Flying\nWhen this creature enters, target player reveals X cards from their hand, where X is the number of Faeries you control. You choose one of those cards. That player discards that card.",
+            &[
+                "Flying",
+                "When this creature enters, reveal it. You choose a card. You discard that card.",
+            ],
+            0.8687,
+        ),
+    ];
+
+    for (card_name, oracle, compiled, baseline) in cases {
+        let compiled = compiled
+            .iter()
+            .map(|line| (*line).to_string())
+            .collect::<Vec<_>>();
+        let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+            compare_card_semantics_scored(card_name, oracle, &compiled, strict_embedding());
+        assert!(
+            similarity + f32::EPSILON >= baseline,
+            "{card_name}: {similarity} fell below {baseline}"
+        );
+        assert!(mismatch, "{card_name}: known missing semantics were hidden");
+    }
+}
+
+#[test]
+fn unpaired_self_copula_surface_is_not_rewritten_during_clause_normalization() {
+    for oracle_line in [
+        "Enchanted creature gets +3/+3 as long as it's a Zombie. Otherwise, it gets -3/-3.",
+        "Enchanted creature gets +2/+2 as long as it's a Vampire. Otherwise, it gets -2/-2.",
+        "Enchanted creature gets +2/+2 as long as it's an enchantment. Otherwise, it gets -2/-2.",
+        "Enchanted creature gets +2/+1 as long as it's black. Otherwise, it gets -1/-2.",
+        "Enchanted creature gets +0/+2 as long as it's a Pirate. Otherwise, it gets -2/-0.",
+        "Enchanted creature gets +1/+2 as long as it's white. Otherwise, it gets -2/-1.",
+        "Enchanted creature gets +3/+0 as long as it's attacking. Otherwise, it gets -2/-1.",
+        "As long as it's your turn, this creature has first strike.",
+        "As long as it's your turn and you control an Army, this creature is an artifact creature.",
+    ] {
+        let clauses = semantic_clauses_for_compare(oracle_line);
+        assert!(
+            clauses.iter().any(|clause| clause.contains("it's")),
+            "unpaired contraction was rewritten and would perturb unchanged-card scores: {clauses:?}"
+        );
+        assert!(
+            clauses.iter().all(|clause| !clause.contains("this is")),
+            "unpaired contraction was expanded during independent normalization: {clauses:?}"
+        );
+    }
+}
+
+#[test]
+fn repeated_filtered_set_and_self_source_coreferences_compare_structurally() {
+    let oracle = "Creatures you control get +1/+1 until end of turn. If you have the city's blessing, those creatures get +2/+2 until end of turn instead.";
+    let compiled = vec!["Each creature you control gets +1/+1 until end of turn. If you have the city's blessing, each creature you control gets +2/+2 until end of turn instead.".to_string()];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        compare_card_semantics_scored("Pride of Conquerors", oracle, &compiled, strict_embedding());
+    assert_eq!(delta, 0);
+    assert!(similarity >= 0.99 && !mismatch, "similarity={similarity}");
+
+    let under_filtered = vec!["Creatures you control get +1/+1 until end of turn. If you have the city's blessing, creatures get +2/+2 until end of turn instead.".to_string()];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) = compare_card_semantics_scored(
+        "Pride of Conquerors",
+        oracle,
+        &under_filtered,
+        strict_embedding(),
+    );
+    assert!(
+        mismatch && similarity < 1.0,
+        "missing controller was hidden"
+    );
+
+    let oracle = "As long as this creature is attacking, it gets +X/+0.";
+    let compiled = vec!["This creature gets +X/+0 as long as it's attacking.".to_string()];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        compare_card_semantics_scored("Elturel Survivors", oracle, &compiled, strict_embedding());
+    assert_eq!(delta, 0);
+    assert!(similarity >= 0.99 && !mismatch, "similarity={similarity}");
+}
+
+#[test]
+fn coreference_normalization_does_not_mask_pact_weapon_regressions() {
+    let oracle = "As long as this Equipment is attached to a creature, you don't lose the game for having 0 or less life.\nWhenever equipped creature attacks, draw a card and reveal it. The creature gets +X/+X until end of turn and you lose X life, where X is that card's mana value.\nEquip—Discard a card.";
+    let compiled = vec![
+        "You don't lose the game for having 0 or less life as long as this creature is equipped."
+            .to_string(),
+        "Whenever equipped creature attacks, draw a card, reveal it, creatures get +X/+X until end of turn, where X is its mana value, then lose X life, where X is that creature's mana value."
+            .to_string(),
+        "Equip Discard a card".to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_card_semantics_scored("Pact Weapon", oracle, &compiled, strict_embedding());
+    assert!(mismatch, "Pact Weapon's overbroad pump was hidden");
+    assert!(similarity >= 0.9291, "score regressed to {similarity}");
 }
 
 #[test]
@@ -477,6 +767,49 @@ fn compare_semantics_normalizes_object_controller_wording() {
 }
 
 #[test]
+fn compare_semantics_normalizes_possessive_object_anaphors() {
+    let oracle = "You gain life equal to that creature's toughness.";
+    let compiled = vec![String::from("You gain life equal to its toughness.")];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_semantics_scored(oracle, &compiled, strict_embedding());
+    assert!(
+        similarity >= 0.99,
+        "expected possessive object anaphors to compare identically, got {similarity}"
+    );
+    assert!(!mismatch);
+}
+
+#[test]
+fn compare_semantics_normalizes_end_of_turn_play_permission_surfaces() {
+    let oracle = "Exile the top card of your library. Until end of turn, you may play it.";
+    let compiled = vec![String::from(
+        "Exile the top card of your library, then you may play them this turn.",
+    )];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_semantics_scored(oracle, &compiled, strict_embedding());
+    assert!(
+        similarity >= 0.99,
+        "expected end-of-turn permission surfaces to compare identically, got {similarity}"
+    );
+    assert!(!mismatch);
+}
+
+#[test]
+fn compare_semantics_normalizes_remainder_sentence_split() {
+    let oracle = "Reveal the top eight cards of your library. Put up to two artifact cards from among them onto the battlefield and the rest on the bottom of your library in a random order.";
+    let compiled = vec![String::from(
+        "Reveal the top eight cards of your library. Put up to two artifact cards from among them onto the battlefield. Put the rest on the bottom of your library in a random order.",
+    )];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_semantics_scored(oracle, &compiled, strict_embedding());
+    assert!(
+        similarity >= 0.99,
+        "expected remainder sentence split to compare identically, got {similarity}"
+    );
+    assert!(!mismatch);
+}
+
+#[test]
 fn compare_semantics_normalizes_not_named_and_exiled_return_phrasing() {
     let oracle = "When this enchantment enters, you may exile target nonland permanent not named Detention Sphere and all other permanents with the same name as that permanent. When this enchantment leaves the battlefield, return the exiled cards to the battlefield under their owner's control.";
     let compiled = vec![
@@ -689,6 +1022,23 @@ fn compare_semantics_keeps_side_effect_on_second_mana_ability() {
     assert!(
         !mismatch,
         "expected no mismatch for side-effect mana ability"
+    );
+}
+
+#[test]
+fn compare_semantics_keeps_separate_same_cost_mana_abilities() {
+    let oracle = "{T}: Add {C}.\n{T}: Add {B} or {R}.";
+    let compiled = vec![
+        String::from("Mana ability 1: {T}: Add {C}."),
+        String::from("Mana ability 2: {T}: Add {B} or {R}."),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        compare_semantics_scored(oracle, &compiled, strict_embedding());
+    assert_eq!(similarity, 1.0);
+    assert_eq!(delta, 0);
+    assert!(
+        !mismatch,
+        "separate mana abilities must not become one choice"
     );
 }
 
@@ -2171,4 +2521,30 @@ fn compare_semantics_normalizes_urzas_saga_zero_or_one_mana_cost_wording() {
         !mismatch,
         "expected no mismatch for urza-saga mana-cost wording"
     );
+}
+
+#[test]
+fn compare_semantics_normalizes_zombie_ogre_morbid_condition_surface() {
+    let oracle = "At the beginning of your end step, if a creature died this turn, venture into the dungeon.";
+    let compiled = vec![String::from(
+        "At the beginning of your end step, if one or more creatures died this turn, venture into the dungeon.",
+    )];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_semantics_scored(oracle, &compiled, strict_embedding());
+    assert!(similarity >= 0.99, "score={similarity}");
+    assert!(!mismatch);
+}
+
+#[test]
+fn compare_semantics_normalizes_arrest_split_prison_surface() {
+    let oracle = "Enchant creature\nEnchanted creature can't attack or block, and its activated abilities can't be activated.";
+    let compiled = vec![
+        "Enchant creature".to_string(),
+        "Enchanted creature can't attack or block.".to_string(),
+        "Enchanted creature activated abilities can't be activated.".to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        compare_semantics_scored(oracle, &compiled, strict_embedding());
+    assert!(similarity >= 0.99, "score={similarity}");
+    assert!(!mismatch);
 }

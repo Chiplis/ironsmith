@@ -1,7 +1,7 @@
 //! Move to zone effect implementation.
 
 use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
+use crate::decisions::context::{OrderContext, SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_filter, resolve_tagged_object_id,
@@ -25,8 +25,127 @@ use super::{
     take_recorded_zone_change,
 };
 pub use ironsmith_core::BattlefieldController;
+pub type LibraryPlacementOrder = ironsmith_core::LibraryPlacementOrder;
 pub type MoveToZoneAttackTargetMode = ironsmith_core::MoveToZoneAttackTargetMode;
 pub type MoveToZoneEffect = ironsmith_core::MoveToZoneEffect;
+
+fn normalize_order_response(
+    response: Vec<crate::ids::ObjectId>,
+    original: &[crate::ids::ObjectId],
+) -> Vec<crate::ids::ObjectId> {
+    let mut remaining = original.to_vec();
+    let mut ordered = Vec::with_capacity(original.len());
+    for object_id in response {
+        if let Some(position) = remaining
+            .iter()
+            .position(|candidate| *candidate == object_id)
+        {
+            ordered.push(remaining.remove(position));
+        }
+    }
+    ordered.extend(remaining);
+    ordered
+}
+
+fn order_library_move_objects(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    object_ids: Vec<crate::ids::ObjectId>,
+    order: &LibraryPlacementOrder,
+    to_top: bool,
+) -> Result<Vec<crate::ids::ObjectId>, ExecutionError> {
+    if object_ids.len() <= 1 {
+        return Ok(object_ids);
+    }
+
+    match order {
+        LibraryPlacementOrder::Random => {
+            let mut ordered = object_ids;
+            game.shuffle_slice(&mut ordered);
+            Ok(ordered)
+        }
+        LibraryPlacementOrder::ChosenBy(player) => {
+            let chooser = resolve_player_filter(game, player, ctx)?;
+            let position = if to_top { "top" } else { "bottom" };
+            let edge = if to_top { "topmost" } else { "bottom-most" };
+            let items = object_ids
+                .iter()
+                .map(|object_id| {
+                    let name = game
+                        .object(*object_id)
+                        .map(|object| object.name.to_string())
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    (*object_id, name)
+                })
+                .collect();
+            let order_ctx = OrderContext::new(
+                chooser,
+                Some(ctx.source),
+                format!(
+                    "Order the selected cards for the {position} of the library. The first option becomes the {edge} card."
+                ),
+                items,
+            );
+            Ok(normalize_order_response(
+                ctx.decision_maker.decide_order(game, &order_ctx),
+                &object_ids,
+            ))
+        }
+    }
+}
+
+/// Rebuild each affected library after all zone-change replacements resolve.
+/// `placed_ids` is in player-facing order: topmost first for top placement,
+/// bottom-most first for bottom placement.
+fn apply_library_placement_order(
+    game: &mut GameState,
+    placed_ids: &[crate::ids::ObjectId],
+    to_top: bool,
+) {
+    let mut by_owner: Vec<(PlayerId, Vec<crate::ids::ObjectId>)> = Vec::new();
+    for &object_id in placed_ids {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if object.zone != Zone::Library {
+            continue;
+        }
+        let owner = object.owner;
+        if let Some((_, ids)) = by_owner
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == owner)
+        {
+            if !ids.contains(&object_id) {
+                ids.push(object_id);
+            }
+        } else {
+            by_owner.push((owner, vec![object_id]));
+        }
+    }
+
+    for (owner, ordered_ids) in by_owner {
+        let Some(current) = game.player(owner).map(|player| player.library.clone()) else {
+            continue;
+        };
+        let mut unaffected = current
+            .into_iter()
+            .filter(|object_id| !ordered_ids.contains(object_id))
+            .collect::<Vec<_>>();
+        let final_order = if to_top {
+            unaffected.extend(ordered_ids.iter().rev().copied());
+            unaffected
+        } else {
+            let mut bottom_first = ordered_ids;
+            bottom_first.extend(unaffected);
+            bottom_first
+        };
+        game.set_player_library_order_with_audit(
+            owner,
+            final_order,
+            "ordered multi-card library placement",
+        );
+    }
+}
 
 fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
     let mut targets = Vec::new();
@@ -248,6 +367,12 @@ impl EffectExecutor for MoveToZoneEffect {
         if object_ids.is_empty() {
             return Ok(EffectOutcome::target_invalid());
         }
+        let orders_library = self.zone == Zone::Library && self.library_order.is_some();
+        if let Some(order) = self.library_order.as_ref()
+            && self.zone == Zone::Library
+        {
+            object_ids = order_library_move_objects(game, ctx, object_ids, order, self.to_top)?;
+        }
         let configured_attack_player = match &self.attack_target_mode {
             Some(MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
                 Some(resolve_player_filter(game, player_filter, ctx)?)
@@ -261,6 +386,7 @@ impl EffectExecutor for MoveToZoneEffect {
         let mut any_prevented = false;
         let mut any_replaced = false;
         let mut moved_source_lki = None;
+        let mut ordered_library_results = Vec::new();
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
@@ -296,6 +422,9 @@ impl EffectExecutor for MoveToZoneEffect {
 
             match result {
                 EventOutcome::Prevented => {
+                    if orders_library {
+                        apply_library_placement_order(game, &ordered_library_results, self.to_top);
+                    }
                     return Ok(EffectOutcome::prevented());
                 }
                 EventOutcome::Proceed(final_zone) => {
@@ -409,6 +538,9 @@ impl EffectExecutor for MoveToZoneEffect {
                             );
                         }
                         affected_ids.extend(result.new_object_ids.iter().copied());
+                        if orders_library && final_zone == Zone::Library {
+                            ordered_library_results.extend(result.new_object_ids.iter().copied());
+                        }
                         moved_ids.extend(result.new_object_ids.iter().copied());
                         continue;
                     }
@@ -418,8 +550,18 @@ impl EffectExecutor for MoveToZoneEffect {
                 EventOutcome::Replaced => {
                     any_replaced = true;
                     if let Some(result) = take_recorded_zone_change(game, object_id) {
+                        if orders_library && result.final_zone == Zone::Library {
+                            ordered_library_results.extend(result.new_object_ids.iter().copied());
+                        }
                         affected_ids.extend(result.new_object_ids);
                     } else if let Some(result_id) = game.find_object_by_stable_id(stable_id) {
+                        if orders_library
+                            && game
+                                .object(result_id)
+                                .is_some_and(|object| object.zone == Zone::Library)
+                        {
+                            ordered_library_results.push(result_id);
+                        }
                         affected_ids.push(result_id);
                     }
                     affected_memory
@@ -438,6 +580,9 @@ impl EffectExecutor for MoveToZoneEffect {
         }
         if let Some(snapshot) = moved_source_lki {
             ctx.refresh_source_snapshot(snapshot);
+        }
+        if orders_library {
+            apply_library_placement_order(game, &ordered_library_results, self.to_top);
         }
 
         if !moved_ids.is_empty() {
@@ -674,6 +819,70 @@ mod tests {
             game.combat.is_none(),
             "no attacker should be added without combat"
         );
+    }
+
+    #[test]
+    fn battlefield_move_records_exact_source_relative_object_identity() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source =
+            create_named_creature_in_zone(&mut game, alice, "Linked Source", Zone::Battlefield);
+        let other_source =
+            create_named_creature_in_zone(&mut game, alice, "Other Source", Zone::Battlefield);
+        let card = create_named_creature_in_zone(&mut game, alice, "Linked Card", Zone::Hand);
+
+        let mut source_ctx = ExecutionContext::new_default(source, alice);
+        let moved =
+            MoveToZoneEffect::new(ChooseSpec::SpecificObject(card), Zone::Battlefield, false)
+                .execute(&mut game, &mut source_ctx)
+                .expect("source move should resolve")
+                .affected_objects()
+                .and_then(|objects| objects.first().copied())
+                .expect("battlefield move should report the new identity");
+
+        let mut linked_filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        linked_filter.put_onto_battlefield_with_source = true;
+        let filter_ctx = source_ctx.filter_context(&game);
+        assert!(linked_filter.matches(
+            game.object(moved).expect("moved card should exist"),
+            &filter_ctx,
+            &game,
+        ));
+        assert!(
+            !linked_filter.matches(
+                game.object(other_source)
+                    .expect("other source should exist"),
+                &filter_ctx,
+                &game,
+            )
+        );
+
+        // A later zone change produces a new identity. If another source puts
+        // that card back, it must not satisfy the original source's link.
+        let mut other_ctx = ExecutionContext::new_default(other_source, alice);
+        let in_hand = MoveToZoneEffect::new(ChooseSpec::SpecificObject(moved), Zone::Hand, false)
+            .execute(&mut game, &mut other_ctx)
+            .expect("move out should resolve")
+            .affected_objects()
+            .and_then(|objects| objects.first().copied())
+            .expect("move out should report the new identity");
+        let returned = MoveToZoneEffect::new(
+            ChooseSpec::SpecificObject(in_hand),
+            Zone::Battlefield,
+            false,
+        )
+        .execute(&mut game, &mut other_ctx)
+        .expect("other source move should resolve")
+        .affected_objects()
+        .and_then(|objects| objects.first().copied())
+        .expect("return should report the new identity");
+
+        let filter_ctx = source_ctx.filter_context(&game);
+        assert!(!linked_filter.matches(
+            game.object(returned).expect("returned card should exist"),
+            &filter_ctx,
+            &game,
+        ));
     }
 
     #[test]

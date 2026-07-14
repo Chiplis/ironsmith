@@ -5,7 +5,7 @@ use super::super::grammar::effects::{
     split_choose_new_targets_clause_lexed,
 };
 use super::super::grammar::trigger_surface;
-use super::super::lexer::LexedClause;
+use super::super::lexer::{LexedClause, TokenWordView};
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -24,7 +24,7 @@ use crate::cards::builders::{
     SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
 pub(crate) type ClausePrimitiveParser =
@@ -292,6 +292,9 @@ pub(crate) fn run_clause_primitives(
             parser: parse_deal_damage_equal_to_power_clause,
         },
         ClausePrimitive {
+            parser: parse_anaphoric_object_deals_damage_clause,
+        },
+        ClausePrimitive {
             parser: parse_fight_clause,
         },
         ClausePrimitive {
@@ -488,8 +491,11 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
         return Ok(None);
     }
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
+    let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+    } else if let Some(filter) = result_filter.clone() {
+        TargetAst::Object(filter, None, clause.span())
     } else {
         parse_target_phrase(subject_clause.tokens())?
     };
@@ -530,8 +536,11 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
         return Ok(None);
     }
     let subject_clause = LexedClause::new(shape.subject_tokens).trimmed();
+    let result_filter = parse_dealt_damage_this_way_subject_filter(subject_clause.tokens())?;
     let target = if subject_clause.is_empty() {
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+    } else if let Some(filter) = result_filter.clone() {
+        TargetAst::Object(filter, None, clause.span())
     } else {
         parse_target_phrase(subject_clause.tokens())?
     };
@@ -557,6 +566,31 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
         vec![ability],
         Until::EndOfTurn,
     )))
+}
+
+fn parse_dealt_damage_this_way_subject_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(suffix_start) = tokens.windows(4).position(|window| {
+        window[0].as_word() == Some("dealt")
+            && window[1].as_word() == Some("damage")
+            && window[2].as_word() == Some("this")
+            && window[3].as_word() == Some("way")
+    }) else {
+        return Ok(None);
+    };
+    if tokens[suffix_start + 4..]
+        .iter()
+        .any(|token| token.as_word().is_some())
+    {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(&tokens[..suffix_start])?;
+    let Some(mut filter) = target_ast_to_object_filter(target) else {
+        return Ok(None);
+    };
+    filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    Ok(Some(filter))
 }
 
 pub(crate) fn parse_must_be_blocked_if_able_clause(
@@ -759,6 +793,17 @@ pub(crate) fn parse_must_block_if_able_clause(
             }
             let attacker_filter = if clause_shapes::is_it_reference_shape(attacker_clause.tokens())
             {
+                // Preserve the object denoted by `it` before lowering the
+                // blocker target declaration. In a triggered ability this is
+                // already the triggering object; in a spell such as Feral
+                // Contest it is the target established by the prior sentence.
+                // The snapshot is lowering-only and emits no runtime effect.
+                target_declarations.insert(
+                    0,
+                    EffectAst::SnapshotLastObjectTag {
+                        into: TagKey::from("triggering"),
+                    },
+                );
                 ObjectFilter::tagged("triggering")
             } else if super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
                 attacker_clause.tokens(),
@@ -862,6 +907,88 @@ pub(crate) fn is_damage_source_target(target: &TargetAst) -> bool {
     )
 }
 
+pub(crate) fn parse_anaphoric_object_deals_damage_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let Some(deal_idx) = words
+        .iter()
+        .position(|word| matches!(*word, "deal" | "deals"))
+    else {
+        return Ok(None);
+    };
+    let source_words = &words[..deal_idx];
+    if !matches!(
+        source_words,
+        ["it"]
+            | ["that", "token"]
+            | ["that", "creature"]
+            | ["that", "permanent"]
+            | ["that", "card"]
+    ) {
+        return Ok(None);
+    }
+    // Leave conjoined damage clauses to the generic effect-chain parser. It
+    // expands the elided second verb ("and that much damage ...") into a
+    // sibling damage effect, which lets reference resolution bind that amount
+    // to the first damage effect instead of collapsing both clauses here.
+    if words
+        .windows(4)
+        .any(|window| window == ["and", "that", "much", "damage"])
+    {
+        return Ok(None);
+    }
+    let source_range = word_view
+        .token_span_for_words(0, deal_idx)
+        .ok_or_else(|| CardTextError::ParseError("missing damage source".to_string()))?;
+    let body_range = word_view
+        .token_span_for_words(deal_idx + 1, word_view.len())
+        .ok_or_else(|| CardTextError::ParseError("missing damage amount".to_string()))?;
+    let source_tokens = &tokens[source_range];
+    let source = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(source_tokens));
+    let distributed_source = if source_words == ["that", "creature"] {
+        let mut filter = ObjectFilter::creature();
+        filter.zone = Some(Zone::Battlefield);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        TargetAst::Object(filter, span_from_tokens(source_tokens), None)
+    } else {
+        source.clone()
+    };
+    let parsed = super::verb_handlers::parse_deal_damage(&tokens[body_range])?;
+    let EffectAst::SubjectVerb(effect) = parsed else {
+        return Ok(None);
+    };
+    match effect.action {
+        SubjectVerbActionAst::DealDamage {
+            amount,
+            target,
+            unpreventable: false,
+        } => Ok(Some(EffectAst::subject_verb_damage_with_source(
+            source, amount, target,
+        ))),
+        SubjectVerbActionAst::DealDistributedDamage {
+            amount,
+            target,
+            chooser,
+            ..
+        } => Ok(Some(
+            EffectAst::subject_verb_distributed_damage_with_source(
+                amount,
+                target,
+                distributed_source,
+                chooser,
+            ),
+        )),
+        _ => Ok(None),
+    }
+}
+
 pub(crate) fn parse_deal_damage_equal_to_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -879,7 +1006,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             LexedClause::new(tokens).text()
         )));
     }
-    match shape.target {
+    let effect = match shape.target {
         clause_shapes::PowerDamageTargetShape::EachPlayer => Ok(Some(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage_with_source(
                 source,
@@ -907,6 +1034,36 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 target,
             )))
         }
+    }?;
+    if shape.source_is_tagged
+        && TokenWordView::new(shape.source_tokens)
+            .to_word_refs()
+            .first()
+            .is_some_and(|word| *word == "each")
+    {
+        let tapped_idx = shape
+            .source_tokens
+            .iter()
+            .position(|token| token.as_word() == Some("tapped"))
+            .ok_or_else(|| {
+                CardTextError::ParseError("missing tapped-this-way source qualifier".to_string())
+            })?;
+        let mut filter = parse_object_filter(&shape.source_tokens[1..tapped_idx], false)?;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        Ok(effect.map(|effect| EffectAst::ForEachObject {
+            filter,
+            effects: vec![effect],
+        }))
+    } else {
+        Ok(effect)
     }
 }
 
@@ -970,4 +1127,24 @@ pub(crate) fn parse_clash_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     Ok(clause_shapes::parse_clash_shape(tokens).map(EffectAst::subject_verb_clash))
+}
+
+#[cfg(test)]
+mod result_subject_tests {
+    use super::*;
+
+    #[test]
+    fn dealt_damage_this_way_attack_subject_keeps_result_tag() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each creature dealt damage this way attacks this turn if able.",
+            0,
+        )
+        .expect("lex attack followup");
+        let effect = parse_attack_this_turn_if_able_clause(&tokens)
+            .expect("parse attack followup")
+            .expect("match attack followup");
+        let debug = format!("{effect:#?}");
+        assert!(debug.contains("IsTaggedObject"), "{debug}");
+        assert!(debug.contains(IT_TAG), "{debug}");
+    }
 }

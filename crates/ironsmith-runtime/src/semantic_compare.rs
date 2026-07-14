@@ -539,6 +539,46 @@ fn normalize_clause_line(text: &str) -> String {
         .replace(
             "whenever this land attacks",
             "whenever this creature attacks",
+        )
+        // A completed sentence already establishes sequencing. Treat an
+        // additional leading "then" on the following conditional as surface
+        // punctuation, not a distinct semantic operation.
+        .replace(". Then if ", ". If ")
+        .replace(". then if ", ". if ")
+        // Remainder moves are frequently templated as either a continuation
+        // of the chosen-card move or as their own sentence.
+        .replace(". Put the rest on ", " and the rest on ")
+        .replace(". put the rest on ", " and the rest on ")
+        .replace(". Put the rest into ", " and the rest into ")
+        .replace(". put the rest into ", " and the rest into ")
+        // Result predicates use both present and past passive forms in Oracle
+        // text; both ask whether the preceding action affected the object.
+        .replace(" is destroyed this way", " was destroyed this way")
+        .replace(" Is destroyed this way", " Was destroyed this way")
+        .replace(" is exiled this way", " was exiled this way")
+        .replace(" Is exiled this way", " Was exiled this way")
+        .replace(" is milled this way", " was milled this way")
+        .replace(" Is milled this way", " Was milled this way")
+        .replace(" is returned this way", " was returned this way")
+        .replace(" Is returned this way", " Was returned this way")
+        // Both phrases are the same existential morbid condition. Keep the
+        // distinction out of the score while preserving whichever oracle
+        // surface the renderer has enough information to reproduce.
+        .replace(
+            "one or more creatures died this turn",
+            "a creature died this turn",
+        )
+        .replace(
+            "One or more creatures died this turn",
+            "A creature died this turn",
+        )
+        .replace(
+            "one or more creature died this turn",
+            "a creature died this turn",
+        )
+        .replace(
+            "One or more creature died this turn",
+            "A creature died this turn",
         );
     let normalized = normalize_fixed_pt_animation_shorthand(&normalized);
     let normalized = normalize_leading_until_end_of_turn_animation(&normalized);
@@ -563,6 +603,85 @@ fn normalize_that_player_references_for_clause_surface(text: &str) -> String {
         .replace("that player ", "they ")
         .replace(", that player ", ", they ")
         .replace("that player, ", "they, ")
+}
+
+/// Canonicalize player anaphors only after an explicit target-player actor has
+/// been introduced in the same carried effect line. This keeps unrelated
+/// players distinct while equating "their" with "that player's" for the
+/// already-selected player.
+fn normalize_carried_target_player_references(text: &str) -> String {
+    let normalized = text
+        .replace(
+            "Target opponent reveals their hand, choose ",
+            "Target opponent reveals their hand. You choose ",
+        )
+        .replace(
+            "target opponent reveals their hand, choose ",
+            "target opponent reveals their hand. You choose ",
+        )
+        .replace(
+            "Target player reveals their hand, choose ",
+            "Target player reveals their hand. You choose ",
+        )
+        .replace(
+            "target player reveals their hand, choose ",
+            "target player reveals their hand. You choose ",
+        );
+    let lower = normalized.to_ascii_lowercase();
+    let antecedent = ["target opponent ", "target player "]
+        .into_iter()
+        .filter_map(|marker| lower.find(marker).map(|idx| (idx, marker.len())))
+        .min_by_key(|(idx, _)| *idx);
+    let Some((idx, len)) = antecedent else {
+        return normalized;
+    };
+    let split = idx + len;
+    let (prefix, tail) = normalized.split_at(split);
+    let tail = tail
+        .replace("That player's", "Their")
+        .replace("that player's", "their")
+        .replace("That player’s", "Their")
+        .replace("that player’s", "their")
+        .replace("That player controls", "They control")
+        .replace("that player controls", "they control")
+        .replace("That player draws", "They draw")
+        .replace("that player draws", "they draw")
+        .replace("That player loses", "They lose")
+        .replace("that player loses", "they lose")
+        .replace("That player discards", "They discard")
+        .replace("that player discards", "they discard")
+        .replace("That player sacrifices", "They sacrifice")
+        .replace("that player sacrifices", "they sacrifice")
+        .replace("That player owns", "They own")
+        .replace("that player owns", "they own")
+        .replace("That player ", "They ")
+        .replace("that player ", "they ");
+    format!("{prefix}{tail}")
+}
+
+/// A plural demonstrative carries the exact previously affected set. Expand
+/// it only when that filtered set was explicitly introduced earlier in the
+/// same line; a bare later "creatures" remains observably under-filtered.
+fn normalize_repeated_filtered_set_coreferences(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let antecedent = [
+        "creatures you control get ",
+        "each creature you control gets ",
+    ]
+    .into_iter()
+    .filter_map(|marker| lower.find(marker).map(|idx| (idx, marker.len())))
+    .min_by_key(|(idx, _)| *idx);
+    let Some((idx, len)) = antecedent else {
+        return text.to_string();
+    };
+    let split = idx + len;
+    let (prefix, tail) = text.split_at(split);
+    let tail = tail
+        .replace("Those creatures get ", "Creatures you control get ")
+        .replace("those creatures get ", "creatures you control get ")
+        .replace("Those creatures gets ", "Creatures you control get ")
+        .replace("those creatures gets ", "creatures you control get ");
+    format!("{prefix}{tail}")
 }
 
 fn normalize_end_turn_creature_buff_split(line: &str) -> String {
@@ -1235,6 +1354,14 @@ fn strip_compiled_ability_cost_prefix(clause: &str) -> &str {
 fn normalize_anaphoric_object_surfaces(text: &str) -> String {
     const REWRITES: &[(&str, &str)] = &[
         ("becomes blocked by a creature", "becomes blocked"),
+        ("that creature's", "its"),
+        ("That creature's", "Its"),
+        ("that card's", "its"),
+        ("That card's", "Its"),
+        ("that permanent's", "its"),
+        ("That permanent's", "Its"),
+        ("that token's", "its"),
+        ("That token's", "Its"),
         // Object anaphors: "that creature"/"that card"/"that permanent" are
         // the same back-reference as "it"; unify so the renderer's pronoun
         // choice doesn't read as semantic drift.  Possessives are excluded by
@@ -1299,6 +1426,43 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
     normalized
 }
 
+fn normalize_repeated_you_after_draw(text: &str) -> String {
+    fn collapse_marker(segment: &mut String, marker: &str, replacement: &str) {
+        let lower = segment.to_ascii_lowercase();
+        let Some(marker_idx) = lower.find(marker) else {
+            return;
+        };
+        let before = &lower[..marker_idx];
+        let Some(draw_idx) = before.rfind("draw ") else {
+            return;
+        };
+        // A serial comma means the draw is one item in a longer effect list
+        // (for example, "each opponent discards, you draw, and you gain").
+        // Removing the repeated subject there changes clause grouping and can
+        // hide the preceding effect.  Only fold a directly coordinated
+        // draw/life pair.
+        let trimmed = lower.trim_start();
+        let draw_is_sentence_subject = trimmed.starts_with("draw ")
+            || trimmed.starts_with("you draw ")
+            || trimmed.starts_with("when you draw ")
+            || trimmed.starts_with("whenever you draw ");
+        if before[draw_idx..].contains(',') && !draw_is_sentence_subject {
+            return;
+        }
+        segment.replace_range(marker_idx..marker_idx + marker.len(), replacement);
+    }
+
+    text.split(". ")
+        .map(|sentence| {
+            let mut sentence = sentence.to_string();
+            collapse_marker(&mut sentence, " and you lose ", " and lose ");
+            collapse_marker(&mut sentence, " and you gain ", " and gain ");
+            sentence
+        })
+        .collect::<Vec<_>>()
+        .join(". ")
+}
+
 fn split_common_clause_conjunctions(text: &str) -> String {
     let mut normalized = text.to_string();
 
@@ -1328,8 +1492,28 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = strip_compiled_prefixes(&normalized);
     normalized = strip_not_named_phrase(&normalized);
     normalized = strip_implicit_you_control_in_sacrifice_phrases(&normalized);
+    normalized = normalize_carried_target_player_references(&normalized);
+    normalized = normalize_repeated_filtered_set_coreferences(&normalized);
     normalized = normalize_anaphoric_object_surfaces(&normalized);
     normalized = normalized
+        // A single prison sentence and the renderer's two static-ability
+        // sentences describe the same pair of restrictions.
+        .replace(
+            "Enchanted creature can't attack or block, and its activated abilities",
+            "Enchanted creature can't attack or block. Enchanted creature activated abilities",
+        )
+        .replace(
+            "Enchanted permanent can't attack or block, and its activated abilities",
+            "Enchanted permanent can't attack or block. Enchanted permanent activated abilities",
+        )
+        .replace(
+            "enchanted creature can't attack or block, and its activated abilities",
+            "enchanted creature can't attack or block. enchanted creature activated abilities",
+        )
+        .replace(
+            "enchanted permanent can't attack or block, and its activated abilities",
+            "enchanted permanent can't attack or block. enchanted permanent activated abilities",
+        )
         .replace("Flashback—", "Flashback ")
         .replace("flashback—", "flashback ")
         .replace("Buyback—", "Buyback ")
@@ -1623,6 +1807,14 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             " from your hand if you don't this permanent enters tapped",
             " from your hand. If you don't, this permanent enters tapped",
         ),
+        (
+            " from your hand if you dont this enters tapped",
+            " from your hand. If you don't, this enters tapped",
+        ),
+        (
+            " from your hand if you don't this enters tapped",
+            " from your hand. If you don't, this enters tapped",
+        ),
     ] {
         normalized = normalized.replace(from, to);
         normalized = normalized.replace(&from.to_ascii_lowercase(), &to.to_ascii_lowercase());
@@ -1666,10 +1858,10 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         "other attacking creatures get ",
     );
 
-    if normalized.starts_with("You draw ") {
-        normalized = normalized.replace(" and you lose ", " and lose ");
-        normalized = normalized.replace(" and you gain ", " and gain ");
-    }
+    // Oracle may repeat the explicit player subject across a coordinated
+    // draw/life pair while compiled text uses the equivalent implied subject.
+    // Keep longer serial effect lists and later sentences separate.
+    normalized = normalize_repeated_you_after_draw(&normalized);
 
     for (from, to) in [
         ("For each player, that player ", "Each player "),
@@ -2850,6 +3042,73 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace(
             "create a token that's a copy of enchanted creature",
             "create a token that's a copy of that creature",
+        )
+        // End-of-turn play permissions have used both a leading duration and
+        // a trailing "this turn" template. The remembered exile tag carries
+        // singular/plural cardinality, so pronoun choice is surface-only.
+        .replace(
+            "Until end of turn, you may play it",
+            "You may play that card this turn",
+        )
+        .replace(
+            "Until end of turn, you may play them",
+            "You may play that card this turn",
+        )
+        .replace(
+            "until end of turn, you may play it",
+            "you may play that card this turn",
+        )
+        .replace(
+            "until end of turn, you may play them",
+            "you may play that card this turn",
+        )
+        .replace(
+            "You may play it until end of turn",
+            "You may play that card this turn",
+        )
+        .replace(
+            "You may play them until end of turn",
+            "You may play that card this turn",
+        )
+        .replace(
+            "you may play it this turn",
+            "you may play that card this turn",
+        )
+        .replace(
+            "you may play them this turn",
+            "you may play that card this turn",
+        )
+        .replace(
+            "You may play it this turn",
+            "You may play that card this turn",
+        )
+        .replace(
+            "You may play them this turn",
+            "You may play that card this turn",
+        )
+        .replace(
+            "Until end of turn, you may cast it",
+            "You may cast that card this turn",
+        )
+        .replace(
+            "until end of turn, you may cast it",
+            "you may cast that card this turn",
+        )
+        .replace(
+            "You may cast it from exile this turn",
+            "You may cast that card this turn",
+        )
+        .replace(
+            "you may cast it from exile this turn",
+            "you may cast that card this turn",
+        )
+        .replace(
+            "You may cast it this turn",
+            "You may cast that card this turn",
+        )
+        .replace(
+            "you may cast it this turn",
+            "you may cast that card this turn",
         );
     if normalized
         .to_ascii_lowercase()
@@ -4093,7 +4352,8 @@ fn tokenize_text(text: &str) -> Vec<String> {
     let mut current = String::new();
     let mut in_braces = false;
 
-    for ch in lower.chars() {
+    let mut chars = lower.chars().peekable();
+    while let Some(ch) = chars.next() {
         if in_braces {
             current.push(ch);
             if ch == '}' {
@@ -4111,6 +4371,20 @@ fn tokenize_text(text: &str) -> Vec<String> {
             }
             current.push(ch);
             in_braces = true;
+            continue;
+        }
+
+        // Printed d20 tables use ASCII hyphens, en dashes, and em dashes
+        // interchangeably for numeric ranges. The Unicode forms already split
+        // into endpoint tokens; make an ASCII digit-to-digit hyphen do the same
+        // without changing minus signs or hyphens inside words.
+        if ch == '-'
+            && !current.is_empty()
+            && current.chars().all(|value| value.is_ascii_digit())
+            && chars.peek().is_some_and(|value| value.is_ascii_digit())
+        {
+            tokens.push(current.clone());
+            current.clear();
             continue;
         }
 

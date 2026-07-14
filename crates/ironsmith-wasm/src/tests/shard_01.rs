@@ -2268,8 +2268,10 @@ pub(super) fn target_prompt_snapshot_shows_all_queued_targeted_triggers_while_sp
         vec![TargetRequirementContext {
             description: "target for Blood Artist".to_string(),
             legal_targets: vec![Target::Player(alice), Target::Player(bob)],
+            legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
+            distinct_player_group: None,
         }],
     )));
 
@@ -2448,8 +2450,10 @@ pub(super) fn priority_decision_routing_uses_replay_for_generic_modal_choices() 
         vec![TargetRequirementContext {
             description: "target player".to_string(),
             legal_targets: vec![Target::Player(PlayerId::from_index(1))],
+            legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
+            distinct_player_group: None,
         }],
     ));
     let select_objects = DecisionContext::SelectObjects(SelectObjectsContext::new(

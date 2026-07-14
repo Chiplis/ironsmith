@@ -54,6 +54,7 @@ pub(crate) fn lower_activation_cost_cst(
     let mut costs = Vec::new();
     let mut pending_mana_pips = Vec::new();
     let mut tap_tag_id = 0usize;
+    let mut discard_tag_id = 0usize;
     let mut sacrifice_tag_id = 0usize;
     let mut exile_tag_id = 0usize;
     let mut return_tag_id = 0usize;
@@ -126,6 +127,8 @@ pub(crate) fn lower_activation_cost_cst(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 if *random || name.is_some() || *other || filter.is_some() || !supertypes.is_empty()
                 {
+                    let tag = format!("discard_cost_{discard_tag_id}");
+                    discard_tag_id += 1;
                     let card_filter = if let Some(filter) = filter {
                         Some(filter.clone())
                     } else if card_types.is_empty()
@@ -149,11 +152,14 @@ pub(crate) fn lower_activation_cost_cst(
                         }
                         Some(filter)
                     };
-                    costs.push(Cost::validated_effect(Effect::discard_player_filtered(
-                        *count as i32,
-                        PlayerFilter::You,
-                        *random,
-                        card_filter,
+                    costs.push(Cost::validated_effect(Effect::new(
+                        crate::effects::DiscardEffect::new_with_filter(
+                            *count as i32,
+                            PlayerFilter::You,
+                            *random,
+                            card_filter,
+                        )
+                        .with_tag(tag),
                     )));
                 } else if card_types.len() > 1 {
                     costs.push(Cost::discard_types(*count, card_types.clone()));
@@ -187,9 +193,19 @@ pub(crate) fn lower_activation_cost_cst(
                     crate::target::ChooseSpec::tagged(tag),
                 )));
             }
-            ActivationCostSegmentCst::SacrificeSelf => {
+            ActivationCostSegmentCst::SacrificeSelf { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::sacrifice_self());
+                if let Some(surface) = surface {
+                    costs.push(Cost::validated_effect(Effect::new(
+                        crate::effects::SacrificeTargetEffect::new(
+                            crate::runtime_backend::front_end::shared::util::source_choose_spec_for_surface(
+                                surface.clone(),
+                            ),
+                        ),
+                    )));
+                } else {
+                    costs.push(Cost::sacrifice_self());
+                }
             }
             ActivationCostSegmentCst::SacrificeCreature => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -232,6 +248,18 @@ pub(crate) fn lower_activation_cost_cst(
                     )
                 };
                 costs.push(Cost::validated_effect(sacrifice));
+            }
+            ActivationCostSegmentCst::SacrificeAll { filter } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let mut filter = filter.clone();
+                if filter.controller.is_none() {
+                    filter.controller = Some(PlayerFilter::You);
+                }
+                costs.push(Cost::validated_effect(Effect::sacrifice_player(
+                    filter.clone(),
+                    crate::effect::Value::Count(filter),
+                    PlayerFilter::You,
+                )));
             }
             ActivationCostSegmentCst::UnattachChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

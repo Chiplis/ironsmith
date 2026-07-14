@@ -234,6 +234,7 @@ fn parse_copy_that_spell_or_ability_twice_tail(
         Value::Fixed(2),
         PlayerAst::Implicit,
         shape.may_choose_new_targets,
+        false,
         Vec::new(),
     )])
 }

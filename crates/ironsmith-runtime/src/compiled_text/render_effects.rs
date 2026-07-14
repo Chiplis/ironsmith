@@ -6,6 +6,8 @@ use ironsmith_core::{LibraryBottomOrder, PtValue, ValueSurfaceHint, ordinal_word
 
 #[path = "render_effects/abilities_and_costs.rs"]
 mod abilities_and_costs;
+#[path = "render_effects/chain_copy.rs"]
+mod chain_copy;
 #[path = "render_effects/clause_and_ability_surfaces.rs"]
 mod clause_and_ability_surfaces;
 #[path = "render_effects/continuous_and_choices.rs"]
@@ -14,8 +16,20 @@ mod continuous_and_choices;
 mod costs_and_triggers;
 #[path = "render_effects/effect_lists.rs"]
 mod effect_lists;
+#[path = "render_effects/emblem_surfaces.rs"]
+mod emblem_surfaces;
+#[path = "render_effects/looked_partition.rs"]
+mod looked_partition;
+#[path = "render_effects/looked_top_bottom.rs"]
+mod looked_top_bottom;
+#[path = "render_effects/observation_conditionals.rs"]
+mod observation_conditionals;
 #[path = "render_effects/player_and_zone_effects.rs"]
 mod player_and_zone_effects;
+#[path = "render_effects/quantified_player_actions.rs"]
+mod quantified_player_actions;
+#[path = "render_effects/returned_object_type_setting.rs"]
+mod returned_object_type_setting;
 #[path = "render_effects/search_reveal_and_sacrifice.rs"]
 mod search_reveal_and_sacrifice;
 #[path = "render_effects/sequences_and_votes.rs"]
@@ -28,11 +42,18 @@ mod single_effects_late;
 mod structural_bundles;
 
 pub(super) use abilities_and_costs::*;
+pub(super) use chain_copy::*;
 pub(super) use clause_and_ability_surfaces::*;
 pub(super) use continuous_and_choices::*;
 pub(super) use costs_and_triggers::*;
 pub(super) use effect_lists::*;
+pub(super) use emblem_surfaces::*;
+pub(super) use looked_partition::*;
+pub(super) use looked_top_bottom::*;
+pub(super) use observation_conditionals::*;
 pub(super) use player_and_zone_effects::*;
+pub(super) use quantified_player_actions::*;
+pub(super) use returned_object_type_setting::*;
 pub(super) use search_reveal_and_sacrifice::*;
 pub(super) use sequences_and_votes::*;
 pub(super) use single_effects_early::*;

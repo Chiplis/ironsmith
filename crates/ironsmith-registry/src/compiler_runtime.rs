@@ -513,11 +513,13 @@ fn class_level_activation_condition(level: u32) -> ironsmith::ConditionExpr {
         Box::new(ironsmith::ConditionExpr::SourceHasCounterAtLeast {
             counter_type: ironsmith::CounterType::Level,
             count: required_counters,
+            surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
         }),
         Box::new(ironsmith::ConditionExpr::Not(Box::new(
             ironsmith::ConditionExpr::SourceHasCounterAtLeast {
                 counter_type: ironsmith::CounterType::Level,
                 count: required_counters + 1,
+                surface: ironsmith::SourceCounterThresholdSurface::SourceHas,
             },
         ))),
     )
@@ -709,6 +711,23 @@ mod tests {
     use ironsmith::ids::PlayerId;
     use ironsmith::types::CardType;
     use ironsmith::zone::Zone;
+
+    #[test]
+    fn converts_assign_no_combat_damage_effect_payload() {
+        let compiler_effect = compiler::effect::Effect::assign_no_combat_damage(
+            compiler::target::ChooseSpec::Source,
+            compiler::effect::Until::EndOfTurn,
+        );
+
+        let runtime_effect = runtime_effect_from_core_model(compiler_effect)
+            .expect("assignment suppression should cross the compiler/runtime bridge");
+        let suppression = runtime_effect
+            .downcast_ref::<ironsmith::effects::AssignNoCombatDamageEffect>()
+            .expect("runtime payload should remain assignment suppression");
+
+        assert_eq!(suppression.source, ironsmith::target::ChooseSpec::Source);
+        assert_eq!(suppression.until, ironsmith::effect::Until::EndOfTurn);
+    }
 
     #[test]
     fn compile_to_runtime_definition_handles_representative_spell_text() {

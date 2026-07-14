@@ -1168,6 +1168,33 @@ impl GameState {
             .unwrap_or(&[])
     }
 
+    /// Record an object identity put onto the battlefield by this source.
+    pub fn add_battlefield_put_with_source_link(
+        &mut self,
+        source_id: ObjectId,
+        object_id: ObjectId,
+    ) {
+        self.exile_tracking_mut()
+            .battlefield_put_with_source
+            .entry(source_id)
+            .or_default()
+            .insert(object_id);
+    }
+
+    /// Whether this exact battlefield object identity was put there by the
+    /// specified source. A later zone change creates a new object ID and
+    /// therefore breaks this relationship.
+    pub fn was_put_onto_battlefield_with_source(
+        &self,
+        source_id: ObjectId,
+        object_id: ObjectId,
+    ) -> bool {
+        self.exile_tracking
+            .battlefield_put_with_source
+            .get(&source_id)
+            .is_some_and(|objects| objects.contains(&object_id))
+    }
+
     pub fn exiled_with_source_entries(&self) -> impl Iterator<Item = (&ObjectId, &Vec<ObjectId>)> {
         self.exile_tracking.exiled_with_source.iter()
     }
@@ -1374,6 +1401,11 @@ impl GameState {
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
+        if let Some(spell_cast) = event.downcast::<crate::events::spells::SpellCastEvent>()
+            && let Some(player) = self.player_mut(spell_cast.caster)
+        {
+            player.spells_cast_this_game = player.spells_cast_this_game.saturating_add(1);
+        }
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
         self.turn_store
             .turn_history

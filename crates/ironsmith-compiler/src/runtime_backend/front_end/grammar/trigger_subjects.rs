@@ -298,9 +298,20 @@ pub(crate) fn parse_damage_source_surface(
     let subject_end = parse_trigger_control_suffix(&words)
         .map(|suffix| suffix.subject_end)
         .unwrap_or(words.len());
-    primitives::parse_full_word_slice(&words[..subject_end], parse_generic_source_noun_words)
-        .map(|()| crate::triggers::DamageSourceSurface::Source)
-        .unwrap_or(crate::triggers::DamageSourceSurface::Filter)
+    let subject = &words[..subject_end];
+    let exact_generic_source =
+        primitives::parse_full_word_slice(subject, parse_generic_source_noun_words).is_some();
+    let qualified_generic_source = subject
+        .last()
+        .is_some_and(|word| matches!(*word, "source" | "sources"))
+        && !subject
+            .iter()
+            .any(|word| matches!(*word, "this" | "that" | "it"));
+    if exact_generic_source || qualified_generic_source {
+        crate::triggers::DamageSourceSurface::Source
+    } else {
+        crate::triggers::DamageSourceSurface::Filter
+    }
 }
 
 pub(crate) fn parse_spell_or_ability_controller_tail(
@@ -441,6 +452,7 @@ fn parse_trigger_controller_reference(words: &[&str]) -> Option<TriggerControlle
             &["a", "player"],
             &["any", "player"],
             &["player"],
+            &["players"],
             &["one", "or", "more", "players"],
         ],
     ) {

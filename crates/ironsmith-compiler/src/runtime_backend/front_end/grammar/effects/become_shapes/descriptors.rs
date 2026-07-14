@@ -42,10 +42,15 @@ pub(crate) struct BecomeLeadingCreaturePrefix {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum BecomeAnimationSuffixShape<'a> {
-    Ignored,
+    Ignored {
+        preserve_other_types: bool,
+        type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
+    },
     With {
         ability_tokens: &'a [OwnedLexToken],
         grants_all_creature_types: bool,
+        preserve_other_types: bool,
+        type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
     },
     Unsupported,
 }
@@ -56,7 +61,10 @@ pub(crate) enum BecomeSimpleDescriptorShape {
         colors: ColorSet,
         subtypes: Vec<Subtype>,
     },
-    CardTypes(Vec<CardType>),
+    CardTypes {
+        card_types: Vec<CardType>,
+        preserve_other_types: bool,
+    },
     Subtypes {
         subtypes: Vec<Subtype>,
         replace_creature_subtypes: bool,
@@ -197,17 +205,25 @@ fn strip_addition_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
         .unwrap_or(tokens)
 }
 
+const STILL_A_LAND_TAILS: &[&[&str]] = &[
+    &["still", "a", "land"],
+    &["that", "s", "still", "a", "land"],
+    &["thats", "still", "a", "land"],
+    &["it", "s", "still", "a", "land"],
+    &["its", "still", "a", "land"],
+];
+
+fn strip_still_a_land_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    primitives::strip_lexed_suffix_phrases(tokens, STILL_A_LAND_TAILS)
+        .map(|(_, head)| trim_lexed_commas(head))
+        .unwrap_or(tokens)
+}
+
 fn still_a_land(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    [
-        &["still", "a", "land"][..],
-        &["that", "s", "still", "a", "land"],
-        &["thats", "still", "a", "land"],
-        &["it", "s", "still", "a", "land"],
-        &["its", "still", "a", "land"],
-    ]
-    .iter()
-    .any(|expected| permission_shapes::exact_words(&words, expected))
+    STILL_A_LAND_TAILS
+        .iter()
+        .any(|expected| permission_shapes::exact_words(&words, expected))
 }
 
 fn split_all_creature_types(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -222,26 +238,47 @@ pub(crate) fn parse_become_animation_suffix_shape(
     tokens: &[OwnedLexToken],
 ) -> BecomeAnimationSuffixShape<'_> {
     let tokens = trim_lexed_commas(tokens);
-    if tokens.is_empty()
-        || (!tokens.is_empty() && strip_addition_tail_tokens(tokens).is_empty())
-        || still_a_land(tokens)
-    {
-        return BecomeAnimationSuffixShape::Ignored;
+    if tokens.is_empty() {
+        return BecomeAnimationSuffixShape::Ignored {
+            preserve_other_types: false,
+            type_retention_surface: None,
+        };
     }
-    let Some((_, after_with)) = primitives::parse_prefix(tokens, primitives::kw("with").void())
+    let stripped_addition = strip_addition_tail_tokens(tokens);
+    let stripped_still_land = strip_still_a_land_tail_tokens(stripped_addition);
+    let type_retention_surface = if stripped_addition.len() != tokens.len() {
+        Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes)
+    } else if stripped_still_land.len() != stripped_addition.len() || still_a_land(tokens) {
+        Some(ironsmith_core::TypeRetentionSurface::StillALand)
+    } else {
+        None
+    };
+    let preserve_other_types = type_retention_surface.is_some();
+    if stripped_still_land.is_empty() || still_a_land(tokens) {
+        return BecomeAnimationSuffixShape::Ignored {
+            preserve_other_types,
+            type_retention_surface,
+        };
+    }
+    let Some((_, after_with)) =
+        primitives::parse_prefix(stripped_still_land, primitives::kw("with").void())
     else {
         return BecomeAnimationSuffixShape::Unsupported;
     };
-    let ability_tokens = strip_addition_tail_tokens(trim_lexed_commas(after_with));
+    let ability_tokens = trim_lexed_commas(after_with);
     if let Some(without_family) = split_all_creature_types(ability_tokens) {
         return BecomeAnimationSuffixShape::With {
             ability_tokens: without_family,
             grants_all_creature_types: true,
+            preserve_other_types,
+            type_retention_surface,
         };
     }
     BecomeAnimationSuffixShape::With {
         ability_tokens,
         grants_all_creature_types: false,
+        preserve_other_types,
+        type_retention_surface,
     }
 }
 
@@ -285,7 +322,10 @@ pub(crate) fn parse_become_simple_descriptor_words(words: &[&str]) -> BecomeSimp
             .is_ok()
     }) && !card_types.is_empty()
     {
-        return BecomeSimpleDescriptorShape::CardTypes(card_types);
+        return BecomeSimpleDescriptorShape::CardTypes {
+            card_types,
+            preserve_other_types: had_addition_tail,
+        };
     }
 
     let mut subtypes = Vec::new();
@@ -343,6 +383,52 @@ mod tests {
             parse_become_animation_suffix_shape(&tokens),
             BecomeAnimationSuffixShape::With {
                 grants_all_creature_types: true,
+                ..
+            }
+        ));
+
+        let tokens = lex_line("with flying in addition to its other types", 0)
+            .expect("lex additive animation");
+        assert!(matches!(
+            parse_become_animation_suffix_shape(&tokens),
+            BecomeAnimationSuffixShape::With {
+                preserve_other_types: true,
+                ..
+            }
+        ));
+
+        let tokens = lex_line("it's still a land", 0).expect("lex retained land");
+        assert!(matches!(
+            parse_become_animation_suffix_shape(&tokens),
+            BecomeAnimationSuffixShape::Ignored {
+                preserve_other_types: true,
+                type_retention_surface: Some(ironsmith_core::TypeRetentionSurface::StillALand),
+            }
+        ));
+
+        let tokens = lex_line("with vigilance and haste that's still a land", 0)
+            .expect("lex retained land ability suffix");
+        assert!(matches!(
+            parse_become_animation_suffix_shape(&tokens),
+            BecomeAnimationSuffixShape::With {
+                preserve_other_types: true,
+                type_retention_surface: Some(ironsmith_core::TypeRetentionSurface::StillALand),
+                ..
+            }
+        ));
+
+        assert!(matches!(
+            parse_become_simple_descriptor_words(&[
+                "enchantment",
+                "in",
+                "addition",
+                "to",
+                "its",
+                "other",
+                "types",
+            ]),
+            BecomeSimpleDescriptorShape::CardTypes {
+                preserve_other_types: true,
                 ..
             }
         ));

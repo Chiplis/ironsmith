@@ -1491,6 +1491,82 @@ fn parse_search_to_battlefield_tapped_preserves_tapped_flag() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_double_counters_on_source_preserves_singular_typed_surface() {
+    for (card_type, text, expected_surface) in [
+        (
+            CardType::Creature,
+            "{1}: Double the number of +1/+1 counters on this creature.",
+            "this creature",
+        ),
+        (
+            CardType::Enchantment,
+            "{1}: Double the number of growth counters on this enchantment.",
+            "this enchantment",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Double Source Variant")
+            .card_types(vec![card_type])
+            .parse_text(text)
+            .expect("parse singular source double-counters clause");
+        let AbilityKind::Activated(activated) = &def.abilities[0].kind else {
+            panic!("expected activated double-counters ability");
+        };
+        let double = activated
+            .effects
+            .flattened_default_effects()
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<DoubleCountersEffect>())
+            .expect("ability should lower to DoubleCountersEffect");
+
+        assert!(matches!(double.target.base(), ChooseSpec::Source));
+        assert_eq!(
+            double
+                .target
+                .source_reference_surface()
+                .map(|surface| surface.display_text()),
+            Some(expected_surface.to_string())
+        );
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains(&format!("counters on {expected_surface}")),
+            "expected singular source wording, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("on each this"),
+            "singular source widened to a filter-wide target: {rendered}"
+        );
+    }
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Double It Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Whenever this creature attacks, double the number of +1/+1 counters on it.")
+        .expect("parse pronoun source double-counters clause");
+    let AbilityKind::Triggered(triggered) = &def.abilities[0].kind else {
+        panic!("expected triggered double-counters ability");
+    };
+    let double = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<DoubleCountersEffect>())
+        .expect("ability should lower to DoubleCountersEffect");
+    assert!(matches!(double.target.base(), ChooseSpec::Source));
+    assert_eq!(
+        double
+            .target
+            .source_reference_surface()
+            .map(|surface| surface.display_text()),
+        Some("it".to_string())
+    );
+    assert!(
+        unprocessed_compiled_lines(&def)
+            .join(" ")
+            .contains("counters on it")
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_double_counters_on_each_creature_from_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Kalonian Hydra Variant")
             .parse_text(
@@ -1521,6 +1597,11 @@ fn parse_double_counters_on_each_creature_from_text() {
     };
     assert!(filter.card_types.contains(&CardType::Creature));
     assert_eq!(filter.controller, Some(PlayerFilter::You));
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("on each creature you control"),
+        "filter-wide double effect lost plural quantification: {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3093,6 +3174,11 @@ fn parse_add_any_color_that_opponent_land_could_produce_compiles_restricted_mana
         !restricted.same_type,
         "any color clause should allow independent color choices"
     );
+    assert_eq!(
+        restricted.mana_type_source,
+        crate::effects::ManaTypeSource::MatchingLandsCouldProduce,
+        "could-produce clauses must inspect prospective mana abilities"
+    );
     assert!(
         restricted.land_filter.card_types.contains(&CardType::Land),
         "expected land filter, got {:?}",
@@ -3145,6 +3231,43 @@ fn parse_add_any_type_that_gate_you_control_could_produce_keeps_type_semantics()
         restricted.land_filter.subtypes.contains(&Subtype::Gate),
         "expected gate subtype filter, got {:?}",
         restricted.land_filter
+    );
+    assert_eq!(
+        restricted.mana_type_source,
+        crate::effects::ManaTypeSource::MatchingLandsCouldProduce
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_triggering_land_produced_types_uses_actual_mana_event() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Heartbeat Variant")
+        .parse_text(
+            "Whenever a player taps a land for mana, that player adds one mana of any type that land produced.",
+        )
+        .expect("actual land-produced mana trigger should parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    let restricted = triggered
+        .effects
+        .flattened_default_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<AddManaOfLandProducedTypesEffect>())
+        .expect("expected produced-types mana effect");
+    assert_eq!(restricted.amount, Value::Fixed(1));
+    assert_eq!(restricted.player, PlayerFilter::IteratedPlayer);
+    assert!(restricted.allow_colorless);
+    assert_eq!(
+        restricted.mana_type_source,
+        crate::effects::ManaTypeSource::TriggeringEventProduced,
+        "past-tense 'produced' must consume the actual triggering mana event"
     );
 }
 

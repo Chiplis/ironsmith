@@ -14,6 +14,16 @@ fn parses_compound_attached_grant_shapes() {
             AttachedCombatRestrictionKind::CantBeBlocked
         ))
     ));
+
+    let tokens = lex_line("Enchanted creature gets -5/-0 and loses all abilities.", 0).unwrap();
+    let parsed = parse_attached_gets_tail_tokens(&tokens).unwrap();
+    let AttachedGetsTailKind::Loses(loss_tokens) = parsed.tail else {
+        panic!("expected an attached ability-loss tail");
+    };
+    assert_eq!(
+        super::super::super::super::lexer::token_word_refs(loss_tokens),
+        ["all", "abilities"]
+    );
 }
 
 #[test]

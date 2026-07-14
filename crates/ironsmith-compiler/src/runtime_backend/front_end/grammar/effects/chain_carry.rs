@@ -43,6 +43,52 @@ pub(crate) struct DestroyRestrictionSplit<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CoordinatedTargetActionKind {
+    Destroy,
+    Exile,
+    Return,
+}
+
+/// Recognizes an independently targeted same-action prefix joined by `and`.
+/// A later `then` clause is deliberately excluded from the coordinated run;
+/// for example, the two returns in "return A and B, then discard" remain
+/// independent targets while the discard stays sequential.
+pub(crate) fn coordinated_target_action_kind(
+    tokens: &[OwnedLexToken],
+) -> Option<CoordinatedTargetActionKind> {
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    let prefix_end = words
+        .iter()
+        .position(|word| *word == "then")
+        .unwrap_or(words.len());
+    let prefix = &words[..prefix_end];
+    if prefix.iter().filter(|word| **word == "target").count() < 2 || !prefix.contains(&"and") {
+        return None;
+    }
+    match words.first().copied() {
+        Some("destroy") => Some(CoordinatedTargetActionKind::Destroy),
+        Some("exile") if prefix_end == words.len() => Some(CoordinatedTargetActionKind::Exile),
+        Some("return") => Some(CoordinatedTargetActionKind::Return),
+        _ => None,
+    }
+}
+
+/// Returns a sequential discard tail following a coordinated action prefix.
+/// This is kept as a token slice so the ordinary discard parser remains the
+/// sole authority for counts, filters, randomness, and player binding.
+pub(crate) fn trailing_then_discard_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let then_idx = tokens.iter().position(|token| token.is_word("then"))?;
+    let trailing = trim_lexed_commas(tokens.get(then_idx + 1..)?);
+    trailing
+        .first()
+        .is_some_and(|token| token.is_word("discard") || token.is_word("discards"))
+        .then_some(trailing)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DelayedCopyTiming {
     EndStep { player_is_you: bool },
     Upkeep { player_is_you: bool },
@@ -55,6 +101,92 @@ pub(crate) struct DelayedCopyFacts {
     pub(crate) has_sacrifice: bool,
     pub(crate) has_token: bool,
     pub(crate) timing: Option<DelayedCopyTiming>,
+}
+
+/// Recognizes one Oracle clause containing two or more explicit target
+/// subjects, each with its own `gets` modifier, joined by `and`. The return
+/// value records whether the shared duration was printed at the front.
+pub(crate) fn coordinated_target_stat_modifier_leading_duration(
+    tokens: &[OwnedLexToken],
+) -> Option<bool> {
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    let target_count = words.iter().filter(|word| **word == "target").count();
+    let gets_count = words
+        .iter()
+        .filter(|word| matches!(**word, "get" | "gets"))
+        .count();
+    if target_count < 2 || gets_count < 2 || !words.contains(&"and") || words.contains(&"then") {
+        return None;
+    }
+    Some(matches!(words.first(), Some(&"until")))
+}
+
+/// Recognizes a single source-subject clause of the form
+/// "this source deals ... and gains ...". Semantic AST validation remains in
+/// the sentence layer; this helper records only the coordinated word order.
+pub(crate) fn coordinated_source_damage_then_gain(tokens: &[OwnedLexToken]) -> bool {
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    if words.contains(&"then") {
+        return false;
+    }
+    let Some(damage_idx) = words.iter().position(|word| *word == "damage") else {
+        return false;
+    };
+    let Some(gain_idx) = words
+        .iter()
+        .enumerate()
+        .skip(damage_idx + 1)
+        .find_map(|(idx, word)| matches!(*word, "gain" | "gains").then_some(idx))
+    else {
+        return false;
+    };
+    words[damage_idx + 1..gain_idx].contains(&"and")
+}
+
+/// Records the printed coordination in the common freeze clause
+/// "tap ... and it doesn't untap during its controller's next untap step."
+///
+/// Semantic validation remains in the sentence layer: this helper only
+/// distinguishes a single coordinated Oracle clause from the equally common
+/// two-sentence surface "Tap ... . It doesn't untap ...". Both lower to the
+/// same runtime actions, but the typed sequence surface lets the renderer
+/// preserve the original relationship without guessing from adjacency.
+pub(crate) fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool {
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    if words.contains(&"then") {
+        return false;
+    }
+    let Some(tap_idx) = words.iter().position(|word| *word == "tap") else {
+        return false;
+    };
+    let Some(untap_idx) = words
+        .iter()
+        .enumerate()
+        .skip(tap_idx + 1)
+        .find_map(|(idx, word)| (*word == "untap").then_some(idx))
+    else {
+        return false;
+    };
+    let has_negative_untap = words[tap_idx + 1..untap_idx]
+        .iter()
+        .any(|word| matches!(*word, "doesnt" | "doesn't"));
+    has_negative_untap
+        && words[tap_idx + 1..untap_idx].contains(&"and")
+        && words[untap_idx + 1..].contains(&"its")
+        && words[untap_idx + 1..]
+            .iter()
+            .any(|word| matches!(*word, "controller" | "controller's" | "controllers"))
+        && words[untap_idx + 1..].contains(&"next")
+        && words[untap_idx + 1..].contains(&"step")
 }
 
 pub(crate) fn parse_choose_each_basic_land_type_tokens(tokens: &[OwnedLexToken]) -> bool {

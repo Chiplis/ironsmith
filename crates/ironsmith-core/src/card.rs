@@ -71,6 +71,8 @@ impl PowerToughness {
 pub struct Card {
     pub id: CardId,
     pub name: String,
+    /// Name of the earliest eligible paper set for this oracle identity.
+    pub first_printed_set_name: Option<String>,
     pub mana_cost: Option<ManaCost>,
     /// Color indicator (for cards like Ancestral Vision or DFC backs)
     pub color_indicator: Option<ColorSet>,
@@ -254,6 +256,7 @@ impl Card {
 pub struct CardBuilder {
     id: CardId,
     name: String,
+    first_printed_set_name: Option<String>,
     mana_cost: Option<ManaCost>,
     color_indicator: Option<ColorSet>,
     supertypes: Vec<Supertype>,
@@ -280,6 +283,11 @@ impl CardBuilder {
 
     pub fn mana_cost(mut self, cost: ManaCost) -> Self {
         self.mana_cost = Some(cost);
+        self
+    }
+
+    pub fn first_printed_set_name(mut self, set_name: impl Into<String>) -> Self {
+        self.first_printed_set_name = Some(set_name.into());
         self
     }
 
@@ -310,6 +318,10 @@ impl CardBuilder {
 
     pub fn name_ref(&self) -> &str {
         &self.name
+    }
+
+    pub fn first_printed_set_name_ref(&self) -> Option<&str> {
+        self.first_printed_set_name.as_deref()
     }
 
     pub fn oracle_text_ref(&self) -> &str {
@@ -384,6 +396,7 @@ impl CardBuilder {
         Card {
             id: self.id,
             name: self.name,
+            first_printed_set_name: self.first_printed_set_name,
             mana_cost: self.mana_cost,
             color_indicator: self.color_indicator,
             supertypes: self.supertypes,
@@ -462,6 +475,20 @@ mod tests {
         assert_eq!(bolt.colors().count(), 1);
         assert!(bolt.is_instant());
         assert!(!bolt.is_creature());
+    }
+
+    #[test]
+    fn first_printed_set_metadata_is_optional_and_survives_building() {
+        let without_metadata = CardBuilder::new(CardId::from_raw(20), "Unknown Printing").build();
+        assert_eq!(without_metadata.first_printed_set_name, None);
+
+        let with_metadata = CardBuilder::new(CardId::from_raw(21), "Golgothian Sylex")
+            .first_printed_set_name("Antiquities")
+            .build();
+        assert_eq!(
+            with_metadata.first_printed_set_name.as_deref(),
+            Some("Antiquities")
+        );
     }
 
     #[test]

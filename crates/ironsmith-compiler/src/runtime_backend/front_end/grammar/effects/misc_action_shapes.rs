@@ -9,6 +9,7 @@ use crate::cards::builders::{CardTextError, PlayerAst};
 use crate::effect::{EventValueSpec, Value};
 use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 use crate::target::PlayerFilter;
+use ironsmith_core::ValueSurfaceHint;
 
 #[path = "misc_action_shapes/payment_and_untap.rs"]
 mod payment_and_untap;
@@ -444,7 +445,11 @@ pub(crate) fn parse_mill_action_tokens(
         {
             (value, 1 + used, includes)
         } else if let Some(value) = values::parse_add_mana_equal_amount_value_lexed(after_cards) {
-            (value, tokens.len(), false)
+            (
+                value.with_surface_hint(ValueSurfaceHint::EqualTo),
+                tokens.len(),
+                false,
+            )
         } else {
             return Ok(None);
         }
@@ -522,5 +527,12 @@ mod tests {
                 .map(|shape| shape.count),
             Some(Value::Fixed(3))
         );
+
+        let equal_to = lex_line("cards equal to the number of lands you control", 0)
+            .expect("lex equal-to mill count");
+        let equal_to = parse_mill_action_tokens(&equal_to, PlayerAst::You)
+            .expect("equal-to mill parse")
+            .expect("equal-to mill shape");
+        assert!(equal_to.count.has_surface_hint(ValueSurfaceHint::EqualTo));
     }
 }

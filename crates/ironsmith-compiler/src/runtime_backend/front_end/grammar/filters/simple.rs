@@ -2,7 +2,7 @@ use winnow::combinator::alt;
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 
-use crate::filter::{AlternativeCastKind, StackObjectKind};
+use crate::filter::{AlternativeCastKind, ObjectFilterUnionConnective, StackObjectKind};
 use crate::{CardType, ColorSet, ObjectFilter, PlayerFilter, Subtype, Supertype, Zone};
 
 use super::super::primitives::{self, WordSliceInput, parse_full_word_slice};
@@ -78,6 +78,13 @@ enum SimpleObjectFilterAtom {
 enum TypeListSeparator {
     Conjunction,
     Disjunction,
+    AndOr,
+}
+
+impl TypeListSeparator {
+    fn is_disjunction(self) -> bool {
+        matches!(self, Self::Disjunction | Self::AndOr)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,6 +185,7 @@ fn parse_simple_filter_body(
     let mut pending_type_separator = None;
     let mut last_type_atom_is_card_type = None;
     let mut saw_type_subtype_disjunction = false;
+    let mut saw_and_or_union = false;
 
     while !input.is_empty() {
         let atom = parse_simple_object_filter_atom
@@ -186,6 +194,7 @@ fn parse_simple_filter_body(
         match atom {
             SimpleObjectFilterAtom::TypeListSeparator(separator) => {
                 saw_type_list_conjunction = true;
+                saw_and_or_union |= separator == TypeListSeparator::AndOr;
                 pending_type_separator = Some(separator);
             }
             SimpleObjectFilterAtom::AlternativeCast(kind) => {
@@ -209,7 +218,7 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::SpellMarker => saw_spell = true,
             SimpleObjectFilterAtom::Named(atom) => apply_named_atom(&mut filter, atom),
             SimpleObjectFilterAtom::CardType(card_type) => {
-                if pending_type_separator == Some(TypeListSeparator::Disjunction)
+                if pending_type_separator.is_some_and(TypeListSeparator::is_disjunction)
                     && last_type_atom_is_card_type == Some(false)
                 {
                     saw_type_subtype_disjunction = true;
@@ -223,7 +232,7 @@ fn parse_simple_filter_body(
                 push_unique(&mut filter.excluded_card_types, card_type);
             }
             SimpleObjectFilterAtom::Subtype(subtype) => {
-                if pending_type_separator == Some(TypeListSeparator::Disjunction)
+                if pending_type_separator.is_some_and(TypeListSeparator::is_disjunction)
                     && last_type_atom_is_card_type == Some(true)
                 {
                     saw_type_subtype_disjunction = true;
@@ -260,6 +269,10 @@ fn parse_simple_filter_body(
         filter.all_card_types = std::mem::take(&mut filter.card_types);
     }
     filter.type_or_subtype_union = saw_type_subtype_disjunction;
+    if saw_and_or_union {
+        filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
+    }
+    filter.set_explicit_card_noun(saw_card);
 
     if saw_permanent && filter.card_types.is_empty() && filter.all_card_types.is_empty() {
         filter.card_types = ObjectFilter::permanent_card().card_types;
@@ -307,7 +320,7 @@ fn parse_type_list_separator(input: &mut WordInput<'_>) -> WResult<SimpleObjectF
             TypeListSeparator::Disjunction,
         )),
         primitives::word_slice_exact("and/or").value(SimpleObjectFilterAtom::TypeListSeparator(
-            TypeListSeparator::Disjunction,
+            TypeListSeparator::AndOr,
         )),
     ))
     .parse_next(input)

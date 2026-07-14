@@ -21,9 +21,10 @@ use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
-    AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectRef, ParityRequirement,
-    PlayerFilter, PowerToughnessRelation, PtReference, SourcePowerRelation, StackObjectKind,
-    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
+    AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectFilterUnionConnective,
+    ObjectFilterUnionSurface, ObjectRef, ParityRequirement, PlayerFilter, PowerToughnessRelation,
+    PtReference, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
+    TaggedOpbjectRelation, TargetabilityConstraint,
 };
 
 mod descriptions;
@@ -40,7 +41,7 @@ fn normalize_name_for_match(name: &str) -> String {
         .collect()
 }
 
-fn names_match(lhs: &str, rhs: &str) -> bool {
+pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
@@ -105,6 +106,7 @@ pub(crate) trait TaggedConstraintSubject {
 pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_object_id(&self) -> ObjectId;
     fn tail_name(&self) -> &str;
+    fn tail_first_printed_set_name(&self) -> Option<&str>;
     fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
     fn tail_has_alternative_cast_kind(
@@ -178,6 +180,10 @@ impl TailMatchSubject for Object {
 
     fn tail_name(&self) -> &str {
         &self.name
+    }
+
+    fn tail_first_printed_set_name(&self) -> Option<&str> {
+        self.first_printed_set_name.as_deref()
     }
 
     fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
@@ -285,6 +291,14 @@ impl TailMatchSubject for LayeredSubject<'_> {
         self.chars.name.as_str()
     }
 
+    fn tail_first_printed_set_name(&self) -> Option<&str> {
+        if self.chars.name.as_str() == self.object.name.as_ref() {
+            self.object.first_printed_set_name.as_deref()
+        } else {
+            None
+        }
+    }
+
     fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
         &self.object.counters
     }
@@ -381,6 +395,10 @@ impl TailMatchSubject for ObjectSnapshot {
 
     fn tail_name(&self) -> &str {
         &self.name
+    }
+
+    fn tail_first_printed_set_name(&self) -> Option<&str> {
+        self.first_printed_set_name.as_deref()
     }
 
     fn tail_counters(&self) -> &std::collections::HashMap<CounterType, u32> {
@@ -638,7 +656,7 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::IsTaggedObject => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.object_id == subject.subject_object_id()),
-        TaggedOpbjectRelation::SharesCardType => {
+        TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SharesPermanentType => {
             let tagged_types: std::collections::HashSet<CardType> = tagged_snapshots
                 .iter()
                 .flat_map(|snapshot| snapshot.card_types.iter().copied())
@@ -657,6 +675,15 @@ fn tagged_constraint_matches_subject(
                 .subject_subtypes()
                 .iter()
                 .any(|subtype| tagged_subtypes.contains(subtype))
+        }
+        TaggedOpbjectRelation::SharesSubtypeWithEachTagged => {
+            !tagged_snapshots.is_empty()
+                && tagged_snapshots.iter().all(|snapshot| {
+                    subject
+                        .subject_subtypes()
+                        .iter()
+                        .any(|subtype| snapshot.subtypes.contains(subtype))
+                })
         }
         TaggedOpbjectRelation::SharesColorWithTagged => tagged_snapshots.iter().any(|snapshot| {
             !subject
@@ -1507,6 +1534,9 @@ impl PlayerFilterExt for PlayerFilter {
                 ctx.iterated_player.is_some_and(|p| p == player)
                     && inner.matches_player(player, ctx)
             }
+            PlayerFilter::AliasedTarget(inner) => {
+                ctx.target_players.contains(&player) && inner.matches_player(player, ctx)
+            }
             PlayerFilter::ControllerOf(object_ref) => {
                 resolve_player_filter_object_ref(object_ref, ctx)
                     .is_some_and(|snapshot| snapshot.controller == player)
@@ -1713,6 +1743,13 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if let Some(required_set_name) = &self.name_originally_printed_in_set
+            && !subject
+                .tail_first_printed_set_name()
+                .is_some_and(|set_name| set_name.eq_ignore_ascii_case(required_set_name))
+        {
+            return false;
+        }
 
         if let Some(counter_requirement) = self.with_counter {
             let has_counter = match counter_requirement {
@@ -1847,6 +1884,18 @@ impl ObjectFilterExt for ObjectFilter {
                 constraint.relation,
                 game,
             ) {
+                return false;
+            }
+        }
+
+        if let Some(attached_to_filter) = &self.attached_to_object {
+            let Some(attached_to_id) = subject.subject_attached_to() else {
+                return false;
+            };
+            let Some(attached_to) = game.object(attached_to_id) else {
+                return false;
+            };
+            if !attached_to_filter.matches(attached_to, ctx, game) {
                 return false;
             }
         }
@@ -1989,6 +2038,14 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if self.source && ctx.source.is_none_or(|source_id| object.id != source_id) {
+            return false;
+        }
+
+        if self.put_onto_battlefield_with_source
+            && ctx.source.is_none_or(|source_id| {
+                !game.was_put_onto_battlefield_with_source(source_id, object.id)
+            })
+        {
             return false;
         }
 
@@ -2442,6 +2499,13 @@ impl ObjectFilterExt for ObjectFilter {
             if !filter_subject_matches_subtype(object, layered_subject, chosen_type, game) {
                 return false;
             }
+        }
+        if self.has_nonbasic_land_type
+            && !object_subtypes
+                .iter()
+                .any(|subtype| subtype.is_land_subtype() && !subtype.is_basic_land_type())
+        {
+            return false;
         }
         if self.chosen_card_type {
             let Some(chosen_type) = ctx.source.and_then(|source| game.chosen_card_type(source))
@@ -2993,6 +3057,14 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.put_onto_battlefield_with_source
+            && ctx.source.is_none_or(|source_id| {
+                !game.was_put_onto_battlefield_with_source(source_id, snapshot.object_id)
+            })
+        {
+            return false;
+        }
+
         if let Some(targetability) = &self.could_be_targeted_by
             && !object_could_be_targeted_by(snapshot.object_id, targetability, ctx, game)
         {
@@ -3135,6 +3207,14 @@ impl ObjectFilterExt for ObjectFilter {
             if !snapshot_matches_subtype(snapshot, chosen_type, game) {
                 return false;
             }
+        }
+        if self.has_nonbasic_land_type
+            && !snapshot
+                .subtypes
+                .iter()
+                .any(|subtype| subtype.is_land_subtype() && !subtype.is_basic_land_type())
+        {
+            return false;
         }
         if self.chosen_card_type {
             let Some(chosen_type) = ctx.source.and_then(|source| game.chosen_card_type(source))
@@ -3549,14 +3629,29 @@ impl ObjectFilterExt for ObjectFilter {
     ///
     /// Used primarily for trigger display text.
     fn description(&self) -> String {
-        let any_of_keyword_clause = describe_simple_any_of_keyword_clause(&self.any_of);
+        let any_of_keyword_clause =
+            describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
-            return self
+            let descriptions = self
                 .any_of
                 .iter()
                 .map(ObjectFilter::description)
-                .collect::<Vec<_>>()
-                .join(" or ");
+                .collect::<Vec<_>>();
+            return match self.union_connective() {
+                ObjectFilterUnionConnective::Or => descriptions.join(" or "),
+                ObjectFilterUnionConnective::AndOr => match descriptions.as_slice() {
+                    [] => String::new(),
+                    [single] => single.clone(),
+                    [first, second] => format!("{first} and/or {second}"),
+                    _ => {
+                        let mut descriptions = descriptions;
+                        let last = descriptions
+                            .pop()
+                            .expect("union has at least three branches");
+                        format!("{}, and/or {last}", descriptions.join(", "))
+                    }
+                },
+            };
         }
 
         let mut parts = Vec::new();
@@ -3682,6 +3777,12 @@ impl ObjectFilterExt for ObjectFilter {
                     let inner_desc = describe_player_filter(inner.as_ref());
                     controller_suffix = Some(format!("target {inner_desc} controls"));
                 }
+                PlayerFilter::AliasedTarget(_) => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
+                }
                 PlayerFilter::ControllerOf(_) => parts.push("a controller's".to_string()),
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
                 PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -3736,7 +3837,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
                 PlayerFilter::Defending => "the defending player owns".to_string(),
                 PlayerFilter::Attacking => "an attacking player owns".to_string(),
-                PlayerFilter::DamagedPlayer => "the damaged player owns".to_string(),
+                PlayerFilter::DamagedPlayer => "that player owns".to_string(),
                 PlayerFilter::IteratedPlayer => "that player owns".to_string(),
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller owns".to_string()
@@ -3747,6 +3848,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::Target(inner) => {
                     format!("target {} owns", describe_player_filter(inner.as_ref()))
                 }
+                PlayerFilter::AliasedTarget(_) => "that player owns".to_string(),
                 PlayerFilter::ControllerOf(_) => "that object's controller owns".to_string(),
                 PlayerFilter::OwnerOf(_) => "that object's owner owns".to_string(),
                 PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -3811,7 +3913,11 @@ impl ObjectFilterExt for ObjectFilter {
                     color_words.push("green");
                 }
                 if !color_words.is_empty() {
-                    parts.push(color_words.join(" or "));
+                    parts.push(describe_filter_union_list(
+                        color_words.into_iter().map(str::to_string).collect(),
+                        self.union_connective(),
+                        false,
+                    ));
                 }
             }
         }
@@ -3880,14 +3986,14 @@ impl ObjectFilterExt for ObjectFilter {
                     parts.push("other".to_string());
                 }
                 TaggedOpbjectRelation::SameNameAsTagged => {
-                    post_noun_qualifiers.push("with the same name as that object".to_string());
+                    post_noun_qualifiers.push("with the same name as it".to_string());
                 }
                 TaggedOpbjectRelation::DifferentNameFromTagged => {
                     post_noun_qualifiers
                         .push("with a different name from those objects".to_string());
                 }
                 TaggedOpbjectRelation::SameControllerAsTagged => {
-                    post_noun_qualifiers.push("controlled by that object's controller".to_string());
+                    post_noun_qualifiers.push("controlled by its controller".to_string());
                 }
                 TaggedOpbjectRelation::SameManaValueAsTagged => {
                     if constraint.tag.as_str().starts_with("sacrifice_cost_") {
@@ -3895,8 +4001,7 @@ impl ObjectFilterExt for ObjectFilter {
                             "with the same mana value as the sacrificed creature".to_string(),
                         );
                     } else {
-                        post_noun_qualifiers
-                            .push("with the same mana value as that object".to_string());
+                        post_noun_qualifiers.push("with the same mana value as it".to_string());
                     }
                 }
                 TaggedOpbjectRelation::ManaValueLteTagged => {
@@ -3905,17 +4010,15 @@ impl ObjectFilterExt for ObjectFilter {
                             .push("with equal or lesser mana value than that spell".to_string());
                     } else {
                         post_noun_qualifiers.push(
-                            "with mana value less than or equal to that object's mana value"
-                                .to_string(),
+                            "with mana value less than or equal to its mana value".to_string(),
                         );
                     }
                 }
                 TaggedOpbjectRelation::ManaValueLtTagged => {
-                    post_noun_qualifiers
-                        .push("with lesser mana value than that object".to_string());
+                    post_noun_qualifiers.push("with lesser mana value than it".to_string());
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
-                    post_noun_qualifiers.push("that shares a color with that object".to_string());
+                    post_noun_qualifiers.push("that shares a color with it".to_string());
                 }
                 TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
                     post_noun_qualifiers.push(
@@ -3924,8 +4027,13 @@ impl ObjectFilterExt for ObjectFilter {
                     );
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithTagged => {
-                    post_noun_qualifiers
-                        .push("that shares a creature type with that object".to_string());
+                    post_noun_qualifiers.push("that shares a creature type with it".to_string());
+                }
+                TaggedOpbjectRelation::SharesSubtypeWithEachTagged => {
+                    post_noun_qualifiers.push(
+                        "that shares a creature type with each creature tapped this way"
+                            .to_string(),
+                    );
                 }
                 TaggedOpbjectRelation::SharesCardType => {
                     if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
@@ -3941,24 +4049,16 @@ impl ObjectFilterExt for ObjectFilter {
                         );
                         continue;
                     }
-                    // Oracle says "permanent type" only for battlefield
-                    // subjects; revealed/searched CARDS use "card type" even
-                    // when the type list happens to be all permanent types
-                    // (Chaotic Transformation).
-                    let permanent_type_context = self.zone == Some(Zone::Battlefield);
-                    if permanent_type_context {
-                        post_noun_qualifiers
-                            .push("that shares a permanent type with that object".to_string());
-                    } else {
-                        post_noun_qualifiers
-                            .push("that shares a card type with that object".to_string());
-                    }
+                    post_noun_qualifiers.push("that shares a card type with it".to_string());
+                }
+                TaggedOpbjectRelation::SharesPermanentType => {
+                    post_noun_qualifiers.push("that shares a permanent type with it".to_string());
                 }
                 TaggedOpbjectRelation::AttachedToTaggedObject => {
-                    post_noun_qualifiers.push("attached to that object".to_string());
+                    post_noun_qualifiers.push("attached to it".to_string());
                 }
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
-                    post_noun_qualifiers.push("paired with that object".to_string());
+                    post_noun_qualifiers.push("paired with it".to_string());
                 }
                 TaggedOpbjectRelation::SameStableId => {}
             }
@@ -4165,13 +4265,16 @@ impl ObjectFilterExt for ObjectFilter {
                 let kind = self.stack_kind.unwrap_or(StackObjectKind::Ability);
                 post_noun_qualifiers.push(format!(
                     "from {} source",
-                    describe_card_type_source_phrase(&self.card_types)
+                    describe_card_type_source_phrase(&self.card_types, self.union_connective())
                 ));
                 Some((false, describe_stack_object_kind(kind).to_string()))
             } else if has_all_permanent_types {
                 Some((true, "permanent".to_string()))
             } else {
-                Some((true, describe_card_type_list(&self.card_types)))
+                Some((
+                    true,
+                    describe_card_type_list(&self.card_types, self.union_connective()),
+                ))
             }
         } else if !self.token && !subtype_implies_type {
             // Default noun depends on zone context.
@@ -4229,7 +4332,11 @@ impl ObjectFilterExt for ObjectFilter {
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
             parts.extend(remaining.iter().map(std::string::ToString::to_string));
-            Some(parts.join(" or "))
+            Some(describe_filter_union_list(
+                parts,
+                self.union_connective(),
+                false,
+            ))
         } else {
             None
         };
@@ -4258,11 +4365,15 @@ impl ObjectFilterExt for ObjectFilter {
         let land_only = self.all_card_types.is_empty()
             && self.card_types.len() == 1
             && self.card_types[0] == CardType::Land
-            && matches!(self.zone, None | Some(Zone::Battlefield));
+            && !matches!(self.zone, Some(Zone::Stack));
         if self.type_or_subtype_union {
             match (type_phrase, subtype_phrase) {
                 (Some((_, type_phrase)), Some(subtype_phrase)) => {
-                    parts.push(format!("{type_phrase} or {subtype_phrase}"));
+                    parts.push(describe_filter_union_list(
+                        vec![type_phrase, subtype_phrase],
+                        self.union_connective(),
+                        false,
+                    ));
                 }
                 (Some((_, type_phrase)), None) => parts.push(type_phrase),
                 (None, Some(subtype_phrase)) => parts.push(subtype_phrase),
@@ -4276,6 +4387,19 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 (Some((_, _type_phrase)), Some(subtype_phrase)) if land_only => {
                     parts.push(subtype_phrase);
+                    if matches!(
+                        self.zone,
+                        Some(
+                            Zone::Graveyard
+                                | Zone::Hand
+                                | Zone::Library
+                                | Zone::Exile
+                                | Zone::Command
+                                | Zone::OutsideGame
+                        )
+                    ) {
+                        parts.push("card".to_string());
+                    }
                 }
                 (Some((type_is_card_type, type_phrase)), Some(subtype_phrase))
                     if !type_is_card_type && type_phrase == "card" =>
@@ -4551,6 +4675,15 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(clause);
         }
 
+        if self.put_onto_battlefield_with_source {
+            let source = self
+                .put_onto_battlefield_with_source_surface
+                .as_ref()
+                .map(ironsmith_core::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            parts.push(format!("put onto the battlefield with {source}"));
+        }
+
         if self.entered_graveyard_from_battlefield_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from the battlefield this turn".to_string());
         } else if self.entered_graveyard_this_turn && self.zone == Some(Zone::Graveyard) {
@@ -4661,7 +4794,10 @@ impl ObjectFilterExt for ObjectFilter {
             if !target_fragments.is_empty() {
                 let target_text = if target_fragments.len() == 2 {
                     let joiner = if self.targets_only_any_of {
-                        "or"
+                        match self.union_connective() {
+                            ObjectFilterUnionConnective::Or => "or",
+                            ObjectFilterUnionConnective::AndOr => "and/or",
+                        }
                     } else {
                         "and"
                     };
@@ -4711,7 +4847,14 @@ impl ObjectFilterExt for ObjectFilter {
             }
             if !target_fragments.is_empty() {
                 let target_text = if target_fragments.len() == 2 {
-                    let joiner = if self.targets_any_of { "or" } else { "and" };
+                    let joiner = if self.targets_any_of {
+                        match self.union_connective() {
+                            ObjectFilterUnionConnective::Or => "or",
+                            ObjectFilterUnionConnective::AndOr => "and/or",
+                        }
+                    } else {
+                        "and"
+                    };
                     format!("{} {} {}", target_fragments[0], joiner, target_fragments[1])
                 } else {
                     target_fragments[0].clone()

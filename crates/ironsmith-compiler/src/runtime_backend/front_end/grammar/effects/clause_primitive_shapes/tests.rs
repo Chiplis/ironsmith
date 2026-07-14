@@ -10,6 +10,16 @@ fn parses_power_damage_and_fight_shapes() {
 
     let fight = lex_line("Target creature fights one another.", 0).unwrap();
     assert!(parse_fight_shape(&fight).unwrap().right_is_tagged_other);
+
+    let divided = lex_line(
+        "That creature deals damage equal to its power divided as its controller chooses among any number of those Wolves.",
+        0,
+    )
+    .unwrap();
+    assert!(
+        parse_power_damage_shape(&divided).unwrap().is_none(),
+        "distributed damage must reach the divided-damage parser"
+    );
 }
 
 #[test]

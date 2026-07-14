@@ -97,6 +97,10 @@ pub(crate) fn parse_return_multiple_targets_shape(
     let destination_tokens = trim_lexed_commas(destination_tokens);
     if targets_tokens.is_empty()
         || destination_tokens.is_empty()
+        // This grammar leaf represents one return action with several objects.
+        // A later `then return` starts a distinct ordered action and must be
+        // left to sequence parsing instead of inheriting its destination.
+        || marker_anywhere(targets_tokens, || primitives::kw("return").void())
         || !marker_anywhere(targets_tokens, || {
             alt((
                 primitives::comma().void(),
@@ -303,5 +307,13 @@ mod tests {
             TokenWordView::new(shape.filter_tokens).to_word_refs(),
             ["commanders", "you", "own"]
         );
+    }
+
+    #[test]
+    fn multi_target_return_does_not_span_a_then_return_action() {
+        let returned = lex(
+            "Return up to two target nonland permanent cards from your graveyard to your hand, then return up to two target land cards from your graveyard to the battlefield tapped",
+        );
+        assert!(parse_return_multiple_targets_shape(&returned).is_none());
     }
 }

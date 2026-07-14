@@ -81,6 +81,16 @@ const POWER_GREATER_THAN_TOUGHNESS_PHRASES: &[&[&str]] = &[
     &["toughness", "less", "than", "its", "power"],
     &["toughness", "less", "than", "their", "power"],
 ];
+const ATTACHMENT_TAGGED_TAIL_PREFIXES: &[&[&str]] = &[
+    &["it"],
+    &["that", "object"],
+    &["that", "creature"],
+    &["that", "permanent"],
+    &["that", "equipment"],
+    &["that", "aura"],
+];
+const ENCHANTED_PLAYER_ATTACHMENT_PREFIX: &[&str] = &["enchanted", "player"];
+const THAT_PLAYER_ATTACHMENT_TAIL: &[&str] = &["that", "player"];
 
 fn token_index_after_word_prefix(tokens: &[OwnedLexToken], word_len: usize) -> Option<usize> {
     if word_len == 0 {
@@ -102,6 +112,94 @@ fn token_index_after_word_prefix(tokens: &[OwnedLexToken], word_len: usize) -> O
         }
     }
     None
+}
+
+/// Return the word spans consumed by characteristic-comparison operands.
+/// Object nouns and player relations inside those operands describe the value
+/// source, not the candidate object (for example, `the number of Vampires you
+/// control` must not add Vampire or `you control` to the outer filter).
+fn filter_comparison_rhs_ranges(
+    words: &[&str],
+) -> Result<Vec<std::ops::Range<usize>>, CardTextError> {
+    let mut ranges = Vec::new();
+    let mut idx = 0usize;
+    while idx < words.len() {
+        let (axis, axis_word_count) =
+            if parse_phrase_at_head(&words[idx..], MANA_VALUE_PREFIX).is_some() {
+                ("mana value", MANA_VALUE_PREFIX.len())
+            } else if words[idx] == POWER_WORD {
+                ("power", 1)
+            } else if words[idx] == TOUGHNESS_WORD {
+                ("toughness", 1)
+            } else {
+                idx += 1;
+                continue;
+            };
+
+        let rhs_start = idx + axis_word_count;
+        let Some((_, consumed)) = parse_filter_comparison_tokens(axis, &words[rhs_start..], words)?
+        else {
+            idx = rhs_start;
+            continue;
+        };
+        let rhs_end = rhs_start.saturating_add(consumed).min(words.len());
+        if rhs_start < rhs_end {
+            ranges.push(rhs_start..rhs_end);
+        }
+        idx = rhs_end.max(rhs_start);
+    }
+    Ok(ranges)
+}
+
+fn word_is_in_ranges(word_idx: usize, ranges: &[std::ops::Range<usize>]) -> bool {
+    ranges.iter().any(|range| range.contains(&word_idx))
+}
+
+/// Split an intrinsic attachment selector into the object being selected and
+/// the filter its attachment target must satisfy. This is deliberately done
+/// before the ordinary type pass so `Aura attached to a creature` cannot be
+/// flattened into the impossible conjunction `Aura creature`.
+fn split_attached_to_object_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let attached_idx = tokens.iter().position(|token| token.is_word("attached"))?;
+    let to_idx = attached_idx + 1;
+    if !tokens.get(to_idx).is_some_and(|token| token.is_word("to")) {
+        return None;
+    }
+
+    let tail = trim_commas(&tokens[to_idx + 1..]);
+    if tail.is_empty() {
+        return None;
+    }
+    let tail_words = non_article_parser_word_refs(&tail);
+    if parse_phrase_choice_at_head(&tail_words, ATTACHMENT_TAGGED_TAIL_PREFIXES).is_some()
+        || parse_phrase_at_head(&tail_words, ENCHANTED_PLAYER_ATTACHMENT_PREFIX).is_some()
+    {
+        return None;
+    }
+
+    let mut head_end = attached_idx;
+    if head_end > 0
+        && tokens[head_end - 1]
+            .as_word()
+            .is_some_and(|word| matches!(word, "thats" | "that's"))
+    {
+        head_end -= 1;
+    } else if head_end >= 2
+        && tokens[head_end - 2].is_word("that")
+        && tokens[head_end - 1]
+            .as_word()
+            .is_some_and(|word| parse_word_choice(word, BE_VERB_WORDS).is_some())
+    {
+        head_end -= 2;
+    }
+
+    let head = trim_commas(&tokens[..head_end]);
+    if head.is_empty() {
+        return None;
+    }
+    Some((head, tail))
 }
 
 fn source_reference_tail_prefix(
@@ -199,7 +297,11 @@ const ACTIVATED_ABILITY_WORDS: &[&str] = &["activated", "ability"];
 const TRIGGERED_ABILITY_WORDS: &[&str] = &["triggered", "ability"];
 const ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES: &[&[&str]] = &[
     &["activated", "or", "triggered", "ability"],
+    &["activated", "or", "triggered", "abilities"],
+    &["activated", "and", "triggered", "abilities"],
     &["triggered", "or", "activated", "ability"],
+    &["triggered", "or", "activated", "abilities"],
+    &["triggered", "and", "activated", "abilities"],
 ];
 const TEXT_NEGATION_WORDS: &[&str] = &["not", "isnt", "isn't", "arent", "aren't"];
 const LEGENDARY_OR_PREFIX: &[&str] = &["legendary", "or"];
@@ -237,6 +339,21 @@ const EXCLUDED_CHOSEN_TYPE_PHRASES: &[&[&str]] = &[
     &["that", "isn't", "of", "chosen", "type"],
     &["that", "is", "not", "of", "chosen", "type"],
 ];
+
+fn contains_explicit_card_noun(
+    words: &[&str],
+    comparison_rhs_ranges: &[std::ops::Range<usize>],
+) -> bool {
+    words.iter().enumerate().any(|(idx, word)| {
+        matches!(*word, "card" | "cards")
+            && !word_is_in_ranges(idx, comparison_rhs_ranges)
+            // These phrases name a characteristic rather than the object
+            // selected by this filter.
+            && !words
+                .get(idx + 1)
+                .is_some_and(|next| matches!(*next, "type" | "types" | "name" | "names"))
+    })
+}
 const NO_SHARED_CREATURE_TYPE_WITH_YOUR_CREATURES_OR_GRAVEYARD_CLAUSES: &[&[&str]] = &[
     &[
         "that",
@@ -455,7 +572,15 @@ pub(super) fn parse_object_filter_inner(
     if let Some(targets_idx) = targets_idx {
         let that_idx = targets_idx - 1;
         base_tokens = tokens[..that_idx].to_vec();
-        let target_tokens = &tokens[targets_idx + 1..];
+        let mut target_tokens = &tokens[targets_idx + 1..];
+        let mut relation_target_count = None;
+        if let Some((count, rest)) = primitives::parse_prefix(
+            target_tokens,
+            crate::runtime_backend::front_end::grammar::leaf::parse_leaf_choice_count_prefix_lexed,
+        ) {
+            relation_target_count = Some(count);
+            target_tokens = rest;
+        }
         let parse_target_fragment = |fragment_tokens: &[OwnedLexToken]| -> Result<
             (
                 Option<PlayerFilter>,
@@ -552,10 +677,22 @@ pub(super) fn parse_object_filter_inner(
                 parse_target_fragment(&left_tokens)?;
             let (right_player, right_object, right_only, right_count) =
                 parse_target_fragment(&right_tokens)?;
+            let is_object_union = left_player.is_none()
+                && right_player.is_none()
+                && left_object.is_some()
+                && right_object.is_some();
             target_player = left_player.or(right_player);
-            target_object = left_object.or(right_object);
+            target_object = if is_object_union {
+                // Preserve an object-class union such as "creatures or
+                // Vehicles you control" as one target relation. Picking one
+                // side here silently broadened/narrowed both trigger matching
+                // and event-derived target counts.
+                Some(parse_object_filter_permissive(target_tokens, false)?)
+            } else {
+                left_object.or(right_object)
+            };
             targets_only = left_only || right_only;
-            target_count = left_count.or(right_count);
+            target_count = relation_target_count.or(left_count).or(right_count);
             if target_player.is_some() && target_object.is_some() {
                 filter.targets_any_of = true;
             }
@@ -565,7 +702,7 @@ pub(super) fn parse_object_filter_inner(
             target_player = parsed_player;
             target_object = parsed_object;
             targets_only = parsed_only;
-            target_count = parsed_count;
+            target_count = relation_target_count.or(parsed_count);
         }
     }
 
@@ -578,6 +715,24 @@ pub(super) fn parse_object_filter_inner(
     }
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
+
+    if let Some((head_tokens, attached_to_tokens)) = split_attached_to_object_filter(&base_tokens) {
+        let attached_to_words = non_article_parser_word_refs(&attached_to_tokens);
+        if parse_phrase_whole(&attached_to_words, THAT_PLAYER_ATTACHMENT_TAIL).is_some() {
+            filter.attached_to_player =
+                Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
+        } else {
+            let attached_to = if matches!(attached_to_words.as_slice(), ["him"] | ["her"]) {
+                ObjectFilter::source_with_surface(crate::target::SourceReferenceSurface::FullName(
+                    attached_to_words[0].to_string(),
+                ))
+            } else {
+                parse_object_filter_permissive(&attached_to_tokens, false)?
+            };
+            filter.attached_to_object = Some(Box::new(attached_to));
+        }
+        base_tokens = head_tokens;
+    }
 
     // "other than <source>" marks an exclusion, not an additional type
     // selector. Keep "other" and capture the source surface when available.
@@ -689,6 +844,8 @@ pub(super) fn parse_object_filter_inner(
     }
 
     if let Some(mut disjunction) = parse_attached_reference_or_another_disjunction(&base_tokens)? {
+        disjunction.attached_to_object = filter.attached_to_object.take();
+        disjunction.attached_to_player = filter.attached_to_player.take();
         if target_player.is_some() || target_object.is_some() {
             disjunction = if targets_only {
                 disjunction.targeting_only(target_player.take(), target_object.take())
@@ -771,6 +928,34 @@ pub(super) fn parse_object_filter_inner(
         filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
         return Ok(filter);
     }
+
+    // Qualified stack-ability sets (for example, "all other activated and
+    // triggered abilities you control") must retain both their stack-object
+    // identity and the outer controller/reference qualifiers. The exact-shape
+    // branches above intentionally return early, but a qualified shape needs
+    // to continue through the ordinary relation parser below.
+    let ability_words = non_article_parser_word_refs(&base_tokens);
+    if parse_phrase_choice_anywhere(
+        &ability_words,
+        ACTIVATED_OR_TRIGGERED_ABILITY_PHRASES,
+    )
+    .is_some()
+    {
+        let mut triggered = ObjectFilter::ability();
+        triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+        filter.zone = Some(Zone::Stack);
+        filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
+    } else if parse_phrase_anywhere(&ability_words, &["activated", "ability"]).is_some()
+        || parse_phrase_anywhere(&ability_words, &["activated", "abilities"]).is_some()
+    {
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::ActivatedAbility);
+    } else if parse_phrase_anywhere(&ability_words, &["triggered", "ability"]).is_some()
+        || parse_phrase_anywhere(&ability_words, &["triggered", "abilities"]).is_some()
+    {
+        filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+    }
     if parse_phrase_choice_whole(
         &non_article_parser_word_refs(&base_tokens),
         REST_REVEALED_OBJECT_PHRASES,
@@ -819,6 +1004,16 @@ pub(super) fn parse_object_filter_inner(
     // "... graveyard from the battlefield this turn" means the card entered a graveyard
     // from the battlefield this turn.
     try_apply_graveyard_from_battlefield_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
+
+    // Preserve the source-relative history used by leaves-the-battlefield abilities such as
+    // "a creature put onto the battlefield with this enchantment". This is an object-identity
+    // relation, not a type clause; consume it before the ordinary noun pass can flatten the
+    // source noun into the selected object's card types.
+    try_apply_put_onto_battlefield_with_source_clause(
         &mut filter,
         &mut all_words,
         &mut segment_tokens,
@@ -937,6 +1132,11 @@ pub(super) fn parse_object_filter_inner(
             all_words.join(" ")
         )));
     }
+    let explicit_card_rhs_ranges = filter_comparison_rhs_ranges(&all_words)?;
+    if contains_explicit_card_noun(&all_words, &explicit_card_rhs_ranges) {
+        filter.set_explicit_card_noun(true);
+    }
+
     let reference_stage =
         apply_reference_and_tag_stage(&mut filter, &mut all_words, &mut segment_tokens);
     if reference_stage.early_return {
@@ -961,37 +1161,69 @@ pub(super) fn parse_object_filter_inner(
     } else {
         PlayerFilter::IteratedPlayer
     };
+    let comparison_rhs_ranges = filter_comparison_rhs_ranges(&all_words)?;
 
+    let outer_filter_words = all_words
+        .iter()
+        .enumerate()
+        .map(|(idx, word)| {
+            if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+                "__comparison_rhs__"
+            } else {
+                *word
+            }
+        })
+        .collect::<Vec<_>>();
     if let Some(attacking_filter) =
-        attacking_player_filter_from_words(&all_words, &pronoun_player_filter)
+        attacking_player_filter_from_words(&outer_filter_words, &pronoun_player_filter)
     {
         filter.attacking_player_or_planeswalker_controlled_by = Some(attacking_filter);
     }
 
+    let is_outer_tagged_spell_reference_at = |idx: usize| {
+        outer_filter_words
+            .get(idx.wrapping_sub(1))
+            .is_some_and(|prev| parse_word_choice(prev, TAGGED_SPELL_REFERENCE_WORDS).is_some())
+    };
+    let contains_unqualified_spell_word =
+        outer_filter_words.iter().enumerate().any(|(idx, word)| {
+            parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some()
+                && !is_outer_tagged_spell_reference_at(idx)
+        });
     let is_tagged_spell_reference_at = |idx: usize| {
         all_words
             .get(idx.wrapping_sub(1))
             .is_some_and(|prev| parse_word_choice(prev, TAGGED_SPELL_REFERENCE_WORDS).is_some())
     };
-    let contains_unqualified_spell_word = all_words.iter().enumerate().any(|(idx, word)| {
-        parse_word_choice(word, SPELL_OR_SPELLS_WORDS).is_some()
-            && !is_tagged_spell_reference_at(idx)
-    });
-    let mentions_ability_word = all_words
+    let mentions_ability_word = outer_filter_words
         .iter()
         .any(|word| parse_word_choice(word, ABILITY_OR_ABILITIES_WORDS).is_some());
     if contains_unqualified_spell_word && !mentions_ability_word {
         filter.has_mana_cost = true;
     }
-    // "... with a mana cost that contains {X}" narrows a spell/permanent filter
+    // Both current and older Oracle surfaces narrow a spell/permanent filter
     // to objects whose printed mana cost includes an {X} symbol.
-    if parse_phrase_anywhere(&all_words, &["mana", "cost", "that", "contains"]).is_some() {
+    let has_x_in_cost_surface =
+        parse_phrase_anywhere(&outer_filter_words, &["mana", "cost", "that", "contains"]).is_some()
+            || [
+                &["with", "x", "in", "its", "mana", "cost"][..],
+                &["with", "x", "in", "their", "mana", "cost"][..],
+                &["with", "x", "in", "its", "mana", "costs"][..],
+                &["with", "x", "in", "their", "mana", "costs"][..],
+            ]
+            .iter()
+            .any(|phrase| parse_phrase_anywhere(&outer_filter_words, phrase).is_some());
+    if has_x_in_cost_surface {
         filter.has_x_in_cost = true;
     }
 
     if !all_words.is_empty() {
         let mut idx = 0usize;
         while idx < all_words.len() {
+            if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+                idx += 1;
+                continue;
+            }
             let slice = &all_words[idx..];
             if relation_clause_is_inside_aggregate_scope(&all_words, idx) {
                 idx += 1;
@@ -1017,12 +1249,22 @@ pub(super) fn parse_object_filter_inner(
                 idx += consumed.max(1);
                 continue;
             }
+            if let Some(consumed) =
+                try_apply_passive_player_relation_clause(&mut filter, slice, &pronoun_player_filter)
+            {
+                idx += consumed.max(1);
+                continue;
+            }
             idx += 1;
         }
     }
 
     let mut with_idx = 0usize;
     while with_idx + 1 < all_words.len() {
+        if word_is_in_ranges(with_idx, &comparison_rhs_ranges) {
+            with_idx += 1;
+            continue;
+        }
         if all_words[with_idx] != WITH_WORD {
             with_idx += 1;
             continue;
@@ -1039,6 +1281,10 @@ pub(super) fn parse_object_filter_inner(
 
     let mut has_idx = 0usize;
     while has_idx + 1 < all_words.len() {
+        if word_is_in_ranges(has_idx, &comparison_rhs_ranges) {
+            has_idx += 1;
+            continue;
+        }
         if parse_word_choice(all_words[has_idx], HAS_HAVE_WORDS).is_none() {
             has_idx += 1;
             continue;
@@ -1056,6 +1302,10 @@ pub(super) fn parse_object_filter_inner(
 
     let mut without_idx = 0usize;
     while without_idx + 1 < all_words.len() {
+        if word_is_in_ranges(without_idx, &comparison_rhs_ranges) {
+            without_idx += 1;
+            continue;
+        }
         if all_words[without_idx] != WITHOUT_WORD {
             without_idx += 1;
             continue;
@@ -1077,6 +1327,9 @@ pub(super) fn parse_object_filter_inner(
 
     let mut referenced_zones = Vec::new();
     for idx in 0..all_words.len() {
+        if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+            continue;
+        }
         if let Some(zone) = parse_zone_word(all_words[idx]) {
             if !slice_has(&referenced_zones, &zone) {
                 referenced_zones.push(zone);
@@ -1284,6 +1537,9 @@ pub(super) fn parse_object_filter_inner(
     let mut negated_historic_indices = std::collections::HashSet::new();
     let is_text_negation_word = |word: &str| parse_word_choice(word, TEXT_NEGATION_WORDS).is_some();
     for idx in 0..all_words.len().saturating_sub(1) {
+        if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+            continue;
+        }
         if all_words[idx] != NON_WORD {
             continue;
         }
@@ -1326,6 +1582,9 @@ pub(super) fn parse_object_filter_inner(
         }
     }
     for idx in 0..all_words.len() {
+        if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+            continue;
+        }
         if !is_text_negation_word(all_words[idx]) {
             continue;
         }
@@ -1385,11 +1644,15 @@ pub(super) fn parse_object_filter_inner(
         }
     }
     for idx in 0..all_words.len().saturating_sub(1) {
+        if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+            continue;
+        }
         if parse_phrase_whole(&all_words[idx..idx + 2], NOT_HISTORIC_PHRASE).is_some() {
             filter.nonhistoric = true;
             negated_historic_indices.insert(idx + 1);
         }
     }
+
     let excluded_chosen_type_indices: std::collections::HashSet<usize> =
         EXCLUDED_CHOSEN_TYPE_PHRASES
             .iter()
@@ -1410,6 +1673,9 @@ pub(super) fn parse_object_filter_inner(
 
     for (idx, word) in all_words.iter().enumerate() {
         let idx: usize = idx;
+        if word_is_in_ranges(idx, &comparison_rhs_ranges) {
+            continue;
+        }
         let is_negated_word = set_has(&negated_word_indices, &idx);
         match *word {
             "permanent" | "permanents" => saw_permanent = true,
@@ -1482,6 +1748,12 @@ pub(super) fn parse_object_filter_inner(
             }
             "noncommander" | "noncommanders" => filter.noncommander = true,
             "nonbasic" => {
+                if all_words.get(idx + 1).is_some_and(|word| *word == "land")
+                    && all_words.get(idx + 2).is_some_and(|word| *word == "type")
+                {
+                    filter.has_nonbasic_land_type = true;
+                    continue;
+                }
                 filter = filter.without_supertype(Supertype::Basic);
             }
             "colorless" => filter.colorless = true,
@@ -1550,6 +1822,21 @@ pub(super) fn parse_object_filter_inner(
             saw_subtype = true;
         }
     }
+    // In “shares a creature type with each creature tapped this way”, tapped
+    // qualifies the cost objects on the right-hand side, not the candidate
+    // card being filtered. Preserve an independent leading `tapped` qualifier
+    // when one is also present on the candidate itself.
+    if let Some(reference_tapped_idx) = all_words
+        .windows(3)
+        .position(|window| window == ["tapped", "this", "way"])
+        && !all_words
+            .iter()
+            .enumerate()
+            .any(|(idx, word)| *word == "tapped" && idx != reference_tapped_idx)
+    {
+        filter.tapped = false;
+    }
+
     if saw_spell && source_linked_exile_reference {
         // "spell ... exiled with this" describes a stack spell with a relation
         // to source-linked exiled cards, not a spell object in exile.
@@ -1568,9 +1855,14 @@ pub(super) fn parse_object_filter_inner(
             .map(ToString::to_string)
             .collect();
         segment_words_lists.push(segment_words.clone());
+        let segment_word_refs = segment_words.iter().map(String::as_str).collect::<Vec<_>>();
+        let segment_comparison_rhs_ranges = filter_comparison_rhs_ranges(&segment_word_refs)?;
         let mut types = Vec::new();
         let mut subtypes = Vec::new();
-        for word in &segment_words {
+        for (word_idx, word) in segment_words.iter().enumerate() {
+            if word_is_in_ranges(word_idx, &segment_comparison_rhs_ranges) {
+                continue;
+            }
             if let Some(card_type) = parse_card_type(word) {
                 push_unique(&mut types, card_type);
             }

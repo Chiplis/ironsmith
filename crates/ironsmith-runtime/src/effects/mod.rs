@@ -96,12 +96,13 @@ pub use cards::{
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
-    CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,
-    ExchangeValuesEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
-    GrantAbilitiesTargetEffect, MeleeEffect, ModifyPowerToughnessAllEffect,
-    ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PreventAllCombatDamageEffect,
-    PreventAllCombatDamageFromEffect, PreventAllDamageEffect, PreventAllDamageToTargetEffect,
-    PreventDamageEffect, RemoveFromCombatEffect, SetBasePowerToughnessEffect,
+    AssignNoCombatDamageEffect, CombatDamagePreventionTarget, EnterAttackingEffect,
+    ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect, FightEffect, GoadEffect,
+    GrantAbilitiesAllEffect, GrantAbilitiesTargetEffect, MeleeEffect,
+    ModifyPowerToughnessAllEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect,
+    PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect, PreventAllDamageEffect,
+    PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
+    SetBasePowerToughnessEffect,
 };
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
@@ -153,8 +154,8 @@ pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
     AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect, AddScaledManaEffect,
-    DoubleManaPoolEffect, EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, PayManaEffect,
-    RetainManaUntilEndOfTurnEffect,
+    DoubleManaPoolEffect, EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, ManaTypeSource,
+    PayManaEffect, RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
@@ -167,7 +168,8 @@ pub use permanents::{
     TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
-    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,
+    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
+    BecomeMonarchEffect,
     CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect, ChooseNamedOptionEffect,
     ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect, ControlPlayerEffect,
@@ -204,9 +206,10 @@ pub use tokens::{
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, EachPlayerSacrificesEffect,
     ExchangeZonesEffect, ExileEffect, ExileUntilDuration, ExileUntilEffect, HauntExileEffect,
-    MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect, MoveToLibraryTopOrBottomChoiceEffect,
-    MoveToZoneAttackTargetMode, MoveToZoneEffect, PutOntoBattlefieldEffect, ReorderGraveyardEffect,
-    ReorderLibraryTopEffect, ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
+    LibraryPlacementOrder, MayMoveToZoneEffect, MoveToLibraryNthFromTopEffect,
+    MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
+    PutOntoBattlefieldEffect, ReorderGraveyardEffect, ReorderLibraryTopEffect,
+    ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
     ShuffleObjectsIntoLibraryEffect,

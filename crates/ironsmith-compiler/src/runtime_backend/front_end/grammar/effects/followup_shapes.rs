@@ -27,6 +27,8 @@ pub(crate) enum ConditionalFollowupKind {
     WhenMilledThisWay,
     IfNoOneDoes,
     IfYouWin,
+    IfYouWinClash,
+    IfYouWinFlip,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,11 +127,21 @@ fn conditional_followup_prefix<'a>(input: &mut LexStream<'a>) -> WResult<Conditi
             .value(ConditionalFollowupKind::IfNoOneDoes),
         (
             primitives::phrase(&["if", "you", "win"]),
-            opt(alt((
+            alt((
                 primitives::phrase(&["the", "clash"]),
                 primitives::phrase(&["that", "clash"]),
-                primitives::phrase(&["the", "flip"]),
-            ))),
+            )),
+            peek(primitives::comma()),
+        )
+            .value(ConditionalFollowupKind::IfYouWinClash),
+        (
+            primitives::phrase(&["if", "you", "win"]),
+            primitives::phrase(&["the", "flip"]),
+            peek(primitives::comma()),
+        )
+            .value(ConditionalFollowupKind::IfYouWinFlip),
+        (
+            primitives::phrase(&["if", "you", "win"]),
             peek(primitives::comma()),
         )
             .value(ConditionalFollowupKind::IfYouWin),

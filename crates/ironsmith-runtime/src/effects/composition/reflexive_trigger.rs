@@ -101,6 +101,7 @@ fn choose_reflexive_targets(
                 legal_target_sets,
                 min_targets: count.min,
                 max_targets: count.max,
+                distinct_player_group: None,
             }],
         );
         let selected = ctx.decision_maker.decide_targets(game, &targets_ctx);
@@ -131,6 +132,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             controller: memory.controller,
             owner: memory.owner,
             name: String::new(),
+            first_printed_set_name: None,
             mana_cost: None,
             colors: memory.colors,
             supertypes: Vec::new(),
@@ -148,6 +150,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
             defense: None,
             abilities: std::sync::Arc::new(Vec::new()),
             aura_attach_filter: None,
+            copiable_values: crate::snapshot::CopiableValues::default(),
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: crate::player::ManaPool::default(),

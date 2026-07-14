@@ -9,6 +9,9 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// One source snapshot per mana unit spent to cast the current spell.
+pub const MANA_SOURCES_SPENT_TO_CAST_TAG: &str = "__mana_sources_spent_to_cast__";
+
 /// Runtime tag for the creature sacrificed to an exploit action.
 pub const EXPLOITED_TAG: &str = "exploited";
 

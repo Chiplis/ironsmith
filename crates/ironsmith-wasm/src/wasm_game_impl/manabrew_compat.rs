@@ -1,4 +1,30 @@
-use serde_json::{Value, json};
+use std::collections::BTreeMap;
+
+use manabrew_protocol::game::{
+    CardDto, CardIdentity, CardView, CombatAssignmentDto, DayTime, GameViewDto, ManaColor,
+    PlayerCounterKind, PlayerDto, PlayerStatus, StackObjectDto, StepKind, ZoneDto, ZoneKind,
+};
+use manabrew_protocol::prompts::choose_attackers::AttackerOptionDto;
+use manabrew_protocol::prompts::choose_blockers::BlockableAttackerDto;
+use manabrew_protocol::prompts::common::{
+    ActivatableAbilityInfo, AttackAssignment, AttackTargetDto, AttackTargetKind, AvailableAction,
+    AvailableActionKind, BlockAssignment, PaymentAction, PaymentActionKind, PaymentResourceKind,
+    PlayCardMode, PromptPresentation, TargetKind, TargetRef,
+};
+use manabrew_protocol::prompts::scry::ScryDestination;
+use manabrew_protocol::prompts::{
+    ChooseActionInput, ChooseActionOutput, ChooseAttackersInput, ChooseAttackersOutput,
+    ChooseBlockersInput, ChooseBlockersOutput, ChooseBoardTargetsInput, ChooseBoardTargetsOutput,
+    ChooseBooleanInput, ChooseBooleanOutput, ChooseCardsInput, ChooseCardsOutput, ChooseColorInput,
+    ChooseColorOutput, ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
+    ChooseNumberOutput, MulliganInput, MulliganOutput, PayManaCostInput, PayManaCostOutput,
+    PromptInput, PromptOutput, ReorderInput, ReorderItem, ReorderOutput, ResponseViolation,
+    ScryInput, ScryOutput,
+};
+use manabrew_protocol::transport::{
+    AgentPrompt, DirectiveInput, ProtocolError, ProtocolErrorCode, StateUpdate,
+};
+use serde_json::Value;
 
 type JsonMap = serde_json::Map<String, Value>;
 
@@ -10,6 +36,12 @@ struct ManabrewMatchConfigInput {
     #[serde(default)]
     seed: Option<u64>,
     #[serde(default)]
+    game_id: Option<String>,
+    #[serde(default)]
+    human_players: Vec<bool>,
+    #[serde(default)]
+    bot_players: Vec<u8>,
+    #[serde(default)]
     format: Option<String>,
     #[serde(default)]
     decks: Vec<Value>,
@@ -19,17 +51,33 @@ struct ManabrewMatchConfigInput {
     opening_hand_size: Option<usize>,
 }
 
-fn as_object(value: &Value) -> Option<&JsonMap> {
-    value.as_object()
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManabrewViewResult {
+    state: StateUpdate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt: Option<AgentPrompt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<ProtocolError>,
+}
+
+enum ManabrewResponseAction {
+    Dispatch(UiCommand),
+    Cancel,
 }
 
 fn object_value(value: &Value) -> &JsonMap {
     static EMPTY: std::sync::OnceLock<JsonMap> = std::sync::OnceLock::new();
-    value.as_object().unwrap_or_else(|| EMPTY.get_or_init(JsonMap::new))
+    value
+        .as_object()
+        .unwrap_or_else(|| EMPTY.get_or_init(JsonMap::new))
 }
 
-fn get_any<'a>(object: &'a JsonMap, keys: &[&str]) -> Option<&'a Value> {
-    keys.iter().find_map(|key| object.get(*key))
+fn array_value(value: Option<&Value>) -> &[Value] {
+    value
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 fn string_value(value: Option<&Value>, fallback: &str) -> String {
@@ -37,18 +85,6 @@ fn string_value(value: Option<&Value>, fallback: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or(fallback)
         .to_string()
-}
-
-fn number_value(value: Option<&Value>, fallback: i64) -> i64 {
-    value.and_then(Value::as_i64).unwrap_or(fallback)
-}
-
-fn bool_value(value: Option<&Value>, fallback: bool) -> bool {
-    value.and_then(Value::as_bool).unwrap_or(fallback)
-}
-
-fn array_value(value: Option<&Value>) -> &[Value] {
-    value.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
 fn manabrew_format(value: Option<&str>) -> MatchFormatInput {
@@ -62,7 +98,7 @@ fn manabrew_card_name(card: &Value) -> Option<String> {
     let card = object_value(card);
     let name = card
         .get("identity")
-        .and_then(as_object)
+        .and_then(Value::as_object)
         .and_then(|identity| identity.get("name"))
         .and_then(Value::as_str)
         .unwrap_or_default()
@@ -71,8 +107,7 @@ fn manabrew_card_name(card: &Value) -> Option<String> {
 }
 
 fn manabrew_deck_section_names(deck: &Value, section: &str) -> Vec<String> {
-    let deck = object_value(deck);
-    array_value(deck.get(section))
+    array_value(object_value(deck).get(section))
         .iter()
         .filter_map(manabrew_card_name)
         .collect()
@@ -127,16 +162,11 @@ fn manabrew_type_line(card: &JsonMap) -> String {
     front.extend(manabrew_string_array(card, "types"));
     let front = front.join(" ");
     let subtypes = manabrew_string_array(card, "subtypes").join(" ");
-    if front.is_empty() {
-        if subtypes.is_empty() {
-            "Card".to_string()
-        } else {
-            subtypes
-        }
-    } else if subtypes.is_empty() {
-        front
-    } else {
-        format!("{front} \u{2014} {subtypes}")
+    match (front.is_empty(), subtypes.is_empty()) {
+        (true, true) => "Card".to_string(),
+        (true, false) => subtypes,
+        (false, true) => front,
+        (false, false) => format!("{front} — {subtypes}"),
     }
 }
 
@@ -196,7 +226,7 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
         .iter()
         .map(|deck| manabrew_deck_section_names(deck, "cards"))
         .collect();
-    let sideboards: Vec<Vec<String>> = input
+    let sideboards = input
         .decks
         .iter()
         .map(|deck| manabrew_deck_section_names(deck, "sideboard"))
@@ -238,1475 +268,234 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
     }
 }
 
-fn player_slot(value: Option<&Value>) -> String {
-    format!("player-{}", number_value(value, 0).max(0))
-}
-
-fn card_id(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(value)) => format!("card-{value}"),
-        Some(Value::Number(value)) => format!("card-{value}"),
-        Some(value) if !value.is_null() => format!("card-{value}"),
-        _ => "card-unknown".to_string(),
-    }
-}
-
-fn stack_id(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(value)) => format!("stack-{value}"),
-        Some(Value::Number(value)) => format!("stack-{value}"),
-        Some(value) if !value.is_null() => format!("stack-{value}"),
-        _ => "stack-unknown".to_string(),
-    }
-}
-
-fn hidden_card(owner_id: &str, index: usize) -> Value {
-    json!({
-        "id": format!("hidden-{owner_id}-{index}"),
-        "identity": { "name": "Hidden Card", "setCode": "", "cardNumber": "", "isToken": false },
-        "controllerId": owner_id,
-        "ownerId": owner_id,
-        "zoneId": "hand",
-        "color": "",
-        "manaCost": "",
-        "cmc": 0,
-        "types": [],
-        "subtypes": [],
-        "supertypes": [],
-        "power": null,
-        "toughness": null,
-        "text": "",
-        "tapped": false,
-        "isCrewed": false,
-        "isAttacking": false,
-        "keywords": [],
-        "counters": {},
-        "damage": 0,
-        "summoningSick": false,
-        "isCopy": false,
-        "isDoubleFaced": false,
-        "isTransformed": false,
-        "isFaceDown": true,
-        "isBestowed": false,
-        "phasedOut": false,
-        "exerted": false,
-        "isRingBearer": false,
-        "attachmentIds": [],
-        "isMadnessExiled": false,
-        "isPlotted": false,
-        "isWarpExiled": false,
-        "foil": false,
-        "wouldDieInCombat": false
-    })
-}
-
-fn identity(name: String, token: bool) -> Value {
-    json!({ "name": name, "setCode": "", "cardNumber": "", "isToken": token })
-}
-
-fn split_power_toughness(value: Option<&Value>) -> (Value, Value) {
-    let Some(raw) = value.and_then(Value::as_str) else {
-        return (Value::Null, Value::Null);
-    };
-    let mut parts = raw.split('/');
-    let power = parts.next().filter(|part| !part.is_empty());
-    let toughness = parts.next().filter(|part| !part.is_empty());
-    (
-        power.map_or(Value::Null, |value| json!(value)),
-        toughness.map_or(Value::Null, |value| json!(value)),
-    )
-}
-
-fn counters(value: Option<&Value>) -> Value {
-    let mut result = JsonMap::new();
-    for entry in array_value(value) {
-        let counter = object_value(entry);
-        let kind = string_value(get_any(counter, &["kind"]), "");
-        if !kind.is_empty() {
-            result.insert(kind, json!(number_value(get_any(counter, &["amount"]), 0)));
-        }
-    }
-    Value::Object(result)
-}
-
-fn mana_pool(value: Option<&Value>) -> Value {
-    let pool = value.and_then(as_object);
-    json!({
-        "W": number_value(pool.and_then(|pool| get_any(pool, &["white"])), 0),
-        "U": number_value(pool.and_then(|pool| get_any(pool, &["blue"])), 0),
-        "B": number_value(pool.and_then(|pool| get_any(pool, &["black"])), 0),
-        "R": number_value(pool.and_then(|pool| get_any(pool, &["red"])), 0),
-        "G": number_value(pool.and_then(|pool| get_any(pool, &["green"])), 0),
-        "C": number_value(pool.and_then(|pool| get_any(pool, &["colorless"])), 0),
-    })
-}
-
-fn card_types(card: &JsonMap) -> Value {
-    Value::Array(
-        array_value(get_any(card, &["card_types", "cardTypes"]))
-            .iter()
-            .filter_map(Value::as_str)
-            .map(|value| json!(value))
-            .collect(),
-    )
-}
-
-fn card_from_zone_card(value: &Value, owner_id: &str, controller_id: &str, zone_id: &str) -> Value {
-    let card = object_value(value);
-    let name = string_value(get_any(card, &["name"]), "Hidden Card");
-    let (power, toughness) = split_power_toughness(get_any(card, &["power_toughness", "powerToughness"]));
-    json!({
-        "id": card_id(get_any(card, &["id", "stable_id", "stableId"])),
-        "identity": identity(name, false),
-        "controllerId": controller_id,
-        "ownerId": owner_id,
-        "zoneId": zone_id,
-        "color": "",
-        "manaCost": string_value(get_any(card, &["mana_cost", "manaCost"]), ""),
-        "cmc": 0,
-        "types": card_types(card),
-        "subtypes": [],
-        "supertypes": [],
-        "power": power,
-        "toughness": toughness,
-        "text": string_value(get_any(card, &["oracle_text", "oracleText"]), ""),
-        "tapped": false,
-        "isCrewed": false,
-        "isAttacking": false,
-        "keywords": [],
-        "counters": {},
-        "damage": 0,
-        "summoningSick": false,
-        "isCopy": false,
-        "isDoubleFaced": false,
-        "isTransformed": false,
-        "isFaceDown": false,
-        "isBestowed": false,
-        "phasedOut": false,
-        "exerted": false,
-        "isRingBearer": false,
-        "attachmentIds": [],
-        "isMadnessExiled": false,
-        "isPlotted": false,
-        "isWarpExiled": false,
-        "foil": false,
-        "wouldDieInCombat": false
-    })
-}
-
-fn permanent_card(value: &Value, owner_id: &str) -> Value {
-    let permanent = object_value(value);
-    let name = string_value(get_any(permanent, &["name"]), "Permanent");
-    let (power, toughness) =
-        split_power_toughness(get_any(permanent, &["power_toughness", "powerToughness"]));
-    let lane = string_value(get_any(permanent, &["lane"]), "").to_lowercase();
-    json!({
-        "id": card_id(get_any(permanent, &["id", "stable_id", "stableId"])),
-        "identity": identity(name, bool_value(get_any(permanent, &["token"]), false)),
-        "controllerId": owner_id,
-        "ownerId": owner_id,
-        "zoneId": "battlefield",
-        "color": "",
-        "manaCost": string_value(get_any(permanent, &["mana_cost", "manaCost"]), ""),
-        "cmc": 0,
-        "types": if lane.contains("land") { json!(["Land"]) } else { json!([]) },
-        "subtypes": [],
-        "supertypes": [],
-        "power": power,
-        "toughness": toughness,
-        "text": string_value(get_any(permanent, &["oracle_text", "oracleText"]), ""),
-        "tapped": bool_value(get_any(permanent, &["tapped"]), false),
-        "isCrewed": false,
-        "isAttacking": false,
-        "keywords": [],
-        "counters": counters(get_any(permanent, &["counters"])),
-        "damage": 0,
-        "summoningSick": false,
-        "isCopy": false,
-        "isDoubleFaced": false,
-        "isTransformed": false,
-        "isFaceDown": false,
-        "isBestowed": false,
-        "phasedOut": false,
-        "exerted": false,
-        "isRingBearer": false,
-        "attachmentIds": [],
-        "isMadnessExiled": false,
-        "isPlotted": false,
-        "isWarpExiled": false,
-        "foil": false,
-        "wouldDieInCombat": false
-    })
-}
-
-fn cached_hidden_card(
-    cache: &mut ManabrewOverlayCache,
-    seat: PlayerId,
-    owner_id: &str,
-    index: usize,
-) -> Value {
-    let source = json!({ "owner": owner_id, "index": index });
-    cache.get_or_insert_with(
-        seat,
-        ManabrewOverlayKind::HiddenCard,
-        owner_id,
-        &source,
-        || hidden_card(owner_id, index),
-    )
-}
-
-fn cached_card_from_zone_card(
-    cache: &mut ManabrewOverlayCache,
-    seat: PlayerId,
-    value: &Value,
-    owner_id: &str,
-    controller_id: &str,
-    zone_id: &str,
-) -> Value {
-    let discriminator = format!("{owner_id}|{controller_id}|{zone_id}");
-    cache.get_or_insert_with(
-        seat,
-        ManabrewOverlayKind::ZoneCard,
-        &discriminator,
-        value,
-        || card_from_zone_card(value, owner_id, controller_id, zone_id),
-    )
-}
-
-fn cached_permanent_card(
-    cache: &mut ManabrewOverlayCache,
-    seat: PlayerId,
-    value: &Value,
-    owner_id: &str,
-) -> Value {
-    cache.get_or_insert_with(
-        seat,
-        ManabrewOverlayKind::Permanent,
-        owner_id,
-        value,
-        || permanent_card(value, owner_id),
-    )
-}
-
-fn target_refs(value: &Value) -> Vec<Value> {
-    let target = object_value(value);
-    match string_value(get_any(target, &["kind"]), "").as_str() {
-        "player" => vec![json!({ "kind": "player", "id": player_slot(get_any(target, &["player"])) })],
-        "object" => vec![json!({ "kind": "card", "id": card_id(get_any(target, &["object"])) })],
-        _ => Vec::new(),
-    }
-}
-
-fn stack_object(value: &Value) -> Value {
-    let stack = object_value(value);
-    let id = stack_id(get_any(stack, &["id", "stable_id", "stableId"]));
-    let controller_id = player_slot(get_any(stack, &["controller"]));
-    let name = string_value(get_any(stack, &["name"]), "Stack object");
-    let targets: Vec<Value> = array_value(get_any(stack, &["targets"]))
-        .iter()
-        .flat_map(target_refs)
-        .collect();
-    json!({
-        "id": id,
-        "sourceId": card_id(get_any(stack, &[
-            "inspect_object_id",
-            "inspectObjectId",
-            "source_stable_id",
-            "sourceStableId",
-            "stable_id",
-            "stableId",
-            "id",
-        ])),
-        "controllerId": controller_id,
-        "identity": identity(name, false),
-        "text": string_value(get_any(stack, &["ability_text", "abilityText", "effect_text", "effectText"]), ""),
-        "isPermanentSpell": false,
-        "isCasting": false,
-        "targets": targets,
-    })
-}
-
-fn normalize_step(snapshot: &JsonMap) -> String {
-    let raw = string_value(
-        get_any(snapshot, &["step"]),
-        &string_value(get_any(snapshot, &["phase"]), "main1"),
-    );
-    let normalized = raw.to_lowercase().split_whitespace().collect::<Vec<_>>().join("_");
-    if normalized.contains("precombat") {
-        "main1".to_string()
-    } else if normalized.contains("postcombat") {
-        "main2".to_string()
-    } else if normalized.contains("combat") {
-        "combat".to_string()
-    } else if normalized.contains("draw") {
-        "draw".to_string()
-    } else if normalized.contains("upkeep") {
-        "upkeep".to_string()
-    } else if normalized.contains("end") {
-        "end".to_string()
-    } else if normalized.is_empty() {
-        "main1".to_string()
-    } else {
-        normalized
-    }
-}
-
-fn game_over(snapshot: &JsonMap) -> (bool, Value) {
-    let raw = get_any(snapshot, &["game_over", "gameOver"]).and_then(as_object);
-    let kind = raw
-        .and_then(|raw| get_any(raw, &["kind"]))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    match kind {
-        "" => (false, Value::Null),
-        "winner" => (
-            true,
-            json!(player_slot(raw.and_then(|raw| get_any(raw, &["player"])))),
-        ),
-        "remaining" => {
-            let remaining = raw
-                .and_then(|raw| get_any(raw, &["players"]))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            (
-                remaining.len() <= 1,
-                if remaining.len() == 1 {
-                    json!(player_slot(remaining.first()))
-                } else {
-                    Value::Null
-                },
-            )
-        }
-        _ => (true, Value::Null),
-    }
-}
-
-fn game_view_from_snapshot(
-    snapshot_value: &Value,
-    seat: PlayerId,
-    overlay_cache: &mut ManabrewOverlayCache,
-) -> Value {
-    let snapshot = object_value(snapshot_value);
-    let players_source = array_value(get_any(snapshot, &["players"]));
-    let players: Vec<Value> = players_source
-        .iter()
-        .map(|player_value| {
-            let player = object_value(player_value);
-            let id = player_slot(get_any(player, &["id"]));
-            let (over, winner_id) = game_over(snapshot);
-            let status = if over && !winner_id.is_null() && winner_id.as_str() != Some(id.as_str()) {
-                "lost"
-            } else {
-                "playing"
-            };
-            let hand_cards: Vec<Value> = array_value(get_any(player, &["hand_cards", "handCards"]))
-                .iter()
-                .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "hand"))
-                .collect();
-            let hand_size = number_value(
-                get_any(player, &["hand_size", "handSize"]),
-                hand_cards.len() as i64,
-            ) as usize;
-            let visible_hand = !hand_cards.is_empty()
-                || bool_value(get_any(player, &["can_view_hand", "canViewHand"]), false);
-            json!({
-                "id": id,
-                "name": string_value(get_any(player, &["name"]), &id),
-                "status": status,
-                "isHuman": true,
-                "life": number_value(get_any(player, &["life"]), 20),
-                "poison": 0,
-                "hand": if visible_hand {
-                    Value::Array(hand_cards)
-                } else {
-                    Value::Array((0..hand_size).map(|index| cached_hidden_card(overlay_cache, seat, &id, index)).collect())
-                },
-                "graveyard": Value::Array(array_value(get_any(player, &["graveyard_cards", "graveyardCards"]))
-                    .iter()
-                    .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "graveyard"))
-                    .collect()),
-                "exile": Value::Array(array_value(get_any(player, &["exile_cards", "exileCards"]))
-                    .iter()
-                    .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "exile"))
-                    .collect()),
-                "commandZone": Value::Array(array_value(get_any(player, &["command_cards", "commandCards"]))
-                    .iter()
-                    .map(|card| cached_card_from_zone_card(overlay_cache, seat, card, &id, &id, "command"))
-                    .collect()),
-                "libraryCount": number_value(get_any(player, &["library_size", "librarySize"]), 0),
-                "manaPool": mana_pool(get_any(player, &["mana_pool", "manaPool"])),
-                "commanderDamage": {},
-                "energyCounters": 0,
-                "radiationCounters": 0,
-                "hasCityBlessing": false,
-                "ringLevel": 0,
-                "speed": 0,
-                "experienceCounters": 0,
-                "ticketCounters": 0,
-            })
-        })
-        .collect();
-    let mut battlefield = Vec::new();
-    for player_value in players_source {
-        let player = object_value(player_value);
-        let owner_id = player_slot(get_any(player, &["id"]));
-        for permanent in array_value(get_any(player, &["battlefield"])) {
-            battlefield.push(cached_permanent_card(
-                overlay_cache,
-                seat,
-                permanent,
-                &owner_id,
-            ));
-        }
-    }
-    let (over, winner_id) = game_over(snapshot);
-    json!({
-        "gameId": format!(
-            "ironsmith-{}",
-            get_any(snapshot, &["snapshot_id", "snapshotId"]).map_or_else(|| "game".to_string(), Value::to_string)
-        ),
-        "turn": number_value(get_any(snapshot, &["turn_number", "turnNumber"]), 1),
-        "step": normalize_step(snapshot),
-        "combatAssignments": [],
-        "activePlayerId": player_slot(get_any(snapshot, &["active_player", "activePlayer"])),
-        "priorityPlayerId": player_slot(
-            get_any(snapshot, &["priority_player", "priorityPlayer"])
-                .or_else(|| get_any(snapshot, &["active_player", "activePlayer"]))
-        ),
-        "players": players,
-        "battlefield": battlefield,
-        "stack": Value::Array(array_value(get_any(snapshot, &["stack_objects", "stackObjects"]))
-            .iter()
-            .map(stack_object)
-            .collect()),
-        "gameOver": over,
-        "winnerId": winner_id,
-        "monarchId": null,
-        "initiativeHolderId": null,
-    })
-}
-
-fn state_from_snapshot(
-    snapshot: &Value,
-    seat: PlayerId,
-    overlay_cache: &mut ManabrewOverlayCache,
-) -> Value {
-    json!({ "gameView": game_view_from_snapshot(snapshot, seat, overlay_cache) })
-}
-
-// A `serde_json::Value::Object` serializes to a JS `Map` under the default
-// serde-wasm-bindgen serializer, so the Manabrew side (which reads these by
-// property, e.g. `view.state.gameView`) sees `undefined`. `json_compatible`
-// emits plain objects/arrays, matching what the typed-struct returns already do.
-fn manabrew_value_to_js(value: &Value, label: &str) -> Result<JsValue, JsValue> {
-    use serde::Serialize;
+fn manabrew_to_js(value: &impl Serialize, label: &str) -> Result<JsValue, JsValue> {
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     value
-        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .serialize(&serializer)
         .map_err(|error| JsValue::from_str(&format!("failed to encode {label}: {error}")))
 }
 
-fn redact_private_state(state: &Value) -> Value {
-    let mut state = state.clone();
-    let Some(players) = state
-        .get_mut("gameView")
-        .and_then(|game_view| game_view.get_mut("players"))
-        .and_then(Value::as_array_mut)
-    else {
-        return state;
-    };
-    for player in players {
-        let Some(player_object) = player.as_object_mut() else {
-            continue;
-        };
-        let id = player_object
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("player-0")
-            .to_string();
-        let count = player_object
-            .get("hand")
-            .and_then(Value::as_array)
-            .map(Vec::len)
-            .unwrap_or(0);
-        player_object.insert(
-            "hand".to_string(),
-            Value::Array((0..count).map(|index| hidden_card(&id, index)).collect()),
-        );
-    }
-    state
+fn player_id(player: PlayerId) -> String {
+    format!("player-{}", player.index())
 }
 
-fn presentation(title: &str, description: Option<String>, source_card_id: Option<String>) -> Value {
-    json!({
-        "title": title,
-        "description": description,
-        "sourceCardId": source_card_id,
-        "targets": [],
-    })
+fn object_id(game: &GameState, id: ObjectId) -> String {
+    game.object(id)
+        .map(|object| format!("card-{}", object.stable_id.0.0))
+        .unwrap_or_else(|| format!("card-object-{}", id.0))
 }
 
-fn source_card_id(decision: &JsonMap) -> Option<String> {
-    get_any(decision, &["source_id", "sourceId"]).map(|value| card_id(Some(value)))
-}
-
-fn legal_options(decision: &JsonMap) -> Vec<&Value> {
-    array_value(get_any(decision, &["options"]))
-        .iter()
-        .filter(|option| bool_value(as_object(option).and_then(|option| get_any(option, &["legal"])), true))
-        .collect()
-}
-
-fn option_description(option: &Value) -> String {
-    let option = object_value(option);
-    string_value(
-        get_any(option, &["description"]),
-        &get_any(option, &["index"])
-            .map_or_else(String::new, Value::to_string),
-    )
-}
-
-fn color_letter(label: &str) -> String {
-    match label {
-        "White" => "W",
-        "Blue" => "U",
-        "Black" => "B",
-        "Red" => "R",
-        "Green" => "G",
-        "Colorless" => "C",
-        value => value,
-    }
-    .to_string()
-}
-
-fn prompt_binding(prompt_id: &str, player_slot: &str, decision_kind: &str) -> Value {
-    json!({
-        "promptId": prompt_id,
-        "playerSlot": player_slot,
-        "decisionKind": decision_kind,
-        "actionRefs": {},
-        "targetKinds": {},
-        "optionIndices": {},
-    })
-}
-
-fn optional_number_value(value: Option<&Value>) -> Option<i64> {
-    match value {
-        Some(Value::Number(value)) => value.as_i64(),
-        Some(Value::String(value)) => value.parse().ok(),
-        _ => None,
+fn protocol_error(
+    code: ProtocolErrorCode,
+    message: impl Into<String>,
+    prompt_id: Option<u32>,
+) -> ProtocolError {
+    ProtocolError {
+        code,
+        message: message.into(),
+        prompt_id,
     }
 }
 
-fn priority_ref_number(action_ref: &Value, keys: &[&str]) -> Option<i64> {
-    as_object(action_ref).and_then(|object| optional_number_value(get_any(object, keys)))
-}
-
-fn nested_special_action_ref(action_ref: &Value) -> Option<&Value> {
-    as_object(action_ref).and_then(|object| get_any(object, &["action"]))
-}
-
-fn priority_action_object_id(action: &JsonMap, action_ref: &Value) -> Option<Value> {
-    let kind = priority_action_ref_kind(action_ref);
-    match kind.as_str() {
-        "cast_spell" => as_object(action_ref)
-            .and_then(|action_ref| get_any(action_ref, &["spell_id", "spellId"]))
-            .cloned(),
-        "play_land" => as_object(action_ref)
-            .and_then(|action_ref| get_any(action_ref, &["land_id", "landId", "card_id", "cardId"]))
-            .cloned(),
-        "activate_ability" | "activate_mana_ability" => as_object(action_ref)
-            .and_then(|action_ref| get_any(action_ref, &["source", "card_id", "cardId"]))
-            .cloned(),
-        "untap_land" => as_object(action_ref)
-            .and_then(|action_ref| get_any(action_ref, &["stable_id", "stableId", "land_id", "landId"]))
-            .cloned(),
-        "special_action" => {
-            let nested = nested_special_action_ref(action_ref)?;
-            let nested_kind = priority_action_ref_kind(nested);
-            let nested_object = as_object(nested)?;
-            match nested_kind.as_str() {
-                "play_land" => get_any(nested_object, &["card_id", "cardId", "land_id", "landId"]).cloned(),
-                "activate_mana_ability" => get_any(
-                    nested_object,
-                    &["permanent_id", "permanentId", "source", "card_id", "cardId"],
-                )
-                .cloned(),
-                _ => get_any(nested_object, &["permanent_id", "permanentId", "card_id", "cardId"]).cloned(),
-            }
-        }
-        _ => get_any(action, &["object_id", "objectId", "stable_id", "stableId"]).cloned(),
+fn presentation(
+    title: impl Into<String>,
+    description: Option<String>,
+    source_card_id: Option<String>,
+) -> PromptPresentation {
+    PromptPresentation {
+        title: title.into(),
+        description,
+        text: None,
+        source_card_id,
+        targets: Vec::new(),
     }
 }
 
-fn priority_action_ability_index(action: &JsonMap, action_ref: &Value) -> i64 {
-    priority_ref_number(action_ref, &["ability_index", "abilityIndex"])
-        .or_else(|| optional_number_value(get_any(action, &["ability_index", "abilityIndex"])))
-        .or_else(|| {
-            nested_special_action_ref(action_ref)
-                .and_then(|nested| priority_ref_number(nested, &["ability_index", "abilityIndex"]))
-        })
-        .unwrap_or(0)
-}
-
-fn priority_action_label(action: &JsonMap, index: usize) -> String {
-    string_value(get_any(action, &["label"]), &format!("Action {}", index + 1))
-}
-
-fn priority_action_mode_label(label: &str, fallback: &str) -> String {
-    label
-        .split_whitespace()
-        .next()
-        .filter(|value| !value.is_empty())
-        .unwrap_or(fallback)
-        .to_string()
-}
-
-fn available_action_from_priority_action(action: &JsonMap, index: usize) -> Option<Value> {
-    let action_ref = normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
-        .unwrap_or(Value::Null);
-    let kind = priority_action_ref_kind(&action_ref);
-    let label = priority_action_label(action, index);
-    let object_id = priority_action_object_id(action, &action_ref);
-    let id = index.to_string();
-
-    match kind.as_str() {
-        "cast_spell" => object_id.as_ref().map(|object_id| {
-            json!({
-                "id": id,
-                "type": "cast",
-                "cardId": card_id(Some(object_id)),
-                "mode": "normal",
-                "modeLabel": priority_action_mode_label(&label, "Cast"),
-            })
-        }),
-        "play_land" => object_id.as_ref().map(|object_id| {
-            json!({
-                "id": id,
-                "type": "cast",
-                "cardId": card_id(Some(object_id)),
-                "mode": "playLand",
-                "modeLabel": priority_action_mode_label(&label, "Play"),
-            })
-        }),
-        "activate_ability" | "activate_mana_ability" => object_id.as_ref().map(|object_id| {
-            json!({
-                "id": id,
-                "type": "activateAbility",
-                "cardId": card_id(Some(object_id)),
-                "abilityIndex": priority_action_ability_index(action, &action_ref),
-                "description": label,
-                "isManaAbility": kind == "activate_mana_ability",
-            })
-        }),
-        "untap_land" => object_id.as_ref().map(|object_id| {
-            json!({
-                "id": id,
-                "type": "undoMana",
-                "cardId": card_id(Some(object_id)),
-            })
-        }),
-        "special_action" => {
-            let nested = nested_special_action_ref(&action_ref)?;
-            let nested_kind = priority_action_ref_kind(nested);
-            let nested_object_id = priority_action_object_id(action, &action_ref);
-            match nested_kind.as_str() {
-                "play_land" => nested_object_id.as_ref().map(|object_id| {
-                    json!({
-                        "id": id,
-                        "type": "cast",
-                        "cardId": card_id(Some(object_id)),
-                        "mode": "playLand",
-                        "modeLabel": priority_action_mode_label(&label, "Play"),
-                    })
-                }),
-                "activate_mana_ability" => nested_object_id.as_ref().map(|object_id| {
-                    json!({
-                        "id": id,
-                        "type": "activateAbility",
-                        "cardId": card_id(Some(object_id)),
-                        "abilityIndex": priority_action_ability_index(action, &action_ref),
-                        "description": label,
-                        "isManaAbility": true,
-                    })
-                }),
-                _ => None,
-            }
-        }
-        _ => None,
+fn color_code(color: Color) -> &'static str {
+    match color {
+        Color::White => "W",
+        Color::Blue => "U",
+        Color::Black => "B",
+        Color::Red => "R",
+        Color::Green => "G",
     }
 }
 
-fn priority_action_ref_has_kind(action: &JsonMap, kind: &str) -> bool {
-    let action_ref = normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
-        .unwrap_or(Value::Null);
-    if priority_action_ref_kind(&action_ref) == kind {
-        return true;
+fn protocol_step(game: &GameState) -> StepKind {
+    use ironsmith::game_state::{Phase, Step};
+    match (game.turn.phase, game.turn.step) {
+        (_, Some(Step::Untap)) => StepKind::Untap,
+        (_, Some(Step::Upkeep)) => StepKind::Upkeep,
+        (_, Some(Step::Draw)) => StepKind::Draw,
+        (Phase::FirstMain, _) => StepKind::Main1,
+        (_, Some(Step::BeginCombat)) => StepKind::CombatBegin,
+        (_, Some(Step::DeclareAttackers)) => StepKind::CombatDeclareAttackers,
+        (_, Some(Step::DeclareBlockers)) => StepKind::CombatDeclareBlockers,
+        (_, Some(Step::CombatDamage)) => StepKind::CombatDamage,
+        (_, Some(Step::EndCombat)) => StepKind::CombatEnd,
+        (Phase::NextMain, _) => StepKind::Main2,
+        (_, Some(Step::End)) => StepKind::EndOfTurn,
+        (_, Some(Step::Cleanup)) => StepKind::Cleanup,
+        (Phase::Combat, None) => StepKind::CombatBegin,
+        (Phase::Ending, None) => StepKind::EndOfTurn,
+        (Phase::Beginning, None) => StepKind::Untap,
     }
-    nested_special_action_ref(&action_ref)
-        .map(|nested| priority_action_ref_kind(nested) == kind)
-        .unwrap_or(false)
 }
 
-fn is_mulligan_priority(actions: &[Value]) -> bool {
-    actions
-        .iter()
-        .filter_map(as_object)
-        .any(|action| priority_action_ref_has_kind(action, "keep_opening_hand"))
-        && actions
-            .iter()
-            .filter_map(as_object)
-            .any(|action| priority_action_ref_has_kind(action, "take_mulligan"))
-}
-
-fn priority_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let actions = array_value(get_any(decision, &["actions"]));
-    let mut action_refs = JsonMap::new();
-    let mut available_actions = Vec::new();
-    for (index, action) in actions.iter().enumerate() {
-        let action = object_value(action);
-        action_refs.insert(
-            index.to_string(),
-            normalize_priority_action_ref(get_any(action, &["action_ref", "actionRef"]).cloned())
-                .unwrap_or(Value::Null),
-        );
-        if let Some(available_action) = available_action_from_priority_action(action, index) {
-            available_actions.push(available_action);
-        }
-    }
-    let mut binding = prompt_binding(prompt_id, &for_player, "priority");
-    binding["actionRefs"] = Value::Object(action_refs);
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "input": if is_mulligan_priority(actions) {
-                json!({
-                    "type": "mulligan",
-                    "handCardIds": [],
-                    "mulliganCount": 0,
-                })
+fn protocol_target(game: &GameState, target: Target) -> TargetRef {
+    match target {
+        Target::Player(player) => TargetRef {
+            kind: TargetKind::Player,
+            id: player_id(player),
+            intent: None,
+            oracle: None,
+        },
+        Target::Object(object) => TargetRef {
+            kind: if game
+                .object(object)
+                .is_some_and(|object| object.zone == Zone::Stack)
+            {
+                TargetKind::Spell
             } else {
-                json!({
-                    "type": "chooseAction",
-                    "actions": available_actions,
-                })
-            }
-        },
-        "binding": binding,
-    })
-}
-
-fn number_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let source_card_id = source_card_id(decision);
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "sourceCardId": source_card_id,
-            "input": {
-                "type": "chooseNumber",
-                "presentation": presentation(
-                    "Choose a number",
-                    Some(string_value(get_any(decision, &["description"]), "")),
-                    source_card_id,
-                ),
-                "min": number_value(get_any(decision, &["min"]), 0),
-                "max": number_value(get_any(decision, &["max"]), 0),
-            }
-        },
-        "binding": prompt_binding(prompt_id, &for_player, "number"),
-    })
-}
-
-fn options_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let source_card_id = source_card_id(decision);
-    let options = legal_options(decision);
-    let labels: Vec<String> = options.iter().map(|option| option_description(option)).collect();
-    let mut option_indices = JsonMap::new();
-    for (index, option) in options.iter().enumerate() {
-        let option = object_value(option);
-        option_indices.insert(
-            index.to_string(),
-            json!(number_value(get_any(option, &["index"]), index as i64)),
-        );
-    }
-    let color_labels = ["White", "Blue", "Black", "Red", "Green", "Colorless", "W", "U", "B", "R", "G", "C"];
-    let mut binding = prompt_binding(prompt_id, &for_player, "select_options");
-    if !labels.is_empty() && labels.iter().all(|label| color_labels.contains(&label.as_str())) {
-        for (index, label) in labels.iter().enumerate() {
-            let option = object_value(options[index]);
-            option_indices.insert(
-                color_letter(label),
-                json!(number_value(get_any(option, &["index"]), index as i64)),
-            );
-        }
-        binding["optionIndices"] = Value::Object(option_indices);
-        return json!({
-            "forPlayer": for_player,
-            "prompt": {
-                "promptId": prompt_id,
-                "decidingPlayerId": for_player,
-                "sourceCardId": source_card_id,
-                "input": {
-                    "type": "chooseColor",
-                    "validColors": labels.iter().map(|label| color_letter(label)).collect::<Vec<_>>(),
-                    "amount": number_value(get_any(decision, &["max"]), 1),
-                    "repeatAllowed": true,
-                }
+                TargetKind::Card
             },
-            "binding": binding,
-        });
-    }
-    binding["optionIndices"] = Value::Object(option_indices);
-    if labels.len() == 2
-        && number_value(get_any(decision, &["min"]), 0) == 1
-        && number_value(get_any(decision, &["max"]), 0) == 1
-    {
-        return json!({
-            "forPlayer": for_player,
-            "prompt": {
-                "promptId": prompt_id,
-                "decidingPlayerId": for_player,
-                "sourceCardId": source_card_id,
-                "input": {
-                    "type": "chooseBoolean",
-                    "presentation": presentation("Choose", Some(string_value(get_any(decision, &["description"]), "")), source_card_id),
-                    "confirmLabel": labels[0],
-                    "denyLabel": labels[1],
-                }
-            },
-            "binding": binding,
-        });
-    }
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "sourceCardId": source_card_id,
-            "input": {
-                "type": "chooseFromSelection",
-                "presentation": presentation("Choose", Some(string_value(get_any(decision, &["description"]), "")), source_card_id),
-                "options": labels,
-                "minChoices": number_value(get_any(decision, &["min"]), 0),
-                "maxChoices": number_value(get_any(decision, &["max"]), options.len() as i64),
-            }
+            id: object_id(game, object),
+            intent: None,
+            oracle: None,
         },
-        "binding": binding,
-    })
+    }
 }
 
-fn object_choice_card(value: &Value, owner_id: &str) -> Value {
-    let candidate = object_value(value);
-    let default_controller = json!(parse_player_index(owner_id));
-    let controller = get_any(candidate, &["object_controller", "objectController"])
-        .unwrap_or(&default_controller);
-    json!({
-        "id": card_id(get_any(candidate, &["id", "stable_id", "stableId"])),
-        "identity": identity(string_value(get_any(candidate, &["name"]), "Card"), false),
-        "controllerId": player_slot(Some(controller)),
-        "ownerId": owner_id,
-        "zoneId": "choice",
-        "color": "",
-        "manaCost": "",
-        "cmc": 0,
-        "types": [],
-        "subtypes": [],
-        "supertypes": [],
-        "power": null,
-        "toughness": null,
-        "text": "",
-        "tapped": false,
-        "isCrewed": false,
-        "isAttacking": false,
-        "keywords": [],
-        "counters": {},
-        "damage": 0,
-        "summoningSick": false,
-        "isCopy": false,
-        "isDoubleFaced": false,
-        "isTransformed": false,
-        "isFaceDown": false,
-        "isBestowed": false,
-        "phasedOut": false,
-        "exerted": false,
-        "isRingBearer": false,
-        "attachmentIds": [],
-        "isMadnessExiled": false,
-        "isPlotted": false,
-        "isWarpExiled": false,
-        "foil": false,
-        "wouldDieInCombat": false
-    })
+fn counter_name(counter: ironsmith::object::CounterType) -> String {
+    match counter {
+        ironsmith::object::CounterType::PlusOnePlusOne => "P1P1".to_string(),
+        ironsmith::object::CounterType::MinusOneMinusOne => "M1M1".to_string(),
+        ironsmith::object::CounterType::Named(value) => value.to_ascii_uppercase(),
+        other => format!("{other:?}"),
+    }
 }
 
-fn objects_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let source_card_id = source_card_id(decision);
-    let candidates: Vec<&Value> = array_value(get_any(decision, &["candidates"]))
+fn protocol_card(game: &GameState, id: ObjectId) -> Option<CardDto> {
+    use ironsmith::object::{AttachmentTarget, ObjectKind};
+
+    let object = game.object(id)?;
+    let chars = game.current_characteristics(id)?;
+    let colors = Color::ALL
         .iter()
-        .filter(|candidate| bool_value(as_object(candidate).and_then(|candidate| get_any(candidate, &["legal"])), true))
+        .copied()
+        .filter(|color| chars.colors.contains(*color))
+        .map(color_code)
+        .collect::<String>();
+    let counters = object
+        .counters
+        .iter()
+        .map(|(counter, amount)| (counter_name(*counter), *amount))
         .collect();
-    let cards: Vec<Value> = candidates
-        .iter()
-        .map(|candidate| object_choice_card(candidate, &for_player))
-        .collect();
-    let reorder = string_value(get_any(decision, &["selection_identity", "selectionIdentity"]), "").contains("order");
-    let decision_kind = if reorder { "reorder_objects" } else { "select_objects" };
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "sourceCardId": source_card_id,
-            "input": if reorder {
-                json!({
-                    "type": "reorderCards",
-                    "presentation": presentation("Reorder cards", Some(string_value(get_any(decision, &["description"]), "")), source_card_id),
-                    "cards": cards,
-                    "targetLabel": "top",
-                    "topOfDeck": true,
-                })
-            } else {
-                json!({
-                    "type": "chooseCards",
-                    "presentation": presentation("Choose cards", Some(string_value(get_any(decision, &["description"]), "")), source_card_id),
-                    "cards": cards,
-                    "min": number_value(get_any(decision, &["min"]), 0),
-                    "max": number_value(get_any(decision, &["max"]), candidates.len() as i64),
-                })
-            }
-        },
-        "binding": prompt_binding(prompt_id, &for_player, decision_kind),
-    })
-}
-
-fn target_ref(value: &Value) -> Option<Value> {
-    let target = object_value(value);
-    match string_value(get_any(target, &["kind"]), "").as_str() {
-        "player" => Some(json!({ "kind": "player", "id": player_slot(get_any(target, &["player"])) })),
-        "object" => Some(json!({ "kind": "card", "id": card_id(get_any(target, &["object"])) })),
-        _ => None,
-    }
-}
-
-fn targets_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let source_card_id = source_card_id(decision);
-    let requirements: Vec<&JsonMap> = array_value(get_any(decision, &["requirements"]))
-        .iter()
-        .filter_map(as_object)
-        .collect();
-    let mut target_kinds = JsonMap::new();
-    let candidates: Vec<Value> = requirements
-        .iter()
-        .flat_map(|requirement| array_value(get_any(requirement, &["legal_targets", "legalTargets"])))
-        .filter_map(|target| {
-            let reference = target_ref(target)?;
-            if let Some(id) = reference.get("id").and_then(Value::as_str) {
-                let kind = if reference.get("kind").and_then(Value::as_str) == Some("player") {
-                    "player"
-                } else {
-                    "object"
-                };
-                target_kinds.insert(id.to_string(), json!(kind));
-            }
-            Some(reference)
-        })
-        .collect();
-    let min_targets: i64 = requirements
-        .iter()
-        .map(|req| number_value(get_any(req, &["min_targets", "minTargets"]), 0))
-        .sum();
-    let max_targets: i64 = requirements
-        .iter()
-        .map(|req| number_value(get_any(req, &["max_targets", "maxTargets"]), number_value(get_any(req, &["min_targets", "minTargets"]), 0)))
-        .sum();
-    let mut binding = prompt_binding(prompt_id, &for_player, "targets");
-    binding["targetKinds"] = Value::Object(target_kinds);
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "sourceCardId": source_card_id,
-            "input": {
-                "type": "chooseBoardTargets",
-                "candidates": candidates,
-                "hostile": true,
-                "intent": "hostile",
-                "minTargets": min_targets,
-                "maxTargets": max_targets,
-                "chosenTargets": 0,
-                "label": string_value(get_any(decision, &["context"]), "Choose targets"),
-            }
-        },
-        "binding": binding,
-    })
-}
-
-fn attackers_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let mut target_map = JsonMap::new();
-    let attackers: Vec<Value> = array_value(get_any(decision, &["attacker_options", "attackerOptions"]))
-        .iter()
-        .map(|option_value| {
-            let option = object_value(option_value);
-            let valid_target_ids: Vec<Value> = array_value(get_any(option, &["valid_targets", "validTargets"]))
-                .iter()
-                .map(|target_value| {
-                    let target = object_value(target_value);
-                    let kind = string_value(get_any(target, &["kind"]), "");
-                    let id = if kind == "player" {
-                        player_slot(get_any(target, &["player"]))
-                    } else {
-                        card_id(get_any(target, &["object"]))
-                    };
-                    target_map.insert(
-                        id.clone(),
-                        json!({ "id": id, "label": string_value(get_any(target, &["name"]), ""), "kind": if kind == "player" { "player" } else { "planeswalker" } }),
-                    );
-                    json!(id)
-                })
-                .collect();
-            json!({
-                "attackerId": card_id(get_any(option, &["creature"])),
-                "validTargetIds": valid_target_ids,
-                "mustAttack": bool_value(get_any(option, &["must_attack", "mustAttack"]), false),
-            })
-        })
-        .collect();
-    let mut target_kinds = JsonMap::new();
-    for (id, target) in &target_map {
-        let kind = if target.get("kind").and_then(Value::as_str) == Some("player") {
-            "player"
-        } else {
-            "planeswalker"
-        };
-        target_kinds.insert(id.clone(), json!(kind));
-    }
-    let mut binding = prompt_binding(prompt_id, &for_player, "attackers");
-    binding["targetKinds"] = Value::Object(target_kinds);
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "input": {
-                "type": "chooseAttackers",
-                "attackers": attackers,
-                "attackTargets": Value::Array(target_map.values().cloned().collect()),
-            }
-        },
-        "binding": binding,
-    })
-}
-
-fn blockers_prompt(decision: &JsonMap, prompt_id: &str) -> Value {
-    let for_player = player_slot(get_any(decision, &["player"]));
-    let mut blockers = Vec::new();
-    let attackers: Vec<Value> = array_value(get_any(decision, &["blocker_options", "blockerOptions"]))
-        .iter()
-        .map(|option_value| {
-            let option = object_value(option_value);
-            let valid_blocker_ids: Vec<Value> = array_value(get_any(option, &["valid_blockers", "validBlockers"]))
-                .iter()
-                .map(|blocker_value| {
-                    let id = card_id(get_any(object_value(blocker_value), &["id"]));
-                    blockers.push(json!(id));
-                    json!(id)
-                })
-                .collect();
-            json!({
-                "attackerId": card_id(get_any(option, &["attacker"])),
-                "validBlockerIds": valid_blocker_ids,
-                "minBlockers": number_value(get_any(option, &["min_blockers", "minBlockers"]), 0),
-                "maxBlockers": null,
-                "mustBeBlocked": number_value(get_any(option, &["min_blockers", "minBlockers"]), 0) > 0,
-            })
-        })
-        .collect();
-    blockers.sort_by_key(Value::to_string);
-    blockers.dedup_by_key(|value| value.to_string());
-    json!({
-        "forPlayer": for_player,
-        "prompt": {
-            "promptId": prompt_id,
-            "decidingPlayerId": for_player,
-            "input": {
-                "type": "chooseBlockers",
-                "attackers": attackers,
-                "availableBlockerIds": blockers,
-            }
-        },
-        "binding": prompt_binding(prompt_id, &for_player, "blockers"),
-    })
-}
-
-fn manabrew_prompt_from_snapshot(snapshot: &Value, prompt_id: &str) -> Value {
-    let decision = snapshot
-        .get("decision")
-        .and_then(as_object)
-        .cloned()
-        .unwrap_or_default();
-    let kind = string_value(get_any(&decision, &["kind"]), "");
-    match kind.as_str() {
-        "" => Value::Null,
-        "text_input" => json!({
-            "forPlayer": player_slot(get_any(&decision, &["player"])),
-            "message": string_value(
-                get_any(&decision, &["description"]),
-                "Ironsmith text input prompts are not supported in Manabrew yet.",
-            ),
-        }),
-        "priority" => priority_prompt(&decision, prompt_id),
-        "number" => number_prompt(&decision, prompt_id),
-        "select_options" => options_prompt(&decision, prompt_id),
-        "select_objects" => objects_prompt(&decision, prompt_id),
-        "targets" => targets_prompt(&decision, prompt_id),
-        "attackers" => attackers_prompt(&decision, prompt_id),
-        "blockers" => blockers_prompt(&decision, prompt_id),
-        _ => json!({
-            "forPlayer": player_slot(get_any(&decision, &["player"])),
-            "message": format!("Ironsmith decision kind is not supported in Manabrew yet: {kind}"),
-        }),
-    }
-}
-
-fn zero_payload_priority_ref_kind(kind: &str) -> Option<&'static str> {
-    match kind {
-        "PassPriority" | "passPriority" | "pass_priority" => Some("pass_priority"),
-        "KeepOpeningHand" | "keepOpeningHand" | "keep_opening_hand" => Some("keep_opening_hand"),
-        "TakeMulligan" | "takeMulligan" | "take_mulligan" => Some("take_mulligan"),
-        "ContinuePregame" | "continuePregame" | "continue_pregame" => Some("continue_pregame"),
-        "BeginGame" | "beginGame" | "begin_game" => Some("begin_game"),
-        _ => None,
-    }
-}
-
-fn priority_action_ref_kind(action_ref: &Value) -> String {
-    if let Some(kind) = action_ref.as_str() {
-        return zero_payload_priority_ref_kind(kind).unwrap_or("").to_string();
-    }
-    let kind = as_object(action_ref)
-        .and_then(|object| get_any(object, &["kind"]))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    zero_payload_priority_ref_kind(kind).unwrap_or(kind).to_string()
-}
-
-fn normalize_priority_action_ref(action_ref: Option<Value>) -> Option<Value> {
-    let action_ref = action_ref?;
-    let kind = priority_action_ref_kind(&action_ref);
-    if kind.is_empty() {
-        return Some(action_ref);
-    }
-    if action_ref.is_string() {
-        return Some(json!({ "kind": kind }));
-    }
-    let mut object = action_ref.as_object().cloned().unwrap_or_default();
-    object.insert("kind".to_string(), json!(kind));
-    Some(Value::Object(object))
-}
-
-fn priority_action_ref_for_kinds(binding: &JsonMap, kinds: &[&str]) -> Value {
-    binding
-        .get("actionRefs")
-        .and_then(Value::as_object)
-        .and_then(|action_refs| {
-            action_refs.values().find_map(|action_ref| {
-                let normalized = normalize_priority_action_ref(Some(action_ref.clone()))?;
-                kinds
-                    .contains(&priority_action_ref_kind(&normalized).as_str())
-                    .then_some(normalized)
-            })
-        })
-        .unwrap_or_else(|| json!({ "kind": kinds.first().copied().unwrap_or("pass_priority") }))
-}
-
-fn pass_priority_action_ref(binding: &JsonMap) -> Value {
-    priority_action_ref_for_kinds(
-        binding,
-        &[
-            "pass_priority",
-            "keep_opening_hand",
-            "continue_pregame",
-            "begin_game",
-        ],
-    )
-}
-
-fn bound_priority_action_ref(binding: &JsonMap, action_id: &str) -> Result<Value, JsValue> {
-    if priority_action_ref_kind(&json!(action_id)) == "pass_priority" {
-        return Ok(pass_priority_action_ref(binding));
-    }
-    let action_refs = binding
-        .get("actionRefs")
-        .and_then(Value::as_object)
-        .ok_or_else(|| JsValue::from_str("Ironsmith priority binding has no action refs"))?;
-    let action_ref = action_refs
-        .get(action_id)
-        .ok_or_else(|| JsValue::from_str(&format!("Unknown Ironsmith priority action id: {action_id}")))?;
-    normalize_priority_action_ref(Some(action_ref.clone())).ok_or_else(|| {
-        JsValue::from_str(&format!(
-            "Unsupported Ironsmith priority action ref for {action_id}"
-        ))
-    })
-}
-
-fn option_indices_from_colors(output: &JsonMap, binding: &JsonMap) -> Vec<Value> {
-    let chosen_colors = output
-        .get("output")
-        .and_then(|output| output.get("chosenColors"))
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let option_indices = binding
-        .get("optionIndices")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    chosen_colors
-        .iter()
-        .flat_map(|(color, amount)| {
-            let amount = amount.as_u64().unwrap_or(0);
-            (0..amount).map({
-                let value = option_indices.get(color).cloned().unwrap_or_else(|| json!(0));
-                move |_| value.clone()
-            })
-        })
-        .collect()
-}
-
-fn parse_object_id(id: &str) -> u64 {
-    id.chars()
-        .rev()
-        .take_while(|char| char.is_ascii_digit())
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect::<String>()
-        .parse()
-        .unwrap_or(0)
-}
-
-fn parse_player_index(id: &str) -> u64 {
-    id.strip_prefix("player-")
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(0)
-}
-
-fn manabrew_command_from_values(output: &JsonMap, binding: &JsonMap) -> Result<Value, JsValue> {
-    match output.get("type").and_then(Value::as_str).unwrap_or_default() {
-        "mulligan" => {
-            let keep = output
-                .get("output")
-                .and_then(|output| output.get("keep"))
-                .and_then(Value::as_bool)
-                .unwrap_or(true);
-            let action_ref = if keep {
-                priority_action_ref_for_kinds(binding, &["keep_opening_hand"])
-            } else {
-                priority_action_ref_for_kinds(binding, &["take_mulligan"])
+    let (is_attacking, attacking_player_id, attack_target_id) = game
+        .combat
+        .as_ref()
+        .and_then(|combat| combat.attackers.iter().find(|info| info.creature == id))
+        .map(|info| {
+            let target = match info.target {
+                AttackTarget::Player(player) => player_id(player),
+                AttackTarget::Planeswalker(object) => object_id(game, object),
             };
-            Ok(json!({ "type": "priority_action", "action_ref": action_ref }))
-        }
-        "chooseAction" => {
-            let inner = output.get("output").and_then(as_object).cloned().unwrap_or_default();
-            match inner.get("type").and_then(Value::as_str).unwrap_or_default() {
-                "pass" => Ok(json!({ "type": "priority_action", "action_ref": pass_priority_action_ref(binding) })),
-                "act" => Ok(json!({
-                    "type": "priority_action",
-                    "action_ref": bound_priority_action_ref(binding, &string_value(inner.get("actionId"), ""))?,
-                })),
-                _ => Err(JsValue::from_str("unsupported chooseAction output")),
-            }
-        }
-        "payManaCost" => {
-            let inner = output.get("output").and_then(as_object).cloned().unwrap_or_default();
-            if inner.get("type").and_then(Value::as_str) == Some("cancel") {
-                return Ok(json!({ "type": "priority_action", "action_ref": pass_priority_action_ref(binding) }));
-            }
-            if inner.get("type").and_then(Value::as_str) == Some("act") {
-                return Ok(json!({
-                    "type": "priority_action",
-                    "action_ref": bound_priority_action_ref(binding, &string_value(inner.get("actionId"), ""))?,
-                }));
-            }
-            let first = binding
-                .get("actionRefs")
-                .and_then(Value::as_object)
-                .and_then(|refs| refs.keys().next().cloned());
-            Ok(json!({
-                "type": "priority_action",
-                "action_ref": if let Some(first) = first {
-                    bound_priority_action_ref(binding, &first)?
-                } else {
-                    pass_priority_action_ref(binding)
-                },
-            }))
-        }
-        "chooseNumber" => Ok(json!({
-            "type": "number_choice",
-            "value": output
-                .get("output")
-                .and_then(|output| output.get("chosenNumber"))
-                .cloned()
-                .unwrap_or_else(|| json!(0)),
-        })),
-        "chooseBoolean" => {
-            let value = output
-                .get("output")
-                .and_then(|output| output.get("value"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let key = if value { "0" } else { "1" };
-            let fallback = if value { 0 } else { 1 };
-            let index = binding
-                .get("optionIndices")
-                .and_then(Value::as_object)
-                .and_then(|indices| indices.get(key))
-                .cloned()
-                .unwrap_or_else(|| json!(fallback));
-            Ok(json!({ "type": "select_options", "option_indices": [index] }))
-        }
-        "chooseFromSelection" => {
-            let chosen_indices = output
-                .get("output")
-                .and_then(|output| output.get("chosenIndices"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            if binding.get("decisionKind").and_then(Value::as_str) == Some("priority") {
-                let action_ref = if let Some(first) = chosen_indices.first().and_then(Value::as_u64) {
-                    bound_priority_action_ref(binding, &first.to_string())?
-                } else {
-                    pass_priority_action_ref(binding)
-                };
-                return Ok(json!({ "type": "priority_action", "action_ref": action_ref }));
-            }
-            let option_indices = binding
-                .get("optionIndices")
-                .and_then(Value::as_object)
-                .cloned()
-                .unwrap_or_default();
-            Ok(json!({
-                "type": "select_options",
-                "option_indices": chosen_indices
-                    .iter()
-                    .map(|index| {
-                        let key = index.as_u64().unwrap_or(0).to_string();
-                        option_indices.get(&key).cloned().unwrap_or_else(|| index.clone())
-                    })
-                    .collect::<Vec<_>>(),
-            }))
-        }
-        "chooseColor" => Ok(json!({
-            "type": "select_options",
-            "option_indices": option_indices_from_colors(output, binding),
-        })),
-        "chooseCards" => Ok(json!({
-            "type": "select_objects",
-            "object_ids": output
-                .get("output")
-                .and_then(|output| output.get("chosenCardIds"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .map(|id| json!(parse_object_id(id.as_str().unwrap_or_default())))
-                .collect::<Vec<_>>(),
-        })),
-        "reorderCards" => Ok(json!({
-            "type": "select_objects",
-            "object_ids": output
-                .get("output")
-                .and_then(|output| output.get("orderedCardIds"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .map(|id| json!(parse_object_id(id.as_str().unwrap_or_default())))
-                .collect::<Vec<_>>(),
-        })),
-        "chooseBoardTargets" => Ok(json!({
-            "type": "select_targets",
-            "targets": output
-                .get("output")
-                .and_then(|output| output.get("chosen"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .map(|target| {
-                    let target = object_value(target);
-                    let id = string_value(get_any(target, &["id"]), "");
-                    if string_value(get_any(target, &["kind"]), "") == "player" {
-                        json!({ "kind": "player", "player": parse_player_index(&id) })
-                    } else {
-                        json!({ "kind": "object", "object": parse_object_id(&id) })
-                    }
-                })
-                .collect::<Vec<_>>(),
-        })),
-        "chooseAttackers" => {
-            let target_kinds = binding
-                .get("targetKinds")
-                .and_then(Value::as_object)
-                .cloned()
-                .unwrap_or_default();
-            Ok(json!({
-                "type": "declare_attackers",
-                "declarations": output
-                    .get("output")
-                    .and_then(|output| output.get("assignments"))
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|assignment| {
-                        let assignment = object_value(assignment);
-                        let target_id = string_value(get_any(assignment, &["targetId"]), "");
-                        let target_kind = target_kinds.get(&target_id).and_then(Value::as_str);
-                        json!({
-                            "creature": parse_object_id(&string_value(get_any(assignment, &["attackerId"]), "")),
-                            "target": if target_kind == Some("player") {
-                                json!({ "kind": "player", "player": parse_player_index(&target_id) })
-                            } else {
-                                json!({ "kind": "planeswalker", "object": parse_object_id(&target_id) })
-                            },
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-            }))
-        }
-        "chooseBlockers" => Ok(json!({
-            "type": "declare_blockers",
-            "declarations": output
-                .get("output")
-                .and_then(|output| output.get("assignments"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .iter()
-                .map(|assignment| {
-                    let assignment = object_value(assignment);
-                    json!({
-                        "blocker": parse_object_id(&string_value(get_any(assignment, &["blockerId"]), "")),
-                        "blocking": parse_object_id(&string_value(get_any(assignment, &["attackerId"]), "")),
-                    })
-                })
-                .collect::<Vec<_>>(),
-        })),
-        other => Err(JsValue::from_str(&format!(
-            "Unsupported Ironsmith Manabrew prompt output: {other}"
-        ))),
+            let defending_player = match info.target {
+                AttackTarget::Player(player) => Some(player_id(player)),
+                AttackTarget::Planeswalker(object) => game
+                    .object(object)
+                    .map(|object| player_id(game.controller_of(object))),
+            };
+            (true, defending_player, Some(target))
+        })
+        .unwrap_or((false, None, None));
+    let attached_to = object.attached_to.map(|target| match target {
+        AttachmentTarget::Object(object) => object_id(game, object),
+        AttachmentTarget::Player(player) => player_id(player),
+    });
+
+    Some(CardDto {
+        id: object_id(game, id),
+        identity: CardIdentity {
+            name: chars.name.to_owned_string(),
+            set_code: String::new(),
+            card_number: String::new(),
+            is_token: object.kind == ObjectKind::Token,
+        },
+        color: colors,
+        mana_cost: object
+            .mana_cost
+            .as_ref()
+            .map(|cost| cost.to_oracle())
+            .unwrap_or_default(),
+        cmc: object
+            .mana_cost
+            .as_ref()
+            .map(|cost| cost.mana_value() as i32)
+            .unwrap_or(0),
+        types: chars
+            .card_types
+            .iter()
+            .map(|value| format!("{value:?}"))
+            .collect(),
+        subtypes: chars
+            .subtypes
+            .iter()
+            .map(|value| format!("{value:?}"))
+            .collect(),
+        supertypes: chars
+            .supertypes
+            .iter()
+            .map(|value| format!("{value:?}"))
+            .collect(),
+        power: chars.power.map(|value| value.to_string()),
+        toughness: chars.toughness.map(|value| value.to_string()),
+        base_power: object.base_power.map(|value| value.base_value()),
+        base_toughness: object.base_toughness.map(|value| value.base_value()),
+        text: chars.compiled_card_text.to_string(),
+        controller_id: player_id(chars.controller),
+        owner_id: player_id(object.owner),
+        tapped: game.is_tapped(id),
+        is_attacking,
+        attacking_player_id,
+        attack_target_id,
+        keywords: chars
+            .static_abilities
+            .iter()
+            .map(|ability| format!("{:?}", ability.id()))
+            .collect(),
+        counters,
+        damage: game.damage_on(id) as i32,
+        summoning_sick: game.is_summoning_sick(id),
+        is_copy: object.kind == ObjectKind::SpellCopy,
+        is_double_faced: object.other_face.is_some() || object.other_face_name.is_some(),
+        is_transformed: game.transform_count(id) % 2 == 1,
+        is_face_down: game.is_face_down(id),
+        is_bestowed: object.is_bestow_overlay_active(),
+        phased_out: game.is_phased_out(id),
+        exerted: game.object_exerted_this_turn(id),
+        is_ring_bearer: game
+            .player(chars.controller)
+            .is_some_and(|player| player.ring_bearer == Some(id)),
+        attached_to,
+        attachment_ids: object
+            .attachments
+            .iter()
+            .map(|attachment| object_id(game, *attachment))
+            .collect(),
+        is_madness_exiled: game.is_madness_exiled(id),
+        is_plotted: game.plotted_by(id).is_some(),
+        ..CardDto::default()
+    })
+}
+
+fn visible_card(game: &GameState, id: ObjectId) -> Option<CardView> {
+    protocol_card(game, id).map(CardView::Visible)
+}
+
+fn hidden_card(game: &GameState, id: ObjectId) -> CardView {
+    CardView::Hidden {
+        id: object_id(game, id),
     }
 }
 
@@ -1719,6 +508,1332 @@ impl WasmGame {
             manabrew_deck_sources(decks),
         ))
     }
+
+    fn manabrew_player(&self, index: u8) -> Result<PlayerId, ProtocolError> {
+        let player = PlayerId::from_index(index);
+        self.game.player(player).map(|_| player).ok_or_else(|| {
+            protocol_error(
+                ProtocolErrorCode::WrongPlayer,
+                format!("player-{index} is not a player in this match"),
+                self.manabrew_open_prompt
+                    .as_ref()
+                    .map(|prompt| prompt.prompt_id),
+            )
+        })
+    }
+
+    fn manabrew_card_is_visible(&self, id: ObjectId, viewer: Option<PlayerId>) -> bool {
+        let Some(object) = self.game.object(id) else {
+            return false;
+        };
+        let has_view_permission = self
+            .active_viewed_cards
+            .iter()
+            .chain(self.active_audit_viewed_cards.iter())
+            .any(|view| {
+                view.zone == object.zone
+                    && view.subject == object.owner
+                    && (view.cards.contains(&id)
+                        || view.card_stable_ids.contains(&object.stable_id))
+                    && (view.public || viewer == Some(view.viewer))
+            });
+        if has_view_permission {
+            return true;
+        }
+        match object.zone {
+            Zone::Hand => viewer == Some(object.owner),
+            Zone::Library => false,
+            Zone::Battlefield if self.game.is_face_down(id) => {
+                viewer == Some(self.game.controller_of(object))
+            }
+            Zone::Exile if self.game.is_face_down(id) => viewer.is_some_and(|viewer| {
+                self.game
+                    .can_player_look_at_face_down_exiled_card(id, viewer)
+            }),
+            _ => true,
+        }
+    }
+
+    fn manabrew_zone_cards(
+        &self,
+        ids: impl IntoIterator<Item = ObjectId>,
+        viewer: Option<PlayerId>,
+        omit_hidden: bool,
+    ) -> Vec<CardView> {
+        ids.into_iter()
+            .filter_map(|id| {
+                if self.manabrew_card_is_visible(id, viewer) {
+                    visible_card(&self.game, id)
+                } else if omit_hidden {
+                    None
+                } else {
+                    Some(hidden_card(&self.game, id))
+                }
+            })
+            .collect()
+    }
+
+    fn manabrew_zones(&self, viewer: Option<PlayerId>) -> Vec<ZoneDto> {
+        let mut zones = Vec::new();
+        for player in &self.game.players {
+            let owner_id = player_id(player.id);
+            let battlefield: Vec<_> = self
+                .game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|id| {
+                    self.game
+                        .object(*id)
+                        .is_some_and(|object| self.game.controller_of(object) == player.id)
+                })
+                .collect();
+            zones.push(ZoneDto {
+                zone: ZoneKind::Battlefield,
+                owner_id: owner_id.clone(),
+                count: battlefield.len(),
+                cards: self.manabrew_zone_cards(battlefield, viewer, false),
+            });
+            zones.push(ZoneDto {
+                zone: ZoneKind::Hand,
+                owner_id: owner_id.clone(),
+                count: player.hand.len(),
+                cards: self.manabrew_zone_cards(player.hand.iter().copied(), viewer, true),
+            });
+            zones.push(ZoneDto {
+                zone: ZoneKind::Library,
+                owner_id: owner_id.clone(),
+                count: player.library.len(),
+                cards: self.manabrew_zone_cards(player.library.iter().copied(), viewer, true),
+            });
+            zones.push(ZoneDto {
+                zone: ZoneKind::Graveyard,
+                owner_id: owner_id.clone(),
+                count: player.graveyard.len(),
+                cards: self.manabrew_zone_cards(player.graveyard.iter().copied(), viewer, false),
+            });
+            let exile: Vec<_> = self
+                .game
+                .exile
+                .iter()
+                .copied()
+                .filter(|id| {
+                    self.game
+                        .object(*id)
+                        .is_some_and(|object| object.owner == player.id)
+                })
+                .collect();
+            zones.push(ZoneDto {
+                zone: ZoneKind::Exile,
+                owner_id: owner_id.clone(),
+                count: exile.len(),
+                cards: self.manabrew_zone_cards(exile, viewer, false),
+            });
+            let command: Vec<_> = self
+                .game
+                .command_zone
+                .iter()
+                .copied()
+                .filter(|id| {
+                    self.game
+                        .object(*id)
+                        .is_some_and(|object| object.owner == player.id)
+                })
+                .collect();
+            zones.push(ZoneDto {
+                zone: ZoneKind::Command,
+                owner_id,
+                count: command.len(),
+                cards: self.manabrew_zone_cards(command, viewer, false),
+            });
+        }
+        zones
+    }
+
+    fn manabrew_players(&self) -> Vec<PlayerDto> {
+        self.game
+            .players
+            .iter()
+            .map(|player| {
+                let mut counters = BTreeMap::new();
+                if player.poison_counters > 0 {
+                    counters.insert(PlayerCounterKind::Poison, player.poison_counters);
+                }
+                if player.energy_counters > 0 {
+                    counters.insert(PlayerCounterKind::Energy, player.energy_counters);
+                }
+                if player.experience_counters > 0 {
+                    counters.insert(PlayerCounterKind::Experience, player.experience_counters);
+                }
+                for (counter, amount) in &player.other_counters {
+                    match counter {
+                        ironsmith::object::CounterType::Rad => {
+                            counters.insert(PlayerCounterKind::Radiation, *amount);
+                        }
+                        ironsmith::object::CounterType::Named(name)
+                            if name.eq_ignore_ascii_case("ticket") =>
+                        {
+                            counters.insert(PlayerCounterKind::Ticket, *amount);
+                        }
+                        _ => {}
+                    }
+                }
+                let mana_pool = [
+                    (ManaColor::White, player.mana_pool.white),
+                    (ManaColor::Blue, player.mana_pool.blue),
+                    (ManaColor::Black, player.mana_pool.black),
+                    (ManaColor::Red, player.mana_pool.red),
+                    (ManaColor::Green, player.mana_pool.green),
+                    (ManaColor::Colorless, player.mana_pool.colorless),
+                ]
+                .into_iter()
+                .collect();
+                let commander_damage = player
+                    .commander_damage
+                    .iter()
+                    .map(|(commander, damage)| (object_id(&self.game, *commander), *damage as i32))
+                    .collect();
+                PlayerDto {
+                    id: player_id(player.id),
+                    name: player.name.clone(),
+                    status: if player.has_left_game {
+                        PlayerStatus::Conceded
+                    } else if player.has_lost {
+                        PlayerStatus::Lost
+                    } else {
+                        PlayerStatus::Playing
+                    },
+                    is_human: self
+                        .manabrew_human_players
+                        .get(player.id.index())
+                        .copied()
+                        .unwrap_or(true),
+                    life: player.life,
+                    counters,
+                    mana_pool,
+                    commander_damage,
+                    has_city_blessing: self.game.has_citys_blessing(player.id),
+                    ring_level: player.ring_temptations as i32,
+                    speed: player.speed.unwrap_or(0) as i32,
+                }
+            })
+            .collect()
+    }
+
+    fn manabrew_stack(&self) -> Vec<StackObjectDto> {
+        self.game
+            .stack
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let object = self.game.object(entry.object_id)?;
+                let chars = self.game.current_characteristics(entry.object_id)?;
+                Some(StackObjectDto {
+                    id: format!("stack-{}-{index}", object.stable_id.0.0),
+                    source_id: object_id(&self.game, entry.object_id),
+                    controller_id: player_id(entry.controller),
+                    identity: CardIdentity {
+                        name: chars.name.to_owned_string(),
+                        set_code: String::new(),
+                        card_number: String::new(),
+                        is_token: object.kind == ironsmith::object::ObjectKind::Token,
+                    },
+                    text: chars.compiled_card_text.to_string(),
+                    is_permanent_spell: !entry.is_ability
+                        && !chars.card_types.contains(&CardType::Instant)
+                        && !chars.card_types.contains(&CardType::Sorcery),
+                    is_casting: self
+                        .priority_state
+                        .pending_cast
+                        .as_ref()
+                        .is_some_and(|pending| pending.stack_id == entry.object_id),
+                    targets: entry
+                        .targets
+                        .iter()
+                        .copied()
+                        .map(|target| protocol_target(&self.game, target))
+                        .collect(),
+                })
+            })
+            .collect()
+    }
+
+    fn manabrew_state(&self, viewer: Option<PlayerId>) -> StateUpdate {
+        let combat_assignments = self
+            .game
+            .combat
+            .as_ref()
+            .into_iter()
+            .flat_map(|combat| {
+                combat.blockers.iter().flat_map(|(attacker, blockers)| {
+                    blockers.iter().map(|blocker| CombatAssignmentDto {
+                        blocker_id: object_id(&self.game, *blocker),
+                        attacker_id: object_id(&self.game, *attacker),
+                    })
+                })
+            })
+            .collect();
+        let winner_id = match self.game_over.as_ref() {
+            Some(GameResult::Winner(player)) => Some(player_id(*player)),
+            _ => None,
+        };
+        StateUpdate {
+            game_view: GameViewDto {
+                game_id: self.manabrew_game_id.clone(),
+                turn: self.game.turn.turn_number,
+                step: protocol_step(&self.game),
+                combat_assignments,
+                active_player_id: player_id(self.game.turn.active_player),
+                priority_player_id: player_id(
+                    self.game
+                        .turn
+                        .priority_player
+                        .unwrap_or(self.game.turn.active_player),
+                ),
+                players: self.manabrew_players(),
+                zones: self.manabrew_zones(viewer),
+                stack: self.manabrew_stack(),
+                game_over: self.game_over.is_some(),
+                winner_id,
+                monarch_id: self.game.monarch.map(player_id),
+                initiative_holder_id: self.game.initiative.map(player_id),
+                day_time: if !self.game.has_day_night {
+                    DayTime::Neither
+                } else if self.game.is_night {
+                    DayTime::Night
+                } else {
+                    DayTime::Day
+                },
+            },
+        }
+    }
+
+    fn manabrew_source_card_id(&self, context: &DecisionContext) -> Option<String> {
+        context.source().map(|source| object_id(&self.game, source))
+    }
+
+    fn manabrew_action_card(&self, action: &LegalAction) -> Option<ObjectId> {
+        use ironsmith::special_actions::SpecialAction;
+        match action {
+            LegalAction::UsePregameAction { card_id, .. } => Some(*card_id),
+            LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
+            LegalAction::ActivateAbility { source, .. }
+            | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
+            LegalAction::PlayLand { land_id } => Some(*land_id),
+            LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
+            LegalAction::SpecialAction(action) => Some(match action {
+                SpecialAction::PlayLand { card_id }
+                | SpecialAction::Suspend { card_id }
+                | SpecialAction::Foretell { card_id }
+                | SpecialAction::Plot { card_id } => *card_id,
+                SpecialAction::TurnFaceUp { permanent_id, .. }
+                | SpecialAction::ActivateManaAbility { permanent_id, .. } => *permanent_id,
+                SpecialAction::UnlockRoomDoor { room_id } => *room_id,
+            }),
+            LegalAction::PassPriority
+            | LegalAction::KeepOpeningHand
+            | LegalAction::TakeMulligan
+            | LegalAction::ContinuePregame
+            | LegalAction::BeginGame => None,
+        }
+    }
+
+    fn manabrew_available_action(
+        &self,
+        index: usize,
+        action: &LegalAction,
+    ) -> Option<AvailableAction> {
+        use ironsmith::alternative_cast::CastingMethod;
+
+        let id = format!("action-{index}");
+        match action {
+            LegalAction::PassPriority
+            | LegalAction::KeepOpeningHand
+            | LegalAction::TakeMulligan
+            | LegalAction::ContinuePregame
+            | LegalAction::BeginGame => None,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method,
+                ..
+            } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *spell_id),
+                    mode: match casting_method {
+                        CastingMethod::Normal => PlayCardMode::Normal,
+                        CastingMethod::FaceDown => PlayCardMode::StaticAlternative,
+                        CastingMethod::SplitOtherHalf => PlayCardMode::RoomRightSplit,
+                        _ => PlayCardMode::StaticAlternative,
+                    },
+                    label: format!(
+                        "Cast {}",
+                        self.game.current_name(*spell_id).unwrap_or_default()
+                    ),
+                },
+            }),
+            LegalAction::PlayLand { land_id } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *land_id),
+                    mode: PlayCardMode::Normal,
+                    label: format!(
+                        "Play {}",
+                        self.game.current_name(*land_id).unwrap_or_default()
+                    ),
+                },
+            }),
+            LegalAction::ActivateAbility {
+                source,
+                ability_index,
+            }
+            | LegalAction::ActivateManaAbility {
+                source,
+                ability_index,
+            } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::ActivateAbility(ActivatableAbilityInfo {
+                    card_id: object_id(&self.game, *source),
+                    ability_index: *ability_index,
+                    description: format!("Activate ability {}", ability_index + 1),
+                    is_mana_ability: matches!(action, LegalAction::ActivateManaAbility { .. }),
+                    cost: None,
+                    produced_mana: None,
+                }),
+            }),
+            _ => self
+                .manabrew_action_card(action)
+                .map(|card| AvailableAction {
+                    id,
+                    kind: AvailableActionKind::Cast {
+                        card_id: object_id(&self.game, card),
+                        mode: PlayCardMode::StaticAlternative,
+                        label: format!("{action:?}"),
+                    },
+                }),
+        }
+    }
+
+    fn build_manabrew_prompt(
+        &self,
+        context: &DecisionContext,
+    ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        let source = self.manabrew_source_card_id(context);
+        let unsupported = |name: &str| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                format!("Ironsmith decision {name} has no lossless Manabrew v3 prompt mapping"),
+                None,
+            )
+        };
+        match context {
+            DecisionContext::Priority(ctx) => {
+                let keep_index = ctx
+                    .actions
+                    .iter()
+                    .position(|action| matches!(action, LegalAction::KeepOpeningHand));
+                let mulligan_index = ctx
+                    .actions
+                    .iter()
+                    .position(|action| matches!(action, LegalAction::TakeMulligan));
+                if let (Some(keep_index), Some(mulligan_index)) = (keep_index, mulligan_index) {
+                    let hand_card_ids = self
+                        .game
+                        .player(ctx.player)
+                        .map(|player| {
+                            player
+                                .hand
+                                .iter()
+                                .map(|id| object_id(&self.game, *id))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    return Ok((
+                        PromptInput::Mulligan(MulliganInput {
+                            hand_card_ids,
+                            mulligan_count: 0,
+                        }),
+                        ManabrewPromptBinding::Mulligan {
+                            keep_index,
+                            mulligan_index,
+                        },
+                    ));
+                }
+                let pass_index = ctx
+                    .actions
+                    .iter()
+                    .position(|action| {
+                        matches!(
+                            action,
+                            LegalAction::PassPriority
+                                | LegalAction::ContinuePregame
+                                | LegalAction::BeginGame
+                        )
+                    })
+                    .ok_or_else(|| unsupported("priority without a pass action"))?;
+                let mut actions = HashMap::new();
+                let available = ctx
+                    .actions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, action)| {
+                        let available = self.manabrew_available_action(index, action)?;
+                        actions.insert(available.id.clone(), index);
+                        Some(available)
+                    })
+                    .collect();
+                Ok((
+                    PromptInput::ChooseAction(ChooseActionInput { actions: available }),
+                    ManabrewPromptBinding::Priority {
+                        actions,
+                        pass_index,
+                    },
+                ))
+            }
+            DecisionContext::Boolean(ctx) => Ok((
+                PromptInput::ChooseBoolean(ChooseBooleanInput {
+                    presentation: presentation(
+                        ctx.source_name
+                            .clone()
+                            .unwrap_or_else(|| "Choose".to_string()),
+                        Some(ctx.description.clone()),
+                        source,
+                    ),
+                    confirm_label: "Yes".to_string(),
+                    deny_label: "No".to_string(),
+                }),
+                ManabrewPromptBinding::Boolean,
+            )),
+            DecisionContext::Number(ctx) => Ok((
+                PromptInput::ChooseNumber(ChooseNumberInput {
+                    presentation: presentation(
+                        "Choose a number",
+                        Some(ctx.description.clone()),
+                        source,
+                    ),
+                    min: ctx.min.min(i32::MAX as u32) as i32,
+                    max: ctx.max.min(i32::MAX as u32) as i32,
+                }),
+                ManabrewPromptBinding::Number,
+            )),
+            DecisionContext::SelectOptions(ctx) => {
+                let legal: Vec<_> = ctx.options.iter().filter(|option| option.legal).collect();
+                if ctx.description.to_ascii_lowercase().contains("mana pip") {
+                    let mut actions = HashMap::new();
+                    let mut payment_actions = Vec::new();
+                    let mut pay_index = None;
+                    for option in &legal {
+                        let Some(pending) = self.priority_state.pending_cast.as_ref() else {
+                            break;
+                        };
+                        let Some(payment) = pending
+                            .current_pip_payment_options
+                            .iter()
+                            .find(|payment| payment.index == option.index)
+                        else {
+                            continue;
+                        };
+                        use ironsmith::decision::{AlternativePaymentEffect, ManaPipPaymentAction};
+                        match &payment.action {
+                            ManaPipPaymentAction::UseFromPool(_) => pay_index = Some(option.index),
+                            ManaPipPaymentAction::ActivateManaAbility {
+                                source_id,
+                                ability_index,
+                            } => {
+                                let id = format!("payment-{}", option.index);
+                                actions.insert(id.clone(), option.index);
+                                payment_actions.push(PaymentAction {
+                                    id,
+                                    kind: PaymentActionKind::ActivateManaAbility(
+                                        ActivatableAbilityInfo {
+                                            card_id: object_id(&self.game, *source_id),
+                                            ability_index: *ability_index,
+                                            description: option.description.clone(),
+                                            is_mana_ability: true,
+                                            cost: None,
+                                            produced_mana: None,
+                                        },
+                                    ),
+                                });
+                            }
+                            ManaPipPaymentAction::PayLife(amount) => {
+                                let id = format!("payment-{}", option.index);
+                                actions.insert(id.clone(), option.index);
+                                payment_actions.push(PaymentAction {
+                                    id,
+                                    kind: PaymentActionKind::PayLife { amount: *amount },
+                                });
+                            }
+                            ManaPipPaymentAction::PayViaAlternative {
+                                permanent_id,
+                                effect,
+                            } => {
+                                let id = format!("payment-{}", option.index);
+                                actions.insert(id.clone(), option.index);
+                                payment_actions.push(PaymentAction {
+                                    id,
+                                    kind: PaymentActionKind::UseResource {
+                                        card_id: object_id(&self.game, *permanent_id),
+                                        resource: match effect {
+                                            AlternativePaymentEffect::Convoke => {
+                                                PaymentResourceKind::Convoke
+                                            }
+                                            AlternativePaymentEffect::Improvise => {
+                                                PaymentResourceKind::Improvise
+                                            }
+                                        },
+                                    },
+                                });
+                            }
+                        }
+                    }
+                    if pay_index.is_some() || !payment_actions.is_empty() {
+                        let source_id = ctx.source.unwrap_or(ObjectId::from_raw(0));
+                        let view = self.current_mana_payment_view();
+                        return Ok((
+                            PromptInput::PayManaCost(PayManaCostInput {
+                                card_id: object_id(&self.game, source_id),
+                                card_name: view
+                                    .as_ref()
+                                    .map(|view| view.source_name.clone())
+                                    .unwrap_or_else(|| ctx.description.clone()),
+                                mana_cost: view
+                                    .as_ref()
+                                    .map(|view| {
+                                        view.pips
+                                            .iter()
+                                            .map(|pip| format!("{{{}}}", pip.join("/")))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                                can_confirm_from_pool: pay_index.is_some(),
+                                actions: payment_actions,
+                                description: Some(ctx.description.clone()),
+                            }),
+                            ManabrewPromptBinding::Payment { actions, pay_index },
+                        ));
+                    }
+                    return Err(unsupported(
+                        "mana payment without typed Ironsmith payment actions",
+                    ));
+                }
+                Ok((
+                    PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                        presentation: presentation("Choose", Some(ctx.description.clone()), source),
+                        options: legal
+                            .iter()
+                            .map(|option| option.description.clone())
+                            .collect(),
+                        min_choices: ctx.min,
+                        max_choices: ctx.max,
+                    }),
+                    ManabrewPromptBinding::Options {
+                        indices: legal.iter().map(|option| option.index).collect(),
+                    },
+                ))
+            }
+            DecisionContext::Modes(ctx) => {
+                let legal: Vec<_> = ctx.spec.modes.iter().filter(|mode| mode.legal).collect();
+                Ok((
+                    PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                        presentation: presentation(
+                            "Choose modes",
+                            Some(ctx.spell_name.clone()),
+                            source,
+                        ),
+                        options: legal.iter().map(|mode| mode.description.clone()).collect(),
+                        min_choices: ctx.spec.min_modes,
+                        max_choices: ctx.spec.max_modes,
+                    }),
+                    ManabrewPromptBinding::Options {
+                        indices: legal.iter().map(|mode| mode.index).collect(),
+                    },
+                ))
+            }
+            DecisionContext::HybridChoice(ctx) => Ok((
+                PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
+                    presentation: presentation(
+                        format!("Choose payment for pip {}", ctx.pip_number),
+                        Some(ctx.spell_name.clone()),
+                        source,
+                    ),
+                    options: ctx
+                        .options
+                        .iter()
+                        .map(|option| option.label.clone())
+                        .collect(),
+                    min_choices: 1,
+                    max_choices: 1,
+                }),
+                ManabrewPromptBinding::Options {
+                    indices: ctx.options.iter().map(|option| option.index).collect(),
+                },
+            )),
+            DecisionContext::SelectObjects(ctx) => {
+                let legal: Vec<_> = ctx
+                    .candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .collect();
+                let objects = legal
+                    .iter()
+                    .map(|candidate| (object_id(&self.game, candidate.id), candidate.id))
+                    .collect();
+                Ok((
+                    PromptInput::ChooseCards(ChooseCardsInput {
+                        presentation: presentation(
+                            "Choose cards",
+                            Some(ctx.description.clone()),
+                            source,
+                        ),
+                        cards: legal
+                            .iter()
+                            .filter_map(|candidate| protocol_card(&self.game, candidate.id))
+                            .collect(),
+                        min: if ctx.allow_partial_completion {
+                            0
+                        } else {
+                            ctx.min
+                        },
+                        max: ctx.max.unwrap_or(legal.len()),
+                    }),
+                    ManabrewPromptBinding::Objects { objects },
+                ))
+            }
+            DecisionContext::Order(ctx) => {
+                let indices = ctx
+                    .items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (id, _))| (object_id(&self.game, *id), index))
+                    .collect();
+                Ok((
+                    PromptInput::Reorder(ReorderInput {
+                        presentation: presentation(
+                            "Choose order",
+                            Some(ctx.description.clone()),
+                            source,
+                        ),
+                        items: ctx
+                            .items
+                            .iter()
+                            .filter_map(|(id, _)| {
+                                protocol_card(&self.game, *id).map(|card| ReorderItem {
+                                    id: object_id(&self.game, *id),
+                                    card,
+                                    oracle: None,
+                                })
+                            })
+                            .collect(),
+                    }),
+                    ManabrewPromptBinding::Reorder { indices },
+                ))
+            }
+            DecisionContext::Colors(ctx) => {
+                let colors = ctx
+                    .available_colors
+                    .clone()
+                    .unwrap_or_else(|| Color::ALL.to_vec());
+                Ok((
+                    PromptInput::ChooseColor(ChooseColorInput {
+                        valid_colors: colors
+                            .iter()
+                            .map(|color| color_code(*color).to_string())
+                            .collect(),
+                        amount: ctx.count,
+                        repeat_allowed: !ctx.distinct_colors,
+                    }),
+                    ManabrewPromptBinding::Colors {
+                        indices: colors
+                            .iter()
+                            .enumerate()
+                            .map(|(index, color)| (color_code(*color).to_string(), index))
+                            .collect(),
+                    },
+                ))
+            }
+            DecisionContext::Partition(ctx) => {
+                let secondary_zone = if ctx.secondary_label.to_ascii_lowercase().contains("grave") {
+                    ScryDestination::Graveyard
+                } else if ctx.secondary_label.to_ascii_lowercase().contains("exile") {
+                    ScryDestination::Exile
+                } else if ctx.secondary_label.to_ascii_lowercase().contains("hand") {
+                    ScryDestination::Hand
+                } else {
+                    ScryDestination::LibraryBottom
+                };
+                Ok((
+                    PromptInput::Scry(ScryInput {
+                        presentation: presentation(
+                            "Arrange cards",
+                            Some(ctx.description.clone()),
+                            source,
+                        ),
+                        cards: ctx
+                            .cards
+                            .iter()
+                            .filter_map(|(id, _)| protocol_card(&self.game, *id))
+                            .collect(),
+                        zones: vec![ScryDestination::LibraryTop, secondary_zone],
+                    }),
+                    ManabrewPromptBinding::Partition {
+                        objects: ctx
+                            .cards
+                            .iter()
+                            .map(|(id, _)| (object_id(&self.game, *id), *id))
+                            .collect(),
+                        secondary_zone_index: 1,
+                    },
+                ))
+            }
+            DecisionContext::Attackers(ctx) => {
+                let mut attackers = HashMap::new();
+                let mut targets = HashMap::new();
+                let mut target_dtos = HashMap::new();
+                let options = ctx
+                    .attacker_options
+                    .iter()
+                    .map(|option| {
+                        let attacker_id = object_id(&self.game, option.creature);
+                        attackers.insert(attacker_id.clone(), option.creature);
+                        let valid_target_ids = option
+                            .valid_targets
+                            .iter()
+                            .map(|target| {
+                                let (id, label, kind) = match target {
+                                    AttackTarget::Player(player) => (
+                                        player_id(*player),
+                                        self.game
+                                            .player(*player)
+                                            .map(|player| player.name.clone())
+                                            .unwrap_or_else(|| player_id(*player)),
+                                        AttackTargetKind::Player,
+                                    ),
+                                    AttackTarget::Planeswalker(object) => (
+                                        object_id(&self.game, *object),
+                                        self.game.current_name(*object).unwrap_or_default(),
+                                        AttackTargetKind::Planeswalker,
+                                    ),
+                                };
+                                targets.insert(id.clone(), target.clone());
+                                target_dtos.entry(id.clone()).or_insert(AttackTargetDto {
+                                    id: id.clone(),
+                                    label,
+                                    kind,
+                                });
+                                id
+                            })
+                            .collect();
+                        AttackerOptionDto {
+                            attacker_id,
+                            valid_target_ids,
+                            must_attack: option.must_attack,
+                        }
+                    })
+                    .collect();
+                Ok((
+                    PromptInput::ChooseAttackers(ChooseAttackersInput {
+                        attackers: options,
+                        attack_targets: target_dtos.into_values().collect(),
+                    }),
+                    ManabrewPromptBinding::Attackers { attackers, targets },
+                ))
+            }
+            DecisionContext::Blockers(ctx) => {
+                let mut objects = HashMap::new();
+                let mut available = Vec::new();
+                let attackers = ctx
+                    .blocker_options
+                    .iter()
+                    .map(|option| {
+                        let attacker_id = object_id(&self.game, option.attacker);
+                        objects.insert(attacker_id.clone(), option.attacker);
+                        let valid_blocker_ids = option
+                            .valid_blockers
+                            .iter()
+                            .map(|(blocker, _)| {
+                                let id = object_id(&self.game, *blocker);
+                                objects.insert(id.clone(), *blocker);
+                                if !available.contains(&id) {
+                                    available.push(id.clone());
+                                }
+                                id
+                            })
+                            .collect();
+                        BlockableAttackerDto {
+                            attacker_id,
+                            valid_blocker_ids,
+                            min_blockers: option.min_blockers.min(u32::MAX as usize) as u32,
+                            max_blockers: None,
+                            must_be_blocked: option.min_blockers > 0,
+                        }
+                    })
+                    .collect();
+                Ok((
+                    PromptInput::ChooseBlockers(ChooseBlockersInput {
+                        attackers,
+                        available_blocker_ids: available,
+                        error: None,
+                    }),
+                    ManabrewPromptBinding::Blockers { objects },
+                ))
+            }
+            DecisionContext::Targets(ctx) => {
+                let min_targets = ctx
+                    .requirements
+                    .iter()
+                    .map(|req| req.min_targets)
+                    .sum::<usize>();
+                let max_targets = ctx
+                    .requirements
+                    .iter()
+                    .map(|req| req.max_targets.unwrap_or(req.legal_targets.len()))
+                    .sum::<usize>();
+                let mut targets = HashMap::new();
+                let mut candidates = Vec::new();
+                for requirement in &ctx.requirements {
+                    for target in &requirement.legal_targets {
+                        let reference = protocol_target(&self.game, *target);
+                        let key = format!("{:?}:{}", reference.kind, reference.id);
+                        if targets.insert(key, *target).is_none() {
+                            candidates.push(reference);
+                        }
+                    }
+                }
+                Ok((
+                    PromptInput::ChooseBoardTargets(ChooseBoardTargetsInput {
+                        candidates,
+                        hostile: false,
+                        intent: manabrew_protocol::game::TargetingIntent::Friendly,
+                        min_targets: min_targets.min(i32::MAX as usize) as i32,
+                        max_targets: max_targets.min(i32::MAX as usize) as i32,
+                        chosen_targets: 0,
+                        label: ctx.context.clone(),
+                    }),
+                    ManabrewPromptBinding::Targets { targets },
+                ))
+            }
+            DecisionContext::TextInput(_) => Err(unsupported("text input")),
+            DecisionContext::Distribute(_) => Err(unsupported("distribution")),
+            DecisionContext::Counters(_) => Err(unsupported("counter allocation")),
+            DecisionContext::Proliferate(_) => Err(unsupported("proliferate")),
+        }
+    }
+
+    fn ensure_manabrew_prompt(&mut self) -> Result<Option<AgentPrompt>, ProtocolError> {
+        self.recompute_stale_priority_decision().map_err(|error| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                error
+                    .as_string()
+                    .unwrap_or_else(|| "failed to refresh priority".to_string()),
+                None,
+            )
+        })?;
+        let Some(context) = self.pending_decision.clone() else {
+            self.manabrew_open_prompt = None;
+            return Ok(None);
+        };
+        let decision_hash = hash_debug_value(&context);
+        if let Some(open) = self.manabrew_open_prompt.as_ref()
+            && open.decision_hash == decision_hash
+            && open.deciding_player == context.player()
+        {
+            return Ok(Some(AgentPrompt {
+                prompt_id: open.prompt_id,
+                deciding_player_id: player_id(open.deciding_player),
+                source_card_id: open.source_card_id.clone(),
+                input: open.input.clone(),
+            }));
+        }
+        let (input, binding) = self.build_manabrew_prompt(&context)?;
+        let prompt_id = self.manabrew_next_prompt_id;
+        self.manabrew_next_prompt_id = prompt_id.checked_add(1).ok_or_else(|| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                "Manabrew prompt ID space is exhausted",
+                None,
+            )
+        })?;
+        let open = ManabrewOpenPrompt {
+            prompt_id,
+            deciding_player: context.player(),
+            decision_hash,
+            source_card_id: self.manabrew_source_card_id(&context),
+            input,
+            binding,
+        };
+        let prompt = AgentPrompt {
+            prompt_id: open.prompt_id,
+            deciding_player_id: player_id(open.deciding_player),
+            source_card_id: open.source_card_id.clone(),
+            input: open.input.clone(),
+        };
+        self.manabrew_open_prompt = Some(open);
+        Ok(Some(prompt))
+    }
+
+    fn manabrew_result(
+        &mut self,
+        viewer: Option<PlayerId>,
+        error: Option<ProtocolError>,
+    ) -> ManabrewViewResult {
+        let prompt = match self.ensure_manabrew_prompt() {
+            Ok(prompt) => prompt.filter(|prompt| {
+                viewer.is_some_and(|viewer| prompt.deciding_player_id == player_id(viewer))
+            }),
+            Err(prompt_error) => {
+                return ManabrewViewResult {
+                    state: self.manabrew_state(viewer),
+                    prompt: None,
+                    error: error.or(Some(prompt_error)),
+                };
+            }
+        };
+        ManabrewViewResult {
+            state: self.manabrew_state(viewer),
+            prompt,
+            error,
+        }
+    }
+
+    fn validate_manabrew_prompt_owner(
+        &self,
+        player: PlayerId,
+        prompt_id: u32,
+    ) -> Result<&ManabrewOpenPrompt, ProtocolError> {
+        let Some(open) = self.manabrew_open_prompt.as_ref() else {
+            return Err(protocol_error(
+                ProtocolErrorCode::StalePrompt,
+                "there is no open prompt",
+                Some(prompt_id),
+            ));
+        };
+        if open.prompt_id != prompt_id {
+            return Err(protocol_error(
+                ProtocolErrorCode::StalePrompt,
+                format!(
+                    "prompt {prompt_id} is stale; current prompt is {}",
+                    open.prompt_id
+                ),
+                Some(prompt_id),
+            ));
+        }
+        if open.deciding_player != player {
+            return Err(protocol_error(
+                ProtocolErrorCode::WrongPlayer,
+                format!("{} does not own prompt {prompt_id}", player_id(player)),
+                Some(prompt_id),
+            ));
+        }
+        Ok(open)
+    }
+
+    fn validate_manabrew_response(
+        &self,
+        player: PlayerId,
+        prompt_id: u32,
+        output: &PromptOutput,
+    ) -> Result<&ManabrewOpenPrompt, ProtocolError> {
+        let open = self.validate_manabrew_prompt_owner(player, prompt_id)?;
+        open.input
+            .validate_response(output)
+            .map_err(|violation| match violation {
+                ResponseViolation::WrongPromptType => protocol_error(
+                    ProtocolErrorCode::WrongPromptType,
+                    "prompt output family does not match the open prompt",
+                    Some(prompt_id),
+                ),
+                ResponseViolation::UnknownActionId(action) => protocol_error(
+                    ProtocolErrorCode::UnknownActionId,
+                    format!("unknown action id {action}"),
+                    Some(prompt_id),
+                ),
+            })?;
+        Ok(open)
+    }
+
+    fn manabrew_response_action(
+        &self,
+        open: &ManabrewOpenPrompt,
+        output: PromptOutput,
+    ) -> Result<ManabrewResponseAction, ProtocolError> {
+        let invalid = |message: String| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                message,
+                Some(open.prompt_id),
+            )
+        };
+        match (&open.binding, output) {
+            (
+                ManabrewPromptBinding::Priority {
+                    actions,
+                    pass_index,
+                },
+                PromptOutput::ChooseAction(output),
+            ) => {
+                let index = match output {
+                    ChooseActionOutput::Pass { .. } => *pass_index,
+                    ChooseActionOutput::Act { action_id } => *actions
+                        .get(&action_id)
+                        .ok_or_else(|| invalid(format!("unknown action id {action_id}")))?,
+                    ChooseActionOutput::RestoreSnapshot { .. } => {
+                        return Err(invalid("snapshot restoration is not supported".to_string()));
+                    }
+                };
+                Ok(ManabrewResponseAction::Dispatch(
+                    UiCommand::PriorityAction {
+                        action_index: Some(index),
+                        action_ref: None,
+                    },
+                ))
+            }
+            (
+                ManabrewPromptBinding::Mulligan {
+                    keep_index,
+                    mulligan_index,
+                },
+                PromptOutput::Mulligan(MulliganOutput::MulliganDecision { keep }),
+            ) => Ok(ManabrewResponseAction::Dispatch(
+                UiCommand::PriorityAction {
+                    action_index: Some(if keep { *keep_index } else { *mulligan_index }),
+                    action_ref: None,
+                },
+            )),
+            (
+                ManabrewPromptBinding::Boolean,
+                PromptOutput::ChooseBoolean(ChooseBooleanOutput::Decision { value }),
+            ) => Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                option_indices: vec![usize::from(value)],
+            })),
+            (
+                ManabrewPromptBinding::Number,
+                PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision { chosen_number }),
+            ) => {
+                let value = chosen_number
+                    .filter(|value| *value >= 0)
+                    .ok_or_else(|| invalid("a non-negative number is required".to_string()))?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::NumberChoice {
+                    value: value as u32,
+                }))
+            }
+            (
+                ManabrewPromptBinding::Options { indices },
+                PromptOutput::ChooseFromSelection(ChooseFromSelectionOutput::SelectionDecision {
+                    chosen_indices,
+                }),
+            ) => {
+                let option_indices = chosen_indices
+                    .into_iter()
+                    .map(|index| {
+                        indices
+                            .get(index)
+                            .copied()
+                            .ok_or_else(|| invalid(format!("option index {index} is out of range")))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                    option_indices,
+                }))
+            }
+            (
+                ManabrewPromptBinding::Objects { objects },
+                PromptOutput::ChooseCards(ChooseCardsOutput::ChooseCardsDecision {
+                    chosen_card_ids,
+                }),
+            ) => {
+                let object_ids = chosen_card_ids
+                    .into_iter()
+                    .map(|id| {
+                        objects
+                            .get(&id)
+                            .map(|object| object.0)
+                            .ok_or_else(|| invalid(format!("unknown card id {id}")))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids: Vec::new(),
+                    object_hidden_refs: Vec::new(),
+                }))
+            }
+            (
+                ManabrewPromptBinding::Targets { targets },
+                PromptOutput::ChooseBoardTargets(ChooseBoardTargetsOutput::BoardTargets { chosen }),
+            ) => {
+                let targets = chosen
+                    .into_iter()
+                    .map(|target| {
+                        let key = format!("{:?}:{}", target.kind, target.id);
+                        match targets
+                            .get(&key)
+                            .copied()
+                            .ok_or_else(|| invalid(format!("unknown target {}", target.id)))?
+                        {
+                            Target::Player(player) => Ok(TargetInput::Player { player: player.0 }),
+                            Target::Object(object) => Ok(TargetInput::Object { object: object.0 }),
+                        }
+                    })
+                    .collect::<Result<Vec<_>, ProtocolError>>()?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectTargets {
+                    targets,
+                }))
+            }
+            (
+                ManabrewPromptBinding::Attackers { attackers, targets },
+                PromptOutput::ChooseAttackers(ChooseAttackersOutput::DeclareAttackers {
+                    assignments,
+                }),
+            ) => {
+                let declarations = assignments
+                    .into_iter()
+                    .map(
+                        |AttackAssignment {
+                             attacker_id,
+                             target_id,
+                         }| {
+                            let creature =
+                                attackers.get(&attacker_id).copied().ok_or_else(|| {
+                                    invalid(format!("unknown attacker {attacker_id}"))
+                                })?;
+                            let target =
+                                match targets.get(&target_id).cloned().ok_or_else(|| {
+                                    invalid(format!("unknown attack target {target_id}"))
+                                })? {
+                                    AttackTarget::Player(player) => {
+                                        AttackTargetInput::Player { player: player.0 }
+                                    }
+                                    AttackTarget::Planeswalker(object) => {
+                                        AttackTargetInput::Planeswalker { object: object.0 }
+                                    }
+                                };
+                            Ok(AttackerDeclarationInput {
+                                creature: creature.0,
+                                target,
+                            })
+                        },
+                    )
+                    .collect::<Result<Vec<_>, ProtocolError>>()?;
+                Ok(ManabrewResponseAction::Dispatch(
+                    UiCommand::DeclareAttackers { declarations },
+                ))
+            }
+            (
+                ManabrewPromptBinding::Blockers { objects },
+                PromptOutput::ChooseBlockers(ChooseBlockersOutput::DeclareBlockers { assignments }),
+            ) => {
+                let declarations = assignments
+                    .into_iter()
+                    .map(
+                        |BlockAssignment {
+                             blocker_id,
+                             attacker_id,
+                         }| {
+                            let blocker = objects
+                                .get(&blocker_id)
+                                .copied()
+                                .ok_or_else(|| invalid(format!("unknown blocker {blocker_id}")))?;
+                            let blocking = objects.get(&attacker_id).copied().ok_or_else(|| {
+                                invalid(format!("unknown attacker {attacker_id}"))
+                            })?;
+                            Ok(BlockerDeclarationInput {
+                                blocker: blocker.0,
+                                blocking: blocking.0,
+                            })
+                        },
+                    )
+                    .collect::<Result<Vec<_>, ProtocolError>>()?;
+                Ok(ManabrewResponseAction::Dispatch(
+                    UiCommand::DeclareBlockers { declarations },
+                ))
+            }
+            (
+                ManabrewPromptBinding::Reorder { indices },
+                PromptOutput::Reorder(ReorderOutput::ReorderDecision { ordered_ids }),
+            ) => {
+                let option_indices = ordered_ids
+                    .into_iter()
+                    .map(|id| {
+                        indices
+                            .get(&id)
+                            .copied()
+                            .ok_or_else(|| invalid(format!("unknown reorder id {id}")))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                    option_indices,
+                }))
+            }
+            (
+                ManabrewPromptBinding::Colors { indices },
+                PromptOutput::ChooseColor(ChooseColorOutput::ColorDecision { chosen_colors }),
+            ) => {
+                let mut option_indices = Vec::new();
+                for (color, count) in chosen_colors {
+                    let index = indices
+                        .get(&color)
+                        .copied()
+                        .ok_or_else(|| invalid(format!("unknown color {color}")))?;
+                    option_indices.extend(std::iter::repeat_n(index, count as usize));
+                }
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                    option_indices,
+                }))
+            }
+            (
+                ManabrewPromptBinding::Partition {
+                    objects,
+                    secondary_zone_index,
+                },
+                PromptOutput::Scry(ScryOutput::ScryDecision { zone_card_ids }),
+            ) => {
+                let chosen = zone_card_ids
+                    .get(*secondary_zone_index)
+                    .cloned()
+                    .unwrap_or_default();
+                let object_ids = chosen
+                    .into_iter()
+                    .map(|id| {
+                        objects
+                            .get(&id)
+                            .map(|object| object.0)
+                            .ok_or_else(|| invalid(format!("unknown partition card {id}")))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectObjects {
+                    object_ids,
+                    object_stable_ids: Vec::new(),
+                    object_hidden_refs: Vec::new(),
+                }))
+            }
+            (
+                ManabrewPromptBinding::Payment { actions, pay_index },
+                PromptOutput::PayManaCost(output),
+            ) => match output {
+                PayManaCostOutput::Act { action_id } => {
+                    Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                        option_indices: vec![*actions.get(&action_id).ok_or_else(|| {
+                            invalid(format!("unknown payment action {action_id}"))
+                        })?],
+                    }))
+                }
+                PayManaCostOutput::Pay { .. } => {
+                    Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                        option_indices: vec![pay_index.ok_or_else(|| {
+                            invalid("mana pool cannot pay the current pip".to_string())
+                        })?],
+                    }))
+                }
+                PayManaCostOutput::Cancel => Ok(ManabrewResponseAction::Cancel),
+            },
+            _ => Err(protocol_error(
+                ProtocolErrorCode::WrongPromptType,
+                "prompt output family does not match the stored binding",
+                Some(open.prompt_id),
+            )),
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -1728,97 +1843,399 @@ impl WasmGame {
         let decks: Vec<Value> = serde_wasm_bindgen::from_value(decks)
             .map_err(|error| JsValue::from_str(&format!("invalid Manabrew decks: {error}")))?;
         let summary = self.register_manabrew_deck_sources_input(&decks);
-        serde_wasm_bindgen::to_value(&summary).map_err(|error| {
-            JsValue::from_str(&format!(
-                "failed to encode Manabrew deck source registration summary: {error}"
-            ))
-        })
+        manabrew_to_js(&summary, "Manabrew deck source registration summary")
     }
 
     #[wasm_bindgen(js_name = validateManabrewMatchConfig)]
     pub fn validate_manabrew_match_config(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
-        let input: ManabrewMatchConfigInput = serde_wasm_bindgen::from_value(config)
-            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew match config: {error}")))?;
+        let input: ManabrewMatchConfigInput =
+            serde_wasm_bindgen::from_value(config).map_err(|error| {
+                JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
+            })?;
         self.register_manabrew_deck_sources_input(&input.decks);
-        let setup = manabrew_match_setup(&input);
-        let validation = self.validate_match_setup_input(&setup)?;
-        serde_wasm_bindgen::to_value(&validation).map_err(|error| {
-            JsValue::from_str(&format!(
-                "failed to encode Manabrew match validation: {error}"
-            ))
-        })
+        let validation = self.validate_match_setup_input(&manabrew_match_setup(&input))?;
+        manabrew_to_js(&validation, "Manabrew match validation")
     }
 
     #[wasm_bindgen(js_name = startManabrewMatch)]
     pub fn start_manabrew_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {
-        let input: ManabrewMatchConfigInput = serde_wasm_bindgen::from_value(config)
-            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew match config: {error}")))?;
+        let input: ManabrewMatchConfigInput =
+            serde_wasm_bindgen::from_value(config).map_err(|error| {
+                JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
+            })?;
         self.register_manabrew_deck_sources_input(&input.decks);
         let setup = manabrew_match_setup(&input);
-        let setup = serde_wasm_bindgen::to_value(&setup).map_err(|error| {
-            JsValue::from_str(&format!("failed to encode Ironsmith match setup: {error}"))
-        })?;
-        self.start_match(setup)
+        let seed = setup.seed;
+        let setup_js = manabrew_to_js(&setup, "Ironsmith match setup")?;
+        let result = self.start_match(setup_js)?;
+        self.manabrew_game_id = input
+            .game_id
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| format!("ironsmith-{seed:016x}"));
+        self.manabrew_human_players = if input.human_players.len() == input.player_names.len() {
+            input.human_players
+        } else {
+            (0..input.player_names.len())
+                .map(|index| !input.bot_players.contains(&(index as u8)))
+                .collect()
+        };
+        self.manabrew_next_prompt_id = 1;
+        self.manabrew_open_prompt = None;
+        Ok(result)
     }
 
+    /// Build a typed player-specific view. Passing no viewer produces a spectator-safe public view.
     #[wasm_bindgen(js_name = manabrewView)]
-    pub fn manabrew_view(&mut self, prompt_id: String) -> Result<JsValue, JsValue> {
-        let snapshot_js = self.ui_state()?;
-        let snapshot: Value = serde_wasm_bindgen::from_value(snapshot_js)
-            .map_err(|error| JsValue::from_str(&format!("failed to decode Ironsmith UI state: {error}")))?;
-        let state = state_from_snapshot(
-            &snapshot,
-            self.perspective,
-            &mut self.manabrew_overlay_cache,
-        );
-        let view = json!({
-            "state": state,
-            "promptResult": manabrew_prompt_from_snapshot(&snapshot, &prompt_id),
-        });
-        manabrew_value_to_js(&view, "Manabrew view")
+    pub fn manabrew_view(&mut self, viewer: Option<u8>) -> Result<JsValue, JsValue> {
+        let viewer = match viewer {
+            Some(viewer) => match self.manabrew_player(viewer) {
+                Ok(player) => Some(player),
+                Err(error) => {
+                    return manabrew_to_js(
+                        &ManabrewViewResult {
+                            state: self.manabrew_state(None),
+                            prompt: None,
+                            error: Some(error),
+                        },
+                        "Manabrew view",
+                    );
+                }
+            },
+            None => None,
+        };
+        let result = self.manabrew_result(viewer, None);
+        manabrew_to_js(&result, "Manabrew view")
     }
 
+    /// Deprecated alias for a spectator-safe typed view.
     #[wasm_bindgen(js_name = manabrewPublicState)]
-    pub fn manabrew_public_state(&mut self) -> Result<JsValue, JsValue> {
-        let snapshot_js = self.ui_state()?;
-        let snapshot: Value = serde_wasm_bindgen::from_value(snapshot_js)
-            .map_err(|error| JsValue::from_str(&format!("failed to decode Ironsmith UI state: {error}")))?;
-        let state = state_from_snapshot(
-            &snapshot,
-            self.perspective,
-            &mut self.manabrew_overlay_cache,
-        );
-        manabrew_value_to_js(&redact_private_state(&state), "Manabrew public state")
+    pub fn manabrew_public_state(&self) -> Result<JsValue, JsValue> {
+        manabrew_to_js(&self.manabrew_state(None), "Manabrew public state")
     }
 
-    #[wasm_bindgen(js_name = manabrewPrompt)]
-    pub fn manabrew_prompt(&mut self, prompt_id: String) -> Result<JsValue, JsValue> {
-        let snapshot_js = self.ui_state()?;
-        let snapshot: Value = serde_wasm_bindgen::from_value(snapshot_js)
-            .map_err(|error| JsValue::from_str(&format!("failed to decode Ironsmith UI state: {error}")))?;
-        manabrew_value_to_js(
-            &manabrew_prompt_from_snapshot(&snapshot, &prompt_id),
-            "Manabrew prompt",
-        )
-    }
-
-    #[wasm_bindgen(js_name = manabrewCommandFromPromptOutput)]
-    pub fn manabrew_command_from_prompt_output(
+    #[wasm_bindgen(js_name = manabrewRespond)]
+    pub fn manabrew_respond(
         &mut self,
+        player: u8,
+        prompt_id: u32,
         output: JsValue,
-        binding: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let output: Value = serde_wasm_bindgen::from_value(output)
-            .map_err(|error| JsValue::from_str(&format!("invalid Manabrew prompt output: {error}")))?;
-        let binding: Value = serde_wasm_bindgen::from_value(binding)
-            .map_err(|error| JsValue::from_str(&format!("invalid Ironsmith prompt binding: {error}")))?;
-        let output = output
-            .as_object()
-            .ok_or_else(|| JsValue::from_str("Manabrew prompt output must be an object"))?;
-        let binding = binding
-            .as_object()
-            .ok_or_else(|| JsValue::from_str("Ironsmith prompt binding must be an object"))?;
-        serde_wasm_bindgen::to_value(&manabrew_command_from_values(output, binding)?)
-            .map_err(|error| JsValue::from_str(&format!("failed to encode Ironsmith command: {error}")))
+        let player = match self.manabrew_player(player) {
+            Ok(player) => player,
+            Err(error) => {
+                let result = self.manabrew_result(None, Some(error));
+                return manabrew_to_js(&result, "Manabrew response");
+            }
+        };
+        if let Err(error) = self.validate_manabrew_prompt_owner(player, prompt_id) {
+            let result = self.manabrew_result(Some(player), Some(error));
+            return manabrew_to_js(&result, "Manabrew response");
+        }
+        let output: PromptOutput = match serde_wasm_bindgen::from_value(output) {
+            Ok(output) => output,
+            Err(error) => {
+                let result = self.manabrew_result(
+                    Some(player),
+                    Some(protocol_error(
+                        ProtocolErrorCode::InvalidShape,
+                        format!("invalid Manabrew prompt output: {error}"),
+                        Some(prompt_id),
+                    )),
+                );
+                return manabrew_to_js(&result, "Manabrew response");
+            }
+        };
+        let open = match self.validate_manabrew_response(player, prompt_id, &output) {
+            Ok(open) => open.clone(),
+            Err(error) => {
+                let result = self.manabrew_result(Some(player), Some(error));
+                return manabrew_to_js(&result, "Manabrew response");
+            }
+        };
+        let action = match self.manabrew_response_action(&open, output) {
+            Ok(action) => action,
+            Err(error) => {
+                let result = self.manabrew_result(Some(player), Some(error));
+                return manabrew_to_js(&result, "Manabrew response");
+            }
+        };
+        let engine_result = match action {
+            ManabrewResponseAction::Dispatch(command) => {
+                let command = manabrew_to_js(&command, "Ironsmith command")?;
+                self.dispatch(command)
+            }
+            ManabrewResponseAction::Cancel => self.cancel_decision(),
+        };
+        if let Err(error) = engine_result {
+            let result = self.manabrew_result(
+                Some(player),
+                Some(protocol_error(
+                    ProtocolErrorCode::InvalidShape,
+                    error
+                        .as_string()
+                        .unwrap_or_else(|| "Ironsmith rejected the response".to_string()),
+                    Some(prompt_id),
+                )),
+            );
+            return manabrew_to_js(&result, "Manabrew response");
+        }
+        self.manabrew_open_prompt = None;
+        let result = self.manabrew_result(Some(player), None);
+        manabrew_to_js(&result, "Manabrew response")
+    }
+
+    #[wasm_bindgen(js_name = manabrewApplyDirective)]
+    pub fn manabrew_apply_directive(
+        &mut self,
+        player: u8,
+        directive: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let player_id = match self.manabrew_player(player) {
+            Ok(player) => player,
+            Err(error) => {
+                let result = self.manabrew_result(None, Some(error));
+                return manabrew_to_js(&result, "Manabrew directive result");
+            }
+        };
+        let directive: DirectiveInput = match serde_wasm_bindgen::from_value(directive) {
+            Ok(directive) => directive,
+            Err(error) => {
+                let result = self.manabrew_result(
+                    Some(player_id),
+                    Some(protocol_error(
+                        ProtocolErrorCode::InvalidShape,
+                        format!("invalid Manabrew directive: {error}"),
+                        None,
+                    )),
+                );
+                return manabrew_to_js(&result, "Manabrew directive result");
+            }
+        };
+        match directive {
+            DirectiveInput::Concede => {
+                if let Err(error) = self.forfeit_player(player) {
+                    let result = self.manabrew_result(
+                        Some(player_id),
+                        Some(protocol_error(
+                            ProtocolErrorCode::InvalidShape,
+                            error
+                                .as_string()
+                                .unwrap_or_else(|| "concession was rejected".to_string()),
+                            None,
+                        )),
+                    );
+                    return manabrew_to_js(&result, "Manabrew directive result");
+                }
+            }
+        }
+        self.manabrew_open_prompt = None;
+        let result = self.manabrew_result(Some(player_id), None);
+        manabrew_to_js(&result, "Manabrew directive result")
+    }
+}
+
+#[cfg(test)]
+mod manabrew_tests {
+    use super::*;
+
+    fn game() -> WasmGame {
+        let mut game = WasmGame::new();
+        game.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 42);
+        game
+    }
+
+    #[test]
+    fn state_update_round_trips_and_spectator_hides_private_zones() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        let card = ironsmith::card::CardBuilder::new(
+            ironsmith::ids::CardId::from_raw(990_001),
+            "Protocol Test Card",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(ironsmith::card::PowerToughness::fixed(2, 2))
+        .build();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.game.create_object_from_card(&card, alice, Zone::Hand);
+        game.game.create_object_from_card(&card, bob, Zone::Hand);
+        let library_card = game.game.create_object_from_card(&card, bob, Zone::Library);
+        let face_down = game.game.create_object_from_card(&card, bob, Zone::Exile);
+        game.game.set_face_down(face_down);
+
+        let state = game.manabrew_state(None);
+        let encoded = serde_json::to_string(&state).expect("state serializes");
+        let decoded: StateUpdate = serde_json::from_str(&encoded).expect("state round trips");
+        assert_eq!(decoded.game_view.game_id, "ironsmith-000000000000002a");
+        for zone in &decoded.game_view.zones {
+            if matches!(zone.zone, ZoneKind::Hand | ZoneKind::Library) {
+                assert!(zone.cards.is_empty());
+            }
+        }
+        let hidden_exile = decoded
+            .game_view
+            .zones
+            .iter()
+            .find(|zone| zone.zone == ZoneKind::Exile && zone.owner_id == "player-1")
+            .expect("Bob exile exists");
+        assert!(matches!(
+            hidden_exile.cards.as_slice(),
+            [CardView::Hidden { .. }]
+        ));
+
+        game.active_viewed_cards = Some(ActiveViewedCards {
+            viewer: bob,
+            subject: bob,
+            zone: Zone::Library,
+            cards: vec![library_card],
+            card_stable_ids: stable_ids_for_viewed_cards(&game.game, &[library_card]),
+            public: false,
+            source: None,
+            description: "Look at a library card".to_string(),
+        });
+        game.active_audit_viewed_cards.push(ActiveViewedCards {
+            viewer: bob,
+            subject: bob,
+            zone: Zone::Exile,
+            cards: vec![face_down],
+            card_stable_ids: stable_ids_for_viewed_cards(&game.game, &[face_down]),
+            public: false,
+            source: None,
+            description: "Look at a face-down exiled card".to_string(),
+        });
+        let alice_view = game.manabrew_state(Some(alice));
+        let alice_hand = alice_view
+            .game_view
+            .zones
+            .iter()
+            .find(|zone| zone.zone == ZoneKind::Hand && zone.owner_id == "player-0")
+            .expect("Alice hand exists");
+        let bob_hand = alice_view
+            .game_view
+            .zones
+            .iter()
+            .find(|zone| zone.zone == ZoneKind::Hand && zone.owner_id == "player-1")
+            .expect("Bob hand exists");
+        assert_eq!(alice_hand.cards.len(), 1);
+        assert!(bob_hand.cards.is_empty());
+        assert_eq!(bob_hand.count, 1);
+        let bob_library = alice_view
+            .game_view
+            .zones
+            .iter()
+            .find(|zone| zone.zone == ZoneKind::Library && zone.owner_id == "player-1")
+            .expect("Bob library exists");
+        assert!(bob_library.cards.is_empty());
+
+        let bob_view = game.manabrew_state(Some(bob));
+        let bob_library = bob_view
+            .game_view
+            .zones
+            .iter()
+            .find(|zone| zone.zone == ZoneKind::Library && zone.owner_id == "player-1")
+            .expect("Bob library exists");
+        assert!(matches!(
+            bob_library.cards.as_slice(),
+            [CardView::Visible(_)]
+        ));
+        let bob_exile = bob_view
+            .game_view
+            .zones
+            .iter()
+            .find(|zone| zone.zone == ZoneKind::Exile && zone.owner_id == "player-1")
+            .expect("Bob exile exists");
+        assert!(matches!(bob_exile.cards.as_slice(), [CardView::Visible(_)]));
+    }
+
+    #[test]
+    fn prompt_round_trips_and_reuses_id_for_same_decision() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        game.pending_decision = Some(DecisionContext::Priority(
+            ironsmith::decisions::context::PriorityContext::new(
+                PlayerId::from_index(0),
+                vec![LegalAction::PassPriority],
+            ),
+        ));
+        let first = game
+            .ensure_manabrew_prompt()
+            .expect("prompt maps")
+            .expect("prompt exists");
+        let second = game
+            .ensure_manabrew_prompt()
+            .expect("prompt maps")
+            .expect("prompt exists");
+        assert_eq!(first.prompt_id, second.prompt_id);
+        let encoded = serde_json::to_string(&first).expect("prompt serializes");
+        let decoded: AgentPrompt = serde_json::from_str(&encoded).expect("prompt round trips");
+        assert_eq!(decoded.prompt_id, first.prompt_id);
+
+        game.pending_decision = Some(DecisionContext::Number(
+            ironsmith::decisions::context::NumberContext::new(
+                PlayerId::from_index(0),
+                None,
+                0,
+                3,
+                "Choose a value",
+            ),
+        ));
+        let next = game
+            .ensure_manabrew_prompt()
+            .expect("number prompt maps")
+            .expect("number prompt exists");
+        assert!(next.prompt_id > first.prompt_id);
+    }
+
+    #[test]
+    fn response_validation_rejects_stale_wrong_player_type_and_action() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        game.pending_decision = Some(DecisionContext::Priority(
+            ironsmith::decisions::context::PriorityContext::new(
+                PlayerId::from_index(0),
+                vec![
+                    LegalAction::PassPriority,
+                    LegalAction::PlayLand {
+                        land_id: ObjectId::from_raw(999),
+                    },
+                ],
+            ),
+        ));
+        let prompt = game
+            .ensure_manabrew_prompt()
+            .expect("prompt maps")
+            .expect("prompt exists");
+        let pass = PromptOutput::ChooseAction(ChooseActionOutput::Pass {
+            until: None,
+            exhaust_stack: false,
+        });
+        assert_eq!(
+            game.validate_manabrew_response(PlayerId::from_index(0), prompt.prompt_id + 1, &pass)
+                .expect_err("stale prompt")
+                .code,
+            ProtocolErrorCode::StalePrompt
+        );
+        assert_eq!(
+            game.validate_manabrew_response(PlayerId::from_index(1), prompt.prompt_id, &pass)
+                .expect_err("wrong player")
+                .code,
+            ProtocolErrorCode::WrongPlayer
+        );
+        let wrong_type = PromptOutput::ChooseBoolean(ChooseBooleanOutput::Decision { value: true });
+        assert_eq!(
+            game.validate_manabrew_response(PlayerId::from_index(0), prompt.prompt_id, &wrong_type)
+                .expect_err("wrong type")
+                .code,
+            ProtocolErrorCode::WrongPromptType
+        );
+        let unknown = PromptOutput::ChooseAction(ChooseActionOutput::Act {
+            action_id: "not-advertised".to_string(),
+        });
+        assert_eq!(
+            game.validate_manabrew_response(PlayerId::from_index(0), prompt.prompt_id, &unknown)
+                .expect_err("unknown action")
+                .code,
+            ProtocolErrorCode::UnknownActionId
+        );
     }
 }

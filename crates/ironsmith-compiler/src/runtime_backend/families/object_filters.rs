@@ -1,4 +1,5 @@
 use crate::cards::builders::CardTextError;
+use crate::filter::ObjectFilterUnionConnective;
 #[cfg(test)]
 use crate::{CardType, PlayerFilter, Subtype, TaggedOpbjectRelation, Zone};
 use crate::{ColorSet, ObjectFilter};
@@ -10,11 +11,81 @@ use super::grammar::filters::{
     parse_filter_word_envelope, parse_simple_object_filter_lexed,
 };
 use super::grammar::primitives::split_lexed_slices_on_or;
-use super::lexer::{OwnedLexToken, TokenWordView, parser_token_word_refs, token_slice_at_is};
+use super::lexer::{
+    OwnedLexToken, TokenWordView, parser_token_word_refs, render_token_slice, token_slice_at_is,
+};
 use super::util::non_article_word_refs;
 
 #[cfg(test)]
 const OBJECT_FILTER_ENCHANTED_TAG: &str = "enchanted";
+
+const ORIGINAL_PRINTING_SET_PREFIX: &[&str] =
+    &["with", "a", "name", "originally", "printed", "in", "the"];
+
+fn original_printing_set_word_span(words: &[&str]) -> Option<(usize, std::ops::Range<usize>)> {
+    if words.last().copied() != Some("expansion") {
+        return None;
+    }
+    let set_end = words.len().checked_sub(1)?;
+    for suffix_start in (0..set_end).rev() {
+        let prefix_end = suffix_start.checked_add(ORIGINAL_PRINTING_SET_PREFIX.len())?;
+        if prefix_end < set_end
+            && words.get(suffix_start..prefix_end) == Some(ORIGINAL_PRINTING_SET_PREFIX)
+        {
+            return Some((suffix_start, prefix_end..set_end));
+        }
+    }
+    None
+}
+
+fn title_case_set_surface(surface: &str) -> String {
+    let surface = surface.trim();
+    if surface.chars().any(char::is_uppercase) {
+        return surface.to_string();
+    }
+    surface
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn split_original_printing_set_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, String)> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let (suffix_start, set_words) = original_printing_set_word_span(&words)?;
+    let suffix_token_start = word_view.token_boundary_for_word_or_end(suffix_start)?;
+    let set_tokens = word_view.token_span_for_words(set_words.start, set_words.end)?;
+    let set_name = title_case_set_surface(&render_token_slice(&tokens[set_tokens]));
+    if set_name.is_empty() {
+        return None;
+    }
+    Some((
+        super::util::trim_commas(&tokens[..suffix_token_start]),
+        set_name,
+    ))
+}
+
+fn split_original_printing_set_words<'a>(words: &'a [&'a str]) -> Option<(&'a [&'a str], String)> {
+    let (suffix_start, set_words) = original_printing_set_word_span(words)?;
+    let set_name = title_case_set_surface(&words[set_words].join(" "));
+    (!set_name.is_empty()).then(|| (&words[..suffix_start], set_name))
+}
+
+fn apply_original_printing_set(mut filter: ObjectFilter, set_name: Option<String>) -> ObjectFilter {
+    if let Some(set_name) = set_name {
+        filter.name_originally_printed_in_set = Some(set_name);
+    }
+    filter
+}
 
 fn object_filter_word_is_any(word: &str, candidates: &[&str]) -> bool {
     candidates.iter().any(|candidate| word == *candidate)
@@ -22,6 +93,12 @@ fn object_filter_word_is_any(word: &str, candidates: &[&str]) -> bool {
 
 fn object_filter_word_is_other_or_another(word: &str) -> bool {
     object_filter_word_is_any(word, &["other", "another"])
+}
+
+fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if tokens.iter().any(|token| token.is_word("and/or")) {
+        filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
+    }
 }
 
 pub(super) fn slice_has<T: PartialEq>(items: &[T], expected: &T) -> bool {
@@ -35,8 +112,10 @@ pub(super) fn set_has<T: Eq + std::hash::Hash>(
     items.iter().any(|item| item == expected)
 }
 
-pub(super) fn push_unique<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
-    crate::slice_primitives::push_unique(items, value);
+pub(super) fn push_unique<T: PartialEq>(items: &mut Vec<T>, value: T) {
+    if !items.contains(&value) {
+        items.push(value);
+    }
 }
 
 pub(super) fn parse_attached_reference_or_another_disjunction(
@@ -81,6 +160,11 @@ pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let (original_printing_tokens, original_printing_set) =
+        split_original_printing_set_tokens(tokens)
+            .map(|(tokens, set_name)| (tokens, Some(set_name)))
+            .unwrap_or_else(|| (tokens.to_vec(), None));
+    let tokens = original_printing_tokens.as_slice();
     let envelope = parse_filter_distinct_names_tokens(tokens);
     let tokens = envelope.core_tokens.as_slice();
     let mut filter = if let Some(split) = parse_filter_tail_decoration_tokens(tokens) {
@@ -94,49 +178,76 @@ pub(crate) fn parse_object_filter(
         super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)?
     };
     filter = envelope.decorations.apply_distinct_names_only(filter);
-    Ok(filter)
+    preserve_union_surface(&mut filter, tokens);
+    Ok(apply_original_printing_set(filter, original_printing_set))
 }
 
 pub(crate) fn parse_object_filter_words(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    let envelope = parse_filter_word_envelope(word_refs);
+    let (original_printing_words, original_printing_set) =
+        split_original_printing_set_words(word_refs)
+            .map(|(words, set_name)| (words, Some(set_name)))
+            .unwrap_or((word_refs, None));
+    let envelope = parse_filter_word_envelope(original_printing_words);
     if let Some(filter) = parse_simple_object_filter_words(&envelope.core_words, other) {
-        return Ok(envelope.decorations.apply(filter));
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
     }
     if let Some(split) = parse_filter_tail_decoration_split_words(&envelope.core_words)
         && let Some(mut filter) = parse_simple_object_filter_words(split.base_words, other)
     {
         apply_filter_tail_decoration(&mut filter, split.decoration);
-        return Ok(envelope.decorations.apply(filter));
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
     }
 
-    // Preserve the legacy fallback contract: the lexed parser receives the
-    // original words and owns envelope normalization for the complex path.
-    let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
-    parse_object_filter_lexed(&tokens, other)
+    // The lexed parser owns envelope normalization for the complex path. The
+    // historical-printing suffix has already been preserved as a typed field.
+    let tokens = super::lexer::synthetic_word_tokens(original_printing_words.iter().copied());
+    let filter = parse_object_filter_lexed(&tokens, other)?;
+    Ok(apply_original_printing_set(filter, original_printing_set))
 }
 
 pub(crate) fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let (original_printing_tokens, original_printing_set) =
+        split_original_printing_set_tokens(tokens)
+            .map(|(tokens, set_name)| (tokens, Some(set_name)))
+            .unwrap_or_else(|| (tokens.to_vec(), None));
+    let tokens = original_printing_tokens.as_slice();
     let envelope = parse_filter_lexed_envelope(tokens);
     if tokens_contain_permanent_or_suspended_card_disjunction(&envelope.core_tokens) {
-        let filter = super::grammar::filters::parse_object_filter_with_grammar_entrypoint(
+        let mut filter = super::grammar::filters::parse_object_filter_with_grammar_entrypoint(
             &envelope.core_tokens,
             other,
         )?;
-        return Ok(envelope.decorations.apply(filter));
+        preserve_union_surface(&mut filter, &envelope.core_tokens);
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
     }
     if let Some(filter) = parse_simple_object_filter_lexed(&envelope.core_tokens, other) {
-        return Ok(envelope.decorations.apply(filter));
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
     }
     let filter = parse_object_filter(&envelope.core_tokens, other)?;
     // Historical behavior intentionally drops the vote-winner tag on this
     // complex fallback while retaining the different-names fact.
-    Ok(envelope.decorations.apply_distinct_names_only(filter))
+    Ok(apply_original_printing_set(
+        envelope.decorations.apply_distinct_names_only(filter),
+        original_printing_set,
+    ))
 }
 
 fn tokens_contain_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToken]) -> bool {
@@ -157,11 +268,24 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
     !filter.card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+        || !filter.supertypes.is_empty()
+        || !filter.excluded_supertypes.is_empty()
+        || !filter.static_abilities.is_empty()
+        || !filter.excluded_static_abilities.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
         || filter.chosen_color
         || filter.chosen_creature_type
+        || filter.chosen_card_type
         || filter.excluded_chosen_creature_type
         || filter.colors.is_some()
         || filter.required_colors.is_some()
+        || filter.colorless
+        || filter.multicolored
+        || filter.monocolored
+        || filter.historic
+        || filter.nonhistoric
         || filter.sticker.is_some()
         || filter.color_count.is_some()
         || filter.power.is_some()
@@ -171,6 +295,10 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.mana_value_parity.is_some()
         || filter.total_counters_parity.is_some()
         || filter.cast_by.is_some()
+        || filter.owner.is_some()
+        || filter.zone.is_some()
+        || filter.name.is_some()
+        || filter.name_originally_printed_in_set.is_some()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
         || filter.targets_only_player.is_some()
@@ -193,12 +321,43 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     for subtype in extra.subtypes {
         push_unique(&mut base.subtypes, subtype);
     }
+    for subtype in extra.excluded_subtypes {
+        push_unique(&mut base.excluded_subtypes, subtype);
+    }
+    for supertype in extra.supertypes {
+        push_unique(&mut base.supertypes, supertype);
+    }
+    for supertype in extra.excluded_supertypes {
+        push_unique(&mut base.excluded_supertypes, supertype);
+    }
+    for ability in extra.static_abilities {
+        push_unique(&mut base.static_abilities, ability);
+    }
+    for ability in extra.excluded_static_abilities {
+        push_unique(&mut base.excluded_static_abilities, ability);
+    }
+    for marker in extra.ability_markers {
+        push_unique(&mut base.ability_markers, marker);
+    }
+    for marker in extra.excluded_ability_markers {
+        push_unique(&mut base.excluded_ability_markers, marker);
+    }
     if let Some(colors) = extra.colors {
         let existing = base.colors.unwrap_or(ColorSet::new());
         base.colors = Some(existing.union(colors));
     }
+    if let Some(colors) = extra.required_colors {
+        let existing = base.required_colors.unwrap_or(ColorSet::new());
+        base.required_colors = Some(existing.union(colors));
+    }
+    base.colorless |= extra.colorless;
+    base.multicolored |= extra.multicolored;
+    base.monocolored |= extra.monocolored;
+    base.historic |= extra.historic;
+    base.nonhistoric |= extra.nonhistoric;
     base.chosen_color |= extra.chosen_color;
     base.chosen_creature_type |= extra.chosen_creature_type;
+    base.chosen_card_type |= extra.chosen_card_type;
     base.excluded_chosen_creature_type |= extra.excluded_chosen_creature_type;
     if base.color_count.is_none() {
         base.color_count = extra.color_count;
@@ -227,12 +386,25 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     if base.cast_by.is_none() {
         base.cast_by = extra.cast_by;
     }
+    if base.owner.is_none() {
+        base.owner = extra.owner;
+    }
+    if base.zone.is_none() {
+        base.zone = extra.zone;
+    }
+    if base.name.is_none() {
+        base.name = extra.name;
+    }
+    if base.name_originally_printed_in_set.is_none() {
+        base.name_originally_printed_in_set = extra.name_originally_printed_in_set;
+    }
     if base.targets_player.is_none() {
         base.targets_player = extra.targets_player;
     }
     if base.targets_object.is_none() {
         base.targets_object = extra.targets_object;
     }
+    base.targets_any_of |= extra.targets_any_of;
     if base.targets_only_player.is_none() {
         base.targets_only_player = extra.targets_only_player;
     }
@@ -250,12 +422,48 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     for constraint in extra.tagged_constraints {
         crate::slice_primitives::push_unique(&mut base.tagged_constraints, constraint);
     }
+    for branch in extra.any_of {
+        crate::slice_primitives::push_unique(&mut base.any_of, branch);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::runtime_backend::util::tokenize_line;
+
+    #[test]
+    fn parsed_card_noun_remains_visible_after_context_clears_the_zone() {
+        let tokens = tokenize_line("instant or sorcery card", 0);
+        let mut filter =
+            parse_object_filter_lexed(&tokens, false).expect("typed card filter should parse");
+
+        filter.zone = None;
+        assert!(filter.has_explicit_card_noun());
+        assert_eq!(filter.description(), "instant or sorcery card");
+    }
+
+    #[test]
+    fn parse_object_filter_preserves_original_printing_set_qualifier() {
+        let tokens = tokenize_line(
+            "nontoken permanent with a name originally printed in the Antiquities expansion",
+            0,
+        );
+
+        let filter = parse_object_filter_lexed(&tokens, false)
+            .expect("historical printing qualifier should parse");
+
+        assert!(filter.nontoken);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(
+            filter.name_originally_printed_in_set.as_deref(),
+            Some("Antiquities")
+        );
+        assert_eq!(
+            filter.description(),
+            "a nontoken permanent with a name originally printed in the Antiquities expansion"
+        );
+    }
 
     #[test]
     fn parse_attached_reference_or_another_disjunction_handles_articles_without_word_view() {
@@ -290,6 +498,30 @@ mod tests {
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Graveyard));
         assert_eq!(filter.card_types, vec![CardType::Artifact]);
+    }
+
+    #[test]
+    fn mana_value_comparison_rhs_does_not_leak_source_type_into_filter_union() {
+        let tokens = tokenize_line(
+            "instant or sorcery card with mana value less than or equal to this creature's power from your graveyard",
+            0,
+        );
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(
+            filter.card_types,
+            vec![CardType::Instant, CardType::Sorcery]
+        );
+        assert!(!filter.card_types.contains(&CardType::Creature));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(
+            filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+                crate::effect::Value::SourcePower
+            )))
+        );
     }
 
     #[test]

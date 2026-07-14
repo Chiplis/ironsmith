@@ -269,6 +269,11 @@ pub(super) fn test_parse_each_creature_cant_be_blocked_by_more_than_one_creature
         has_grant,
         "expected Familiar Ground-style line to compile to an ability-granting static ability"
     );
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.starts_with("Each creature can't be blocked by more than 1 creature"),
+        "expected the quantified grant subject and direct restriction surface, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2543,10 +2548,43 @@ pub(super) fn test_parse_this_or_another_creature_dies_is_not_this_dies_only() {
         AbilityKind::Triggered(triggered) => format!("{:#?}", triggered.trigger),
         _ => panic!("expected triggered ability"),
     };
+    let rendered = unprocessed_compiled_lines(&def).join(" | ");
 
     assert!(
-        trigger_debug.contains("this_object: false"),
-        "expected global creature-dies trigger (not this-only), got {trigger_debug}"
+        trigger_debug.contains("other: true"),
+        "expected the another-creature branch to exclude the source, got {trigger_debug}"
+    );
+    assert!(
+        rendered.contains("Whenever this creature or another creature dies"),
+        "expected preserved this-or-another dies surface, got {rendered}\ntrigger={trigger_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_compile_this_or_another_graveyard_from_battlefield_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Grave Pact Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever this enchantment or another nonland permanent you control is put into a graveyard from the battlefield, draw a card.",
+        )
+        .expect("parse this-or-another graveyard-from-battlefield trigger");
+
+    let trigger_debug = match &def.abilities[0].kind {
+        AbilityKind::Triggered(triggered) => format!("{:#?}", triggered.trigger),
+        _ => panic!("expected triggered ability"),
+    };
+    let rendered = unprocessed_compiled_lines(&def).join(" | ");
+
+    assert!(
+        trigger_debug.contains("source: true") && trigger_debug.contains("other: true"),
+        "expected distinct source and another-permanent trigger branches, got {trigger_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever this enchantment or another nonland permanent you control is put into a graveyard from the battlefield"
+        ),
+        "expected preserved graveyard-from-battlefield surface, got {rendered}\ntrigger={trigger_debug}"
     );
 }
 

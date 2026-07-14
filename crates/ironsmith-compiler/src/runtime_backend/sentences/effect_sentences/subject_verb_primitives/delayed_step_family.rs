@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::front_end::grammar::effects as effect_grammar;
 use crate::runtime_backend::front_end::grammar::effects::delayed_step_shapes as delayed_grammar;
 
 const DELAYED_MECHANIC_CHOOSE_ONE_OF_THEM_WORDS: &[&str] = &["you", "choose", "one", "of", "them"];
@@ -57,7 +58,162 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
     match step {
         DelayedNextStepKind::Upkeep => EffectAst::DelayedUntilNextUpkeep { player, effects },
         DelayedNextStepKind::DrawStep => EffectAst::DelayedUntilNextDrawStep { player, effects },
+        DelayedNextStepKind::EndStep => EffectAst::DelayedUntilNextEndStep {
+            player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
+            effects,
+        },
     }
+}
+
+fn delayed_end_step_player_filter(player: PlayerAst) -> Option<PlayerFilter> {
+    Some(match player {
+        PlayerAst::You => PlayerFilter::You,
+        PlayerAst::Any => PlayerFilter::Any,
+        PlayerAst::That => PlayerFilter::IteratedPlayer,
+        _ => return None,
+    })
+}
+
+fn wrap_delayed_timing_effects(
+    marker: delayed_grammar::DelayedTimingMarkerShape,
+    effects: Vec<EffectAst>,
+) -> Option<EffectAst> {
+    Some(match marker.step {
+        delayed_grammar::DelayedTimingStepShape::EndStep => EffectAst::DelayedUntilNextEndStep {
+            player: delayed_end_step_player_filter(marker.player)?,
+            effects,
+        },
+        delayed_grammar::DelayedTimingStepShape::Upkeep => EffectAst::DelayedUntilNextUpkeep {
+            player: marker.player,
+            effects,
+        },
+        delayed_grammar::DelayedTimingStepShape::DrawStep => EffectAst::DelayedUntilNextDrawStep {
+            player: marker.player,
+            effects,
+        },
+    })
+}
+
+fn wrap_delayed_timing_inside_leading_condition(
+    marker: delayed_grammar::DelayedTimingMarkerShape,
+    effects: Vec<EffectAst>,
+) -> Option<EffectAst> {
+    let [
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+    ] = effects.as_slice()
+    else {
+        return wrap_delayed_timing_effects(marker, effects);
+    };
+    if !if_false.is_empty() {
+        return wrap_delayed_timing_effects(marker, effects);
+    }
+
+    Some(EffectAst::Conditional {
+        predicate: predicate.clone(),
+        if_true: vec![wrap_delayed_timing_effects(marker, if_true.clone())?],
+        if_false: Vec::new(),
+    })
+}
+
+/// Parse an action whose timing marker is written as a suffix, such as
+/// "sacrifice it at the beginning of the next end step". The action is parsed
+/// normally after removing only the timing marker, then wrapped in the same
+/// delayed queue AST used by prefix-timed sentences.
+pub(crate) fn parse_sentence_delayed_timing_suffix(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause = clause.trimmed();
+    let Some(marker) = delayed_grammar::parse_delayed_timing_marker_shape(clause.tokens()) else {
+        return Ok(None);
+    };
+    if marker.start_word == 0 {
+        return Ok(None);
+    }
+
+    let Some(before_timing) = clause.before_word(marker.start_word) else {
+        return Ok(None);
+    };
+    let Some(after_timing) = clause.from_word(marker.end_word) else {
+        return Ok(None);
+    };
+    let after_words = after_timing.trimmed_word_refs();
+    if !after_words.is_empty() && !matches!(after_words.first(), Some(&"where")) {
+        return Ok(None);
+    }
+
+    // A trailing where-clause remains part of the delayed action. In
+    // particular, this keeps dynamic values such as "where X is the number of
+    // lands you control at that time" evaluated when the delayed trigger
+    // resolves rather than when it is created.
+    let mut action_tokens = before_timing.tokens().to_vec();
+    action_tokens.extend_from_slice(after_timing.tokens());
+    let action_tokens = SubjectVerbPrimitiveClause::new(&action_tokens).trimmed();
+    if action_tokens.is_empty() {
+        return Ok(None);
+    }
+    // Result gates describe whether the immediate preceding effect happened,
+    // while the timing suffix schedules only this sentence's action. Keep the
+    // gate outside the delayed wrapper so reference resolution can bind it to
+    // the preceding sibling rather than looking for a result inside a fresh
+    // delayed-effect sequence.
+    let leading_result =
+        crate::runtime_backend::grammar::structure::split_leading_result_prefix_lexed(
+            action_tokens.tokens(),
+        );
+    let action_body = leading_result
+        .as_ref()
+        .map(|prefix| prefix.trailing_tokens)
+        .unwrap_or_else(|| action_tokens.tokens());
+    let segments = super::super::lex_chain_helpers::split_effect_chain_on_and_lexed(action_body);
+    let split_last_coordinated_action = segments.len() > 1
+        && segments
+            .iter()
+            .all(|segment| super::super::lex_chain_helpers::segment_has_effect_head_lexed(segment));
+    let (mut immediate_effects, delayed_effects) = if split_last_coordinated_action {
+        let mut immediate = Vec::new();
+        for segment in &segments[..segments.len() - 1] {
+            immediate.extend(parse_effect_chain(segment)?);
+        }
+        let delayed = parse_effect_chain(
+            segments
+                .last()
+                .expect("multi-segment delayed suffix has a final action"),
+        )?;
+        (immediate, delayed)
+    } else {
+        (Vec::new(), parse_effect_chain(action_body)?)
+    };
+    if delayed_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(delayed) = wrap_delayed_timing_inside_leading_condition(marker, delayed_effects)
+    else {
+        return Ok(None);
+    };
+    immediate_effects.push(delayed);
+    let effect = match leading_result {
+        Some(prefix) => match prefix.kind {
+            crate::runtime_backend::grammar::structure::LeadingResultPrefixKind::If => {
+                EffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects: immediate_effects,
+                }
+            }
+            crate::runtime_backend::grammar::structure::LeadingResultPrefixKind::When => {
+                EffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects: immediate_effects,
+                }
+            }
+        },
+        None => return Ok(Some(immediate_effects)),
+    };
+    Ok(Some(vec![effect]))
 }
 
 pub(crate) fn find_unquoted_token_word(
@@ -98,6 +254,39 @@ fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
         }
         _ => bind_implicit_player_context(effect, player),
     }
+}
+
+fn causative_recipient_filter(player: PlayerAst) -> Option<PlayerFilter> {
+    Some(match player {
+        PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+        PlayerAst::Any => PlayerFilter::Any,
+        PlayerAst::Opponent => PlayerFilter::Opponent,
+        PlayerAst::Target => PlayerFilter::target_player(),
+        PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+        PlayerAst::That => PlayerFilter::IteratedPlayer,
+        PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+        PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
+        _ => return None,
+    })
+}
+
+fn parse_causative_source_damage_to_player(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    player: PlayerAst,
+) -> Option<EffectAst> {
+    let shape = effect_grammar::parse_source_damage_to_decider(clause.tokens())?;
+    let (amount, used) = parse_value(shape.damage_tokens)?;
+    let tail = SubjectVerbPrimitiveClause::new(&shape.damage_tokens[used..]).trimmed();
+    let words = tail.word_refs();
+    if !matches!(words.first(), Some(&"damage"))
+        || !(words.ends_with(&["to", "them"]) || words.ends_with(&["to", "that", "player"]))
+    {
+        return None;
+    }
+    Some(EffectAst::subject_verb_damage(
+        amount,
+        TargetAst::Player(causative_recipient_filter(player)?, None),
+    ))
 }
 
 fn rewrite_value_source_to_it_tag(value: &mut Value) {
@@ -265,19 +454,23 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let segments = clause.trimmed_period_segments();
-    if segments.len() != 2 && segments.len() != 3 {
+    if segments.len() < 2 {
         return Ok(None);
     }
 
-    let (mut effects, upkeep_clause, lose_clause) = if segments.len() == 3 {
-        let first_effects = parse_effect_chain(segments[0].tokens())?;
-        if first_effects.is_empty() {
+    let split = segments.len() - 2;
+    let (leading_segments, delayed_segments) = segments.split_at(split);
+    let [upkeep_clause, lose_clause] = delayed_segments else {
+        unreachable!("the final two delayed-pact segments were selected above")
+    };
+    let mut effects = Vec::new();
+    for segment in leading_segments {
+        let leading_effects = parse_effect_chain(segment.tokens())?;
+        if leading_effects.is_empty() {
             return Ok(None);
         }
-        (first_effects, segments[1], segments[2])
-    } else {
-        (Vec::new(), segments[0], segments[1])
-    };
+        effects.extend(leading_effects);
+    }
     let Some(payment_shape) =
         delayed_grammar::parse_delayed_upkeep_payment_shape(upkeep_clause.tokens())
     else {
@@ -300,7 +493,7 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             })?
     };
 
-    if !delayed_lose_game_unless_paid_matches(lose_clause) {
+    if !delayed_lose_game_unless_paid_matches(*lose_clause) {
         return Ok(None);
     }
 
@@ -451,6 +644,14 @@ pub(crate) fn try_build_unless(
     .trimmed();
     let action_word_storage = action_clause.words();
     let action_words = action_word_storage.to_word_refs();
+
+    if let Some(alternative) = parse_causative_source_damage_to_player(action_clause, player) {
+        return Ok(Some(EffectAst::UnlessAction {
+            effects,
+            alternative: vec![alternative],
+            player,
+        }));
+    }
 
     if delayed_clause_starts_with_action(action_clause, delayed_grammar::DelayedActionShape::Pay) {
         if delayed_clause_mentions_mana_cost(action_clause) {
@@ -605,6 +806,105 @@ pub(crate) fn try_build_unless(
 mod tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn delayed_suffix_keeps_result_gate_outside_scheduled_action() {
+        let tokens = lex_line(
+            "If you do, unattach it at the beginning of the next end step.",
+            0,
+        )
+        .expect("conditional delayed action should lex");
+
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("conditional delayed action should parse")
+                .expect("delayed timing suffix should match");
+        let [
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: gated,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected the result gate to remain outermost: {effects:#?}");
+        };
+        let [
+            EffectAst::DelayedUntilNextEndStep {
+                effects: delayed, ..
+            },
+        ] = gated.as_slice()
+        else {
+            panic!("expected the gated action to be delayed: {gated:#?}");
+        };
+        assert!(
+            matches!(
+                delayed.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Unattach { .. },
+                    ..
+                })]
+            ),
+            "expected only the unattach action inside the delayed queue: {delayed:#?}"
+        );
+    }
+
+    #[test]
+    fn delayed_suffix_schedules_only_the_final_coordinated_action() {
+        let tokens = lex_line(
+            "You gain 2 life, and you return this card from your graveyard to your hand at the beginning of the next end step.",
+            0,
+        )
+        .expect("coordinated delayed action should lex");
+
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("coordinated delayed action should parse")
+                .expect("delayed timing suffix should match");
+        let [
+            immediate,
+            EffectAst::DelayedUntilNextEndStep {
+                effects: delayed, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected an immediate action followed by one delayed action: {effects:#?}");
+        };
+        assert!(
+            !matches!(immediate, EffectAst::DelayedUntilNextEndStep { .. }),
+            "the leading life gain must resolve immediately: {immediate:#?}"
+        );
+        assert_eq!(delayed.len(), 1, "only the return should be delayed");
+    }
+
+    #[test]
+    fn delayed_suffix_keeps_a_leading_game_condition_outside_the_schedule() {
+        let tokens = lex_line(
+            "If the gift wasn't promised, return that card to the battlefield under its owner's control with a +1/+1 counter on it at the beginning of the next end step.",
+            0,
+        )
+        .expect("conditional delayed action should lex");
+
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("conditional delayed action should parse")
+                .expect("delayed timing suffix should match");
+        let [
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected the gift condition to remain outermost: {effects:#?}");
+        };
+        assert!(if_false.is_empty(), "unexpected gift-condition else branch");
+        assert!(
+            matches!(
+                if_true.as_slice(),
+                [EffectAst::DelayedUntilNextEndStep { .. }]
+            ),
+            "only the conditioned return should be scheduled: {if_true:#?}"
+        );
+    }
 
     #[test]
     fn try_build_unless_prefers_action_only_parse_for_explicit_player_or_choice() {
@@ -820,6 +1120,8 @@ pub(crate) fn parse_sentence_implicit_become_clause(
                 None,
                 Vec::new(),
                 Vec::new(),
+                false,
+                None,
                 duration,
             )]));
         }
@@ -875,9 +1177,12 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         }
     }
     if all_card_types && !card_types.is_empty() {
-        return Ok(Some(vec![EffectAst::subject_verb_add_card_types(
-            target, card_types, duration,
-        )]));
+        let effect = if addition_tail_len.is_some() {
+            EffectAst::subject_verb_add_card_types(target, card_types, duration)
+        } else {
+            EffectAst::subject_verb_set_card_types(target, card_types, duration)
+        };
+        return Ok(Some(vec![effect]));
     }
 
     let mut subtypes = Vec::new();
@@ -973,6 +1278,6 @@ pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
     Ok(Some(vec![EffectAst::RepeatProcess {
         effects,
         continue_effect_index: 2,
-        continue_predicate: IfResultPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
+        continue_predicate: IfResultPredicate::WonClash,
     }]))
 }

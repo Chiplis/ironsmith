@@ -30,15 +30,15 @@ fn parse_gain_life_equal_power_lexed<'a>(
         .parse_next(input)?;
     gain_word.parse_next(input)?;
     primitives::phrase(&["life", "equal", "to"]).parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(
-        0..,
-        any.void(),
-        peek(primitives::phrase(&["its", "power"])),
-    )
-    .void()
-    .parse_next(input)?;
     primitives::phrase(&["its", "power"]).parse_next(input)?;
-    repeat::<_, _, (), _, _>(0.., any.void()).parse_next(input)?;
+    repeat::<_, _, (), _, _>(0.., any.void())
+        .take()
+        .verify(|tokens: &&[OwnedLexToken]| {
+            tokens
+                .iter()
+                .all(|token| token.parser_word_pieces().is_empty())
+        })
+        .parse_next(input)?;
     eof.void().parse_next(input)?;
     Ok(GainLifeEqualPowerShape { subject_tokens })
 }
@@ -101,6 +101,17 @@ mod tests {
         let tokens = lex_line("You gain life equal to its power.", 0).unwrap();
         let shape = parse_gain_life_equal_power_tokens(&tokens).unwrap();
         assert_eq!(render_token_slice(shape.subject_tokens), "You");
+    }
+
+    #[test]
+    fn rejects_equal_power_found_inside_a_later_action() {
+        let tokens = lex_line(
+            "You gain life equal to that card's toughness, lose life equal to its power, then put it into your hand.",
+            0,
+        )
+        .unwrap();
+
+        assert!(parse_gain_life_equal_power_tokens(&tokens).is_none());
     }
 
     #[test]

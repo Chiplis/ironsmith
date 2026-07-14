@@ -96,7 +96,6 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         SubjectAst::Player(player) => player,
         SubjectAst::This => return Ok(None),
     };
-
     let owner_library_destination = shape.owner_library_destination;
     let trailing_tokens = shape.trailing_tokens.to_vec();
     let append_trailing =
@@ -171,10 +170,31 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
 
     let mut target = parse_target_phrase(&target_tokens)?;
     apply_shuffle_subject_graveyard_owner_context(&mut target, subject);
+    let shuffle_player = if owner_library_destination {
+        match super::zone_counter_helpers::target_object_filter_mut(&mut target)
+            .and_then(|filter| filter.owner.as_ref())
+        {
+            Some(PlayerFilter::Target(target)) if **target == PlayerFilter::Opponent => {
+                PlayerAst::TargetOpponent
+            }
+            Some(PlayerFilter::Target(_)) => PlayerAst::Target,
+            Some(PlayerFilter::You) => PlayerAst::You,
+            _ => player,
+        }
+    } else {
+        player
+    };
 
-    append_trailing(vec![EffectAst::subject_verb_shuffle_objects_into_library(
-        player, target,
-    )])
+    let shuffle = if target_tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "all" | "each"))
+    {
+        EffectAst::subject_verb_shuffle_all_objects_into_library(shuffle_player, target)
+    } else {
+        EffectAst::subject_verb_shuffle_objects_into_library(shuffle_player, target)
+    };
+    append_trailing(vec![shuffle])
 }
 
 pub(crate) fn parse_shuffle_object_into_library_sentence(
@@ -200,6 +220,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         SubjectAst::Player(player) => player,
         SubjectAst::This => return Ok(None),
     };
+    let owner_library_destination = shape.owner_library_destination;
 
     let trailing_tokens = shape.trailing_tokens.to_vec();
     let append_trailing =
@@ -239,10 +260,12 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
                     ),
                 ]);
             }
-            return append_trailing(vec![EffectAst::subject_verb_shuffle_objects_into_library(
-                PlayerAst::ItsOwner,
-                target,
-            )]);
+            let shuffle = if owner_library_destination {
+                EffectAst::subject_verb_shuffle_objects_into_owner_library(target)
+            } else {
+                EffectAst::subject_verb_shuffle_objects_into_library(PlayerAst::ItsOwner, target)
+            };
+            return append_trailing(vec![shuffle]);
         }
         return Ok(None);
     }
@@ -269,10 +292,21 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         }]);
     }
     let target = parse_target_phrase(&target_tokens)?;
+    let moves_all = target_tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "all" | "each"));
+    let shuffle = if owner_library_destination && moves_all {
+        EffectAst::subject_verb_shuffle_all_objects_into_owner_library(target)
+    } else if owner_library_destination {
+        EffectAst::subject_verb_shuffle_objects_into_owner_library(target)
+    } else if moves_all {
+        EffectAst::subject_verb_shuffle_all_objects_into_library(player, target)
+    } else {
+        EffectAst::subject_verb_shuffle_objects_into_library(player, target)
+    };
 
-    append_trailing(vec![EffectAst::subject_verb_shuffle_objects_into_library(
-        player, target,
-    )])
+    append_trailing(vec![shuffle])
 }
 
 pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
@@ -491,7 +525,7 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     });
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
-        effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
+        effects: vec![EffectAst::subject_verb_put_all_onto_battlefield(
             filter,
             false,
             false,

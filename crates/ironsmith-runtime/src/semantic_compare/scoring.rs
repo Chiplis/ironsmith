@@ -1044,7 +1044,10 @@ fn split_mana_add_line(line: &str) -> Option<(String, String)> {
     Some((cost.trim().to_string(), add_tail.to_string()))
 }
 
-fn merge_simple_mana_add_compiled_lines(lines: &[String]) -> Vec<String> {
+fn merge_simple_mana_add_compiled_lines(
+    lines: &[String],
+    oracle_clauses: &[String],
+) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     while idx < lines.len() {
@@ -1068,9 +1071,17 @@ fn merge_simple_mana_add_compiled_lines(lines: &[String]) -> Vec<String> {
                 consumed += 1;
             }
             if adds.len() >= 2 {
-                merged.push(format!("{base_cost}: Add {}", adds.join(" or ")));
-                idx += consumed;
-                continue;
+                let combined = format!("{base_cost}: Add {}", adds.join(" or "));
+                let combined_tokens = compiled_comparison_tokens(&combined);
+                let oracle_has_combined_choice = oracle_clauses.iter().any(|clause| {
+                    split_mana_add_line(clause).is_some()
+                        && comparison_tokens(clause) == combined_tokens
+                });
+                if oracle_has_combined_choice {
+                    merged.push(combined);
+                    idx += consumed;
+                    continue;
+                }
             }
         }
         merged.push(lines[idx].clone());
@@ -1250,17 +1261,63 @@ impl ClauseComparisonPrep {
     }
 }
 
+fn normalize_paired_self_copula_surfaces(
+    oracle_text: &str,
+    compiled_lines: &[String],
+) -> (String, Vec<String>) {
+    fn has_contracted_surface(text: &str) -> bool {
+        let lower = text.to_ascii_lowercase();
+        lower.contains("as long as it's ") || lower.contains("as long as it’s ")
+    }
+
+    fn has_explicit_surface(text: &str) -> bool {
+        text.to_ascii_lowercase().contains("as long as this is ")
+    }
+
+    fn canonicalize(text: &str) -> String {
+        text.replace("As long as it's ", "As long as this is ")
+            .replace("as long as it's ", "as long as this is ")
+            .replace("As long as it’s ", "As long as this is ")
+            .replace("as long as it’s ", "as long as this is ")
+    }
+
+    let compiled_has_contracted = compiled_lines
+        .iter()
+        .any(|line| has_contracted_surface(line));
+    let compiled_has_explicit = compiled_lines.iter().any(|line| has_explicit_surface(line));
+    let surfaces_differ = (has_contracted_surface(oracle_text) && compiled_has_explicit)
+        || (has_explicit_surface(oracle_text) && compiled_has_contracted);
+
+    if !surfaces_differ {
+        return (oracle_text.to_string(), compiled_lines.to_vec());
+    }
+
+    (
+        canonicalize(oracle_text),
+        compiled_lines
+            .iter()
+            .map(|line| canonicalize(line))
+            .collect(),
+    )
+}
+
 fn prepare_clause_comparison(oracle_text: &str, compiled_lines: &[String]) -> ClauseComparisonPrep {
-    let oracle_clauses = semantic_clauses(oracle_text)
+    // Only canonicalize the contracted and explicit self-copula forms when
+    // they occur on opposite sides of this comparison. Applying that rewrite
+    // independently changed scores for cards whose compiled output had not
+    // changed at all.
+    let (oracle_text, compiled_lines) =
+        normalize_paired_self_copula_surfaces(oracle_text, compiled_lines);
+    let oracle_clauses = semantic_clauses(&oracle_text)
         .into_iter()
         .filter(|clause| !is_ignorable_semantic_clause(clause))
         .collect::<Vec<_>>();
-    let reminder_clauses = reminder_clauses(oracle_text);
+    let reminder_clauses = reminder_clauses(&oracle_text);
     let stripped_lines = compiled_lines
         .iter()
         .map(|line| strip_compiled_prefix(line).to_string())
         .collect::<Vec<_>>();
-    let merged_mana_lines = merge_simple_mana_add_compiled_lines(&stripped_lines);
+    let merged_mana_lines = merge_simple_mana_add_compiled_lines(&stripped_lines, &oracle_clauses);
     let merged_blockability_lines = merge_blockability_compiled_lines(&merged_mana_lines);
     let compiled_normalized_lines = merge_transform_compiled_lines(&merged_blockability_lines);
     let flattened_compiled_lines =

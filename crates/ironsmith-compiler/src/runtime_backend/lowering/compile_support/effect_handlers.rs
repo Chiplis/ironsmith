@@ -1,11 +1,12 @@
 use super::*;
 use crate::runtime_backend::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    bind_condition_counter_antecedent_in_effects, predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects,
+    bind_random_count_condition_antecedent_in_effects, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent,
 };
 
-fn compile_delayed_trigger_spec(
+pub(crate) fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {
@@ -18,9 +19,18 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfEndStep(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
         ),
+        TriggerSpec::BeginningOfTheEndStep => Ok(
+            ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
+        ),
         TriggerSpec::BeginningOfCombat(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player.clone()),
         ),
+        TriggerSpec::BeginningOfPrecombatMain(player) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPrecombatMainPhase(player.clone()))
+        }
+        TriggerSpec::BeginningOfPostcombatMain(player) => {
+            Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPostcombatMainPhase(player.clone()))
+        }
         TriggerSpec::IsDealtDamage(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
         ),
@@ -95,6 +105,7 @@ fn compile_delayed_trigger_spec(
             min_spells_this_turn: *min_spells_this_turn,
             exact_spells_this_turn: *exact_spells_this_turn,
             from_not_hand: *from_not_hand,
+            first_spell_of_game: false,
         }),
         TriggerSpec::PlayerPlaysLand { player, filter } => {
             Ok(ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand {
@@ -188,11 +199,14 @@ fn rewrite_effect_tag_relation(
     }
 
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
-        return Effect::new(crate::effects::ConditionalEffect::new(
-            conditional.condition.clone(),
-            rewrite_effects_tag_relation(conditional.if_true.clone(), tag, from, to),
-            rewrite_effects_tag_relation(conditional.if_false.clone(), tag, from, to),
-        ));
+        return Effect::new(
+            crate::effects::ConditionalEffect::new(
+                conditional.condition.clone(),
+                rewrite_effects_tag_relation(conditional.if_true.clone(), tag, from, to),
+                rewrite_effects_tag_relation(conditional.if_false.clone(), tag, from, to),
+            )
+            .with_surface(conditional.surface),
+        );
     }
 
     if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
@@ -274,6 +288,18 @@ pub(super) fn try_compile_timing_and_control_effect(
                 )
                 .starting_next_turn(),
             );
+            (vec![effect], choices)
+        }
+        EffectAst::DelayedUntilNextMainPhase { player, effects } => {
+            let (delayed_effects, choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+            let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::BeginningOfMainPhase(player.clone()),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            ));
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects } => {
@@ -721,6 +747,41 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())
         }
+        EffectAst::TrailingUnless { predicate, effects } => {
+            let conditional = EffectAst::Conditional {
+                predicate: PredicateAst::Not(Box::new(predicate.clone())),
+                if_true: effects.clone(),
+                if_false: Vec::new(),
+            };
+            let Some((mut compiled, choices)) =
+                try_compile_stack_and_condition_effect(&conditional, ctx)?
+            else {
+                return Err(CardTextError::ParseError(
+                    "failed to lower trailing-unless condition".to_string(),
+                ));
+            };
+            let Some(lowered_conditional_effect) = compiled.pop() else {
+                return Err(CardTextError::ParseError(
+                    "trailing-unless condition lowered without an effect".to_string(),
+                ));
+            };
+            let Some(lowered_conditional) =
+                lowered_conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+            else {
+                return Err(CardTextError::ParseError(
+                    "trailing-unless condition did not lower to a conditional".to_string(),
+                ));
+            };
+            compiled.push(Effect::new(
+                crate::effects::ConditionalEffect::new(
+                    lowered_conditional.condition.clone(),
+                    lowered_conditional.if_true.clone(),
+                    lowered_conditional.if_false.clone(),
+                )
+                .with_surface(ironsmith_core::ConditionalSurface::TrailingUnless),
+            ));
+            (compiled, choices)
+        }
         EffectAst::Conditional {
             predicate,
             if_true,
@@ -734,6 +795,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
                     ConditionAntecedentBinding::IncludeRandomWithCountObjects,
                 );
             }
+            bind_random_count_condition_antecedent_in_effects(&mut effective_if_true, predicate);
             if let Some(counter_type) = predicate_source_counter_antecedent(predicate) {
                 bind_condition_counter_antecedent_in_effects(&mut effective_if_true, counter_type);
             }
@@ -841,6 +903,7 @@ fn predicate_uses_implicit_object_reference(predicate: &PredicateAst) -> bool {
         PredicateAst::ItIsLandCard
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
+        | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::TargetMatches(_) => true,
         PredicateAst::Not(inner) => predicate_uses_implicit_object_reference(inner),
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {

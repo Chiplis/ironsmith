@@ -13,6 +13,7 @@ use ironsmith_core::DamagedBySource;
 
 const CREWERS_TAG: &str = "crewed_it_this_turn";
 const FIRST_CREWED_THIS_TURN_TAG: &str = "__first_crewed_this_turn";
+const IMPLICIT_IT_TAG: &str = "__it__";
 
 fn source_is_face_down_or_alternate_face(game: &GameState, source: ObjectId) -> bool {
     // `SourceIsFaceDown` is also used by daybound/nightbound lowering to mean
@@ -528,6 +529,142 @@ mod tests {
     }
 
     #[test]
+    fn descended_this_turn_uses_permanent_card_lki_and_graveyard_owner() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = game.new_object_id();
+        let condition = Condition::PlayerDescendedThisTurn {
+            player: PlayerFilter::You,
+        };
+
+        let instant = CardBuilder::new(CardId::from_raw(91), "Test Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let instant_id = game.create_object_from_card(&instant, alice, Zone::Hand);
+        let instant_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(instant_id).expect("instant exists"),
+            &game,
+        );
+        let instant_event = crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                instant_id,
+                Zone::Hand,
+                Zone::Graveyard,
+                EventCause::effect(),
+                Some(instant_snapshot.clone()),
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&instant_event, Some(instant_snapshot), None);
+
+        let token_id = game.new_object_id();
+        let mut token_snapshot =
+            crate::snapshot::ObjectSnapshot::for_testing(token_id, alice, "Test Creature Token")
+                .with_card_types(vec![CardType::Creature]);
+        token_snapshot.is_token = true;
+        let token_event = crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                token_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::effect(),
+                Some(token_snapshot.clone()),
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&token_event, Some(token_snapshot), None);
+
+        assert!(
+            !evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, alice),
+            )
+            .expect("nonpermanent cards and tokens should evaluate cleanly"),
+            "an instant card and a creature token must not count as descending"
+        );
+
+        let bob_creature = CardBuilder::new(CardId::from_raw(92), "Bob's Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let bob_creature_id = game.create_object_from_card(&bob_creature, bob, Zone::Library);
+        let bob_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(bob_creature_id).expect("Bob's creature exists"),
+            &game,
+        );
+        let bob_event = crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                bob_creature_id,
+                Zone::Library,
+                Zone::Graveyard,
+                EventCause::effect(),
+                Some(bob_snapshot.clone()),
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&bob_event, Some(bob_snapshot), None);
+
+        assert!(
+            !evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, alice),
+            )
+            .expect("Alice's descend condition should evaluate cleanly"),
+            "a permanent card put into Bob's graveyard must not make Alice descend"
+        );
+        assert!(
+            evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, bob),
+            )
+            .expect("Bob's descend condition should evaluate cleanly"),
+            "a permanent card put into Bob's graveyard should make Bob descend"
+        );
+
+        let alice_land = CardBuilder::new(CardId::from_raw(93), "Alice's Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let alice_land_id = game.create_object_from_card(&alice_land, alice, Zone::Hand);
+        let alice_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(alice_land_id).expect("Alice's land exists"),
+            &game,
+        );
+        let alice_event = crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                alice_land_id,
+                Zone::Hand,
+                Zone::Graveyard,
+                EventCause::effect(),
+                Some(alice_snapshot.clone()),
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&alice_event, Some(alice_snapshot), None);
+
+        assert!(
+            evaluate_condition(
+                &game,
+                &condition,
+                &ExecutionContext::new_default(source, alice),
+            )
+            .expect("Alice's descend condition should evaluate cleanly"),
+            "a permanent card put into Alice's graveyard from hand should make Alice descend"
+        );
+    }
+
+    #[test]
     fn evaluate_object_entered_battlefield_condition_uses_lki_controller() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = game.players[0].id;
@@ -627,6 +764,78 @@ mod tests {
         assert!(
             evaluate_condition_external(&game, &condition, &ctx),
             "trigger-time target condition should compare the LKI creature to the source's power"
+        );
+    }
+
+    #[test]
+    fn last_known_tagged_match_never_falls_back_to_current_characteristics() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = game.players[0].id;
+        let creature_card = CardBuilder::new(CardId::from_raw(91), "Changed Object")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let object = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+        let mut noncreature_snapshot = {
+            let object = game.object(object).expect("object exists");
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, &game,
+            )
+        };
+        noncreature_snapshot.card_types.clear();
+        noncreature_snapshot.power = None;
+        noncreature_snapshot.toughness = None;
+
+        let condition = Condition::TaggedObjectMatchedLastKnown(
+            crate::TagKey::from("triggering"),
+            crate::target::ObjectFilter::creature(),
+        );
+
+        let mut effect_ctx = ExecutionContext::new_default(object, alice);
+        effect_ctx.set_tagged_objects("triggering", vec![noncreature_snapshot.clone()]);
+        assert!(
+            !evaluate_condition(&game, &condition, &effect_ctx)
+                .expect("last-known body condition should evaluate"),
+            "current creature characteristics must not override a noncreature snapshot"
+        );
+
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::ZoneChangeEvent::with_cause(
+                object,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+                Some(noncreature_snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let external_ctx = ExternalEvaluationContext {
+            controller: alice,
+            source: object,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: None,
+            iterated_player: None,
+            triggering_event: Some(&event),
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        assert!(
+            !evaluate_condition_external(&game, &condition, &external_ctx),
+            "trigger-time LKI condition must not inspect the current creature"
+        );
+
+        let creature_snapshot = {
+            let object = game.object(object).expect("object still exists");
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, &game,
+            )
+        };
+        effect_ctx.set_tagged_objects("triggering", vec![creature_snapshot]);
+        assert!(
+            evaluate_condition(&game, &condition, &effect_ctx)
+                .expect("matching last-known body condition should evaluate")
         );
     }
 
@@ -756,8 +965,23 @@ fn evaluate_value_comparison(
     left: &Value,
     operator: crate::effect::ValueComparisonOperator,
     right: &Value,
+    triggering_event: Option<&TriggerEvent>,
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    if let Some(event) = triggering_event {
+        ctx = ctx.with_triggering_event(event.clone());
+        if let Some(cast) = event.downcast::<crate::events::SpellCastEvent>()
+            && let Some(spell) = game.object(cast.spell)
+            && let Some(snapshots) = spell
+                .cast_tagged_objects
+                .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
+        {
+            ctx.set_tagged_objects(
+                ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
+                snapshots.clone(),
+            );
+        }
+    }
     let source_exiled = game
         .get_exiled_with_source_links(source)
         .iter()
@@ -902,6 +1126,18 @@ fn triggering_event_object_matches(
         .object_id()
         .and_then(|id| game.object(id))
         .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+}
+
+fn triggering_event_object_matched_last_known(
+    game: &GameState,
+    ctx: &ExternalEvaluationContext<'_>,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let Some(snapshot) = ctx.triggering_event.and_then(TriggerEvent::snapshot) else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+    filter.matches_snapshot(snapshot, &filter_ctx, game)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1457,6 +1693,7 @@ fn evaluate_condition_shared_core(
         Condition::SourceHasCounterAtLeast {
             counter_type,
             count,
+            ..
         } => Some(
             game.object(ctx.source)
                 .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
@@ -1665,6 +1902,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
         Condition::TaggedObjectMatches(..) => {}
+        Condition::TaggedObjectMatchedLastKnown(..) => {}
         Condition::TaggedObjectIsTopOfLibrary { .. } => {}
         Condition::StableObjectIsTopOfLibrary { .. } => {}
         Condition::TaggedObjectWasCast(..) => {}
@@ -1720,6 +1958,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerTappedLandForManaThisTurn { .. } => {}
         Condition::PlayerGainedLifeThisTurnOrMore { .. } => {}
         Condition::PlayerHadLandEnterBattlefieldThisTurn { .. } => {}
+        Condition::PlayerDescendedThisTurn { .. } => {}
         Condition::ValueComparison { .. } => {}
         Condition::PlayerCardsInHandOrMore { .. } => {}
         Condition::PlayerCardsInHandOrFewer { .. } => {}
@@ -1826,13 +2065,26 @@ pub fn evaluate_condition_external(
     {
         return triggering_event_object_matches(game, ctx, filter);
     }
+    if let Condition::TaggedObjectMatchedLastKnown(tag, filter) = condition
+        && tag.as_str() == "triggering"
+    {
+        return triggering_event_object_matched_last_known(game, ctx, filter);
+    }
     if let Condition::ValueComparison {
         left,
         operator,
         right,
     } = condition
     {
-        return evaluate_value_comparison(game, ctx.controller, ctx.source, left, *operator, right);
+        return evaluate_value_comparison(
+            game,
+            ctx.controller,
+            ctx.source,
+            left,
+            *operator,
+            right,
+            ctx.triggering_event,
+        );
     }
 
     match condition {
@@ -1948,6 +2200,15 @@ pub fn evaluate_condition_external(
             };
             player_had_land_enter_battlefield_this_turn(game, player_id)
         }
+        Condition::PlayerDescendedThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            game.turn_store
+                .turn_history
+                .player_descended_count_this_turn(player_id)
+                > 0
+        }
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
@@ -2047,10 +2308,9 @@ pub fn evaluate_condition_external(
                 .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
         }
         Condition::PlayerIsMonarch { player } => {
-            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
-                return false;
-            };
-            game.is_monarch(player_id)
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| game.is_monarch(player_id))
         }
         Condition::PlayerHasInitiative { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2592,6 +2852,7 @@ pub fn evaluate_condition_external(
 
         // Conditions requiring targets / effect execution context are not evaluable here.
         Condition::TaggedObjectMatches(_, _)
+        | Condition::TaggedObjectMatchedLastKnown(_, _)
         | Condition::TaggedObjectIsTopOfLibrary { .. }
         | Condition::TaggedObjectWasCast(_)
         | Condition::TaggedObjectIsSoulbondPaired(_)
@@ -2717,6 +2978,40 @@ fn condition_objects_for_zone(
     game.zone_ids(zone).filter_map(|id| game.object(id))
 }
 
+fn tagged_object_name_matches_object_set(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    tag: &crate::tag::TagKey,
+    filter: &crate::filter::ObjectFilter,
+) -> Option<bool> {
+    // When `__it__` is not a live loop binding, a same-name constraint inside
+    // TaggedObjectMatches represents the comparison set on the right-hand side
+    // of a clause such as "it has the same name as a card in your graveyard."
+    // Preserve ordinary per-object loop behavior whenever `__it__` is bound.
+    if ctx.get_tagged_all(IMPLICIT_IT_TAG).is_some() {
+        return None;
+    }
+
+    let mut comparison_set = filter.clone();
+    let before = comparison_set.tagged_constraints.len();
+    comparison_set.tagged_constraints.retain(|constraint| {
+        !(constraint.tag.as_str() == IMPLICIT_IT_TAG
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged)
+    });
+    if comparison_set.tagged_constraints.len() == before {
+        return None;
+    }
+
+    let tagged = ctx.get_tagged_all(tag.as_str())?;
+    let filter_ctx = ctx.filter_context(game);
+    Some(tagged.iter().any(|snapshot| {
+        condition_objects_for_zone(game, comparison_set.zone).any(|candidate| {
+            crate::filter::names_match(&snapshot.name, &candidate.name)
+                && comparison_set.matches(candidate, &filter_ctx, game)
+        })
+    }))
+}
+
 fn condition_object_matches_player_zone(
     game: &GameState,
     obj: &crate::object::Object,
@@ -2772,18 +3067,7 @@ fn player_had_land_enter_battlefield_this_turn(game: &GameState, player_id: Play
 }
 
 fn player_has_full_party(game: &GameState, player_id: PlayerId) -> bool {
-    let has_role = |role: crate::types::Subtype| {
-        game.battlefield.iter().copied().any(|id| {
-            game.current_controller(id) == Some(player_id)
-                && game.current_has_card_type(id, crate::types::CardType::Creature)
-                && game.current_has_subtype(id, role)
-        })
-    };
-
-    has_role(crate::types::Subtype::Cleric)
-        && has_role(crate::types::Subtype::Rogue)
-        && has_role(crate::types::Subtype::Warrior)
-        && has_role(crate::types::Subtype::Wizard)
+    crate::party::party_size(game, player_id) == 4
 }
 
 /// Evaluate a condition with minimal context (for cast-time evaluation).
@@ -2839,7 +3123,7 @@ fn evaluate_condition_simple(
         right,
     } = condition
     {
-        return evaluate_value_comparison(game, controller, source, left, *operator, right);
+        return evaluate_value_comparison(game, controller, source, left, *operator, right, None);
     }
 
     match condition {
@@ -3151,10 +3435,9 @@ fn evaluate_condition_simple(
                 .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))
         }
         Condition::PlayerIsMonarch { player } => {
-            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
-                return false;
-            };
-            game.is_monarch(player_id)
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| game.is_monarch(player_id))
         }
         Condition::PlayerHasInitiative { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
@@ -3321,6 +3604,15 @@ fn evaluate_condition_simple(
             };
             player_had_land_enter_battlefield_this_turn(game, player_id)
         }
+        Condition::PlayerDescendedThisTurn { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            game.turn_store
+                .turn_history
+                .player_descended_count_this_turn(player_id)
+                > 0
+        }
         Condition::FirstTimeThisTurn
         | Condition::SourceFirstCrewedThisTurn
         | Condition::MaxTimesEachTurn(_)
@@ -3359,6 +3651,7 @@ fn evaluate_condition_simple(
         | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
         Condition::TaggedObjectMatches(_, _)
+        | Condition::TaggedObjectMatchedLastKnown(_, _)
         | Condition::TaggedObjectIsTopOfLibrary { .. }
         | Condition::TaggedObjectWasCast(_) => false,
         Condition::StableObjectIsTopOfLibrary {
@@ -3532,6 +3825,7 @@ fn resolve_condition_player_simple(
         PlayerFilter::Any
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::Target(_)
+        | PlayerFilter::AliasedTarget(_)
         | PlayerFilter::Teammate
         | PlayerFilter::Attacking
         | PlayerFilter::Defending
@@ -3897,8 +4191,9 @@ fn evaluate_condition(
                 .any(|player_id| player_has_more_life_than_each_other_player(game, player_id)))
         }
         Condition::PlayerIsMonarch { player } => {
-            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
-            Ok(game.is_monarch(player_id))
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| game.is_monarch(player_id)))
         }
         Condition::PlayerHasInitiative { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
@@ -4044,6 +4339,14 @@ fn evaluate_condition(
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(player_had_land_enter_battlefield_this_turn(game, player_id))
+        }
+        Condition::PlayerDescendedThisTurn { player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(game
+                .turn_store
+                .turn_history
+                .player_descended_count_this_turn(player_id)
+                > 0)
         }
         Condition::TargetIsTapped => {
             // Check if the target is tapped
@@ -4299,6 +4602,9 @@ fn evaluate_condition(
             Ok(false)
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if let Some(matches) = tagged_object_name_matches_object_set(game, ctx, tag, filter) {
+                return Ok(matches);
+            }
             let filter_ctx = ctx.filter_context(game);
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 return Ok(tagged.iter().any(|snapshot| {
@@ -4336,6 +4642,14 @@ fn evaluate_condition(
                 return Ok(filter.matches_snapshot(snapshot, &filter_ctx, game));
             }
             Ok(false)
+        }
+        Condition::TaggedObjectMatchedLastKnown(tag, filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            Ok(ctx.get_tagged_all(tag.as_str()).is_some_and(|tagged| {
+                tagged
+                    .iter()
+                    .any(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+            }))
         }
         Condition::TaggedObjectIsTopOfLibrary { tag, player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

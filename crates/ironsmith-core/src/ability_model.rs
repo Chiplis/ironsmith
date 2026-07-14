@@ -615,6 +615,25 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
         })
     }
 
+    /// Minimum X announced for this activation. Oracle currently expresses
+    /// this activated-ability constraint as the standalone sentence
+    /// "X can't be 0."; keeping it on the ability lets the decision flow
+    /// enforce the restriction while retaining the authored surface.
+    pub fn activation_x_minimum(&self) -> u32 {
+        self.additional_restrictions
+            .iter()
+            .any(|restriction| {
+                let normalized = restriction
+                    .trim()
+                    .trim_end_matches('.')
+                    .replace('’', "'")
+                    .to_ascii_lowercase();
+                matches!(normalized.as_str(), "x can't be 0" | "x cant be 0")
+            })
+            .then_some(1)
+            .unwrap_or(0)
+    }
+
     pub fn max_activations_per_turn(&self) -> Option<u32> {
         fn min_cap(current: Option<u32>, next: u32) -> Option<u32> {
             Some(current.map_or(next, |existing| existing.min(next)))

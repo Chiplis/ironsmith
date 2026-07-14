@@ -15,6 +15,12 @@ pub(crate) enum LibraryPlacementShape {
     Bottom,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LibraryPlacementOrderShape {
+    Random,
+    ChooserChooses,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LibraryChoiceDestinationShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
@@ -23,7 +29,9 @@ pub(crate) struct LibraryChoiceDestinationShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LibraryPlacementDestinationShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
+    pub(crate) destination_tokens: &'a [OwnedLexToken],
     pub(crate) placement: LibraryPlacementShape,
+    pub(crate) order: Option<LibraryPlacementOrderShape>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -181,10 +189,31 @@ pub(crate) fn parse_library_placement_destination_shape(
         return None;
     }
     let target_tokens = trim_lexed_commas(tokens.get(..index)?);
+    let order = if primitives::contains_word(destination, "random")
+        && primitives::contains_word(destination, "order")
+    {
+        Some(LibraryPlacementOrderShape::Random)
+    } else if primitives::contains_word(destination, "any")
+        && primitives::contains_word(destination, "order")
+    {
+        Some(LibraryPlacementOrderShape::ChooserChooses)
+    } else {
+        None
+    };
     (!target_tokens.is_empty()).then_some(LibraryPlacementDestinationShape {
         target_tokens,
+        destination_tokens: destination,
         placement,
+        order,
     })
+}
+
+pub(crate) fn is_exhaustive_hand_collection(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = trim_lexed_commas(tokens);
+    let plural_collection = permission_shapes::prefix_tokens(tokens, &["the", "cards", "in"])
+        || permission_shapes::prefix_tokens(tokens, &["cards", "in"]);
+    plural_collection
+        && (primitives::contains_word(tokens, "hand") || primitives::contains_word(tokens, "hands"))
 }
 
 pub(crate) fn parse_into_destination_shape(
@@ -438,5 +467,45 @@ mod tests {
         assert!(destination.tapped);
         assert!(destination.attacking);
         assert!(destination.supported_tail);
+    }
+
+    #[test]
+    fn library_placement_keeps_target_player_words_out_of_destination_surface() {
+        let owner_destination =
+            lex_line("a creature you control on top of its owner's library", 0).unwrap();
+        let owner_shape = parse_library_placement_destination_shape(&owner_destination).unwrap();
+        assert_eq!(
+            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player(
+                owner_shape.destination_tokens,
+            ),
+            None,
+        );
+
+        let plural_owner_destination =
+            lex_line("all creatures on the bottom of their owners' libraries", 0).unwrap();
+        let plural_owner_shape =
+            parse_library_placement_destination_shape(&plural_owner_destination).unwrap();
+        assert_eq!(
+            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player(
+                plural_owner_shape.destination_tokens,
+            ),
+            None,
+        );
+        assert_eq!(
+            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player_reference_surface(
+                plural_owner_shape.destination_tokens,
+            ),
+            None,
+        );
+
+        let your_destination =
+            lex_line("a creature you control on top of your library", 0).unwrap();
+        let your_shape = parse_library_placement_destination_shape(&your_destination).unwrap();
+        assert_eq!(
+            crate::runtime_backend::front_end::grammar::effects::control_copy_attach_shapes::parse_destination_player(
+                your_shape.destination_tokens,
+            ),
+            Some(crate::cards::builders::PlayerAst::You),
+        );
     }
 }

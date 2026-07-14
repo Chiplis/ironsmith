@@ -232,7 +232,7 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::ThisSpellCostCondition;
     use crate::target::{ObjectFilter, PlayerFilter};
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
 
     fn graveyard_card_object() -> Object {
         let card = CardBuilder::new(CardId::from_raw(91_500), "Graveyard Probe")
@@ -335,6 +335,95 @@ mod tests {
             "grant zone already scopes graveyard land permissions"
         );
         assert_eq!(spec.display(), "You may play lands from your graveyard");
+    }
+
+    #[test]
+    fn test_top_library_zone_grants_render_cast_and_play_subjects() {
+        let dragon_filter = ObjectFilter {
+            subtypes: vec![Subtype::Dragon],
+            excluded_card_types: vec![CardType::Land],
+            ..ObjectFilter::default()
+        };
+        let dragon = GrantSpec::new(Grantable::play_from(), dragon_filter, Zone::Library);
+        assert_eq!(
+            dragon.display(),
+            "You may cast Dragon spells from the top of your library"
+        );
+
+        let artifact_or_colorless_filter = ObjectFilter {
+            excluded_card_types: vec![CardType::Land],
+            any_of: vec![
+                ObjectFilter {
+                    card_types: vec![CardType::Artifact],
+                    ..ObjectFilter::default()
+                },
+                ObjectFilter {
+                    colorless: true,
+                    ..ObjectFilter::default()
+                },
+            ],
+            ..ObjectFilter::default()
+        };
+        let artifact_or_colorless = GrantSpec::new(
+            Grantable::play_from(),
+            artifact_or_colorless_filter,
+            Zone::Library,
+        );
+        assert_eq!(
+            artifact_or_colorless.display(),
+            "You may cast artifact spells or colorless spells from the top of your library"
+        );
+
+        let creature_filter = ObjectFilter {
+            card_types: vec![CardType::Creature],
+            excluded_card_types: vec![CardType::Land],
+            ..ObjectFilter::default()
+        };
+        let creature = GrantSpec::new(
+            Grantable::play_from(),
+            creature_filter.clone(),
+            Zone::Library,
+        );
+        assert_eq!(
+            creature.display(),
+            "You may cast creature spells from the top of your library"
+        );
+        let once_each_turn = GrantSpec::new(Grantable::play_from(), creature_filter, Zone::Library)
+            .with_usage_limit(GrantUsageLimit::OnceEachTurn);
+        assert_eq!(
+            once_each_turn.display(),
+            "Once each turn, you may cast a creature spell from the top of your library"
+        );
+
+        let mixed_filter = ObjectFilter {
+            any_of: vec![
+                ObjectFilter {
+                    card_types: vec![CardType::Land],
+                    ..ObjectFilter::default()
+                },
+                ObjectFilter {
+                    subtypes: vec![Subtype::Bird],
+                    excluded_card_types: vec![CardType::Land],
+                    ..ObjectFilter::default()
+                },
+            ],
+            ..ObjectFilter::default()
+        };
+        let mixed = GrantSpec::new(Grantable::play_from(), mixed_filter, Zone::Library);
+        assert_eq!(
+            mixed.display(),
+            "You may play lands and cast Bird spells from the top of your library"
+        );
+
+        let unrestricted = GrantSpec::new(
+            Grantable::play_from(),
+            ObjectFilter::default(),
+            Zone::Library,
+        );
+        assert_eq!(
+            unrestricted.display(),
+            "You may play lands and cast spells from the top of your library"
+        );
     }
 
     #[test]

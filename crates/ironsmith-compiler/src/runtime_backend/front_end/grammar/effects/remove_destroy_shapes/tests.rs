@@ -71,6 +71,12 @@ fn parses_combat_history_and_blocked_targets() {
         )
     ));
 
+    let tokens = lex_line("all creatures that dealt damage to you this turn", 0).unwrap();
+    assert!(matches!(
+        parse_destroy_clause_shape(&tokens).kind,
+        DestroyClauseKind::All(DestroyAllShape::DealtDamageToPlayerThisTurn { .. })
+    ));
+
     let tokens = lex_line("target blocked creature", 0).unwrap();
     let DestroyClauseKind::Blocked { target_tokens } = parse_destroy_clause_shape(&tokens).kind
     else {

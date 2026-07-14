@@ -5,7 +5,15 @@ use crate::cards::builders::EffectAst;
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::Sequence { effects: $effects }
+            | EffectAst::Coordinated {
+                effects: $effects,
+                ..
+            }
             | EffectAst::UnlessPays {
+                effects: $effects,
+                ..
+            }
+            | EffectAst::TrailingUnless {
                 effects: $effects,
                 ..
             }
@@ -93,6 +101,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::DelayedUntilNextMainPhase {
+                effects: $effects,
+                ..
+            }
             | EffectAst::DelayedUntilEndStepOfExtraTurn {
                 effects: $effects,
                 ..
@@ -122,16 +134,19 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
         EffectAst::Sequence { .. } => {}
+        EffectAst::Coordinated { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}
         EffectAst::DelayedUntilNextEndStep { .. } => {}
         EffectAst::DelayedUntilNextUpkeep { .. } => {}
         EffectAst::DelayedUntilNextDrawStep { .. } => {}
+        EffectAst::DelayedUntilNextMainPhase { .. } => {}
         EffectAst::DelayedUntilEndStepOfExtraTurn { .. } => {}
         EffectAst::DelayedUntilEndOfCombat { .. } => {}
         EffectAst::DelayedTriggerThisTurn { .. } => {}
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {}
         EffectAst::Conditional { .. } => {}
+        EffectAst::TrailingUnless { .. } => {}
         EffectAst::ManaRestricted { .. } => {}
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}

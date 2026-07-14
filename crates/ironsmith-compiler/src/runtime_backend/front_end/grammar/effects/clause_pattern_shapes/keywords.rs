@@ -77,6 +77,9 @@ pub(crate) enum KeywordMechanicShape<'a> {
     ManifestTop {
         player: ManifestPlayerShape,
     },
+    CloakTop {
+        player: ManifestPlayerShape,
+    },
     ManifestFromHand,
     Populate {
         repeat: KeywordRepeatShape<'a>,
@@ -382,6 +385,15 @@ fn parse_manifest_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMecha
     })
 }
 
+fn parse_cloak_top_you<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["cloak", "the", "top", "card", "of", "your", "library"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::CloakTop {
+        player: ManifestPlayerShape::You,
+    })
+}
+
 fn parse_manifest_from_hand<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     primitives::phrase(&["manifest", "a", "card", "from", "your", "hand"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -424,6 +436,36 @@ fn parse_manifest_top_that_player<'a>(
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestTop {
+        player: ManifestPlayerShape::ThatPlayerOrTargetController,
+    })
+}
+
+fn parse_cloak_top_that_player<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    alt((
+        primitives::phrase(&[
+            "cloak", "the", "top", "card", "of", "that", "player's", "library",
+        ]),
+        primitives::phrase(&[
+            "cloak", "the", "top", "card", "of", "that", "players", "library",
+        ]),
+        primitives::phrase(&[
+            "its",
+            "controller",
+            "cloaks",
+            "the",
+            "top",
+            "card",
+            "of",
+            "their",
+            "library",
+        ]),
+        primitives::phrase(&[
+            "that", "player", "cloaks", "the", "top", "card", "of", "their", "library",
+        ]),
+    ))
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::CloakTop {
         player: ManifestPlayerShape::ThatPlayerOrTargetController,
     })
 }
@@ -546,9 +588,13 @@ fn parse_keyword_mechanic_lexed<'a>(
             parse_behold,
             parse_blight,
             parse_manifest_dread,
-            parse_manifest_top_you,
             parse_manifest_from_hand,
-            parse_manifest_top_that_player,
+            alt((
+                parse_cloak_top_you,
+                parse_manifest_top_you,
+                parse_cloak_top_that_player,
+                parse_manifest_top_that_player,
+            )),
             parse_populate,
             parse_meld,
             alt((

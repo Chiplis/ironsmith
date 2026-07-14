@@ -360,6 +360,51 @@ pub(crate) fn parse_discard_reveal_choice_shape<'a>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SelectedHandDoubleChoiceShape<'a> {
+    pub(crate) revealed_player: RevealedHandPlayer,
+    pub(crate) choice_prefix: &'a [OwnedLexToken],
+    pub(crate) first_choice: &'a [OwnedLexToken],
+    pub(crate) second_choice: &'a [OwnedLexToken],
+}
+
+/// Recognize a revealed-hand instruction that selects two independently
+/// filtered cards before discarding the combined selection. Keeping the two
+/// filter spans distinct prevents a conjunction from being collapsed into a
+/// single, over-constrained object filter.
+pub(crate) fn parse_selected_hand_double_choice_shape<'a>(
+    first: &[OwnedLexToken],
+    second: &'a [OwnedLexToken],
+    third: &[OwnedLexToken],
+) -> Option<SelectedHandDoubleChoiceShape<'a>> {
+    let revealed_player = if exact_surface(first, &["target", "player", "reveals", "their", "hand"])
+    {
+        RevealedHandPlayer::TargetPlayer
+    } else if exact_surface(first, &["target", "opponent", "reveals", "their", "hand"]) {
+        RevealedHandPlayer::TargetOpponent
+    } else {
+        return None;
+    };
+    if !exact_surface(third, &["that", "player", "discards", "those", "cards"]) {
+        return None;
+    }
+
+    let words = parser_token_word_refs(second);
+    consume_head(&words, &["you", "choose", "from", "it"])?;
+    let choice_start = 4;
+    let separator = sequence_offset(words.get(choice_start..)?, &["and"])? + choice_start;
+    if separator == choice_start || separator + 1 >= words.len() {
+        return None;
+    }
+
+    Some(SelectedHandDoubleChoiceShape {
+        revealed_player,
+        choice_prefix: token_slice_for_words(second, 0..choice_start)?,
+        first_choice: token_slice_for_words(second, choice_start..separator)?,
+        second_choice: token_slice_for_words(second, separator + 1..words.len())?,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChosenCounterAction {
     PutOrRemove,
     PutAdditional,
@@ -874,6 +919,29 @@ mod tests {
         assert_eq!(
             parse_explicit_card_name_surface_tokens(&tokens).as_deref(),
             Some("Nissa, Genesis Mage")
+        );
+    }
+
+    #[test]
+    fn selected_hand_double_choice_keeps_both_filter_spans() {
+        let first = lex("Target opponent reveals their hand.");
+        let second = lex(
+            "You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater.",
+        );
+        let third = lex("That player discards those cards.");
+        let shape = parse_selected_hand_double_choice_shape(&first, &second, &third)
+            .expect("selected-hand double choice shape");
+
+        assert_eq!(shape.revealed_player, RevealedHandPlayer::TargetOpponent);
+        assert_eq!(
+            parser_token_word_refs(shape.first_choice),
+            [
+                "a", "nonland", "card", "with", "mana", "value", "3", "or", "less"
+            ]
+        );
+        assert_eq!(
+            parser_token_word_refs(shape.second_choice),
+            ["a", "card", "with", "mana", "value", "4", "or", "greater"]
         );
     }
 }

@@ -3,6 +3,37 @@ use crate::host::{EffectAst, TriggerSpec};
 
 type AnthemNormalizedWords<'a> = crate::runtime_backend::grammar::primitives::TokenWordView<'a>;
 
+fn leading_set_quantifier_surface(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::SetQuantifierSurface> {
+    match subject_tokens.first().and_then(OwnedLexToken::as_word) {
+        Some("each") => Some(ironsmith_core::SetQuantifierSurface::Each),
+        Some("all") => Some(ironsmith_core::SetQuantifierSurface::All),
+        _ => None,
+    }
+}
+
+fn with_leading_set_quantifier_surface(
+    ability: StaticAbilityAst,
+    subject_tokens: &[OwnedLexToken],
+) -> StaticAbilityAst {
+    if !matches!(
+        &ability,
+        StaticAbilityAst::GrantStaticAbility { .. }
+            | StaticAbilityAst::GrantKeywordAction { .. }
+            | StaticAbilityAst::GrantObjectAbility { .. }
+    ) {
+        return ability;
+    }
+    let Some(surface) = leading_set_quantifier_surface(subject_tokens) else {
+        return ability;
+    };
+    StaticAbilityAst::WithSetQuantifierSurface {
+        ability: Box::new(ability),
+        surface,
+    }
+}
+
 fn first_spell_each_turn_subject(filter_tokens: &[OwnedLexToken]) -> Option<AnthemSubjectAst> {
     anthem_grant_grammar::parse_first_spell_each_turn_subject_tokens(filter_tokens).map(|_| {
         AnthemSubjectAst::Filter(
@@ -144,7 +175,10 @@ pub(crate) fn parse_subject_cant_be_blocked_line(
             condition: None,
         },
     };
-    Ok(Some(ability))
+    Ok(Some(with_leading_set_quantifier_surface(
+        ability,
+        &subject_tokens,
+    )))
 }
 
 pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
@@ -264,7 +298,10 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
             condition: Some(condition),
         },
     };
-    Ok(Some(granted))
+    Ok(Some(with_leading_set_quantifier_surface(
+        granted,
+        &subject_tokens,
+    )))
 }
 
 fn simple_card_types_from_control_filter(mut filter: ObjectFilter) -> Option<Vec<CardType>> {
@@ -629,7 +666,12 @@ pub(crate) fn parse_granted_keyword_static_line(
         condition.clone(),
         &clause_words.join(" "),
     )? {
-        return Ok(Some(compiled));
+        return Ok(Some(
+            compiled
+                .into_iter()
+                .map(|ability| with_leading_set_quantifier_surface(ability, &subject_tokens))
+                .collect(),
+        ));
     }
 
     if keyword_kind == anthem_grant_grammar::GrantedKeywordTokenKind::Exploit {
@@ -689,7 +731,12 @@ pub(crate) fn parse_granted_keyword_static_line(
                 ));
             }
         }
-        return Ok(Some(compiled));
+        return Ok(Some(
+            compiled
+                .into_iter()
+                .map(|ability| with_leading_set_quantifier_surface(ability, &subject_tokens))
+                .collect(),
+        ));
     }
 
     let Some(actions) = parse_ability_line(&keyword_tokens) else {
@@ -731,7 +778,12 @@ pub(crate) fn parse_granted_keyword_static_line(
                 }
             }
         }
-        return Ok(Some(compiled));
+        return Ok(Some(
+            compiled
+                .into_iter()
+                .map(|ability| with_leading_set_quantifier_surface(ability, &subject_tokens))
+                .collect(),
+        ));
     }
 
     let mut mapped = Vec::new();
@@ -793,6 +845,7 @@ pub(crate) fn parse_granted_keyword_static_line(
         power: AnthemValue::Fixed(0),
         toughness: AnthemValue::Fixed(0),
         condition,
+        set_quantifier_surface: leading_set_quantifier_surface(&subject_tokens),
         count_uses_where_x: false,
     };
     for (ability, display) in object_ability_grants {
@@ -802,7 +855,12 @@ pub(crate) fn parse_granted_keyword_static_line(
             display,
         ));
     }
-    Ok(Some(compiled))
+    Ok(Some(
+        compiled
+            .into_iter()
+            .map(|ability| with_leading_set_quantifier_surface(ability, &subject_tokens))
+            .collect(),
+    ))
 }
 
 pub(crate) fn parse_all_creatures_lose_flying_line(
@@ -907,10 +965,14 @@ pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
         ))
     })?;
     let granted = StaticAbility::cant_be_blocked_by_more_than(amount as usize);
-    Ok(Some(StaticAbilityAst::GrantStaticAbility {
+    let ability = StaticAbilityAst::GrantStaticAbility {
         filter,
         ability: Box::new(StaticAbilityAst::Static(granted)),
         condition: None,
+    };
+    Ok(Some(StaticAbilityAst::WithSetQuantifierSurface {
+        ability: Box::new(ability),
+        surface: ironsmith_core::SetQuantifierSurface::Each,
     }))
 }
 
@@ -1191,6 +1253,7 @@ pub(crate) struct ParsedAnthemClause {
     pub(crate) power: AnthemValue,
     pub(crate) toughness: AnthemValue,
     pub(crate) condition: Option<crate::ConditionExpr>,
+    pub(crate) set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     /// Whether the scaling count was written as "where X is …" (vs "for each …")
     /// in the original oracle text. Surface hint preserved for rendering.
     pub(crate) count_uses_where_x: bool,
@@ -1490,7 +1553,9 @@ pub(crate) fn parse_anthem_subject(
         return Ok(AnthemSubjectAst::Source);
     }
     if let Ok(filter) = parse_object_filter(tokens, false)
-        && filter.in_combat_with_source
+        && (filter.in_combat_with_source
+            || filter.attached_to_object.is_some()
+            || filter.attached_to_player.is_some())
     {
         return Ok(AnthemSubjectAst::Filter(filter));
     }
@@ -2144,8 +2209,9 @@ fn source_counter_count_expression(
     }
 }
 
-fn source_counter_count_expression_from_value(value: Value) -> Option<AnthemCountExpression> {
-    match value {
+fn anthem_count_expression_from_value(value: Value) -> Option<AnthemCountExpression> {
+    match value.into_unhinted() {
+        Value::Count(filter) => Some(AnthemCountExpression::MatchingFilter(filter)),
         Value::CountersOnSource(counter_type) => {
             Some(AnthemCountExpression::CountersOnSource(counter_type))
         }
@@ -2162,8 +2228,26 @@ fn source_counter_count_expression_from_value(value: Value) -> Option<AnthemCoun
                 )
                 .or(Some(AnthemCountExpression::CountersOnSource(counter_type)))
         }
+        Value::CountersOn(spec, Some(counter_type)) => match spec.unhinted() {
+            crate::target::ChooseSpec::All(filter) => Some(AnthemCountExpression::CountersAmong(
+                filter.clone(),
+                counter_type,
+            )),
+            _ => None,
+        },
         _ => None,
     }
+}
+
+fn anthem_for_each_prefers_specialized_parser(tokens: &[OwnedLexToken]) -> bool {
+    let Some(rest) = anthem_grant_grammar::parse_for_each_rest(tokens) else {
+        return false;
+    };
+    // Stickers and attached permanents also use source-relative wording such
+    // as "on this Aura"/"attached to it", but they are not counter values.
+    // Keep their typed grammar ahead of the generic object/count fallback.
+    parse_sticker_count_expression(rest).is_some()
+        || anthem_grant_grammar::parse_for_each_special_shape(rest).is_some()
 }
 
 fn parse_sticker_count_expression(tokens: &[OwnedLexToken]) -> Option<AnthemCountExpression> {
@@ -2383,6 +2467,31 @@ fn infer_as_long_as_subject_start(tokens: &[OwnedLexToken], action_idx: usize) -
     None
 }
 
+fn bind_unique_count_condition_anthem_subject(
+    subject: &mut AnthemSubjectAst,
+    condition: Option<&crate::ConditionExpr>,
+) {
+    let AnthemSubjectAst::Filter(subject_filter) = subject else {
+        return;
+    };
+    let Some(crate::ConditionExpr::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(antecedent),
+        comparison,
+        ..
+    }) = condition
+    else {
+        return;
+    };
+    if *comparison != crate::effect::Comparison::Equal(1) {
+        return;
+    }
+
+    crate::runtime_backend::condition_antecedent::bind_condition_filter_antecedent(
+        subject_filter,
+        antecedent,
+    );
+}
+
 pub(crate) fn parse_anthem_clause(
     tokens: &[OwnedLexToken],
     get_idx: usize,
@@ -2407,6 +2516,11 @@ pub(crate) fn parse_anthem_clause(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
+    let set_quantifier_surface = match subject_tokens.first().and_then(OwnedLexToken::as_word) {
+        Some("all") => Some(ironsmith_core::SetQuantifierSurface::All),
+        Some("each") => Some(ironsmith_core::SetQuantifierSurface::Each),
+        _ => None,
+    };
 
     let modifier_shape = anthem_grant_grammar::parse_modifier_shape(tokens, get_idx, tail_end)
         .ok_or_else(|| {
@@ -2433,13 +2547,37 @@ pub(crate) fn parse_anthem_clause(
         }
     };
     let mut scale: Option<AnthemCountExpression> = None;
+    let mut value_scale: Option<Value> = None;
     let mut count_uses_where_x = false;
     let mut suffix_condition: Option<crate::ConditionExpr> = None;
     let mut suffix_attached_subject: Option<ObjectFilter> = None;
     if explicit_values.is_none() && !tail_tokens.is_empty() {
         match anthem_grant_grammar::parse_tail_shape(&tail_tokens) {
             Some(anthem_grant_grammar::AnthemTailShape::ForEach(tail)) => {
-                scale = Some(parse_anthem_for_each_expression(tail)?);
+                if anthem_for_each_prefers_specialized_parser(tail) {
+                    scale = Some(parse_anthem_for_each_expression(tail)?);
+                } else {
+                    let words = crate::runtime_backend::token_word_refs(tail);
+                    if let Some((value, used)) = parse_for_each_count_value_words(&words)
+                        && used == words.len()
+                    {
+                        if matches!(value.unhinted(), Value::PartySize(_))
+                            || matches!(value.unhinted(), Value::CountersOn(_, None))
+                        {
+                            value_scale = Some(
+                                value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                            );
+                        } else if let Some(count_expression) =
+                            anthem_count_expression_from_value(value)
+                        {
+                            scale = Some(count_expression);
+                        } else {
+                            scale = Some(parse_anthem_for_each_expression(tail)?);
+                        }
+                    } else {
+                        scale = Some(parse_anthem_for_each_expression(tail)?);
+                    }
+                }
             }
             Some(anthem_grant_grammar::AnthemTailShape::WhereX(tail)) => {
                 count_uses_where_x = true;
@@ -2449,31 +2587,33 @@ pub(crate) fn parse_anthem_clause(
                         crate::runtime_backend::token_word_refs(tokens).join(" ")
                     ))
                 })?;
-                scale = Some(match x_value {
-                    Value::Count(filter) => AnthemCountExpression::MatchingFilter(filter),
-                    Value::GreatestManaValue(filter) => {
-                        AnthemCountExpression::GreatestManaValueAmong(filter)
-                    }
-                    value
-                        if source_counter_count_expression_from_value(value.clone()).is_some() =>
-                    {
-                        source_counter_count_expression_from_value(value)
-                            .expect("checked source-counter expression")
-                    }
-                    Value::BasicLandTypesAmong(filter) => {
-                        AnthemCountExpression::BasicLandTypesAmong(filter)
-                    }
-                    Value::CreatureTypesAmong(filter) => {
-                        AnthemCountExpression::CreatureTypesAmong(filter)
-                    }
-                    Value::Speed(player) => AnthemCountExpression::PlayerSpeed(player),
-                    _ => {
-                        return Err(CardTextError::ParseError(format!(
-                            "unsupported where-x anthem value (clause: '{}')",
-                            crate::runtime_backend::token_word_refs(tokens).join(" ")
-                        )));
-                    }
-                });
+                if matches!(x_value.unhinted(), Value::PartySize(_)) {
+                    value_scale = Some(x_value);
+                } else {
+                    scale = Some(match x_value {
+                        Value::Count(filter) => AnthemCountExpression::MatchingFilter(filter),
+                        Value::GreatestManaValue(filter) => {
+                            AnthemCountExpression::GreatestManaValueAmong(filter)
+                        }
+                        value if anthem_count_expression_from_value(value.clone()).is_some() => {
+                            anthem_count_expression_from_value(value)
+                                .expect("checked anthem count expression")
+                        }
+                        Value::BasicLandTypesAmong(filter) => {
+                            AnthemCountExpression::BasicLandTypesAmong(filter)
+                        }
+                        Value::CreatureTypesAmong(filter) => {
+                            AnthemCountExpression::CreatureTypesAmong(filter)
+                        }
+                        Value::Speed(player) => AnthemCountExpression::PlayerSpeed(player),
+                        _ => {
+                            return Err(CardTextError::ParseError(format!(
+                                "unsupported where-x anthem value (clause: '{}')",
+                                crate::runtime_backend::token_word_refs(tokens).join(" ")
+                            )));
+                        }
+                    });
+                }
             }
             Some(anthem_grant_grammar::AnthemTailShape::AsLongAs { condition_tokens }) => {
                 suffix_attached_subject =
@@ -2489,10 +2629,26 @@ pub(crate) fn parse_anthem_clause(
         }
     }
 
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
+    let counts_cards_in_affected_controller_hand = tail_words.windows(3).any(|words| {
+        matches!(
+            words,
+            ["its", "controller", "hand"]
+                | ["its", "controllers", "hand"]
+                | ["its", "controller's", "hand"]
+        )
+    });
+    if counts_cards_in_affected_controller_hand
+        && let Some(AnthemCountExpression::MatchingFilter(filter)) = scale.as_mut()
+    {
+        filter.zone = Some(Zone::Hand);
+        filter.owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+    }
+
     let attached_subject_filter = prefix_attached_subject
         .as_ref()
         .or(suffix_attached_subject.as_ref());
-    let subject =
+    let mut subject =
         parse_anthem_subject_with_attached_fallback(&subject_tokens, attached_subject_filter)?;
 
     let condition = match (prefix_condition, suffix_condition) {
@@ -2505,24 +2661,45 @@ pub(crate) fn parse_anthem_clause(
         (Some(condition), None) | (None, Some(condition)) => Some(condition),
         (None, None) => None,
     };
+    bind_unique_count_condition_anthem_subject(&mut subject, condition.as_ref());
 
     let has_dynamic_component = matches!(raw_power, Value::X | Value::XTimes(_))
         || matches!(raw_toughness, Value::X | Value::XTimes(_));
-    let scale_fixed_components = scale.is_some() && !has_dynamic_component;
+    let scale_fixed_components =
+        (scale.is_some() || value_scale.is_some()) && !has_dynamic_component;
     let resolve_anthem_value = |component: Value,
                                 scale_expr: Option<&AnthemCountExpression>,
+                                value_scale: Option<&Value>,
                                 scale_fixed_components: bool|
      -> Result<AnthemValue, CardTextError> {
+        let dynamic_scaled = |multiplier: i32| match (multiplier, value_scale) {
+            (0, _) => Some(AnthemValue::Fixed(0)),
+            (_, None) => None,
+            (1, Some(value)) => Some(AnthemValue::Dynamic(value.clone())),
+            (multiplier, Some(value)) => {
+                let scaled = Value::Scaled(Box::new(value.clone()), multiplier);
+                let scaled = if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach) {
+                    scaled.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+                } else {
+                    scaled
+                };
+                Some(AnthemValue::Dynamic(scaled))
+            }
+        };
         match component {
-            Value::Fixed(value) => Ok(match scale_expr {
-                Some(scale_expr) if scale_fixed_components => {
-                    AnthemValue::scaled(value, scale_expr.clone())
-                }
-                None => AnthemValue::Fixed(value),
-                Some(_) => AnthemValue::Fixed(value),
+            Value::Fixed(value) => Ok(if scale_fixed_components {
+                dynamic_scaled(value).unwrap_or_else(|| {
+                    scale_expr
+                        .map(|scale_expr| AnthemValue::scaled(value, scale_expr.clone()))
+                        .unwrap_or(AnthemValue::Fixed(value))
+                })
+            } else {
+                AnthemValue::Fixed(value)
             }),
             Value::X => {
-                if let Some(scale_expr) = scale_expr {
+                if let Some(value) = dynamic_scaled(1) {
+                    Ok(value)
+                } else if let Some(scale_expr) = scale_expr {
                     Ok(AnthemValue::scaled(1, scale_expr.clone()))
                 } else {
                     Err(CardTextError::ParseError(format!(
@@ -2532,7 +2709,9 @@ pub(crate) fn parse_anthem_clause(
                 }
             }
             Value::XTimes(multiplier) => {
-                if let Some(scale_expr) = scale_expr {
+                if let Some(value) = dynamic_scaled(multiplier) {
+                    Ok(value)
+                } else if let Some(scale_expr) = scale_expr {
                     Ok(AnthemValue::scaled(multiplier, scale_expr.clone()))
                 } else {
                     Err(CardTextError::ParseError(format!(
@@ -2552,8 +2731,18 @@ pub(crate) fn parse_anthem_clause(
         (power, toughness)
     } else {
         (
-            resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?,
-            resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?,
+            resolve_anthem_value(
+                raw_power,
+                scale.as_ref(),
+                value_scale.as_ref(),
+                scale_fixed_components,
+            )?,
+            resolve_anthem_value(
+                raw_toughness,
+                scale.as_ref(),
+                value_scale.as_ref(),
+                scale_fixed_components,
+            )?,
         )
     };
 
@@ -2575,6 +2764,7 @@ pub(crate) fn parse_anthem_clause(
         power,
         toughness,
         condition,
+        set_quantifier_surface,
         count_uses_where_x,
     })
 }
@@ -2659,6 +2849,7 @@ fn build_anthem(clause: &ParsedAnthemClause) -> Anthem {
         AnthemSubjectAst::Filter(filter) => Anthem::new(filter.clone(), 0, 0),
     }
     .with_values(clause.power.clone(), clause.toughness.clone())
+    .with_set_quantifier_surface(clause.set_quantifier_surface)
     .with_count_uses_where_x(clause.count_uses_where_x);
 
     if let Some(condition) = &clause.condition {
@@ -2953,8 +3144,7 @@ pub(crate) fn parse_carried_subject_type_addition_line(
     let Some(shape) = anthem_grant_grammar::parse_carried_subject_type_addition(tokens) else {
         return Ok(None);
     };
-    let Some(mut result) =
-        parse_static_ability_ast_line_lexed_single(shape.first_sentence_tokens)?
+    let Some(mut result) = parse_static_ability_ast_line_lexed_single(shape.first_sentence_tokens)?
     else {
         return Ok(None);
     };
@@ -2967,6 +3157,7 @@ pub(crate) fn parse_carried_subject_type_addition_line(
         power: AnthemValue::Fixed(0),
         toughness: AnthemValue::Fixed(0),
         condition: None,
+        set_quantifier_surface: None,
         count_uses_where_x: false,
     };
     push_type_color_additions_for_anthem_subject(&mut result, &clause, additions)?;
@@ -2984,6 +3175,110 @@ fn fixed_anthem_clause(
         power: AnthemValue::Fixed(power),
         toughness: AnthemValue::Fixed(toughness),
         condition,
+        set_quantifier_surface: None,
         count_uses_where_x: false,
+    }
+}
+
+#[cfg(test)]
+mod dynamic_anthem_tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn party_scaled_anthem_keeps_typed_party_value() {
+        let tokens = lex_line(
+            "Equipped creature gets +1/+0 for each creature in your party.",
+            0,
+        )
+        .expect("party anthem fixture should lex");
+        let get_idx = tokens
+            .iter()
+            .position(|token| token.is_word("gets"))
+            .expect("gets token");
+        let clause =
+            parse_anthem_clause(&tokens, get_idx, tokens.len()).expect("party anthem should parse");
+
+        let AnthemValue::Dynamic(power) = &clause.power else {
+            panic!("expected dynamic PartySize power, got {:?}", clause.power);
+        };
+        assert!(power.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        assert_eq!(power.unhinted(), &Value::PartySize(PlayerFilter::You));
+        assert_eq!(clause.toughness, AnthemValue::Fixed(0));
+    }
+
+    #[test]
+    fn hinted_source_counter_value_converts_to_anthem_count() {
+        let source = crate::target::ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this Equipment".to_string(),
+                ),
+            ),
+        );
+        let value = Value::CountersOn(Box::new(source), Some(crate::CounterType::Named("rev")))
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+
+        assert!(matches!(
+            anthem_count_expression_from_value(value),
+            Some(AnthemCountExpression::CountersOnSourceWithSurface {
+                counter_type: crate::CounterType::Named("rev"),
+                surface: crate::target::SourceReferenceSurface::ThisPermanentType(surface),
+            }) if surface == "this Equipment"
+        ));
+    }
+
+    #[test]
+    fn sticker_anthem_precedes_generic_object_counting() {
+        let tokens = lex_line(
+            "Enchanted creature gets +0/+2 for each name sticker on this Aura with eight or more letters.",
+            0,
+        )
+        .expect("sticker anthem fixture should lex");
+        let get_idx = tokens
+            .iter()
+            .position(|token| token.is_word("gets"))
+            .expect("gets token");
+        let clause = parse_anthem_clause(&tokens, get_idx, tokens.len())
+            .expect("sticker anthem should parse");
+
+        assert!(matches!(
+            clause.toughness,
+            AnthemValue::PerCount {
+                multiplier: 2,
+                count: AnthemCountExpression::StickersOnSource {
+                    action: crate::events::KeywordActionKind::NameSticker,
+                    ..
+                },
+            }
+        ));
+    }
+
+    #[test]
+    fn affected_controller_hand_count_stays_bound_to_affected_creature() {
+        let tokens = lex_line(
+            "Enchanted creature gets +1/+1 for each card in its controller's hand.",
+            0,
+        )
+        .expect("controller-hand anthem fixture should lex");
+        let get_idx = tokens
+            .iter()
+            .position(|token| token.is_word("gets"))
+            .expect("gets token");
+        let clause = parse_anthem_clause(&tokens, get_idx, tokens.len())
+            .expect("controller-hand anthem should parse");
+
+        let AnthemValue::PerCount {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            ..
+        } = clause.power
+        else {
+            panic!("expected a matching-filter anthem count");
+        };
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(
+            filter.owner,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        );
     }
 }

@@ -214,6 +214,8 @@ fn target_and_activated_owner_prefixes_are_typed() {
     for text in [
         "target creature",
         "up to two target creatures",
+        "up to one other target creature",
+        "one other target creature",
         "one or two target creatures",
         "on another target creature",
     ] {

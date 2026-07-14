@@ -38,6 +38,21 @@ fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+    // Reuse the generic for-each value grammar so a prior-action reference
+    // retains its object restriction (for example, creature cards among all
+    // cards exiled this way). Reference resolution replaces IT_TAG with the
+    // concrete snapshot tag emitted by the prior action.
+    let mut for_each_words = vec!["for", "each"];
+    for_each_words.extend(crate::runtime_backend::token_word_refs(tokens));
+    if let Some((value, used)) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )
+        && used == for_each_words.len()
+    {
+        return Some(value);
+    }
+
     match shapes::parse_dynamic_counter_count_shape(tokens)? {
         shapes::DynamicCounterCountShape::LifeLostThisWay { group_size } => {
             let life_lost = Value::EventValue(EventValueSpec::LifeAmount);
@@ -136,30 +151,43 @@ fn parse_put_counter_count_value(
         shapes::CounterCountPrefixShape::NumberOf {
             value_tokens,
             equal_to_difference,
+            equal_to_after_target,
         } => {
             if equal_to_difference {
                 return Ok((Value::Fixed(0), 3));
             }
+            let preserve_surface = |value: Value| {
+                let value = if value.has_surface_hint(ValueSurfaceHint::EqualTo) {
+                    value
+                } else {
+                    value.with_surface_hint(ValueSurfaceHint::EqualTo)
+                };
+                if equal_to_after_target {
+                    value.with_surface_hint(ValueSurfaceHint::EqualToAfterTarget)
+                } else {
+                    value
+                }
+            };
             if let Some(value) = parse_add_mana_equal_amount_value(tokens)
                 .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
                 .or_else(|| parse_equal_to_number_of_filter_value(tokens))
             {
-                return Ok((value, 3));
+                return Ok((preserve_surface(value), 3));
             }
             if let Some(value) = parse_devotion_value_from_add_clause(tokens)? {
-                return Ok((value, 3));
+                return Ok((preserve_surface(value), 3));
             }
             if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
-                return Ok((value, 3));
+                return Ok((preserve_surface(value), 3));
             }
             if let Some(value_tokens) = value_tokens {
                 if let Some((value, used)) = parse_value(&value_tokens)
                     && used == value_tokens.len()
                 {
-                    return Ok((value, 3));
+                    return Ok((preserve_surface(value), 3));
                 }
                 if let Some(value) = parse_named_source_power_value(&value_tokens) {
-                    return Ok((value, 3));
+                    return Ok((preserve_surface(value), 3));
                 }
             }
             return Err(CardTextError::ParseError(format!(
@@ -407,6 +435,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                 count = Value::Add(Box::new(count), Box::new(base.clone()));
             }
         }
+        count = count.with_surface_hint(ValueSurfaceHint::ForEach);
         let effect = EffectAst::subject_verb_put_counters(counter_type, count, target, None, false);
         return Ok(if let Some(predicate) = predicate {
             EffectAst::Conditional {
@@ -679,9 +708,42 @@ pub(crate) fn apply_shuffle_subject_graveyard_owner_context(
     };
 
     match filter.owner {
-        Some(PlayerFilter::IteratedPlayer) | Some(PlayerFilter::Target(_)) | None => {
+        Some(PlayerFilter::IteratedPlayer) | None => {
             filter.owner = Some(owner_filter);
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod filtered_prior_action_counter_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn counter_count_preserves_exiled_creature_filter() {
+        let tokens = lex_line("creature card exiled this way", 0).unwrap();
+        let expected = Value::Count(
+            ObjectFilter::creature()
+                .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+        );
+        assert_eq!(parse_create_for_each_dynamic_count(&tokens), Some(expected));
+    }
+
+    #[test]
+    fn counter_count_preserves_named_counters_on_typed_source() {
+        let tokens = lex_line("invasion counter on this enchantment", 0).unwrap();
+        let value = parse_create_for_each_dynamic_count(&tokens)
+            .expect("named counters on a source should be a dynamic count");
+
+        let Value::CountersOn(spec, Some(CounterType::Named("invasion"))) = value else {
+            panic!("expected invasion counters on source, got {value:?}");
+        };
+        assert!(matches!(spec.unhinted(), ChooseSpec::Source));
+        assert_eq!(
+            spec.source_reference_surface()
+                .map(crate::target::SourceReferenceSurface::display_text),
+            Some("this enchantment".to_string())
+        );
     }
 }

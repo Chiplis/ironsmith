@@ -57,6 +57,12 @@ pub(crate) fn parse_sentence_compound_damage_fanout(
     clause.parse_with_lexed(parse_compound_damage_fanout_sentence)
 }
 
+pub(crate) fn parse_sentence_serial_target_pt_modifiers(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    clause.parse_with_lexed(parse_serial_target_pt_modifiers_sentence)
+}
+
 pub(crate) fn parse_sentence_same_name_gets_fanout(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -165,10 +171,13 @@ pub(crate) fn parse_sentence_exile_multi_target(
 
     apply_exile_subject_hand_owner_context(&mut first_target, None);
     apply_exile_subject_hand_owner_context(&mut second_target, None);
-    Ok(Some(vec![
-        EffectAst::subject_verb_exile(first_target, false),
-        EffectAst::subject_verb_exile(second_target, false),
-    ]))
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects: vec![
+            EffectAst::subject_verb_exile(first_target, false),
+            EffectAst::subject_verb_exile(second_target, false),
+        ],
+        leading_duration: false,
+    }]))
 }
 
 pub(crate) fn split_destroy_target_segments(
@@ -256,7 +265,10 @@ pub(crate) fn parse_sentence_destroy_multi_target(
     if effects.len() < 2 {
         return Ok(None);
     }
-    Ok(Some(effects))
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+    }]))
 }
 
 pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
@@ -556,13 +568,12 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::Conditional {
-        predicate: PredicateAst::Not(Box::new(PredicateAst::EnchantedPermanentAttackedThisTurn)),
-        if_true: vec![EffectAst::subject_verb_damage(
+    Ok(Some(vec![EffectAst::TrailingUnless {
+        predicate: PredicateAst::EnchantedPermanentAttackedThisTurn,
+        effects: vec![EffectAst::subject_verb_damage(
             amount,
             TargetAst::Player(PlayerFilter::IteratedPlayer, None),
         )],
-        if_false: Vec::new(),
     }]))
 }
 

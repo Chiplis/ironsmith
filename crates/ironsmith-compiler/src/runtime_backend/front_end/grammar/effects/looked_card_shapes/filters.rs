@@ -381,6 +381,13 @@ pub(crate) fn parse_looked_card_reveal_filter_shape(
     {
         return Some(apply_same_name(ObjectFilter::permanent_card(), same_name));
     }
+    if permission_shapes::exact_words(&words, &["historic", "card"])
+        || permission_shapes::exact_words(&words, &["historic", "cards"])
+    {
+        let mut filter = ObjectFilter::default();
+        filter.historic = true;
+        return Some(apply_same_name(filter, same_name));
+    }
     if permission_shapes::exact_words(&words, &["nonland", "permanent", "card"])
         || permission_shapes::exact_words(&words, &["nonland", "permanent", "cards"])
     {

@@ -47,6 +47,8 @@ pub(crate) fn parse_any_player_source_damage(
             PermissionCaptureKind::OneOfPhrase(&[
                 &["any", "opponent", "may", "have"],
                 &["any", "player", "may", "have"],
+                &["target", "opponent", "may", "have"],
+                &["target", "player", "may", "have"],
             ]),
         ),
         PermissionSequence::capture(
@@ -63,18 +65,55 @@ pub(crate) fn parse_any_player_source_damage(
         return None;
     }
     let player_clause = parsed.capture_clause_by_role(PermissionCaptureRole::Subject, clause)?;
-    let (player, player_filter) = if permission_shapes::exact_tokens(
-        player_clause.tokens(),
-        &["any", "opponent", "may", "have"],
-    ) {
-        (PlayerAst::Opponent, PlayerFilter::Opponent)
-    } else {
-        (PlayerAst::Any, PlayerFilter::Any)
+    let (player, player_filter) = match player_clause.word_refs().as_slice() {
+        ["any", "opponent", "may", "have"] => (PlayerAst::Opponent, PlayerFilter::Opponent),
+        ["any", "player", "may", "have"] => (PlayerAst::Any, PlayerFilter::Any),
+        ["target", "opponent", "may", "have"] => {
+            (PlayerAst::TargetOpponent, PlayerFilter::target_opponent())
+        }
+        ["target", "player", "may", "have"] => (PlayerAst::Target, PlayerFilter::target_player()),
+        _ => return None,
     };
     let damage = parsed.capture_clause_by_role(PermissionCaptureRole::Tail, clause)?;
     Some(AnyPlayerSourceDamageShape {
         player,
         player_filter,
+        damage_tokens: damage.tokens(),
+    })
+}
+
+/// A source-subject damage clause whose recipient is the player currently
+/// making a surrounding choice: `<source> deal N damage to them`.
+#[derive(Debug, Clone)]
+pub(crate) struct SourceDamageToDeciderShape<'a> {
+    pub(crate) damage_tokens: &'a [OwnedLexToken],
+}
+
+pub(crate) fn parse_source_damage_to_decider(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceDamageToDeciderShape<'_>> {
+    let atoms = [
+        PermissionSequence::capture(
+            "source",
+            PermissionCaptureKind::UntilAnyPhrase(&[&["deal"], &["deals"]]),
+        ),
+        PermissionSequence::action("deal", PermissionCaptureKind::OneOf(&["deal", "deals"])),
+        PermissionSequence::tail("damage", PermissionCaptureKind::Rest),
+    ];
+    let clause = LexedClause::new(tokens).trimmed();
+    let parsed = PermissionSequence::new(&atoms).parse_full(clause)?;
+    if parsed
+        .capture_clause("source", clause)?
+        .word_refs()
+        .is_empty()
+    {
+        return None;
+    }
+    let damage = parsed.capture_clause_by_role(PermissionCaptureRole::Tail, clause)?;
+    let words = damage.word_refs();
+    let recipient_is_decider =
+        words.ends_with(&["to", "them"]) || words.ends_with(&["to", "that", "player"]);
+    recipient_is_decider.then_some(SourceDamageToDeciderShape {
         damage_tokens: damage.tokens(),
     })
 }

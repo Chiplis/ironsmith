@@ -290,9 +290,14 @@ fn timing<'a>(input: &mut LexStream<'a>) -> WResult<CounterMarkerTimingShape> {
 }
 
 fn tagged_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((primitives::kw("it"), primitives::kw("them")))
-        .void()
-        .parse_next(input)
+    alt((
+        primitives::kw("it"),
+        primitives::kw("them"),
+        primitives::kw("him"),
+        primitives::kw("her"),
+    ))
+    .void()
+    .parse_next(input)
 }
 
 fn parse_return_with_counters_lexed<'a>(

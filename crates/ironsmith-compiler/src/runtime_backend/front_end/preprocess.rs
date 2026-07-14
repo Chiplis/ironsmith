@@ -118,6 +118,7 @@ fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError
     let metadata = match surface.kind {
         MetadataLineKind::ManaCost => MetadataLine::ManaCost(surface.value),
         MetadataLineKind::TypeLine => MetadataLine::TypeLine(surface.value),
+        MetadataLineKind::FirstPrintedSet => MetadataLine::FirstPrintedSet(surface.value),
         MetadataLineKind::PowerToughness => MetadataLine::PowerToughness(surface.value),
         MetadataLineKind::Loyalty => MetadataLine::Loyalty(surface.value),
         MetadataLineKind::Defense => MetadataLine::Defense(surface.value),
@@ -1058,6 +1059,10 @@ mod tests {
             Ok(Some(MetadataLine::TypeLine(value))) if value == "Legendary Creature — Human"
         ));
         assert!(matches!(
+            parse_metadata_line("First printed set: Antiquities"),
+            Ok(Some(MetadataLine::FirstPrintedSet(value))) if value == "Antiquities"
+        ));
+        assert!(matches!(
             parse_metadata_line(" Power/Toughness: 2/3 "),
             Ok(Some(MetadataLine::PowerToughness(value))) if value == "2/3"
         ));
@@ -1093,7 +1098,7 @@ mod tests {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Metadata Variant");
         let preprocessed = preprocess_document(
             builder,
-            "Mana Cost: {2}{W}\nType Line: Legendary Creature — Human\nDraw a card.",
+            "Mana Cost: {2}{W}\nType Line: Legendary Creature — Human\nFirst printed set: Antiquities\nDraw a card.",
         )
         .expect("metadata-bearing text should preprocess");
 
@@ -1113,8 +1118,24 @@ mod tests {
         ));
         assert!(matches!(
             preprocessed.items.get(2),
+            Some(PreprocessedItem::Metadata(PreprocessedMetadataLine {
+                value: MetadataLine::FirstPrintedSet(value),
+                ..
+            })) if value == "Antiquities"
+        ));
+        assert!(matches!(
+            preprocessed.items.get(3),
             Some(PreprocessedItem::Line(_))
         ));
+        assert_eq!(
+            preprocessed
+                .builder
+                .build()
+                .card
+                .first_printed_set_name
+                .as_deref(),
+            Some("Antiquities")
+        );
     }
 
     #[test]

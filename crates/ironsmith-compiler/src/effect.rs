@@ -1120,6 +1120,12 @@ impl Effect {
         Self::new(crate::effects::ManifestTopCardOfLibraryEffect::new(player))
     }
 
+    pub fn cloak_top_card_of_library(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ManifestTopCardOfLibraryEffect::cloak(
+            player,
+        ))
+    }
+
     pub fn manifest_card_from_hand() -> Self {
         Self::new(crate::effects::ManifestCardFromHandEffect::new())
     }
@@ -1210,6 +1216,12 @@ impl Effect {
         Self::new(crate::effects::PreventAllCombatDamageEffect::new(
             crate::effects::CombatDamagePreventionTarget::All,
             until,
+        ))
+    }
+
+    pub fn assign_no_combat_damage(target: crate::target::ChooseSpec, until: Until) -> Self {
+        Self::new(crate::effects::AssignNoCombatDamageEffect::new(
+            target, until,
         ))
     }
 
@@ -1530,14 +1542,29 @@ impl Effect {
         filter: crate::target::ObjectFilter,
         allow_colorless: bool,
         same_type: bool,
+        mana_type_source: crate::effects::ManaTypeSource,
     ) -> Self {
-        Self::new(crate::effects::AddManaOfLandProducedTypesEffect::new(
-            amount,
-            player,
-            filter,
-            allow_colorless,
-            same_type,
-        ))
+        let effect = match mana_type_source {
+            crate::effects::ManaTypeSource::MatchingLandsCouldProduce => {
+                crate::effects::AddManaOfLandProducedTypesEffect::new(
+                    amount,
+                    player,
+                    filter,
+                    allow_colorless,
+                    same_type,
+                )
+            }
+            crate::effects::ManaTypeSource::TriggeringEventProduced => {
+                crate::effects::AddManaOfLandProducedTypesEffect::from_triggering_event(
+                    amount,
+                    player,
+                    filter,
+                    allow_colorless,
+                    same_type,
+                )
+            }
+        };
+        Self::new(effect)
     }
 
     pub fn add_mana_from_commander_color_identity(amount: impl Into<Value>) -> Self {

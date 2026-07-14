@@ -8,11 +8,13 @@ use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{TurnDurationPhrase, parse_turn_duration_suffix};
-use super::util::{strip_leading_token_words_any, trim_commas};
+use super::util::{parse_target_phrase, strip_leading_token_words_any, trim_commas};
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
 use crate::runtime_backend::GrantedAbilityAst;
-use crate::runtime_backend::grammar::shared_util::value_semantics::parse_value_prefix_lexed;
+use crate::runtime_backend::grammar::shared_util::value_semantics::{
+    parse_value_prefix_lexed, starts_explicit_ordered_comparison,
+};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -24,6 +26,7 @@ pub(crate) enum PermissionLifetime {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
     Static,
@@ -209,6 +212,9 @@ fn permission_lifetime_from_tagged_fact(
         permission_tagged_facts::PermissionLifetimeFact::UntilYourNextTurn => {
             PermissionLifetime::UntilYourNextTurn
         }
+        permission_tagged_facts::PermissionLifetimeFact::UntilYourNextEndStep => {
+            PermissionLifetime::UntilYourNextEndStep
+        }
         permission_tagged_facts::PermissionLifetimeFact::ForAsLongAsExiled => {
             PermissionLifetime::ForAsLongAsExiled
         }
@@ -230,6 +236,9 @@ fn permission_lifetime_to_tagged_fact(
         }
         PermissionLifetime::UntilYourNextTurn => {
             permission_tagged_facts::PermissionLifetimeFact::UntilYourNextTurn
+        }
+        PermissionLifetime::UntilYourNextEndStep => {
+            permission_tagged_facts::PermissionLifetimeFact::UntilYourNextEndStep
         }
         PermissionLifetime::ForAsLongAsExiled => {
             permission_tagged_facts::PermissionLifetimeFact::ForAsLongAsExiled
@@ -426,9 +435,8 @@ fn free_cast_filter_mentions_singular_spell(filter_tokens: &[OwnedLexToken]) -> 
 
 fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
-) -> Option<&'a [OwnedLexToken]> {
+) -> Option<permission_tagged_facts::AllowAnyColorForCastSuffixFact<'a>> {
     permission_tagged_facts::parse_allow_any_color_for_cast_suffix_tokens(tokens)
-        .map(|fact| fact.body_tokens)
 }
 
 fn parse_permission_duration_prefix_tokens<'a>(
@@ -588,14 +596,19 @@ fn parse_revealed_top_library_permission_clause(
     }))
 }
 
-fn mark_generic_spell_filter_nonland(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
-    if permission_subject_facts::generic_spell_subject_requires_nonland(tokens)
-        && !filter
-            .excluded_card_types
-            .iter()
-            .any(|card_type| card_type == &CardType::Land)
+fn exclude_lands_from_spell_filter(filter: &mut ObjectFilter) {
+    if !filter
+        .excluded_card_types
+        .iter()
+        .any(|card_type| card_type == &CardType::Land)
     {
         filter.excluded_card_types.push(CardType::Land);
+    }
+}
+
+fn mark_generic_spell_filter_nonland(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if permission_subject_facts::generic_spell_subject_requires_nonland(tokens) {
+        exclude_lands_from_spell_filter(filter);
     }
 }
 
@@ -647,7 +660,11 @@ fn parse_hand_free_cast_grant_spec_from_rest(
         if used != rhs_tokens.len() {
             return Ok(None);
         }
-        filter.mana_value = Some(mana_value_filter_comparison(operator, rhs_value));
+        filter.mana_value = Some(mana_value_filter_comparison(
+            comparison_tokens,
+            operator,
+            rhs_value,
+        ));
     }
     Ok(Some(
         crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(filter),
@@ -854,6 +871,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 let label = match prefixed {
                     PermissionLifetime::UntilEndOfTurn => "until-end-of-turn",
                     PermissionLifetime::UntilYourNextTurn => "until-next-turn",
+                    PermissionLifetime::UntilYourNextEndStep => "until-next-end-step",
                     PermissionLifetime::ForAsLongAsExiled => "for-as-long-as-exiled",
                     _ => "permission",
                 };
@@ -871,12 +889,14 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             PermissionLifetime::ThisTurn
                 | PermissionLifetime::UntilEndOfTurn
                 | PermissionLifetime::UntilYourNextTurn
+                | PermissionLifetime::UntilYourNextEndStep
                 | PermissionLifetime::ForAsLongAsExiled
                 | PermissionLifetime::ForAsLongAsYouControlSource
         ) && target_ref.as_copy
         {
             let label = match lifetime {
                 PermissionLifetime::UntilYourNextTurn => "until-next-turn",
+                PermissionLifetime::UntilYourNextEndStep => "until-next-end-step",
                 PermissionLifetime::ForAsLongAsExiled => "for-as-long-as-exiled",
                 PermissionLifetime::ForAsLongAsYouControlSource => {
                     "for-as-long-as-you-control-source"
@@ -904,7 +924,11 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 clause_refs.join(" ")
             )));
         }
-        if lifetime == PermissionLifetime::UntilYourNextTurn && without_paying_mana_cost {
+        if matches!(
+            lifetime,
+            PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
+        ) && without_paying_mana_cost
+        {
             return Err(CardTextError::ParseError(format!(
                 "unsupported until-next-turn play target (clause: '{}')",
                 clause_refs.join(" ")
@@ -981,7 +1005,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             player,
             spec: crate::grant::GrantSpec::new(
                 crate::grant::Grantable::play_from(),
-                ObjectFilter::land(),
+                ObjectFilter {
+                    card_types: vec![CardType::Land],
+                    ..ObjectFilter::default()
+                },
                 Zone::Library,
             ),
             lifetime: PermissionLifetime::Static,
@@ -1002,13 +1029,20 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         ) {
             ObjectFilter::default()
         } else {
-            let Some(spell_filter) =
+            let Some(mut spell_filter) =
                 permission_subject_facts::parse_permission_subject_filter_tokens(subject_tokens)?
             else {
                 return Ok(None);
             };
+            exclude_lands_from_spell_filter(&mut spell_filter);
             ObjectFilter {
-                any_of: vec![ObjectFilter::land(), spell_filter],
+                any_of: vec![
+                    ObjectFilter {
+                        card_types: vec![CardType::Land],
+                        ..ObjectFilter::default()
+                    },
+                    spell_filter,
+                ],
                 ..ObjectFilter::default()
             }
         };
@@ -1036,7 +1070,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             };
         if let Some(parsed) = parse_play_from_zone_rest_tokens(zone_grant_tokens) {
             let subject_tokens = parsed.filter_tokens;
-            let filter = if matches!(
+            let mut filter = if matches!(
                 permission_subject_facts::parse_exact_permission_subject(subject_tokens),
                 Some(
                     permission_subject_facts::ExactPermissionSubject::GenericSpell
@@ -1051,6 +1085,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             } else {
                 return Ok(None);
             };
+            exclude_lands_from_spell_filter(&mut filter);
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
                 spec: crate::grant::GrantSpec::new(
@@ -1142,6 +1177,10 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
 pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let trimmed = trim_commas(tokens);
+    let mana_spend_mode = strip_allow_any_color_for_cast_suffix_tokens(&trimmed)
+        .map(|fact| fact.mana_spend_mode)
+        .unwrap_or_default();
     match parse_permission_clause_spec(tokens)? {
         Some(PermissionClauseSpec::Tagged {
             tag,
@@ -1157,7 +1196,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
                 player,
                 allow_land,
                 without_paying_mana_cost,
-                false,
+                mana_spend_mode,
             ),
         )),
         _ => Ok(None),
@@ -1167,6 +1206,10 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
 pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let trimmed = trim_commas(tokens);
+    let mana_spend_mode = strip_allow_any_color_for_cast_suffix_tokens(&trimmed)
+        .map(|fact| fact.mana_spend_mode)
+        .unwrap_or_default();
     match parse_permission_clause_spec(tokens)? {
         Some(PermissionClauseSpec::Tagged {
             tag,
@@ -1174,16 +1217,31 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             allow_land: true,
             as_copy: false,
             without_paying_mana_cost: false,
-            lifetime: PermissionLifetime::UntilYourNextTurn,
+            lifetime,
             ..
-        }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                tag,
-                PlayerAst::You,
-                true,
-                false,
-            ),
-        )),
+        }) if matches!(
+            lifetime,
+            PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
+        ) && matches!(player, PlayerAst::You | PlayerAst::Implicit) =>
+        {
+            Ok(Some(
+                if lifetime == PermissionLifetime::UntilYourNextEndStep {
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
+                        tag,
+                        PlayerAst::You,
+                        true,
+                        mana_spend_mode,
+                    )
+                } else {
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                        tag,
+                        PlayerAst::You,
+                        true,
+                        mana_spend_mode,
+                    )
+                },
+            ))
+        }
         _ => Ok(None),
     }
 }
@@ -1282,9 +1340,17 @@ fn clause_is_singular_free_cast_from_hand(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn mana_value_filter_comparison(
+    comparison_tokens: &[OwnedLexToken],
     operator: ValueComparisonOperator,
-    rhs_value: Value,
+    mut rhs_value: Value,
 ) -> crate::filter::Comparison {
+    let comparison_words = token_word_refs(comparison_tokens);
+    if starts_explicit_ordered_comparison(&comparison_words, operator)
+        && !matches!(rhs_value.unhinted(), Value::Fixed(_))
+    {
+        rhs_value =
+            rhs_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison);
+    }
     match (operator, rhs_value) {
         (ValueComparisonOperator::Equal, Value::Fixed(value)) => {
             crate::filter::Comparison::Equal(value)
@@ -1380,7 +1446,11 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
             {
                 filter.mana_value_eq_counters_on_source = Some(*counter_type);
             } else {
-                filter.mana_value = Some(mana_value_filter_comparison(operator, rhs_value));
+                filter.mana_value = Some(mana_value_filter_comparison(
+                    parsed.comparison_tokens,
+                    operator,
+                    rhs_value,
+                ));
             }
         }
 
@@ -1501,7 +1571,11 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         {
             filter.mana_value_eq_counters_on_source = Some(*counter_type);
         } else {
-            filter.mana_value = Some(mana_value_filter_comparison(operator, rhs_value));
+            filter.mana_value = Some(mana_value_filter_comparison(
+                parsed.comparison_tokens,
+                operator,
+                rhs_value,
+            ));
         }
     }
 
@@ -1520,6 +1594,23 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
 
+    if let Some(shape) = super::grammar::effects::clause_dispatch_shapes::parse_cast_target_from_your_graveyard_this_turn_shape(&trimmed)
+    {
+        let target = parse_target_phrase(shape.target_tokens)?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(target),
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    TagKey::from(IT_TAG),
+                    PlayerAst::You,
+                    false,
+                    false,
+                    false,
+                ),
+            ],
+        }));
+    }
+
     if let Some(effect) = parse_revealed_top_library_permission_clause(&trimmed)? {
         return Ok(Some(effect));
     }
@@ -1537,11 +1628,15 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         }));
     }
 
-    let mut allow_any_color_for_cast = false;
-    if let Some(stripped) = strip_allow_any_color_for_cast_suffix_tokens(&trimmed) {
-        allow_any_color_for_cast = true;
-        trimmed.truncate(stripped.len());
-    }
+    let mana_spend_mode = if let Some((body_len, mode)) =
+        strip_allow_any_color_for_cast_suffix_tokens(&trimmed)
+            .map(|parsed| (parsed.body_tokens.len(), parsed.mana_spend_mode))
+    {
+        trimmed.truncate(body_len);
+        mode
+    } else {
+        ironsmith_core::value_model::ManaSpendMode::Normal
+    };
 
     if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
         return Ok(Some(effect));
@@ -1585,7 +1680,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                             PlayerAst::Implicit,
                             lead.allow_land,
                             true,
-                            allow_any_color_for_cast,
+                            mana_spend_mode,
                         )
                     };
                     Some(EffectAst::Conditional {
@@ -1644,7 +1739,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
-                allow_any_color_for_cast,
+                mana_spend_mode,
             ),
         )),
         Some(PermissionClauseSpec::Tagged {
@@ -1653,16 +1748,31 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             allow_land,
             as_copy: false,
             without_paying_mana_cost: false,
-            lifetime: PermissionLifetime::UntilYourNextTurn,
+            lifetime,
             ..
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                tag,
-                PlayerAst::Implicit,
-                allow_land,
-                allow_any_color_for_cast,
-            ),
-        )),
+        }) if matches!(
+            lifetime,
+            PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
+        ) && (player == PlayerAst::Implicit || player == PlayerAst::You) =>
+        {
+            Ok(Some(
+                if lifetime == PermissionLifetime::UntilYourNextEndStep {
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
+                        tag,
+                        PlayerAst::Implicit,
+                        allow_land,
+                        mana_spend_mode,
+                    )
+                } else {
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                        tag,
+                        PlayerAst::Implicit,
+                        allow_land,
+                        mana_spend_mode,
+                    )
+                },
+            ))
+        }
         Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec,
@@ -1715,7 +1825,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                     player,
                     allow_land,
                     without_paying_mana_cost,
-                    allow_any_color_for_cast,
+                    mana_spend_mode,
                     filter,
                 ),
             ))
@@ -1733,7 +1843,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 tag,
                 PlayerAst::Implicit,
                 allow_land,
-                allow_any_color_for_cast,
+                mana_spend_mode,
             ),
         )),
         _ => Ok(conditional_tagged_permission),

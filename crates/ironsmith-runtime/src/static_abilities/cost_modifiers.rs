@@ -2,8 +2,12 @@
 //!
 //! These abilities modify the costs of spells being cast.
 
-use super::{StaticAbility, StaticAbilityId, StaticAbilityKind, text_utils::join_with_and};
+use super::{
+    StaticAbility, StaticAbilityId, StaticAbilityKind,
+    text_utils::{capitalize_first, join_with_and},
+};
 use crate::color::{Color, ColorSet};
+use crate::compiled_text::describe_value;
 use crate::effect::Value;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::{AlternativeCastKind, Comparison, PlayerFilterExt};
@@ -140,9 +144,10 @@ fn describe_greatest_count_cost_filter(filter: &ObjectFilter) -> String {
         PlayerFilter::You => "you control",
         PlayerFilter::Opponent => "an opponent controls",
         PlayerFilter::Any => "a player controls",
-        PlayerFilter::DamagedPlayer | PlayerFilter::Specific(_) | PlayerFilter::Target(_) => {
-            "that player controls"
-        }
+        PlayerFilter::DamagedPlayer
+        | PlayerFilter::Specific(_)
+        | PlayerFilter::Target(_)
+        | PlayerFilter::AliasedTarget(_) => "that player controls",
         PlayerFilter::IteratedPlayer => "they control",
         _ => return pluralize_cost_noun_phrase(strip_indefinite_article(&filter.description())),
     };
@@ -186,8 +191,22 @@ fn describe_player_filter_for_spell_target(filter: &PlayerFilter) -> String {
         PlayerFilter::Target(inner) => {
             format!("target {}", describe_player_filter_for_spell_target(inner))
         }
+        PlayerFilter::AliasedTarget(_) => "that player".to_string(),
         _ => "a player".to_string(),
     }
+}
+
+fn describe_object_filter_for_spell_target(filter: &ObjectFilter) -> String {
+    if filter.subtypes.len() == 1
+        && (filter.card_types.is_empty() || filter.card_types.as_slice() == [CardType::Creature])
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && matches!(filter.zone, None | Some(Zone::Battlefield))
+        && filter.any_of.is_empty()
+    {
+        return format!("a {}", filter.subtypes[0]);
+    }
+    filter.description()
 }
 
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
@@ -303,6 +322,25 @@ fn describe_dynamic_count_cost_tail(filter: &ObjectFilter) -> Option<String> {
     None
 }
 
+fn is_owned_commander_battlefield_or_command_zone_filter(filter: &ObjectFilter) -> bool {
+    let mut battlefield = ObjectFilter::default();
+    battlefield.zone = Some(Zone::Battlefield);
+    battlefield.owner = Some(PlayerFilter::You);
+    battlefield.is_commander = true;
+
+    let mut command_zone = battlefield.clone();
+    command_zone.zone = Some(Zone::Command);
+
+    let mut expected = ObjectFilter::default();
+    expected.any_of = vec![battlefield.clone(), command_zone.clone()];
+    if filter == &expected {
+        return true;
+    }
+
+    expected.any_of = vec![command_zone, battlefield];
+    filter == &expected
+}
+
 fn describe_spell_cast_count_tail(
     player: &PlayerFilter,
     filter: &ObjectFilter,
@@ -337,7 +375,83 @@ fn describe_spell_cast_count_tail(
     format!("for each {other}{spell_text} {cast_text}")
 }
 
+fn repeated_for_each_cost_value(value: &Value) -> Option<(i32, &Value)> {
+    match value {
+        Value::SurfaceHinted { value, hints }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::ForEach) =>
+        {
+            Some((1, value.unhinted()))
+        }
+        Value::Add(left, right) => {
+            let (left_count, left_value) = repeated_for_each_cost_value(left)?;
+            let (right_count, right_value) = repeated_for_each_cost_value(right)?;
+            if left_value != right_value {
+                return None;
+            }
+            Some((left_count.saturating_add(right_count), left_value))
+        }
+        _ => None,
+    }
+}
+
+fn singularize_first_plural_word(phrase: &str) -> String {
+    let mut singularized = false;
+    phrase
+        .split_whitespace()
+        .map(|word| {
+            if singularized {
+                return word.to_string();
+            }
+            let core =
+                word.trim_end_matches(|character: char| matches!(character, ',' | '.' | ';' | ':'));
+            if matches!(core, "this" | "its" | "has" | "is" | "was") {
+                return word.to_string();
+            }
+            let singular = if let Some(stem) = core.strip_suffix("ies") {
+                Some(format!("{stem}y"))
+            } else if let Some(stem) = core.strip_suffix("sses") {
+                Some(format!("{stem}ss"))
+            } else if core.ends_with("ches")
+                || core.ends_with("shes")
+                || core.ends_with("xes")
+                || core.ends_with("zes")
+            {
+                Some(core[..core.len().saturating_sub(2)].to_string())
+            } else if let Some(stem) = core.strip_suffix('s') {
+                (!core.ends_with("ss")).then(|| stem.to_string())
+            } else {
+                None
+            };
+            let Some(singular) = singular else {
+                return word.to_string();
+            };
+            singularized = true;
+            format!("{singular}{}", &word[core.len()..])
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn describe_for_each_cost_modifier_amount(amount: &Value) -> Option<(String, Option<String>)> {
+    let (multiplier, repeated_value) = repeated_for_each_cost_value(amount)?;
+    let description = describe_value(repeated_value);
+    let item = if let Some(counted) = description.strip_prefix("the number of ") {
+        singularize_first_plural_word(counted)
+    } else if let Some(gained) = description.strip_prefix("the amount of life ") {
+        format!("1 life {gained}")
+    } else {
+        return None;
+    };
+    Some((
+        format!("{{{multiplier}}}"),
+        Some(format!("for each {item}")),
+    ))
+}
+
 fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
+    if let Some(rendered) = describe_for_each_cost_modifier_amount(amount) {
+        return rendered;
+    }
     match amount {
         Value::Min(value, cap) => {
             let (amount_text, tail) = describe_cost_modifier_amount(value);
@@ -356,6 +470,10 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         }
         Value::Fixed(n) => (format!("{{{n}}}"), None),
         Value::X => ("{X}".to_string(), None),
+        Value::PowerOf(_) | Value::ToughnessOf(_) | Value::ManaValueOf(_) => (
+            "{X}".to_string(),
+            Some(format!("where X is {}", describe_value(amount))),
+        ),
         Value::Count(filter) => {
             if let Some(tail) = describe_dynamic_count_cost_tail(filter) {
                 ("{X}".to_string(), Some(tail))
@@ -471,13 +589,18 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
-        Value::GreatestManaValue(filter) => (
-            "{X}".to_string(),
-            Some(format!(
-                "where X is the greatest mana value among {}",
-                filter.description()
-            )),
-        ),
+        Value::GreatestManaValue(filter) => {
+            let tail = if is_owned_commander_battlefield_or_command_zone_filter(filter) {
+                "where X is the greatest mana value of a commander you own on the battlefield or in the command zone"
+                    .to_string()
+            } else {
+                format!(
+                    "where X is the greatest mana value among {}",
+                    filter.description()
+                )
+            };
+            ("{X}".to_string(), Some(tail))
+        }
         Value::DistinctNames(filter) => (
             "{X}".to_string(),
             Some(format!(
@@ -501,6 +624,26 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             (
                 "{1}".to_string(),
                 Some(format!("for each creature in {owner} party")),
+            )
+        }
+        Value::Devotion { player, color } => {
+            let owner = match player {
+                PlayerFilter::You => "your".to_string(),
+                PlayerFilter::Opponent => "an opponent's".to_string(),
+                _ => format!("{}'s", describe_player_filter_for_spell_target(player)),
+            };
+            (
+                "{X}".to_string(),
+                Some(format!(
+                    "where X is {owner} devotion to {}",
+                    match color {
+                        Color::White => "white",
+                        Color::Blue => "blue",
+                        Color::Black => "black",
+                        Color::Red => "red",
+                        Color::Green => "green",
+                    }
+                )),
             )
         }
         Value::LifeGainedThisTurn(player) => {
@@ -692,6 +835,14 @@ fn describe_cost_modifier_with_condition(
     body: String,
     condition: &Option<crate::ConditionExpr>,
 ) -> String {
+    if let Some(crate::ConditionExpr::SourceChosenOption(option)) = condition {
+        let mut chars = option.chars();
+        let display_option = chars
+            .next()
+            .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+            .unwrap_or_default();
+        return format!("• {display_option} — {}", capitalize_first(&body));
+    }
     if let Some(condition) = condition {
         format!(
             "{}, {}",
@@ -729,6 +880,35 @@ fn cost_modifier_condition_is_active(
     crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
 }
 
+fn is_anywhere_other_than_hand_filter(filter: &ObjectFilter) -> bool {
+    const NON_HAND_ORIGIN_ZONES: [Zone; 6] = [
+        Zone::Library,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Command,
+        Zone::OutsideGame,
+    ];
+
+    filter.zone.is_none()
+        && filter.any_of.len() == NON_HAND_ORIGIN_ZONES.len() + 1
+        && NON_HAND_ORIGIN_ZONES.iter().all(|expected_zone| {
+            filter.any_of.iter().any(|branch| {
+                let mut stripped = branch.clone();
+                let zone = stripped.zone.take();
+                zone == Some(*expected_zone) && stripped == ObjectFilter::default()
+            })
+        })
+        && filter.any_of.iter().any(|branch| {
+            let mut stripped = branch.clone();
+            let zone = stripped.zone.take();
+            let owner = stripped.owner.take();
+            zone == Some(Zone::Hand)
+                && owner == Some(PlayerFilter::NotYou)
+                && stripped == ObjectFilter::default()
+        })
+}
+
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter.source {
         return "this spell".to_string();
@@ -744,6 +924,18 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     }
 
     let mut qualifiers = Vec::<String>::new();
+    for supertype in &filter.supertypes {
+        qualifiers.push(supertype.to_string());
+    }
+    if filter.multicolored {
+        qualifiers.push("multicolored".to_string());
+    }
+    if filter.monocolored {
+        qualifiers.push("monocolored".to_string());
+    }
+    if filter.colorless {
+        qualifiers.push("colorless".to_string());
+    }
     if let Some(colors) = filter.colors {
         let color_text = describe_colors(colors);
         if !color_text.is_empty() {
@@ -779,10 +971,32 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     } else {
         format!("{} spells", qualifiers.join(" "))
     };
+    let keyword_labels = filter
+        .static_abilities
+        .iter()
+        .filter_map(|ability| match ability {
+            StaticAbilityId::Flash => Some("flash"),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if !keyword_labels.is_empty() {
+        description.push_str(" with ");
+        description.push_str(&keyword_labels.join(" and "));
+    }
     match filter.cast_by.as_ref() {
         Some(PlayerFilter::You) => description.push_str(" you cast"),
         Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),
         _ => {}
+    }
+    if filter.chosen_creature_type || filter.chosen_card_type {
+        description.push_str(" of the chosen type");
+    }
+    if matches!(filter.owner, Some(PlayerFilter::NotYou)) {
+        if matches!(filter.cast_by, Some(PlayerFilter::You)) {
+            description.push_str(" but don't own");
+        } else {
+            description.push_str(" you don't own");
+        }
     }
     if filter.shares_creature_type_with_source {
         description.push_str(" that share a creature type with this creature");
@@ -806,10 +1020,16 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
             TaggedOpbjectRelation::SharesSubtypeWithTagged => {
                 description.push_str(" that share a creature type with that object");
             }
+            TaggedOpbjectRelation::SharesSubtypeWithEachTagged => {
+                description
+                    .push_str(" that share a creature type with each creature tapped this way");
+            }
             _ => {}
         }
     }
-    if let Some(zone_suffix) = match filter.zone {
+    if is_anywhere_other_than_hand_filter(filter) {
+        description.push_str(" from anywhere other than your hand");
+    } else if let Some(zone_suffix) = match filter.zone {
         Some(Zone::Hand) => Some(match filter.owner.as_ref() {
             Some(PlayerFilter::You) => "from your hand".to_string(),
             Some(owner) => format!("from {} hand", owner.description()),
@@ -1004,6 +1224,7 @@ pub struct CostReduction {
     pub filter: ObjectFilter,
     pub reduction: Value,
     pub condition: Option<crate::ConditionExpr>,
+    pub per_target: bool,
 }
 
 impl CostReduction {
@@ -1012,11 +1233,20 @@ impl CostReduction {
             filter,
             reduction,
             condition: None,
+            per_target: false,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -1040,7 +1270,9 @@ impl StaticAbilityKind for CostReduction {
             describe_spell_filter(&self.filter),
             amount_text
         );
-        if let Some(tail) = tail {
+        if self.per_target {
+            append_cost_modifier_tail(&mut line, "for each target");
+        } else if let Some(tail) = tail {
             append_cost_modifier_tail(&mut line, &tail);
         }
         describe_cost_modifier_with_condition(line, &self.condition)
@@ -1946,6 +2178,7 @@ pub struct ThisSpellCostReduction {
     pub reduction: Value,
     pub condition: ThisSpellCostCondition,
     pub affinity_filter: Option<ObjectFilter>,
+    pub alternative_cast: Option<AlternativeCastKind>,
 }
 
 impl ThisSpellCostReduction {
@@ -1954,11 +2187,17 @@ impl ThisSpellCostReduction {
             reduction,
             condition,
             affinity_filter: None,
+            alternative_cast: None,
         }
     }
 
     pub fn with_affinity_filter(mut self, filter: ObjectFilter) -> Self {
         self.affinity_filter = Some(filter);
+        self
+    }
+
+    pub fn with_alternative_cast(mut self, kind: AlternativeCastKind) -> Self {
+        self.alternative_cast = Some(kind);
         self
     }
 }
@@ -1977,6 +2216,9 @@ impl StaticAbilityKind for ThisSpellCostReduction {
         }
         let (amount_text, tail) = describe_cost_modifier_amount(&self.reduction);
         let mut line = format!("This spell costs {amount_text} less to cast");
+        if self.alternative_cast.is_some() {
+            line.push_str(" this way");
+        }
         if let Some(tail) = tail {
             append_cost_modifier_tail(&mut line, &tail);
         } else if matches!(self.reduction, Value::X)
@@ -2085,6 +2327,7 @@ pub struct CostIncrease {
     pub filter: ObjectFilter,
     pub increase: Value,
     pub condition: Option<crate::ConditionExpr>,
+    pub per_target: bool,
 }
 
 impl CostIncrease {
@@ -2093,11 +2336,20 @@ impl CostIncrease {
             filter,
             increase,
             condition: None,
+            per_target: false,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -2109,6 +2361,32 @@ impl StaticAbilityKind for CostIncrease {
 
     fn display(&self) -> String {
         let (amount_text, tail) = describe_cost_modifier_amount(&self.increase);
+        if self.filter.source {
+            let subject = if self.condition.is_some() {
+                "this spell"
+            } else {
+                "This spell"
+            };
+            let mut line = format!("{subject} costs {amount_text} more to cast");
+            if self.per_target {
+                append_cost_modifier_tail(&mut line, "for each target");
+            } else if let Some(tail) = tail {
+                append_cost_modifier_tail(&mut line, &tail);
+            }
+
+            let mut target_descriptions = Vec::new();
+            if let Some(player_filter) = &self.filter.targets_player {
+                target_descriptions.push(describe_player_filter_for_spell_target(player_filter));
+            }
+            if let Some(object_filter) = &self.filter.targets_object {
+                target_descriptions.push(describe_object_filter_for_spell_target(object_filter));
+            }
+            if !target_descriptions.is_empty() {
+                line.push_str(" if it targets ");
+                line.push_str(&join_with_or(&target_descriptions));
+            }
+            return describe_cost_modifier_with_condition(line, &self.condition);
+        }
         if let Some(subject) = describe_alternative_cost_subject(&self.filter) {
             let mut line = format!("{subject} cost {amount_text} more");
             if let Some(tail) = tail {
@@ -2122,7 +2400,9 @@ impl StaticAbilityKind for CostIncrease {
             describe_spell_filter(&self.filter),
             amount_text
         );
-        if let Some(tail) = tail {
+        if self.per_target {
+            append_cost_modifier_tail(&mut line, "for each target");
+        } else if let Some(tail) = tail {
             append_cost_modifier_tail(&mut line, &tail);
         }
         describe_cost_modifier_with_condition(line, &self.condition)
@@ -2151,6 +2431,7 @@ pub struct CostReductionManaCost {
     pub filter: ObjectFilter,
     pub reduction: ManaCost,
     pub condition: Option<crate::ConditionExpr>,
+    pub per_target: bool,
     pub optional_life_additional_cost: Option<ironsmith_core::OptionalLifeAdditionalCost>,
 }
 
@@ -2160,6 +2441,7 @@ impl CostReductionManaCost {
             filter,
             reduction,
             condition: None,
+            per_target: false,
             optional_life_additional_cost: None,
         }
     }
@@ -2176,7 +2458,15 @@ impl CostReductionManaCost {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -2196,6 +2486,9 @@ impl StaticAbilityKind for CostReductionManaCost {
                 optional.life_cost,
                 describe_cost_modifier_mana_cost(&self.reduction)
             );
+            if self.per_target {
+                line.push_str(" for each target");
+            }
             if mana_cost_contains_colored_symbol(&self.reduction) {
                 if let Some(color) = single_colored_mana_word(&self.reduction) {
                     line.push_str(&format!(
@@ -2212,9 +2505,13 @@ impl StaticAbilityKind for CostReductionManaCost {
             describe_spell_filter(&self.filter),
             describe_cost_modifier_mana_cost(&self.reduction)
         );
+        if self.per_target {
+            line.push_str(" for each target");
+        }
         if self.condition.is_none()
-            && !self.filter.subtypes.is_empty()
-            && !self.filter.chosen_creature_type
+            && (!self.filter.subtypes.is_empty()
+                || self.filter.chosen_creature_type
+                || self.filter.chosen_card_type)
             && mana_cost_contains_colored_symbol(&self.reduction)
         {
             line.push_str(". This effect reduces only the amount of colored mana you pay");
@@ -2276,6 +2573,7 @@ pub struct CostIncreaseManaCost {
     pub filter: ObjectFilter,
     pub increase: ManaCost,
     pub condition: Option<crate::ConditionExpr>,
+    pub per_target: bool,
 }
 
 impl CostIncreaseManaCost {
@@ -2284,11 +2582,20 @@ impl CostIncreaseManaCost {
             filter,
             increase,
             condition: None,
+            per_target: false,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -2299,11 +2606,14 @@ impl StaticAbilityKind for CostIncreaseManaCost {
     }
 
     fn display(&self) -> String {
-        let line = format!(
+        let mut line = format!(
             "{} cost {} more to cast",
             describe_spell_filter(&self.filter),
             describe_cost_modifier_mana_cost(&self.increase)
         );
+        if self.per_target {
+            line.push_str(" for each target");
+        }
         describe_cost_modifier_with_condition(line, &self.condition)
     }
 
@@ -2500,6 +2810,106 @@ mod tests {
         assert_eq!(
             reduction.display(),
             "This spell costs {X} less to cast, where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure"
+        );
+    }
+
+    #[test]
+    fn global_cost_reduction_display_preserves_generic_chosen_type_filter() {
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::You);
+        filter.chosen_creature_type = true;
+        let reduction = CostReduction::new(filter, Value::Fixed(1));
+
+        assert_eq!(
+            reduction.display(),
+            "spells you cast of the chosen type cost {1} less to cast"
+        );
+    }
+
+    #[test]
+    fn chosen_option_cost_increase_uses_modal_label_and_target_union() {
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::Opponent);
+        filter.targets_player = Some(PlayerFilter::You);
+        filter.targets_object = Some(Box::new(ObjectFilter::permanent().you_control()));
+        filter.targets_any_of = true;
+        let increase = CostIncrease::new(filter, Value::Fixed(2)).with_condition(
+            crate::ConditionExpr::SourceChosenOption("dragons".to_string()),
+        );
+
+        assert_eq!(
+            increase.display(),
+            "• Dragons — Spells your opponents cast that target you or a permanent you control cost {2} more to cast"
+        );
+    }
+
+    #[test]
+    fn colored_chosen_type_reduction_display_keeps_colored_only_rule() {
+        let mut filter = ObjectFilter::default();
+        filter.cast_by = Some(PlayerFilter::You);
+        filter.chosen_creature_type = true;
+        let reduction = CostReductionManaCost::new(
+            filter,
+            ManaCost::from_symbols(vec![
+                ManaSymbol::White,
+                ManaSymbol::Blue,
+                ManaSymbol::Black,
+                ManaSymbol::Red,
+                ManaSymbol::Green,
+            ]),
+        );
+
+        assert_eq!(
+            reduction.display(),
+            "spells you cast of the chosen type cost {W}{U}{B}{R}{G} less to cast. This effect reduces only the amount of colored mana you pay"
+        );
+    }
+
+    #[test]
+    fn mana_symbol_cost_modifiers_preserve_per_target_surface() {
+        let reduction = CostReductionManaCost::new(
+            ObjectFilter::default(),
+            ManaCost::from_symbols(vec![ManaSymbol::White]),
+        )
+        .with_per_target();
+        let increase = CostIncreaseManaCost::new(
+            ObjectFilter::default(),
+            ManaCost::from_symbols(vec![ManaSymbol::Blue]),
+        )
+        .with_per_target();
+
+        assert!(
+            reduction
+                .display()
+                .contains("{W} less to cast for each target")
+        );
+        assert!(
+            increase
+                .display()
+                .contains("{U} more to cast for each target")
+        );
+    }
+
+    #[test]
+    fn flashback_scoped_commander_reduction_uses_canonical_surface() {
+        let mut battlefield = ObjectFilter::default();
+        battlefield.zone = Some(Zone::Battlefield);
+        battlefield.owner = Some(PlayerFilter::You);
+        battlefield.is_commander = true;
+        let mut command_zone = battlefield.clone();
+        command_zone.zone = Some(Zone::Command);
+        let mut commanders = ObjectFilter::default();
+        commanders.any_of = vec![battlefield, command_zone];
+
+        let reduction = ThisSpellCostReduction::new(
+            Value::GreatestManaValue(commanders),
+            ThisSpellCostCondition::Always,
+        )
+        .with_alternative_cast(AlternativeCastKind::Flashback);
+
+        assert_eq!(
+            reduction.display(),
+            "This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone"
         );
     }
 }

@@ -21,6 +21,47 @@ fn test_creature_filter() {
 }
 
 #[test]
+fn original_printing_set_filter_matches_card_metadata_and_snapshots() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let antiquities_card =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_200), "Antiquities Relic")
+            .first_printed_set_name("Antiquities")
+            .card_types(vec![CardType::Artifact])
+            .build();
+    let unannotated_card =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_201), "Unknown Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+    let antiquities_id = game.create_object_from_card(&antiquities_card, alice, Zone::Battlefield);
+    let unannotated_id = game.create_object_from_card(&unannotated_card, alice, Zone::Battlefield);
+    let context = FilterContext::new(alice);
+    let filter = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        name_originally_printed_in_set: Some("antiquities".to_string()),
+        ..ObjectFilter::default()
+    };
+
+    let antiquities_object = game
+        .object(antiquities_id)
+        .expect("annotated permanent should exist");
+    assert!(filter.matches(antiquities_object, &context, &game));
+    assert!(filter.matches_snapshot(
+        &ObjectSnapshot::from_object(antiquities_object, &game),
+        &context,
+        &game
+    ));
+    assert!(
+        !filter.matches(
+            game.object(unannotated_id)
+                .expect("unannotated permanent should exist"),
+            &context,
+            &game
+        )
+    );
+}
+
+#[test]
 fn blocked_by_tagged_filter_matches_current_combat_relationship() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -799,6 +840,95 @@ fn test_filter_matches_permanent_attached_to_player() {
 }
 
 #[test]
+fn test_filter_matches_aura_attached_to_source_creature() {
+    let mut game = setup_modified_filter_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_id = create_modified_test_creature(&mut game, alice);
+    let other_id = create_modified_test_creature(&mut game, bob);
+    let aura_id = create_modified_test_aura(&mut game, alice);
+
+    game.object_mut(aura_id).expect("aura exists").attached_to =
+        Some(crate::object::AttachmentTarget::Object(source_id));
+
+    let mut filter = ObjectFilter::permanent().with_subtype(Subtype::Aura);
+    filter.attached_to_object = Some(Box::new(ObjectFilter::source()));
+
+    let aura = game.object(aura_id).expect("aura exists");
+    assert!(
+        filter.matches(
+            aura,
+            &FilterContext::new(alice).with_source(source_id),
+            &game
+        ),
+        "Aura attached to the source should satisfy the intrinsic relation"
+    );
+    assert!(
+        !filter.matches(
+            aura,
+            &FilterContext::new(alice).with_source(other_id),
+            &game
+        ),
+        "Aura attached elsewhere must not satisfy an attached-to-source selector"
+    );
+}
+
+#[test]
+fn test_filter_matches_aura_attached_to_creature_you_control() {
+    let mut game = setup_modified_filter_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let your_creature_id = create_modified_test_creature(&mut game, alice);
+    let opposing_creature_id = create_modified_test_creature(&mut game, bob);
+    let your_aura_id = create_modified_test_aura(&mut game, alice);
+    let opposing_aura_id = create_modified_test_aura(&mut game, alice);
+
+    game.object_mut(your_aura_id)
+        .expect("your aura exists")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(your_creature_id));
+    game.object_mut(opposing_aura_id)
+        .expect("opposing aura exists")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(
+        opposing_creature_id,
+    ));
+
+    let mut filter = ObjectFilter::permanent().with_subtype(Subtype::Aura);
+    filter.attached_to_object = Some(Box::new(ObjectFilter::creature().you_control()));
+    let ctx = FilterContext::new(alice);
+
+    assert!(filter.matches(
+        game.object(your_aura_id).expect("your aura exists"),
+        &ctx,
+        &game
+    ));
+    assert!(!filter.matches(
+        game.object(opposing_aura_id).expect("opposing aura exists"),
+        &ctx,
+        &game
+    ));
+}
+
+#[test]
+fn test_attachment_filter_matches_outer_aura_not_its_permanent_host() {
+    let mut game = setup_modified_filter_game();
+    let alice = PlayerId::from_index(0);
+    let host_id = create_modified_test_creature(&mut game, alice);
+    let aura_id = create_modified_test_aura(&mut game, alice);
+    game.object_mut(aura_id).expect("aura exists").attached_to =
+        Some(crate::object::AttachmentTarget::Object(host_id));
+
+    let mut filter = ObjectFilter::permanent().with_subtype(Subtype::Aura);
+    filter.attached_to_object = Some(Box::new(ObjectFilter::permanent().you_control()));
+    let ctx = FilterContext::new(alice);
+
+    assert!(filter.matches(game.object(aura_id).expect("aura exists"), &ctx, &game));
+    assert!(
+        !filter.matches(game.object(host_id).expect("host exists"), &ctx, &game),
+        "the host must not be substituted for the selected Aura"
+    );
+}
+
+#[test]
 fn different_name_from_tagged_excludes_all_tagged_names() {
     use crate::card::CardBuilder;
     use crate::ids::CardId;
@@ -937,6 +1067,43 @@ fn test_nonbasic_shorthand() {
 
     let filter = ObjectFilter::land().nonbasic();
     assert_eq!(filter.excluded_supertypes, vec![Supertype::Basic]);
+}
+
+#[test]
+fn nonbasic_land_type_filter_checks_subtypes_not_the_basic_supertype() {
+    use crate::card::CardBuilder;
+    use crate::game_state::GameState;
+    use crate::ids::{CardId, ObjectId};
+    use crate::object::Object;
+    use crate::types::{Subtype, Supertype};
+
+    let player = PlayerId::from_index(0);
+    let game = GameState::new(vec!["Alice".to_string()], 20);
+    let filter = ObjectFilter {
+        has_nonbasic_land_type: true,
+        ..Default::default()
+    };
+    let desert = CardBuilder::new(CardId::from_raw(11), "Desert")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Desert])
+        .build();
+    let dual = CardBuilder::new(CardId::from_raw(12), "Steam Vents")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island, Subtype::Mountain])
+        .build();
+    let basic = CardBuilder::new(CardId::from_raw(13), "Forest")
+        .card_types(vec![CardType::Land])
+        .supertypes(vec![Supertype::Basic])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let desert = Object::from_card(ObjectId::from_raw(11), &desert, player, Zone::Battlefield);
+    let dual = Object::from_card(ObjectId::from_raw(12), &dual, player, Zone::Battlefield);
+    let basic = Object::from_card(ObjectId::from_raw(13), &basic, player, Zone::Battlefield);
+    let ctx = FilterContext::new(player);
+
+    assert!(filter.matches(&desert, &ctx, &game));
+    assert!(!filter.matches(&dual, &ctx, &game));
+    assert!(!filter.matches(&basic, &ctx, &game));
 }
 
 #[test]
@@ -1183,6 +1350,67 @@ fn test_shares_color_with_tagged_constraint() {
 
     assert!(filter.matches(&red_obj, &ctx, &game));
     assert!(!filter.matches(&blue_obj, &ctx, &game));
+}
+
+#[test]
+fn shares_subtype_with_each_tagged_requires_a_match_for_every_snapshot() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::snapshot::ObjectSnapshot;
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let elf_warrior = CardBuilder::new(CardId::from_raw(20), "Elf Warrior")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Warrior])
+        .build();
+    let human_wizard = CardBuilder::new(CardId::from_raw(21), "Human Wizard")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .build();
+    let elf_wizard = CardBuilder::new(CardId::from_raw(22), "Elf Wizard")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Wizard])
+        .build();
+    let elf_only = CardBuilder::new(CardId::from_raw(23), "Elf Only")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+
+    let elf_warrior_id = game.create_object_from_card(&elf_warrior, you, Zone::Battlefield);
+    let human_wizard_id = game.create_object_from_card(&human_wizard, you, Zone::Battlefield);
+    let elf_wizard_id = game.create_object_from_card(&elf_wizard, you, Zone::Hand);
+    let elf_only_id = game.create_object_from_card(&elf_only, you, Zone::Hand);
+    let tag = TagKey::from("tap_cost_0");
+    let tagged = std::collections::HashMap::from([(
+        tag.clone(),
+        vec![
+            ObjectSnapshot::from_object(game.object(elf_warrior_id).unwrap(), &game),
+            ObjectSnapshot::from_object(game.object(human_wizard_id).unwrap(), &game),
+        ],
+    )]);
+    let ctx = FilterContext::new(you).with_tagged_objects(&tagged);
+    let any_filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .with_type(CardType::Creature)
+        .shares_subtype_with_tagged(tag.clone());
+    let each_filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .with_type(CardType::Creature)
+        .shares_subtype_with_each_tagged(tag);
+
+    assert!(
+        each_filter.matches(game.object(elf_wizard_id).unwrap(), &ctx, &game),
+        "a candidate may share a different subtype with each tapped creature"
+    );
+    assert!(
+        any_filter.matches(game.object(elf_only_id).unwrap(), &ctx, &game),
+        "the legacy relation should still match the union of tagged subtypes"
+    );
+    assert!(
+        !each_filter.matches(game.object(elf_only_id).unwrap(), &ctx, &game),
+        "sharing a subtype with only one tagged creature is insufficient"
+    );
 }
 
 #[test]

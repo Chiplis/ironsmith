@@ -97,6 +97,9 @@ pub(crate) struct TokenSacrificeReturnShape {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TokenEmbeddedRuleShape {
+    CantBlockOrBeBlockedByNonSubtypeCreatures {
+        subtype: Subtype,
+    },
     OpponentCastsCreatureRemoveCreatureTypeUntilEndOfTurn,
     PowerToughnessEqualCreaturesYouControl,
     LandEntersPutCountersOnSelf {
@@ -121,6 +124,7 @@ pub(crate) enum TokenEmbeddedRuleShape {
     BeginningOfYourUpkeepSacrificeAnotherCreatureOrSourceDamagesYou {
         damage: i32,
     },
+    TapSacrificeAddManaOfAnyColor,
     TapSacrificeAddManaOrGainLife(TokenTapSacrificeManaLifeShape),
 }
 
@@ -174,6 +178,7 @@ pub(crate) enum EquipmentRuleLineShape {
 pub(crate) struct VehicleTokenShape {
     pub(crate) name: String,
     pub(crate) power_toughness: Option<(i32, i32)>,
+    pub(crate) colorless: bool,
     pub(crate) flying: bool,
     pub(crate) crew_amount: Option<u32>,
 }
@@ -184,6 +189,7 @@ pub(crate) struct ArtifactTokenShape {
     pub(crate) subtypes: Vec<Subtype>,
     pub(crate) legendary: bool,
     pub(crate) colorless: bool,
+    pub(crate) colors: ColorSet,
     pub(crate) equipment_rules: Option<EquipmentRulesShape>,
     pub(crate) token_rules: TokenRulesSurfaces,
     pub(crate) leaves_damage_any_target: Option<i32>,
@@ -249,6 +255,18 @@ pub(crate) struct CreatureTokenShape {
     pub(crate) rules: CreatureTokenRulesShape,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConstructArtifactScalingShape {
+    CharacteristicDefining,
+    GetsPlusOnePerArtifact,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConstructTokenShape {
+    pub(crate) power_toughness: (i32, i32),
+    pub(crate) artifact_scaling: Option<ConstructArtifactScalingShape>,
+}
+
 /// Parser-owned semantic token definition carried through preparation into lowering.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TokenDefinitionSpec {
@@ -261,7 +279,7 @@ pub(crate) enum TokenDefinitionSpec {
     Squirrel,
     DragonEgg,
     Elephant,
-    Construct,
+    Construct(ConstructTokenShape),
     Shapeshifter(ShapeshifterTokenShape),
     AstartesWarrior(AstartesWarriorTokenShape),
     Creature(CreatureTokenShape),

@@ -27,6 +27,9 @@ fn rewrite_self_exile_cost_source(def: &CardDefinition, line: &str) -> String {
     let Some(primary_type) = def.card.card_types.first() else {
         return line.to_string();
     };
+    if *primary_type == CardType::Land {
+        return line.to_string();
+    }
     let source_phrase = format!("Exile this {}", primary_type.name().to_ascii_lowercase());
     if !line.contains(&source_phrase) || !line.contains(':') {
         return line.to_string();
@@ -49,6 +52,100 @@ fn rewrite_named_source_counter_reference(def: &CardDefinition, line: &str) -> S
         rewritten = rewritten.replace(&pattern, &replacement);
     }
     rewritten
+}
+
+fn render_labeled_static_body(
+    ability: &crate::static_abilities::StaticAbility,
+    subject: &str,
+) -> String {
+    if ability.is_keyword() {
+        let keyword = ability
+            .display()
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        let verb = if subject_text_uses_have(subject) {
+            "have"
+        } else {
+            "has"
+        };
+        return format!("{} {verb} {keyword}", capitalize_first(subject));
+    }
+    capitalize_first(
+        describe_static_ability_with_subject(ability, subject)
+            .trim()
+            .trim_end_matches('.'),
+    )
+}
+
+fn render_labeled_static_predicates(predicates: &[String]) -> String {
+    match predicates {
+        [] => String::new(),
+        [only] => only.clone(),
+        [left, right] => format!("{left} and {right}"),
+        _ => {
+            let (last, leading) = predicates.split_last().expect("nonempty predicates");
+            format!("{}, and {last}", leading.join(", "))
+        }
+    }
+}
+
+/// Coalesce adjacent static abilities that came from the same ability-word
+/// wrapper. Equality is structural: both the retained label and the typed
+/// runtime condition must match.
+fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Option<(String, usize)> {
+    let AbilityKind::Static(first) = &abilities.first()?.kind else {
+        return None;
+    };
+    let (label, first_inner, condition) = first.labeled_static_condition()?;
+    let mut bodies = vec![render_labeled_static_body(&first_inner, subject)];
+    let mut consumed = 1usize;
+
+    while let Some(Ability {
+        kind: AbilityKind::Static(next),
+        ..
+    }) = abilities.get(consumed)
+    {
+        let Some((next_label, next_inner, next_condition)) = next.labeled_static_condition() else {
+            break;
+        };
+        if next_label != label || next_condition != condition {
+            break;
+        }
+        bodies.push(render_labeled_static_body(&next_inner, subject));
+        consumed += 1;
+    }
+
+    let subject = capitalize_first(subject);
+    let subject_prefix = format!("{subject} ");
+    let predicates = bodies
+        .iter()
+        .map(|body| body.strip_prefix(&subject_prefix).map(str::to_string))
+        .collect::<Option<Vec<_>>>();
+    let body = if let Some(predicates) = predicates {
+        if predicates
+            .iter()
+            .all(|predicate| predicate.starts_with("has "))
+        {
+            let keywords = predicates
+                .iter()
+                .map(|predicate| predicate.trim_start_matches("has ").to_string())
+                .collect::<Vec<_>>();
+            format!(
+                "{subject} has {}",
+                render_labeled_static_predicates(&keywords)
+            )
+        } else {
+            format!(
+                "{subject} {}",
+                render_labeled_static_predicates(&predicates)
+            )
+        }
+    } else {
+        render_labeled_static_predicates(&bodies)
+    };
+
+    Some((format!("{label} — {body}"), consumed))
 }
 
 fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
@@ -129,7 +226,9 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
             }
         }
 
-        if let Some((label, subject, keyword)) = split_static_granted_keyword_line(&lines[idx]) {
+        if let Some((label, subject, verb, keyword)) =
+            split_static_granted_keyword_line(&lines[idx])
+        {
             if let Some((label, color, base_subject, keyword)) =
                 split_color_static_granted_keyword_line(&lines[idx])
             {
@@ -161,11 +260,12 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
             let mut keywords = vec![keyword.to_string()];
             let mut consumed = 1usize;
             while let Some(next) = lines.get(idx + consumed) {
-                let Some((_, next_subject, next_keyword)) = split_static_granted_keyword_line(next)
+                let Some((_, next_subject, next_verb, next_keyword)) =
+                    split_static_granted_keyword_line(next)
                 else {
                     break;
                 };
-                if next_subject != subject {
+                if next_subject != subject || next_verb != verb {
                     break;
                 }
                 keywords.push(next_keyword.to_string());
@@ -173,7 +273,7 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
             }
             if consumed > 1 {
                 out.push(format!(
-                    "{label}{subject} have {}",
+                    "{label}{subject} {verb} {}",
                     render_keyword_list(&keywords, false)
                 ));
                 idx += consumed;
@@ -217,17 +317,23 @@ fn split_static_intrinsic_keyword_line(line: &str) -> Option<(&str, &str)> {
     Some((&line[..prefix.len() + 2], keyword.trim_end_matches('.')))
 }
 
-fn split_static_granted_keyword_line(line: &str) -> Option<(&str, &str, &str)> {
+fn split_static_granted_keyword_line(line: &str) -> Option<(&str, &str, &str, &str)> {
     let (label, text) = line.split_once(": ")?;
     if !label.starts_with("Static ability ") {
         return None;
     }
     let keyword = text.trim_end_matches('.');
-    let (subject, keyword) = keyword.split_once(" have ")?;
+    let (subject, verb, keyword) = if let Some((subject, keyword)) = keyword.split_once(" have ") {
+        (subject, "have", keyword)
+    } else if let Some((subject, keyword)) = keyword.split_once(" has ") {
+        (subject, "has", keyword)
+    } else {
+        return None;
+    };
     if !is_mergeable_keyword_surface(keyword) {
         return None;
     }
-    Some((&line[..label.len() + 2], subject, keyword))
+    Some((&line[..label.len() + 2], subject, verb, keyword))
 }
 
 fn split_color_static_granted_keyword_line(line: &str) -> Option<(&str, &'static str, &str, &str)> {
@@ -482,11 +588,25 @@ pub(super) fn describe_resolution_program(
                     segment.default_effects.clone(),
                 )])
             });
-            rendered_segments.push(rendered);
+            rendered_segments.push(apply_self_replacement_presentation_label(
+                &segment.self_replacements[0],
+                rendered,
+            ));
             continue;
         }
 
         if !segment.default_effects.is_empty() {
+            if let Some(rendered) = describe_conjoined_same_source_damage(&segment.default_effects)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
+            if let Some(rendered) =
+                describe_target_player_exile_hand_delayed_return(&segment.default_effects)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
             if let [effect] = segment.default_effects.as_slice()
                 && effect
                     .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
@@ -539,8 +659,11 @@ pub(super) fn describe_resolution_program(
                 continue;
             }
             rendered_segments.push(
-                describe_effect_clause_list(&segment.default_effects)
-                    .map(|text| capitalize_first(&text))
+                describe_pre_clause_structural_effect_list(&segment.default_effects)
+                    .or_else(|| {
+                        describe_effect_clause_list(&segment.default_effects)
+                            .map(|text| capitalize_first(&text))
+                    })
                     .unwrap_or_else(|| describe_effect_list(&segment.default_effects)),
             );
         }
@@ -675,6 +798,80 @@ fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
     rendered.starts_with("if the gift was promised") || is_standard_gift_render_payload(&rendered)
 }
 
+fn apply_self_replacement_presentation_label(
+    branch: &crate::resolution::SelfReplacementBranch,
+    line: String,
+) -> String {
+    let Some(label) = branch
+        .presentation_label
+        .as_ref()
+        .and_then(crate::ability::PresentationLabel::display_prefix)
+    else {
+        return line;
+    };
+    let label = label.trim();
+    if label.is_empty() || label.starts_with("__ironsmith_") || line.contains(&format!("{label} —"))
+    {
+        return line;
+    }
+    if branch.condition_after_replacement {
+        if let Some((default, conditional)) = line.split_once(". If ")
+            && let Some((condition, replacement)) = conditional.split_once(", ")
+            && let Some(replacement) = replacement.strip_suffix(" instead")
+        {
+            return format!(
+                "{default}. {label} — {} instead if {condition}",
+                capitalize_first(replacement)
+            );
+        }
+        if let Some((default, replacement)) = line.split_once(". ")
+            && replacement.contains(" instead if ")
+        {
+            return format!("{default}. {label} — {replacement}");
+        }
+    }
+    if let Some((default, replacement)) = line.split_once(". If ") {
+        return format!("{default}. {label} — If {replacement}");
+    }
+    format!("{label} — {line}")
+}
+
+fn describe_conjoined_same_source_damage(effects: &[Effect]) -> Option<String> {
+    let effects = match effects {
+        [only] => {
+            let sequence = unwrap_basic_render_wrapper(only)
+                .downcast_ref::<crate::effects::SequenceEffect>()?;
+            if matches!(
+                sequence.surface,
+                ironsmith_core::SequenceSurface::Sequential
+            ) {
+                return None;
+            }
+            sequence.effects.as_slice()
+        }
+        _ => effects,
+    };
+    let [first, second] = effects else {
+        return None;
+    };
+    let compact = describe_joint_subject_pair(first, second)?;
+    compact
+        .strip_prefix("this deals ")
+        .map(|rest| format!("Deal {rest}"))
+}
+
+fn format_self_replacement_fallback(
+    default_text: &str,
+    condition_text: &str,
+    replacement: &str,
+) -> String {
+    if replacement.contains(". ") {
+        format!("{default_text}. If {condition_text}, instead {replacement}")
+    } else {
+        format!("{default_text}. If {condition_text}, {replacement} instead")
+    }
+}
+
 fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
@@ -682,17 +879,38 @@ fn describe_single_self_replacement_segment(
         return None;
     }
     let branch = &segment.self_replacements[0];
+    let compact_default = describe_conjoined_same_source_damage(&segment.default_effects);
+    let compact_replacement = describe_conjoined_same_source_damage(&branch.replacement_effects);
+    if let (Some(default_text), Some(replacement_text)) = (&compact_default, &compact_replacement) {
+        let raw_condition_text = super::normalize_common::describe_condition(&branch.condition);
+        let condition_text = normalize_target_quality_condition(default_text, &raw_condition_text);
+        return Some(format_self_replacement_fallback(
+            default_text,
+            &condition_text,
+            &super::normalize_common::lowercase_first(replacement_text),
+        ));
+    }
     let conditional = Effect::conditional(
         branch.condition.clone(),
         branch.replacement_effects.clone(),
         segment.default_effects.clone(),
     );
     let conditional_text = describe_effect_list(&[conditional]);
-    if conditional_text.contains(" damage instead if ") {
+    let loses_repeated_set_target =
+        conditional_text
+            .split_once(". ")
+            .is_some_and(|(default, replacement)| {
+                default.contains(" damage to each ")
+                    && replacement.contains(" damage instead if ")
+                    && !replacement.contains(" damage to each ")
+            });
+    if conditional_text.contains(" damage instead if ") && !loses_repeated_set_target {
         return Some(conditional_text);
     }
-    let default_text = describe_effect_list(&segment.default_effects);
-    let replacement_text = describe_effect_list(&branch.replacement_effects);
+    let default_text =
+        compact_default.unwrap_or_else(|| describe_effect_list(&segment.default_effects));
+    let replacement_text =
+        compact_replacement.unwrap_or_else(|| describe_effect_list(&branch.replacement_effects));
     let raw_condition_text = super::normalize_common::describe_condition(&branch.condition);
     let condition_text = normalize_target_quality_condition(&default_text, &raw_condition_text);
     if let Some(looked_cards_text) = describe_looked_cards_non_hand_self_replacement(
@@ -742,6 +960,14 @@ fn describe_single_self_replacement_segment(
     {
         return Some(gets_text);
     }
+    if let Some(destroy_text) = describe_tagged_target_set_destroy_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &default_text,
+        &condition_text,
+    ) {
+        return Some(destroy_text);
+    }
     if let Some(damage_text) =
         describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
     {
@@ -778,6 +1004,13 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(void_text);
     }
+    if let Some(shared_shuffle_text) = describe_shared_terminal_shuffle_self_replacement(
+        &default_text,
+        &replacement_text,
+        &condition_text,
+    ) {
+        return Some(shared_shuffle_text);
+    }
     let mut replacement =
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text);
     if condition_text.starts_with("that creature is ")
@@ -792,8 +1025,31 @@ fn describe_single_self_replacement_segment(
             replacement = replacement.replacen("that creature you control", "it", 1);
         }
     }
+    Some(format_self_replacement_fallback(
+        &default_text,
+        &condition_text,
+        &replacement,
+    ))
+}
+
+fn describe_shared_terminal_shuffle_self_replacement(
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    fn ends_with_shuffle(text: &str) -> bool {
+        text.trim_end_matches('.')
+            .to_ascii_lowercase()
+            .ends_with("then shuffle")
+    }
+
+    if !ends_with_shuffle(default_text) || !ends_with_shuffle(replacement_text) {
+        return None;
+    }
+
     Some(format!(
-        "{default_text}. If {condition_text}, {replacement} instead"
+        "{default_text}. If {condition_text}, instead {}",
+        super::normalize_common::lowercase_first(replacement_text)
     ))
 }
 
@@ -1311,6 +1567,50 @@ fn describe_rendered_count_override_self_replacement(
     let default_sentences: Vec<_> = default_text.trim_end_matches('.').split(". ").collect();
     let replacement_sentences: Vec<_> =
         replacement_text.trim_end_matches('.').split(". ").collect();
+    // Optional single-card selections are commonly rendered as "You may put
+    // a ..." while the larger replacement count is rendered as "Put up to
+    // two ...".  They are the same count override even though neither branch
+    // uses the literal "Put one" / "Put two" surface handled below.
+    if let [default_intro, default_choice, default_rest] = default_sentences.as_slice()
+        && let [replacement_intro, replacement_choice_and_rest] = replacement_sentences.as_slice()
+        && default_intro == replacement_intro
+        && let Some(default_selection) = default_choice.strip_prefix("You may put ")
+        && let Some((_, default_destination)) = default_selection.split_once(" from among them")
+        && let Some(replacement_choice) = replacement_choice_and_rest
+            .strip_prefix("Put up to ")
+            .map(|_| *replacement_choice_and_rest)
+        && let Some((replacement_choice, replacement_rest)) =
+            replacement_choice.split_once(" and the rest ")
+        && let Some((_, replacement_destination)) =
+            replacement_choice.split_once(" from among them")
+        && default_destination == replacement_destination
+        && default_rest.strip_prefix("Put the rest ") == Some(replacement_rest)
+    {
+        return Some(format!(
+            "{default_intro}. {default_choice}. If {condition_text}, {} instead of one. {default_rest}",
+            super::normalize_common::lowercase_first(replacement_choice)
+        ));
+    }
+    if let (
+        [default_intro, default_choice, default_rest],
+        [replacement_intro, replacement_choice, replacement_rest],
+    ) = (
+        default_sentences.as_slice(),
+        replacement_sentences.as_slice(),
+    ) && default_intro == replacement_intro
+        && default_rest == replacement_rest
+        && let Some(default_selection) = default_choice.strip_prefix("You may put ")
+        && let Some((_, default_destination)) = default_selection.split_once(" from among them")
+        && replacement_choice.starts_with("Put up to ")
+        && let Some((_, replacement_destination)) =
+            replacement_choice.split_once(" from among them")
+        && default_destination == replacement_destination
+    {
+        return Some(format!(
+            "{default_intro}. {default_choice}. If {condition_text}, {} instead of one. {default_rest}",
+            super::normalize_common::lowercase_first(replacement_choice)
+        ));
+    }
     if let ([default_intro, default_choice], [replacement_intro, replacement_choice]) = (
         default_sentences.as_slice(),
         replacement_sentences.as_slice(),
@@ -1494,6 +1794,61 @@ fn describe_rendered_gets_self_replacement(
     ))
 }
 
+fn describe_tagged_target_set_destroy_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let [default] = default_effects else {
+        return None;
+    };
+    let tagged_damage = default.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let damage = tagged_damage
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let ChooseSpec::WithCount(inner, count) = damage.target.unhinted() else {
+        return None;
+    };
+    if count.max.is_some_and(|max| max <= 1) {
+        return None;
+    }
+    let ChooseSpec::Target(target) = inner.unhinted() else {
+        return None;
+    };
+    let ChooseSpec::Object(target_filter) = target.unhinted() else {
+        return None;
+    };
+    let noun = match target_filter.card_types.as_slice() {
+        [CardType::Artifact] => "artifact",
+        [CardType::Battle] => "battle",
+        [CardType::Creature] => "creature",
+        [CardType::Enchantment] => "enchantment",
+        [CardType::Land] => "land",
+        [CardType::Planeswalker] => "planeswalker",
+        _ => "permanent",
+    };
+
+    let [replacement] = replacement_effects else {
+        return None;
+    };
+    let destroy =
+        unwrap_basic_render_wrapper(replacement).downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::Object(destroy_filter) = destroy.spec.base() else {
+        return None;
+    };
+    if !destroy_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == tagged_damage.tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return None;
+    }
+
+    Some(format!(
+        "{default_text}. Destroy each {noun} instead if {condition_text}"
+    ))
+}
+
 fn describe_rendered_damage_self_replacement(
     default_text: &str,
     replacement_text: &str,
@@ -1504,8 +1859,13 @@ fn describe_rendered_damage_self_replacement(
     if base_target != replacement_target {
         return None;
     }
+    let repeated_target = if base_target.starts_with("each ") || base_target.starts_with("all ") {
+        format!(" to {base_target}")
+    } else {
+        String::new()
+    };
     Some(format!(
-        "Deal {base_amount} damage to {base_target}. It deals {replacement_amount} damage instead if {condition_text}"
+        "Deal {base_amount} damage to {base_target}. It deals {replacement_amount} damage{repeated_target} instead if {condition_text}"
     ))
 }
 
@@ -1547,6 +1907,8 @@ fn describe_resolution_program_for_card(
                     segment.default_effects.clone(),
                 )])
             });
+            let rendered =
+                apply_self_replacement_presentation_label(&segment.self_replacements[0], rendered);
             rendered_segments.push(rewrite_spell_resolution_damage_source(def, &rendered));
             continue;
         }
@@ -1571,7 +1933,18 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
     let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
         .replace("This spell deals ", &format!("{} deals ", def.card.name))
         .replace("this spell deals ", &format!("{} deals ", def.card.name))
+        .replace("This source deal ", &format!("{} deal ", def.card.name))
+        .replace("this source deal ", &format!("{} deal ", def.card.name))
         .replace("Exile this source", &format!("Exile {}", def.card.name));
+    let rendered = if let Some(rest) = rendered.strip_prefix("Deal ") {
+        format!("{} deals {rest}", def.card.name)
+    } else {
+        rendered
+    };
+    let rendered = rendered
+        .replace(" — Deal ", &format!(" — {} deals ", def.card.name))
+        .replace(" — It deals ", &format!(" — {} deals ", def.card.name))
+        .replace(", deal ", &format!(", {} deals ", def.card.name));
     let rendered = rewrite_standalone_spell_self_exile(&rendered, &def.card.name);
     rewrite_inline_spell_self_exile(&rendered, &def.card.name)
 }
@@ -2715,11 +3088,36 @@ fn is_conspire_helper_ability(ability: &Ability) -> bool {
     else {
         return false;
     };
-    matches!(copy.target, ChooseSpec::Source)
+    matches!(copy.target.unhinted(), ChooseSpec::Source)
         && copy.count == Value::Fixed(1)
         && copy.copier == PlayerFilter::You
         && retarget.from_effect == with_id.id
         && retarget.may
+}
+
+fn is_squad_helper_ability(ability: &Ability) -> bool {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    if !triggered.choices.is_empty()
+        || triggered.intervening_if.is_some()
+        || !trigger_is_this_enters_battlefield(&triggered.trigger)
+    {
+        return false;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return false;
+    };
+    let Some(copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() else {
+        return false;
+    };
+    matches!(copy.target.unhinted(), ChooseSpec::Source)
+        && copy.controller == PlayerFilter::You
+        && matches!(
+            &copy.count,
+            Value::TimesPaidLabel(label)
+                if matches!(label.kind, crate::cost::OptionalCostKind::Squad)
+        )
 }
 
 fn is_suspend_remove_time_counter_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
@@ -2728,6 +3126,7 @@ fn is_suspend_remove_time_counter_trigger(triggered: &crate::ability::TriggeredA
         Some(Condition::SourceHasCounterAtLeast {
             counter_type: CounterType::Time,
             count: 1,
+            ..
         })
     ) || !triggered.choices.is_empty()
         || triggered
@@ -2993,7 +3392,7 @@ pub(super) fn describe_alternative_cast_line(
                     (mana_cost, method.prototype_power_toughness())
             {
                 return format!(
-                    "Prototype {} {}/{}",
+                    "Prototype {} — {}/{}",
                     cost.to_oracle(),
                     power_toughness.power,
                     power_toughness.toughness
@@ -3135,6 +3534,94 @@ pub(super) fn describe_alternative_cast_line(
     }
 }
 
+fn alternative_cast_method_matches_kind(
+    method: &AlternativeCastingMethod,
+    kind: crate::filter::AlternativeCastKind,
+) -> bool {
+    use crate::filter::AlternativeCastKind;
+
+    matches!(
+        (kind, method),
+        (
+            AlternativeCastKind::Blitz,
+            AlternativeCastingMethod::Blitz { .. }
+        ) | (
+            AlternativeCastKind::Dash,
+            AlternativeCastingMethod::Dash { .. }
+        ) | (
+            AlternativeCastKind::Flashback,
+            AlternativeCastingMethod::Flashback { .. }
+        ) | (
+            AlternativeCastKind::JumpStart,
+            AlternativeCastingMethod::JumpStart
+        ) | (
+            AlternativeCastKind::Escape,
+            AlternativeCastingMethod::Escape { .. }
+        ) | (
+            AlternativeCastKind::Madness,
+            AlternativeCastingMethod::Madness { .. }
+        ) | (
+            AlternativeCastKind::Miracle,
+            AlternativeCastingMethod::Miracle { .. }
+        ) | (
+            AlternativeCastKind::Suspend,
+            AlternativeCastingMethod::Suspend { .. }
+        )
+    )
+}
+
+fn qualified_cost_reduction_ability_for_method<'a>(
+    def: &'a CardDefinition,
+    method: &AlternativeCastingMethod,
+) -> Option<&'a crate::static_abilities::StaticAbility> {
+    let mut matches = def.abilities.iter().filter_map(|ability| {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let reduction = static_ability.this_spell_cost_reduction()?;
+        reduction
+            .alternative_cast
+            .filter(|kind| alternative_cast_method_matches_kind(method, *kind))?;
+        Some(static_ability)
+    });
+    let ability = matches.next()?;
+    matches.next().is_none().then_some(ability)
+}
+
+fn describe_alternative_cast_with_qualified_reduction(
+    def: &CardDefinition,
+    method: &AlternativeCastingMethod,
+    idx: usize,
+) -> Option<String> {
+    let reduction = qualified_cost_reduction_ability_for_method(def, method)?;
+    let mut method_line = describe_alternative_cast_line(method, idx);
+    if matches!(method, AlternativeCastingMethod::Flashback { .. }) {
+        method_line = method_line.replacen("Flashback—", "Flashback ", 1);
+    }
+    Some(format!(
+        "{}. {}",
+        method_line.trim_end_matches('.'),
+        reduction.display().trim_end_matches('.')
+    ))
+}
+
+fn ability_is_rendered_with_alternative_cast(def: &CardDefinition, ability: &Ability) -> bool {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    if static_ability
+        .this_spell_cost_reduction()
+        .and_then(|reduction| reduction.alternative_cast)
+        .is_none()
+    {
+        return false;
+    }
+    def.alternative_casts
+        .iter()
+        .filter_map(|method| qualified_cost_reduction_ability_for_method(def, method))
+        .any(|rendered| std::ptr::eq(rendered, static_ability))
+}
+
 fn render_madness_cost(cost: &crate::mana::ManaCost) -> String {
     let pips = cost.pips();
     if !pips.is_empty()
@@ -3146,6 +3633,125 @@ fn render_madness_cost(cost: &crate::mana::ManaCost) -> String {
         return format!("Madness—Pay {amount} {{C}}");
     }
     format!("Madness {}", cost.to_oracle())
+}
+
+fn aura_attaches_to_plain_creature(
+    attachment: Option<&crate::object::AuraAttachmentFilter>,
+) -> bool {
+    let Some(crate::object::AuraAttachmentFilter::Object(filter)) = attachment else {
+        return false;
+    };
+    if !matches!(filter.zone, None | Some(Zone::Battlefield)) {
+        return false;
+    }
+    let mut normalized = filter.clone();
+    // `ObjectFilter::creature()` carries the battlefield zone by default.
+    // Treat an omitted zone as that same ordinary Aura attachment domain.
+    normalized.zone = Some(Zone::Battlefield);
+    normalized == ObjectFilter::creature()
+}
+
+fn rewrite_plain_creature_aura_subject(
+    attachment: Option<&crate::object::AuraAttachmentFilter>,
+    line: &str,
+) -> String {
+    if !aura_attaches_to_plain_creature(attachment) {
+        return line.to_string();
+    }
+    line.replace("Enchanted permanent", "Enchanted creature")
+        .replace("enchanted permanent", "enchanted creature")
+}
+
+fn is_exact_discard_source_cost(cost: &crate::costs::Cost) -> bool {
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
+    let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>() else {
+        return false;
+    };
+    discard.count == Value::Fixed(1)
+        && discard.player == PlayerFilter::You
+        && !discard.random
+        && !discard.any_number
+        && discard.card_filter.as_ref() == Some(&ObjectFilter::source().in_zone(Zone::Hand))
+        && discard.tag.is_none()
+}
+
+/// Recover Reinforce only from its complete executable shape. This deliberately
+/// ignores activation display text: the hand zone, exact mana/discard cost,
+/// and sole fixed +1/+1-counter effect prove the keyword and its amount.
+fn describe_structural_reinforce_ability(ability: &Ability) -> Option<String> {
+    if ability.functional_zones.as_slice() != [Zone::Hand] {
+        return None;
+    }
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return None;
+    };
+    if !activated.choices.is_empty()
+        || activated.timing != ActivationTiming::AnyTime
+        || activated.is_loyalty_ability
+        || !activated.additional_restrictions.is_empty()
+        || !activated.activation_restrictions.is_empty()
+        || activated.mana_output.is_some()
+        || activated.activation_condition.is_some()
+        || !activated.mana_usage_restrictions.is_empty()
+    {
+        return None;
+    }
+
+    let costs = activated.mana_cost.as_all()?;
+    if costs.len() != 2 {
+        return None;
+    }
+    let mut mana_cost = None;
+    let mut saw_discard_source = false;
+    for cost in costs {
+        if let Some(mana) = cost.mana_cost_ref() {
+            if mana_cost.replace(mana).is_some() {
+                return None;
+            }
+        } else if is_exact_discard_source_cost(cost) {
+            if saw_discard_source {
+                return None;
+            }
+            saw_discard_source = true;
+        } else {
+            return None;
+        }
+    }
+    let mana_cost = mana_cost?;
+    if !saw_discard_source {
+        return None;
+    }
+
+    let [segment] = activated.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != crate::object::CounterType::PlusOnePlusOne
+        || put.target_count.is_some()
+        || put.distributed
+        || put.target
+            != ChooseSpec::target(ChooseSpec::Object(
+                ObjectFilter::creature().in_zone(Zone::Battlefield),
+            ))
+    {
+        return None;
+    }
+    let Value::Fixed(amount) = &put.amount else {
+        return None;
+    };
+    if *amount <= 0 {
+        return None;
+    }
+
+    Some(format!("Reinforce {amount}—{}", mana_cost.to_oracle()))
 }
 
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
@@ -3168,11 +3774,16 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 .is_some()
     });
     for (idx, method) in def.alternative_casts.iter().enumerate() {
-        let line = describe_alternative_cast_line(method, idx);
-        if matches!(
-            method,
-            AlternativeCastingMethod::FlashWithAdditionalCost { .. }
-        ) || line.contains("rather than pay this spell's mana cost")
+        let line = describe_alternative_cast_with_qualified_reduction(def, method, idx)
+            .unwrap_or_else(|| describe_alternative_cast_line(method, idx));
+        let is_prototype = method.name().eq_ignore_ascii_case("Prototype")
+            && method.prototype_power_toughness().is_some();
+        if is_prototype
+            || matches!(
+                method,
+                AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+            )
+            || line.contains("rather than pay this spell's mana cost")
         {
             leading_alternative_cast_lines.push(line);
         } else {
@@ -3192,6 +3803,19 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .optional_costs
         .iter()
         .any(|cost| matches!(cost.kind, crate::cost::OptionalCostKind::Gift));
+    let leading_aura_flash_ability = def.aura_attach_filter.as_ref().and_then(|_| {
+        def.abilities.iter().position(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::Flash
+            )
+        })
+    });
+    if leading_aura_flash_ability.is_some() {
+        out.push("Flash".to_string());
+    }
     if let Some(filter) = &def.aura_attach_filter {
         out.push(format!("Enchant {}", describe_enchant_filter(filter)));
     }
@@ -3222,18 +3846,30 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .iter()
         .any(ability_has_begin_on_battlefield_pregame);
     let render_spell_cost_modifiers_before_spell = spell_like_card
-        && def
-            .abilities
-            .iter()
-            .any(ability_is_this_spell_cost_modifier);
+        && def.abilities.iter().any(|ability| {
+            ability_is_this_spell_cost_modifier(ability)
+                && !ability_is_rendered_with_alternative_cast(def, ability)
+        });
     let push_abilities = |output: &mut Vec<String>| {
         let has_suspend = def
             .alternative_casts
             .iter()
             .any(|method| matches!(method, AlternativeCastingMethod::Suspend { .. }));
+        let has_squad = def
+            .optional_costs
+            .iter()
+            .any(|cost| matches!(cost.kind, crate::cost::OptionalCostKind::Squad));
         let mut ability_idx = 0usize;
         while ability_idx < def.abilities.len() {
             let ability = &def.abilities[ability_idx];
+            if leading_aura_flash_ability == Some(ability_idx) {
+                ability_idx += 1;
+                continue;
+            }
+            if ability_is_rendered_with_alternative_cast(def, ability) {
+                ability_idx += 1;
+                continue;
+            }
             if render_spell_cost_modifiers_before_spell
                 && ability_is_this_spell_cost_modifier(ability)
             {
@@ -3248,6 +3884,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if has_squad && is_squad_helper_ability(ability) {
+                ability_idx += 1;
+                continue;
+            }
             if has_visible_gift_line && is_hidden_gift_etb_ability(ability) {
                 ability_idx += 1;
                 continue;
@@ -3256,7 +3896,42 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if let Some((text, consumed)) =
+                describe_structural_enchanted_combat_activation_restriction_bundle(
+                    &def.abilities[ability_idx..],
+                )
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) = describe_structural_conditional_anthem_otherwise_bundle(
+                &def.abilities[ability_idx..],
+            ) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
+                describe_labeled_static_bundle(&def.abilities[ability_idx..], subject)
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) = describe_structural_anthem_remove_all_abilities_bundle(
+                &def.abilities[ability_idx..],
+            ) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
             if let Some(keyword) = describe_structural_ascend_ability(ability) {
+                output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(keyword) = describe_structural_reinforce_ability(ability) {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
                 ability_idx += 1;
                 continue;
@@ -3319,6 +3994,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 describe_structural_counter_keyword_bundle(&def.abilities[ability_idx..])
             {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
+                describe_structural_attached_land_type_setting_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
                 continue;
             }
@@ -3424,6 +4106,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     subject,
                     oracle_short.as_deref(),
                 );
+                *line = rewrite_plain_creature_aura_subject(def.aura_attach_filter.as_ref(), line);
             }
             output.extend(ability_lines);
             ability_idx += 1;
@@ -3434,9 +4117,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if !additional_costs.is_empty() {
         let additional_cost_text = describe_additional_costs(&additional_costs);
         let additional_cost_lower = additional_cost_text.to_ascii_lowercase();
-        let additional_cost_text = if additional_cost_lower == "you may blight 1"
-            || additional_cost_lower.contains("put a -1/-1 counter on a creature you control")
-        {
+        // Only the explicit optional keyword is Blight. A mandatory printed
+        // "put a -1/-1 counter" additional cost must stay mandatory.
+        let additional_cost_text = if additional_cost_lower == "you may blight 1" {
             "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
         } else {
             additional_cost_text
@@ -3454,6 +4137,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             if !ability_is_this_spell_cost_modifier(ability) {
                 continue;
             }
+            if ability_is_rendered_with_alternative_cast(def, ability) {
+                continue;
+            }
             let ability_subject = if ability_prefers_card_name_subject(ability) {
                 def.card.name.as_str()
             } else {
@@ -3469,6 +4155,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     subject,
                     oracle_short.as_deref(),
                 );
+                *line = rewrite_plain_creature_aura_subject(def.aura_attach_filter.as_ref(), line);
             }
             out.extend(ability_lines);
         }
@@ -3513,6 +4200,9 @@ fn ability_prefers_card_name_subject(ability: &Ability) -> bool {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
     };
+    if static_ability.prefers_card_name_subject() {
+        return true;
+    }
     if static_ability.id() == crate::static_abilities::StaticAbilityId::CanBeCommander {
         return true;
     }
@@ -3537,10 +4227,280 @@ fn static_display_with_id(
     })
 }
 
+fn exact_enchanted_restriction_subject(filter: &ObjectFilter) -> Option<&'static str> {
+    let tagged = |filter: ObjectFilter| {
+        filter.match_tagged(
+            "enchanted",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        )
+    };
+    [
+        ("Enchanted creature", tagged(ObjectFilter::creature())),
+        (
+            "Enchanted permanent",
+            tagged(ObjectFilter::permanent_card().in_zone(Zone::Battlefield)),
+        ),
+        ("Enchanted artifact", tagged(ObjectFilter::artifact())),
+    ]
+    .into_iter()
+    .find_map(|(subject, expected)| (filter == &expected).then_some(subject))
+}
+
+fn restriction_display_matches(display: &str, expected: &str) -> bool {
+    display
+        .trim()
+        .trim_end_matches('.')
+        .eq_ignore_ascii_case(expected)
+}
+
+/// Recombine the two adjacent typed restrictions produced from Oracle's
+/// compound enchanted-object sentence. This intentionally accepts only the
+/// exact no-exception restrictions for the exact same enchanted object filter.
+fn describe_structural_enchanted_combat_activation_restriction_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [combat_ability, activation_ability, ..] = abilities else {
+        return None;
+    };
+    if combat_ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || activation_ability.functional_zones != combat_ability.functional_zones
+    {
+        return None;
+    }
+
+    let AbilityKind::Static(combat_static) = &combat_ability.kind else {
+        return None;
+    };
+    let (combat_restriction, combat_display, combat_condition) =
+        combat_static.rule_restriction_parts()?;
+    if combat_condition.is_some() {
+        return None;
+    }
+    let crate::effect::Restriction::AttackOrBlock(combat_filter) = combat_restriction else {
+        return None;
+    };
+
+    let AbilityKind::Static(activation_static) = &activation_ability.kind else {
+        return None;
+    };
+    let (activation_restriction, activation_display, activation_condition) =
+        activation_static.rule_restriction_parts()?;
+    if activation_condition.is_some() {
+        return None;
+    }
+    let crate::effect::Restriction::ActivateAbilitiesOf(activation_filter) = activation_restriction
+    else {
+        return None;
+    };
+    if combat_filter != activation_filter {
+        return None;
+    }
+
+    let subject = exact_enchanted_restriction_subject(combat_filter)?;
+    let subject_lower = subject.to_ascii_lowercase();
+    if !restriction_display_matches(
+        combat_display,
+        &format!("{subject_lower} can't attack or block"),
+    ) || !restriction_display_matches(
+        activation_display,
+        &format!("{subject_lower} activated abilities can't be activated"),
+    ) {
+        return None;
+    }
+
+    Some((
+        format!("{subject} can't attack or block, and its activated abilities can't be activated"),
+        2,
+    ))
+}
+
 fn split_static_predicate<'a>(display: &'a str, marker: &str) -> Option<(&'a str, &'a str)> {
     let (subject, predicate) = display.split_once(marker)?;
     (!subject.trim().is_empty() && !predicate.trim().is_empty())
         .then_some((subject.trim(), predicate.trim()))
+}
+
+fn exact_enchanted_creature_anthem_filter(filter: &ObjectFilter) -> bool {
+    let expected = ObjectFilter::creature().match_tagged(
+        "enchanted",
+        crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    filter == &expected
+}
+
+/// Describe the simple characteristic predicates used by a mutually-exclusive
+/// attached-creature anthem pair. Removing the one rendered characteristic
+/// must leave the default filter, so this cannot silently omit extra facts.
+fn describe_simple_attached_match(filter: &ObjectFilter) -> Option<String> {
+    let mut normalized = filter.clone();
+    if normalized.zone == Some(Zone::Battlefield) {
+        normalized.zone = None;
+    }
+    let filter = &normalized;
+
+    if let [subtype] = filter.subtypes.as_slice() {
+        let mut remainder = filter.clone();
+        remainder.subtypes.clear();
+        if remainder == ObjectFilter::default() {
+            return Some(with_indefinite_article(&subtype.to_string()));
+        }
+    }
+
+    if let [card_type] = filter.card_types.as_slice() {
+        let mut remainder = filter.clone();
+        remainder.card_types.clear();
+        if remainder == ObjectFilter::default() {
+            return Some(with_indefinite_article(card_type.name()));
+        }
+    }
+
+    if let Some(colors) = filter.colors
+        && colors.count() == 1
+    {
+        let mut remainder = filter.clone();
+        remainder.colors = None;
+        if remainder == ObjectFilter::default() {
+            let color = crate::color::Color::ALL
+                .into_iter()
+                .find(|color| colors.contains(*color))?;
+            return Some(color.name().to_string());
+        }
+    }
+
+    if filter.attacking {
+        let mut remainder = filter.clone();
+        remainder.attacking = false;
+        if remainder == ObjectFilter::default() {
+            return Some("attacking".to_string());
+        }
+    }
+
+    None
+}
+
+fn describe_fixed_anthem_modifier(power: i32, toughness: i32) -> String {
+    let signed = |value: i32| {
+        if value >= 0 {
+            format!("+{value}")
+        } else {
+            value.to_string()
+        }
+    };
+    let toughness = if power < 0 && toughness == 0 {
+        "-0".to_string()
+    } else {
+        signed(toughness)
+    };
+    format!("{}/{toughness}", signed(power))
+}
+
+/// Recombine adjacent typed anthems produced from
+/// "... as long as it's X. Otherwise, ...". Both branches must affect the
+/// exact same enchanted creature, use fixed P/T-only payloads, and carry exact
+/// inverse attachment predicates.
+fn describe_structural_conditional_anthem_otherwise_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [positive_ability, negative_ability, ..] = abilities else {
+        return None;
+    };
+    if positive_ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || negative_ability.functional_zones != positive_ability.functional_zones
+    {
+        return None;
+    }
+
+    let AbilityKind::Static(positive_static) = &positive_ability.kind else {
+        return None;
+    };
+    let AbilityKind::Static(negative_static) = &negative_ability.kind else {
+        return None;
+    };
+    let positive = positive_static.anthem_payload()?;
+    let negative = negative_static.anthem_payload()?;
+
+    let target = positive.filter.as_ref()?;
+    if !exact_enchanted_creature_anthem_filter(target)
+        || negative.filter.as_ref() != Some(target)
+        || positive.replacement_surface.is_some()
+        || negative.replacement_surface.is_some()
+        || positive.set_quantifier_surface.is_some()
+        || negative.set_quantifier_surface.is_some()
+        || positive.count_uses_where_x
+        || negative.count_uses_where_x
+    {
+        return None;
+    }
+
+    let crate::ConditionExpr::AttachedToSourceMatches(match_filter) =
+        positive.condition.as_ref()?
+    else {
+        return None;
+    };
+    let crate::ConditionExpr::Not(negative_inner) = negative.condition.as_ref()? else {
+        return None;
+    };
+    if negative_inner.as_ref() != positive.condition.as_ref()? {
+        return None;
+    }
+
+    let (
+        ironsmith_core::AnthemValue::Fixed(positive_power),
+        ironsmith_core::AnthemValue::Fixed(positive_toughness),
+    ) = (&positive.power, &positive.toughness)
+    else {
+        return None;
+    };
+    let (
+        ironsmith_core::AnthemValue::Fixed(negative_power),
+        ironsmith_core::AnthemValue::Fixed(negative_toughness),
+    ) = (&negative.power, &negative.toughness)
+    else {
+        return None;
+    };
+    if (*positive_power < 0 || *positive_toughness < 0)
+        || (*positive_power == 0 && *positive_toughness == 0)
+        || *negative_power >= 0
+        || *negative_toughness > 0
+    {
+        return None;
+    }
+
+    let predicate = describe_simple_attached_match(match_filter)?;
+    Some((
+        format!(
+            "Enchanted creature gets {} as long as it's {predicate}. Otherwise, it gets {}",
+            describe_fixed_anthem_modifier(*positive_power, *positive_toughness),
+            describe_fixed_anthem_modifier(*negative_power, *negative_toughness),
+        ),
+        2,
+    ))
+}
+
+fn describe_structural_anthem_remove_all_abilities_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [anthem_ability, remove_abilities_ability, ..] = abilities else {
+        return None;
+    };
+    let anthem = static_display_with_id(
+        anthem_ability,
+        crate::static_abilities::StaticAbilityId::Anthem,
+    )?;
+    let remove_abilities = static_display_with_id(
+        remove_abilities_ability,
+        crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter,
+    )?;
+    let (subject, modifier) = split_static_predicate(&anthem, " gets ")?;
+    let remove_subject = remove_abilities.strip_suffix(" lose all abilities")?.trim();
+    if remove_subject != subject {
+        return None;
+    }
+
+    Some((
+        format!("{subject} gets {modifier} and loses all abilities"),
+        2,
+    ))
 }
 
 fn render_all_union_subject(subject: &str) -> String {
@@ -3722,6 +4682,67 @@ fn split_static_predicate_with_verb<'a>(
         }
     }
     None
+}
+
+/// Recombine the structural pieces of effects such as "Enchanted permanent is
+/// a colorless Forest land." The individual static abilities deliberately keep
+/// card-type replacement, land-subtype replacement, and color replacement
+/// separate so the layer system can apply them correctly; their oracle surface
+/// is one predicate.
+fn describe_structural_attached_land_type_setting_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [card_type_ability, subtype_ability, rest @ ..] = abilities else {
+        return None;
+    };
+    let card_type_display = static_display_with_id(
+        card_type_ability,
+        crate::static_abilities::StaticAbilityId::SetCardTypes,
+    )?;
+    let subtype_display = static_display_with_id(
+        subtype_ability,
+        crate::static_abilities::StaticAbilityId::SetLandSubtypes,
+    )?;
+    let (subject, card_type_tail, type_verb) =
+        split_static_predicate_with_verb(&card_type_display, &[" is ", " are "])?;
+    let (subtype_subject, subtype_tail, subtype_verb) =
+        split_static_predicate_with_verb(&subtype_display, &[" is ", " are "])?;
+    if subtype_subject != subject || subtype_verb != type_verb {
+        return None;
+    }
+    let expected_land_type = if type_verb == "is" { "land" } else { "lands" };
+    if !card_type_tail.eq_ignore_ascii_case(expected_land_type) {
+        return None;
+    }
+
+    let subtype_tail = subtype_tail
+        .strip_prefix("an ")
+        .or_else(|| subtype_tail.strip_prefix("a "))
+        .unwrap_or(subtype_tail);
+    let mut consumed = 2usize;
+    let mut descriptor = subtype_tail.to_string();
+    if let Some(color_ability) = rest.first()
+        && let Some(color_display) = static_display_with_id(
+            color_ability,
+            crate::static_abilities::StaticAbilityId::MakeColorless,
+        )
+        && let Some((color_subject, color_tail, color_verb)) =
+            split_static_predicate_with_verb(&color_display, &[" is ", " are "])
+        && color_subject == subject
+        && color_verb == type_verb
+        && color_tail.eq_ignore_ascii_case("colorless")
+    {
+        descriptor = format!("colorless {descriptor}");
+        consumed += 1;
+    }
+
+    let type_phrase = format!("{descriptor} {expected_land_type}");
+    let type_phrase = if type_verb == "is" {
+        with_indefinite_article(&type_phrase)
+    } else {
+        type_phrase
+    };
+    Some((format!("{subject} {type_verb} {type_phrase}"), consumed))
 }
 
 fn static_subject_is_land_kind(subject: &str) -> bool {
@@ -3973,4 +4994,748 @@ fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -
         && !choose.reveal
         && !choose.top_only
         && !choose.replace_tagged_objects
+}
+
+#[cfg(test)]
+mod self_replacement_rendering_tests {
+    use super::*;
+
+    fn damage_each_creature_and_player(amount: i32) -> Vec<Effect> {
+        vec![
+            Effect::for_each(
+                ObjectFilter::creature(),
+                vec![Effect::deal_damage(
+                    Value::Fixed(amount),
+                    ChooseSpec::Iterated,
+                )],
+            ),
+            Effect::new(crate::effects::ForPlayersEffect::new(
+                PlayerFilter::Any,
+                vec![Effect::deal_damage(
+                    Value::Fixed(amount),
+                    ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+                )],
+            )),
+        ]
+    }
+
+    fn labeled_branch(
+        label: &str,
+        condition_after_replacement: bool,
+    ) -> crate::resolution::SelfReplacementBranch {
+        let mut branch = crate::resolution::SelfReplacementBranch::new(
+            Condition::PlayerHasCardTypesInGraveyardOrMore {
+                player: PlayerFilter::You,
+                count: 4,
+            },
+            Vec::new(),
+        )
+        .with_presentation_label(Some(
+            crate::ability::PresentationLabel::from_ability_word(label),
+        ));
+        branch.condition_after_replacement = condition_after_replacement;
+        branch
+    }
+
+    #[test]
+    fn conjoins_same_source_damage_in_default_and_replacement_branches() {
+        assert_eq!(
+            describe_conjoined_same_source_damage(&damage_each_creature_and_player(1)).as_deref(),
+            Some("Deal 1 damage to each creature and each player")
+        );
+
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: damage_each_creature_and_player(1),
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                Condition::PlayerControls {
+                    player: PlayerFilter::You,
+                    filter: ObjectFilter::default()
+                        .you_control()
+                        .with_supertype(Supertype::Snow)
+                        .with_subtype(Subtype::Swamp),
+                },
+                damage_each_creature_and_player(2),
+            )],
+        };
+        let rendered = describe_single_self_replacement_segment(&segment)
+            .expect("same-source damage replacement should render");
+        assert_eq!(
+            rendered,
+            "Deal 1 damage to each creature and each player. If you control a snow Swamp, deal 2 damage to each creature and each player instead"
+        );
+        assert_eq!(
+            rendered
+                .matches("damage to each creature and each player")
+                .count(),
+            2,
+            "{rendered}"
+        );
+        assert_eq!(rendered.matches(" instead").count(), 1, "{rendered}");
+    }
+
+    #[test]
+    fn conjoins_coordinated_mass_damage_in_self_replacement_branches() {
+        let coordinated = |amount| {
+            vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+                damage_each_creature_and_player(amount),
+            ))]
+        };
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: coordinated(1),
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                Condition::PlayerControls {
+                    player: PlayerFilter::You,
+                    filter: ObjectFilter::default()
+                        .you_control()
+                        .with_supertype(Supertype::Snow)
+                        .with_subtype(Subtype::Swamp),
+                },
+                coordinated(2),
+            )],
+        };
+
+        assert_eq!(
+            describe_single_self_replacement_segment(&segment).as_deref(),
+            Some(
+                "Deal 1 damage to each creature and each player. If you control a snow Swamp, deal 2 damage to each creature and each player instead"
+            )
+        );
+    }
+
+    #[test]
+    fn repeated_mass_damage_target_survives_amount_replacement() {
+        let damage_each_creature = |amount| {
+            vec![Effect::for_each(
+                ObjectFilter::creature(),
+                vec![Effect::deal_damage(
+                    Value::Fixed(amount),
+                    ChooseSpec::Iterated,
+                )],
+            )]
+        };
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: damage_each_creature(1),
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                Condition::ThisSpellWasKicked,
+                damage_each_creature(2),
+            )],
+        };
+
+        assert_eq!(
+            describe_single_self_replacement_segment(&segment).as_deref(),
+            Some(
+                "Deal 1 damage to each creature. It deals 2 damage to each creature instead if this was kicked"
+            )
+        );
+    }
+
+    #[test]
+    fn tagged_multi_target_destroy_replacement_keeps_each_creature_referent() {
+        let damaged = TagKey::from("damaged_0");
+        let default = Effect::deal_damage(
+            Value::Fixed(2),
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+                .with_count(ChoiceCount::exactly(2)),
+        )
+        .tag(damaged.clone());
+        let destroy_filter = ObjectFilter::creature().match_tagged(
+            damaged,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let replacement = Effect::destroy(ChooseSpec::Object(destroy_filter)).tag("destroyed_0");
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: vec![default],
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                Condition::Not(Box::new(Condition::CardsInHandOrMore(1))),
+                vec![replacement],
+            )],
+        };
+
+        assert_eq!(
+            describe_single_self_replacement_segment(&segment).as_deref(),
+            Some(
+                "Deal 2 damage to two target creatures. Destroy each creature instead if you have no cards in hand"
+            )
+        );
+    }
+
+    #[test]
+    fn preserves_multi_sentence_replacement_boundaries() {
+        let rendered = format_self_replacement_fallback(
+            "Destroy all enchantments",
+            "there are seven or more cards in your graveyard",
+            "destroy all enchantments. Return all cards destroyed this way to the battlefield",
+        );
+        assert_eq!(
+            rendered,
+            "Destroy all enchantments. If there are seven or more cards in your graveyard, instead destroy all enchantments. Return all cards destroyed this way to the battlefield"
+        );
+        assert!(!rendered.contains("and return"));
+    }
+
+    #[test]
+    fn labeled_replacement_preserves_leading_condition_surface() {
+        let rendered = apply_self_replacement_presentation_label(
+            &labeled_branch("Landfall", false),
+            "Default action. If a land entered this turn, replacement action instead".to_string(),
+        );
+        assert_eq!(
+            rendered,
+            "Default action. Landfall — If a land entered this turn, replacement action instead"
+        );
+    }
+
+    #[test]
+    fn labeled_replacement_preserves_trailing_condition_surface() {
+        let rendered = apply_self_replacement_presentation_label(
+            &labeled_branch("Metalcraft", true),
+            "Default action. If you control three artifacts, that player sacrifices two creatures instead"
+                .to_string(),
+        );
+        assert_eq!(
+            rendered,
+            "Default action. Metalcraft — That player sacrifices two creatures instead if you control three artifacts"
+        );
+
+        let damage = apply_self_replacement_presentation_label(
+            &labeled_branch("Morbid", true),
+            "Deal 3 damage to any target. It deals 5 damage instead if a creature died this turn"
+                .to_string(),
+        );
+        assert_eq!(
+            damage,
+            "Deal 3 damage to any target. Morbid — It deals 5 damage instead if a creature died this turn"
+        );
+    }
+}
+
+#[cfg(test)]
+mod keyword_surface_merge_tests {
+    use super::*;
+
+    #[test]
+    fn adjacent_singular_protection_grants_keep_has_and_compact_colors() {
+        let merged = merge_adjacent_keyword_surface_lines(vec![
+            "Static ability 0: Equipped creature has protection from green".to_string(),
+            "Static ability 1: Equipped creature has protection from blue".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Static ability 0: Equipped creature has protection from green and from blue"
+                    .to_string()
+            ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod reinforce_structural_render_tests {
+    use super::*;
+
+    fn mana_cost(symbols: Vec<ManaSymbol>) -> crate::mana::ManaCost {
+        crate::mana::ManaCost::from_symbols(symbols)
+    }
+
+    fn reinforce_ability(amount: i32, mana: crate::mana::ManaCost) -> Ability {
+        let costs = crate::cost::TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(mana),
+            crate::costs::Cost::discard_source(),
+        ]);
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().in_zone(Zone::Battlefield),
+        ));
+        let effect =
+            Effect::put_counters(crate::object::CounterType::PlusOnePlusOne, amount, target);
+        let mut ability = Ability::activated(costs, vec![effect]);
+        ability.functional_zones = vec![Zone::Hand];
+        ability
+    }
+
+    #[test]
+    fn exact_hand_activation_renders_generic_reinforce_amount() {
+        let one = reinforce_ability(1, mana_cost(vec![ManaSymbol::Generic(1), ManaSymbol::Red]));
+        let three = reinforce_ability(
+            3,
+            mana_cost(vec![ManaSymbol::Generic(3), ManaSymbol::Green]),
+        );
+        assert_eq!(
+            describe_structural_reinforce_ability(&one).as_deref(),
+            Some("Reinforce 1—{1}{R}"),
+        );
+        assert_eq!(
+            describe_structural_reinforce_ability(&three).as_deref(),
+            Some("Reinforce 3—{3}{G}"),
+        );
+
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Reinforce Surface Probe",
+        )
+        .card_types(vec![CardType::Creature])
+        .with_ability(Ability::static_ability(
+            crate::static_abilities::StaticAbility::flying(),
+        ))
+        .with_ability(three)
+        .build();
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec!["Flying".to_string(), "Reinforce 3—{3}{G}".to_string()],
+        );
+    }
+
+    #[test]
+    fn near_miss_zone_cost_metadata_and_effect_shapes_stay_explicit() {
+        let base = reinforce_ability(
+            2,
+            mana_cost(vec![ManaSymbol::Generic(2), ManaSymbol::White]),
+        );
+
+        let mut wrong_zone = base.clone();
+        wrong_zone.functional_zones = vec![Zone::Battlefield];
+        assert_eq!(describe_structural_reinforce_ability(&wrong_zone), None);
+
+        let mut extra_cost = base.clone();
+        let AbilityKind::Activated(extra_cost_activated) = &mut extra_cost.kind else {
+            unreachable!();
+        };
+        extra_cost_activated.mana_cost = crate::cost::TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(mana_cost(vec![ManaSymbol::Generic(2), ManaSymbol::White])),
+            crate::costs::Cost::discard_source(),
+            crate::costs::Cost::life(1),
+        ]);
+        assert_eq!(describe_structural_reinforce_ability(&extra_cost), None);
+
+        let mut extra_choice = base.clone();
+        let AbilityKind::Activated(extra_choice_activated) = &mut extra_choice.kind else {
+            unreachable!();
+        };
+        extra_choice_activated
+            .choices
+            .push(ChooseSpec::target_creature());
+        assert_eq!(describe_structural_reinforce_ability(&extra_choice), None);
+
+        let mut extra_effect = base.clone();
+        let AbilityKind::Activated(extra_effect_activated) = &mut extra_effect.kind else {
+            unreachable!();
+        };
+        extra_effect_activated.effects.push(Effect::draw(1));
+        assert_eq!(describe_structural_reinforce_ability(&extra_effect), None);
+
+        let mut wrong_target = base.clone();
+        let AbilityKind::Activated(wrong_target_activated) = &mut wrong_target.kind else {
+            unreachable!();
+        };
+        wrong_target_activated.effects =
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                2,
+                ChooseSpec::target(ChooseSpec::Object(ObjectFilter::artifact())),
+            )]);
+        assert_eq!(describe_structural_reinforce_ability(&wrong_target), None);
+
+        let mut dynamic_amount = base;
+        let AbilityKind::Activated(dynamic_activated) = &mut dynamic_amount.kind else {
+            unreachable!();
+        };
+        dynamic_activated.effects =
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::put_counters(
+                crate::object::CounterType::PlusOnePlusOne,
+                Value::CardsInHand(PlayerFilter::You),
+                ChooseSpec::target(ChooseSpec::Object(
+                    ObjectFilter::creature().in_zone(Zone::Battlefield),
+                )),
+            )]);
+        assert_eq!(describe_structural_reinforce_ability(&dynamic_amount), None,);
+    }
+}
+
+#[cfg(test)]
+mod attached_anthem_bundle_tests {
+    use super::*;
+
+    fn enchanted_creature_filter() -> ObjectFilter {
+        ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(
+                "enchanted",
+                crate::target::TaggedOpbjectRelation::IsTaggedObject,
+            )
+    }
+
+    #[test]
+    fn fresh_start_and_mystic_subdual_static_pieces_recombine() {
+        for (power, expected) in [
+            (-5, "Enchanted creature gets -5/-0 and loses all abilities"),
+            (-2, "Enchanted creature gets -2/-0 and loses all abilities"),
+        ] {
+            let filter = enchanted_creature_filter();
+            let abilities = vec![
+                Ability::static_ability(crate::static_abilities::StaticAbility::anthem(
+                    filter.clone(),
+                    power,
+                    0,
+                )),
+                Ability::static_ability(
+                    crate::static_abilities::StaticAbility::remove_all_abilities(filter),
+                ),
+            ];
+
+            assert_eq!(
+                describe_structural_anthem_remove_all_abilities_bundle(&abilities),
+                Some((expected.to_string(), 2)),
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod conditional_anthem_otherwise_bundle_tests {
+    use super::*;
+
+    fn enchanted_creature_filter() -> ObjectFilter {
+        ObjectFilter::creature().match_tagged(
+            "enchanted",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        )
+    }
+
+    fn modeled_anthem(payload: ironsmith_core::Anthem) -> Ability {
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::new(payload);
+        Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    fn otherwise_pair(
+        condition_filter: ObjectFilter,
+        positive: (i32, i32),
+        negative: (i32, i32),
+    ) -> Vec<Ability> {
+        let condition = crate::ConditionExpr::AttachedToSourceMatches(condition_filter);
+        vec![
+            modeled_anthem(
+                ironsmith_core::Anthem::new(enchanted_creature_filter(), positive.0, positive.1)
+                    .with_condition(condition.clone()),
+            ),
+            modeled_anthem(
+                ironsmith_core::Anthem::new(enchanted_creature_filter(), negative.0, negative.1)
+                    .with_condition(crate::ConditionExpr::Not(Box::new(condition))),
+            ),
+        ]
+    }
+
+    #[test]
+    fn adjacent_inverse_fixed_anthems_render_as_otherwise() {
+        let mut attacking = ObjectFilter::default();
+        attacking.attacking = true;
+        for (condition, positive, negative, expected) in [
+            (
+                ObjectFilter::default().with_subtype(Subtype::Zombie),
+                (3, 3),
+                (-3, -3),
+                "Enchanted creature gets +3/+3 as long as it's a Zombie. Otherwise, it gets -3/-3",
+            ),
+            (
+                ObjectFilter::enchantment(),
+                (2, 2),
+                (-2, -2),
+                "Enchanted creature gets +2/+2 as long as it's an enchantment. Otherwise, it gets -2/-2",
+            ),
+            (
+                ObjectFilter::default().with_colors(crate::color::ColorSet::BLACK),
+                (2, 1),
+                (-1, -2),
+                "Enchanted creature gets +2/+1 as long as it's black. Otherwise, it gets -1/-2",
+            ),
+            (
+                attacking,
+                (3, 0),
+                (-2, -1),
+                "Enchanted creature gets +3/+0 as long as it's attacking. Otherwise, it gets -2/-1",
+            ),
+        ] {
+            let abilities = otherwise_pair(condition, positive, negative);
+            assert_eq!(
+                describe_structural_conditional_anthem_otherwise_bundle(&abilities),
+                Some((expected.to_string(), 2)),
+            );
+        }
+
+        let pirate = otherwise_pair(
+            ObjectFilter::default().with_subtype(Subtype::Pirate),
+            (0, 2),
+            (-2, 0),
+        );
+        let mut builder = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Otherwise Surface Probe",
+        )
+        .card_types(vec![CardType::Enchantment]);
+        for ability in pirate {
+            builder = builder.with_ability(ability);
+        }
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&builder.build()),
+            vec![
+                "Enchanted creature gets +0/+2 as long as it's a Pirate. Otherwise, it gets -2/-0."
+                    .to_string()
+            ],
+        );
+    }
+
+    #[test]
+    fn target_predicate_and_fixed_payload_near_misses_do_not_merge() {
+        let zombie = ObjectFilter::default().with_subtype(Subtype::Zombie);
+
+        let mut different_target = otherwise_pair(zombie.clone(), (3, 3), (-3, -3));
+        let equipped_target = ObjectFilter::creature().match_tagged(
+            "equipped",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        different_target[1] = modeled_anthem(
+            ironsmith_core::Anthem::new(equipped_target, -3, -3).with_condition(
+                crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::AttachedToSourceMatches(
+                    zombie.clone(),
+                ))),
+            ),
+        );
+        assert_eq!(
+            describe_structural_conditional_anthem_otherwise_bundle(&different_target),
+            None,
+        );
+
+        let mut noninverse = otherwise_pair(zombie.clone(), (3, 3), (-3, -3));
+        noninverse[1] = modeled_anthem(
+            ironsmith_core::Anthem::new(enchanted_creature_filter(), -3, -3).with_condition(
+                crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::AttachedToSourceMatches(
+                    ObjectFilter::default().with_subtype(Subtype::Vampire),
+                ))),
+            ),
+        );
+        assert_eq!(
+            describe_structural_conditional_anthem_otherwise_bundle(&noninverse),
+            None,
+        );
+
+        let mut dynamic = otherwise_pair(zombie.clone(), (3, 3), (-3, -3));
+        dynamic[1] = modeled_anthem(
+            ironsmith_core::Anthem::new(enchanted_creature_filter(), -3, -3)
+                .with_values(
+                    ironsmith_core::AnthemValue::Dynamic(Value::Fixed(-3)),
+                    ironsmith_core::AnthemValue::Fixed(-3),
+                )
+                .with_condition(crate::ConditionExpr::Not(Box::new(
+                    crate::ConditionExpr::AttachedToSourceMatches(zombie),
+                ))),
+        );
+        assert_eq!(
+            describe_structural_conditional_anthem_otherwise_bundle(&dynamic),
+            None,
+        );
+
+        let mut non_pt = otherwise_pair(
+            ObjectFilter::default().with_subtype(Subtype::Pirate),
+            (0, 2),
+            (-2, 0),
+        );
+        non_pt[1] = Ability::static_ability(crate::static_abilities::StaticAbility::flying());
+        assert_eq!(
+            describe_structural_conditional_anthem_otherwise_bundle(&non_pt),
+            None,
+        );
+    }
+}
+
+#[cfg(test)]
+mod enchanted_restriction_bundle_tests {
+    use super::*;
+
+    fn enchanted_filter(subject: &str) -> ObjectFilter {
+        let filter = match subject {
+            "Enchanted creature" => ObjectFilter::creature(),
+            "Enchanted permanent" => ObjectFilter::permanent_card().in_zone(Zone::Battlefield),
+            "Enchanted artifact" => ObjectFilter::artifact(),
+            other => panic!("unsupported restriction test subject: {other}"),
+        };
+        filter.match_tagged(
+            "enchanted",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        )
+    }
+
+    fn modeled_rule_static(
+        restriction: crate::effect::Restriction,
+        display: impl Into<String>,
+    ) -> crate::static_abilities::StaticAbility {
+        let display = display.into();
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::restriction(restriction, display);
+        crate::static_abilities::StaticAbility::from_model(model)
+    }
+
+    fn modeled_rule_ability(
+        restriction: crate::effect::Restriction,
+        display: impl Into<String>,
+    ) -> Ability {
+        Ability::static_ability(modeled_rule_static(restriction, display))
+    }
+
+    fn restriction_pair(subject: &str) -> Vec<Ability> {
+        let filter = enchanted_filter(subject);
+        let subject = subject.to_ascii_lowercase();
+        vec![
+            modeled_rule_ability(
+                crate::effect::Restriction::attack_or_block(filter.clone()),
+                format!("{subject} can't attack or block"),
+            ),
+            modeled_rule_ability(
+                crate::effect::Restriction::activate_abilities_of(filter),
+                format!("{subject} activated abilities can't be activated"),
+            ),
+        ]
+    }
+
+    #[test]
+    fn exact_adjacent_creature_permanent_and_artifact_restrictions_recombine() {
+        for subject in [
+            "Enchanted creature",
+            "Enchanted permanent",
+            "Enchanted artifact",
+        ] {
+            let expected = format!(
+                "{subject} can't attack or block, and its activated abilities can't be activated"
+            );
+            let abilities = restriction_pair(subject);
+            assert_eq!(
+                describe_structural_enchanted_combat_activation_restriction_bundle(&abilities),
+                Some((expected.clone(), 2)),
+            );
+
+            let mut builder = crate::cards::builders::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Restriction Surface Probe",
+            )
+            .card_types(vec![CardType::Enchantment]);
+            for ability in abilities {
+                builder = builder.with_ability(ability);
+            }
+            let definition = builder.build();
+            assert_eq!(
+                crate::compiled_text::compiled_text_lines(&definition),
+                vec![format!("{expected}.")],
+            );
+        }
+    }
+
+    #[test]
+    fn nonadjacent_or_different_subject_restrictions_stay_separate() {
+        let mut nonadjacent = restriction_pair("Enchanted creature");
+        nonadjacent.insert(
+            1,
+            Ability::static_ability(crate::static_abilities::StaticAbility::flying()),
+        );
+        assert_eq!(
+            describe_structural_enchanted_combat_activation_restriction_bundle(&nonadjacent),
+            None,
+        );
+
+        let mut different_subject = restriction_pair("Enchanted creature");
+        let permanent_filter = enchanted_filter("Enchanted permanent");
+        different_subject[1] = modeled_rule_ability(
+            crate::effect::Restriction::activate_abilities_of(permanent_filter),
+            "enchanted permanent activated abilities can't be activated",
+        );
+        assert_eq!(
+            describe_structural_enchanted_combat_activation_restriction_bundle(&different_subject,),
+            None,
+        );
+    }
+
+    #[test]
+    fn conditioned_or_mana_exception_restrictions_stay_separate() {
+        let mut conditioned = restriction_pair("Enchanted creature");
+        conditioned[1] = Ability::static_ability(
+            modeled_rule_static(
+                crate::effect::Restriction::activate_abilities_of(enchanted_filter(
+                    "Enchanted creature",
+                )),
+                "enchanted creature activated abilities can't be activated",
+            )
+            .with_condition(crate::ConditionExpr::YourTurn)
+            .expect("rule restriction supports a temporal condition"),
+        );
+        assert_eq!(
+            describe_structural_enchanted_combat_activation_restriction_bundle(&conditioned),
+            None,
+        );
+
+        let mut mana_exception = restriction_pair("Enchanted permanent");
+        mana_exception[1] = modeled_rule_ability(
+            crate::effect::Restriction::activate_non_mana_abilities_of(enchanted_filter(
+                "Enchanted permanent",
+            )),
+            "enchanted permanent activated abilities can't be activated unless they're mana abilities",
+        );
+        assert_eq!(
+            describe_structural_enchanted_combat_activation_restriction_bundle(&mana_exception),
+            None,
+        );
+    }
+}
+
+#[cfg(test)]
+mod creature_aura_subject_tests {
+    use super::*;
+
+    #[test]
+    fn plain_creature_attachment_refines_enchanted_permanent_references() {
+        let creature = crate::object::AuraAttachmentFilter::Object(
+            ObjectFilter::creature().in_zone(Zone::Battlefield),
+        );
+        assert_eq!(
+            rewrite_plain_creature_aura_subject(
+                Some(&creature),
+                "At the beginning of the upkeep of enchanted permanent's controller"
+            ),
+            "At the beginning of the upkeep of enchanted creature's controller"
+        );
+
+        let land = crate::object::AuraAttachmentFilter::Object(
+            ObjectFilter::land().in_zone(Zone::Battlefield),
+        );
+        assert_eq!(
+            rewrite_plain_creature_aura_subject(
+                Some(&land),
+                "At the beginning of the upkeep of enchanted permanent's controller"
+            ),
+            "At the beginning of the upkeep of enchanted permanent's controller"
+        );
+    }
+}
+
+#[cfg(test)]
+mod prototype_surface_tests {
+    use super::*;
+
+    #[test]
+    fn prototype_frame_line_keeps_separator_and_precedes_other_abilities() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Prototype Surface Probe",
+        )
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text("Prototype {2}{R} — 3/2\nHaste")
+        .expect("Prototype surface probe should parse");
+
+        let lines = compiled_lines_inner(&definition);
+        assert_eq!(
+            lines.first().map(String::as_str),
+            Some("Prototype {2}{R} — 3/2")
+        );
+        assert!(
+            lines.iter().skip(1).any(|line| line.ends_with("Haste")),
+            "non-Prototype abilities should follow the Prototype frame line: {lines:?}"
+        );
+    }
 }

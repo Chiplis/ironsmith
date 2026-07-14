@@ -41,6 +41,122 @@ pub(super) fn parse_standalone_choose_player_effect() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn master_of_the_wild_hunt_compiles_tagged_dynamic_damage_program() {
+    let def = parse_oracle_card_definition("Master of the Wild Hunt");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Each Wolf tapped this way deals damage equal to its power to target creature")
+            && rendered.contains("That creature deals damage equal to its power divided as its controller chooses among any number of those Wolves"),
+        "expected Master of the Wild Hunt's reciprocal damage text, got {rendered}"
+    );
+    assert!(
+        debug.contains("ForEachObject")
+            && debug.contains("tapped_0")
+            && debug.contains("DealDistributedDamageEffect")
+            && debug.contains("ControllerOf(\n")
+            && debug.contains("Source"),
+        "expected tagged Wolves plus dynamic source/controller distributed damage, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn master_of_the_wild_hunt_damages_only_wolves_tapped_this_way() {
+    use crate::card::{CardBuilder, PowerToughness};
+
+    struct TargetControllerDistribution {
+        chooser: PlayerId,
+        source: ObjectId,
+        first_wolf: ObjectId,
+        second_wolf: ObjectId,
+    }
+
+    impl crate::decision::DecisionMaker for TargetControllerDistribution {
+        fn decide_distribute(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::DistributeContext,
+        ) -> Vec<(crate::game_state::Target, u32)> {
+            assert_eq!(ctx.player, self.chooser);
+            assert_eq!(ctx.source, Some(self.source));
+            assert_eq!(ctx.total, 3);
+            let candidates = ctx
+                .targets
+                .iter()
+                .map(|entry| entry.target)
+                .collect::<Vec<_>>();
+            assert_eq!(candidates.len(), 2);
+            assert!(candidates.contains(&crate::game_state::Target::Object(self.first_wolf)));
+            assert!(candidates.contains(&crate::game_state::Target::Object(self.second_wolf)));
+            vec![
+                (crate::game_state::Target::Object(self.first_wolf), 1),
+                (crate::game_state::Target::Object(self.second_wolf), 2),
+            ]
+        }
+    }
+
+    let def = parse_oracle_card_definition("Master of the Wild Hunt");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Master should have an activated ability");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let master = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let wolf = |id, name| {
+        CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wolf])
+            .power_toughness(PowerToughness::fixed(2, 8))
+            .build()
+    };
+    let first_wolf =
+        game.create_object_from_card(&wolf(91_801, "First Wolf"), alice, Zone::Battlefield);
+    let second_wolf =
+        game.create_object_from_card(&wolf(91_802, "Second Wolf"), alice, Zone::Battlefield);
+    let already_tapped_wolf = game.create_object_from_card(
+        &wolf(91_803, "Already Tapped Wolf"),
+        alice,
+        Zone::Battlefield,
+    );
+    game.tap(already_tapped_wolf);
+    let target_card = CardBuilder::new(CardId::from_raw(91_804), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 10))
+        .build();
+    let target = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
+
+    let mut dm = TargetControllerDistribution {
+        chooser: bob,
+        source: target,
+        first_wolf,
+        second_wolf,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(master, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Master's activated ability should resolve");
+    }
+
+    assert!(game.is_tapped(first_wolf));
+    assert!(game.is_tapped(second_wolf));
+    assert_eq!(game.damage_on(target), 4);
+    assert_eq!(game.damage_on(first_wolf), 1);
+    assert_eq!(game.damage_on(second_wolf), 2);
+    assert_eq!(game.damage_on(already_tapped_wolf), 0);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_this_creature_cant_be_blocked_by_creatures_with_flying() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gnat Alley Variant")
         .card_types(vec![CardType::Creature])
@@ -383,7 +499,9 @@ pub(super) fn twenty_toed_toad_strict_parser_and_compiled_text_regression() {
         "Twenty-Toed Toad's win trigger should compile to a conditional win effect, got {win_effects_debug}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("Your maximum hand size is twenty."),
         "expected Twenty-Toed Toad compiled text to include exact maximum hand size, got {rendered}"
@@ -557,7 +675,9 @@ pub(super) fn parse_paired_tactician_keeps_other_warrior_attack_subject() {
         "expected source-plus-one-other-Warrior trigger, got {debug}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("Whenever this creature and at least one other Warrior attack"),
         "expected Paired Tactician trigger subject to keep Warrior, got {rendered}"
@@ -1299,6 +1419,72 @@ pub(super) fn parse_abeyance_supports_instant_or_sorcery_cast_restriction() {
         spell_debug.contains("ActivateNonManaAbilities"),
         "expected non-mana ability restriction, got {spell_debug}"
     );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("target player can't cast instant or sorcery spells this turn"),
+        "expected an instant-or-sorcery spell restriction, got {rendered}"
+    );
+    assert!(!rendered.contains("spell matching"), "got {rendered}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_barals_expertise_renders_mana_value_free_cast_as_a_spell() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Baral's Expertise")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return up to three target artifacts and/or creatures to their owners' hands.\nYou may cast a spell with mana value 4 or less from your hand without paying its mana cost.",
+        )
+        .expect("Baral's Expertise should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "you may cast a spell with mana value 4 or less from your hand without paying its mana cost"
+        ),
+        "expected the free-cast filter to use the spell noun once, got {rendered}"
+    );
+    assert!(!rendered.contains("spell matching"), "got {rendered}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_west_coast_expansion_renders_hero_before_spell() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "West Coast Expansion")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Draw X cards. If X is 5 or more, you may cast a Hero spell from your hand without paying its mana cost.",
+        )
+        .expect("West Coast Expansion should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("you may cast a hero spell from your hand without paying its mana cost"),
+        "expected the subtype before the spell noun, got {rendered}"
+    );
+    assert!(!rendered.contains("spell matching"), "got {rendered}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_altar_of_the_lost_renders_flashback_spells_from_a_graveyard() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Altar of the Lost")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "This artifact enters tapped.\n{T}: Add two mana in any combination of colors. Spend this mana only to cast spells with flashback from a graveyard.",
+        )
+        .expect("Altar of the Lost should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("spend this mana only to cast spells with flashback from a graveyard"),
+        "expected the flashback filter and graveyard origin to render, got {rendered}"
+    );
+    assert!(!rendered.contains("spell matching"), "got {rendered}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3143,6 +3329,39 @@ pub(super) fn parse_oracle_cinder_strike_blight_additional_cost_regression() {
             && rendered.contains("-1/-1 counter on a creature you control")
             && rendered.contains("additional cost was paid"),
         "expected Cinder Strike compiled text to keep blight cost and payoff wiring, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn mandatory_minus_counter_additional_costs_do_not_render_as_optional_blight() {
+    for card_name in ["Lethal Sting", "Scarscale Ritual"] {
+        let def = parse_oracle_card_definition(card_name);
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+        let rendered_lower = rendered.to_ascii_lowercase();
+
+        assert!(
+            rendered_lower.contains(
+                "as an additional cost to cast this spell, put a -1/-1 counter on a creature you control"
+            ),
+            "expected {card_name} to keep its mandatory counter cost, got {rendered}"
+        );
+        assert!(
+            !rendered_lower.contains("you may blight"),
+            "mandatory counter cost must not become optional Blight: {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn diabolic_servitude_preserves_linked_creature_trigger_surface() {
+    let def = parse_oracle_card_definition("Diabolic Servitude");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "When the creature put onto the battlefield with this enchantment dies, exile it and return this enchantment to its owner's hand"
+        ),
+        "expected the linked death trigger to keep its definite subject and joined cleanup, got {rendered}"
     );
 }
 

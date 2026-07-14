@@ -707,30 +707,84 @@ const LAND_OR_LANDS_PATTERN: ClauseShape<'static> =
 fn parse_player_or_object_damage_recipient(
     target_tokens: &[OwnedLexToken],
 ) -> Option<(PlayerFilter, ObjectFilter, bool)> {
-    let or_idx = trigger_atom_token(target_tokens, TriggerClauseAtom::Or)?;
-    let left_tokens = trim_commas(&target_tokens[..or_idx]);
-    let right_tokens = trim_commas(&target_tokens[or_idx + 1..]);
+    let one_or_more = has_leading_one_or_more(target_tokens);
+    let union_idx = target_tokens
+        .iter()
+        .enumerate()
+        .find_map(|(index, token)| {
+            if token.is_word("and/or") {
+                return Some((index, true));
+            }
+            if !token.is_word("or") {
+                return None;
+            }
+            let belongs_to_one_or_more = index > 0
+                && target_tokens[index - 1].is_word("one")
+                && target_tokens
+                    .get(index + 1)
+                    .is_some_and(|next| next.is_word("more"));
+            (!belongs_to_one_or_more).then_some((index, false))
+        })?;
+    let (union_idx, is_and_or) = union_idx;
+    let left_tokens = trim_commas(&target_tokens[..union_idx]);
+    let right_tokens = trim_commas(&target_tokens[union_idx + 1..]);
     if left_tokens.is_empty() || right_tokens.is_empty() {
         return None;
     }
 
     let left_words = ActivationRestrictionCompatWords::new(&left_tokens).to_word_refs();
     if let Some(player) = parse_trigger_subject_player_filter(&left_words)
-        && let Ok(filter) =
+        && let Ok(mut filter) =
             parse_object_filter_lexed(strip_leading_one_or_more_lexed(&right_tokens), false)
     {
+        if is_and_or {
+            filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+        }
+        filter.set_union_one_or_more(one_or_more);
         return Some((player, filter, true));
     }
 
     let right_words = ActivationRestrictionCompatWords::new(&right_tokens).to_word_refs();
     if let Some(player) = parse_trigger_subject_player_filter(&right_words)
-        && let Ok(filter) =
+        && let Ok(mut filter) =
             parse_object_filter_lexed(strip_leading_one_or_more_lexed(&left_tokens), false)
     {
+        if is_and_or {
+            filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+        }
+        filter.set_union_one_or_more(one_or_more);
         return Some((player, filter, false));
     }
 
     None
+}
+
+fn parse_damage_source_trigger_filter_lexed(
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<(ObjectFilter, crate::triggers::DamageSourceSurface)>, CardTextError> {
+    let source_surface =
+        crate::runtime_backend::grammar::trigger_subjects::parse_damage_source_surface(
+            subject_tokens,
+        );
+    let Some(mut filter) = parse_trigger_subject_filter_lexed(subject_tokens)? else {
+        return Ok(None);
+    };
+    if source_surface == crate::triggers::DamageSourceSurface::Source {
+        // "Source" is a game-object domain, not a synonym for a battlefield
+        // permanent. Keep parsed qualities such as color and controller while
+        // allowing damage sources from any appropriate zone.
+        filter.zone = None;
+    }
+    Ok(Some((filter, source_surface)))
+}
+
+fn preserve_trigger_filter_union_surface(
+    filter: &mut ObjectFilter,
+    subject_tokens: &[OwnedLexToken],
+) {
+    if subject_tokens.iter().any(|token| token.is_word("and/or")) {
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
 }
 const BECOMES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["becomes"]);
 const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["combat"]);
@@ -1362,6 +1416,37 @@ fn source_reference_surface_for_trigger_subject(
     let subject_words = non_article_word_refs(&word_view.to_word_refs());
     source_reference_surface_for_words(&subject_words)
         .or_else(|| this_source_surface_for_words(&subject_words))
+}
+
+fn parse_source_or_another_trigger_subject_filters(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<(ObjectFilter, ObjectFilter)> {
+    let word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+    let subject_words = word_view.to_word_refs();
+    let shape = crate::runtime_backend::grammar::trigger_subjects::parse_source_or_another_shape(
+        &subject_words,
+    )?;
+    let source_words = &subject_words[..shape.source_word_end];
+    if !is_source_reference_words(source_words) {
+        return None;
+    }
+
+    let source_token_end = trigger_word_token_start(subject_tokens, shape.source_word_end)?;
+    let another_span = crate::runtime_backend::grammar::trigger_subjects::parse_trigger_word_span(
+        subject_tokens,
+        shape.other_word,
+    )?;
+    let other_tokens = trim_edge_punctuation(&subject_tokens[another_span.end..]);
+    if other_tokens.is_empty() {
+        return None;
+    }
+
+    let source_filter =
+        source_reference_surface_for_trigger_subject(&subject_tokens[..source_token_end])
+            .map(ObjectFilter::source_with_surface)
+            .unwrap_or_else(ObjectFilter::source);
+    let other_filter = parse_object_filter_lexed(&other_tokens, true).ok()?;
+    Some((source_filter, other_filter))
 }
 
 fn this_enters_battlefield_trigger_spec(
@@ -2484,6 +2569,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 parse_subtype_list_enters_trigger_filter_lexed(filtered_subject_tokens, other)
             });
         if let Some(mut filter) = parsed_filter {
+            preserve_trigger_filter_union_surface(&mut filter, filtered_subject_tokens);
             let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
                 Some(crate::events::cause::CauseFilter::not_type(
                     crate::events::cause::CauseType::SpecialAction,
@@ -2604,6 +2690,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             filter.owner = None;
             if subject_mentions_card(&subject_words) {
                 filter.nontoken = true;
+                filter.set_explicit_card_noun(true);
             }
             return Ok(TriggerSpec::CardsLeaveYourGraveyard {
                 filter,
@@ -2646,6 +2733,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         if subject_mentions_card(&subject_words) {
             filter.card_types.clear();
             filter.nontoken = true;
+            filter.set_explicit_card_noun(true);
         }
         return Ok(TriggerSpec::Either(
             Box::new(TriggerSpec::PutIntoGraveyardFromZone {
@@ -2827,6 +2915,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             if subject_mentions_card(&subject_words) {
                 filter.card_types.clear();
                 filter.nontoken = true;
+                filter.set_explicit_card_noun(true);
             }
             return Ok(TriggerSpec::PutIntoExileFromZones {
                 filter,
@@ -2862,6 +2951,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;
+            filter.set_explicit_card_noun(true);
         }
         return Ok(if one_or_more {
             TriggerSpec::PutIntoGraveyardOneOrMore(filter)
@@ -2917,6 +3007,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         filter.owner = Some(PlayerFilter::Opponent);
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;
+            filter.set_explicit_card_noun(true);
         }
         return Ok(if one_or_more {
             TriggerSpec::PutIntoGraveyardOneOrMore(filter)
@@ -2971,6 +3062,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;
+            filter.set_explicit_card_noun(true);
         }
         return Ok(TriggerSpec::PutIntoGraveyardFromZone {
             filter,
@@ -2988,8 +3080,12 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_words = subject_view.to_word_refs();
         let one_or_more = subject_starts_one_or_more(&subject_words);
         if is_source_reference_words(&subject_words) {
+            let mut filter = source_reference_surface_for_trigger_subject(subject_tokens)
+                .map(ObjectFilter::source_with_surface)
+                .unwrap_or_else(ObjectFilter::source);
+            filter.owner = Some(PlayerFilter::You);
             return Ok(TriggerSpec::PutIntoGraveyardFromZone {
-                filter: ObjectFilter::source(),
+                filter,
                 from: Zone::Battlefield,
                 one_or_more,
             });
@@ -3007,6 +3103,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;
+            filter.set_explicit_card_noun(true);
         }
         return Ok(TriggerSpec::PutIntoGraveyardFromZone {
             filter,
@@ -3023,6 +3120,26 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
         let subject_words = subject_view.to_word_refs();
         let one_or_more = subject_starts_one_or_more(&subject_words);
+        if let Some((mut source_filter, mut other_filter)) =
+            parse_source_or_another_trigger_subject_filters(subject_tokens)
+        {
+            source_filter.zone = None;
+            source_filter.owner = None;
+            other_filter.zone = None;
+            other_filter.owner = None;
+            return Ok(TriggerSpec::Either(
+                Box::new(TriggerSpec::PutIntoGraveyardFromZone {
+                    filter: source_filter,
+                    from: Zone::Battlefield,
+                    one_or_more,
+                }),
+                Box::new(TriggerSpec::PutIntoGraveyardFromZone {
+                    filter: other_filter,
+                    from: Zone::Battlefield,
+                    one_or_more,
+                }),
+            ));
+        }
         if is_source_reference_words(&subject_words) {
             return Ok(TriggerSpec::PutIntoGraveyardFromZone {
                 filter: ObjectFilter::source(),
@@ -3040,6 +3157,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         filter.owner = None;
         if subject_mentions_card(&subject_words) {
             filter.nontoken = true;
+            filter.set_explicit_card_noun(true);
         }
         return Ok(TriggerSpec::PutIntoGraveyardFromZone {
             filter,
@@ -3747,6 +3865,20 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
         let target_view = ActivationRestrictionCompatWords::new(&target_tokens);
         let target_words = target_view.to_word_refs();
+        if let Some((player, target_filter, player_first)) =
+            parse_player_or_object_damage_recipient(&target_tokens)
+        {
+            let player_trigger = TriggerSpec::ThisDealsDamageToPlayer {
+                player,
+                amount: None,
+            };
+            let object_trigger = TriggerSpec::ThisDealsDamageTo(target_filter);
+            return Ok(if player_first {
+                TriggerSpec::Either(Box::new(player_trigger), Box::new(object_trigger))
+            } else {
+                TriggerSpec::Either(Box::new(object_trigger), Box::new(player_trigger))
+            });
+        }
         if let Some(player) = parse_trigger_subject_player_filter(&target_words) {
             return Ok(TriggerSpec::ThisDealsDamageToPlayer {
                 player,
@@ -3788,32 +3920,48 @@ pub(crate) fn parse_trigger_clause_lexed(
             let target_words = target_view.to_word_refs();
             if trigger_pattern_accepts(&amount_words, NONCOMBAT_DAMAGE_AMOUNT_PATTERN)
                 && let Some(player) = parse_trigger_subject_player_filter(&target_words)
-                && let Some(source) = parse_trigger_subject_filter_lexed(subject_tokens)?
+                && let Some((source, source_surface)) =
+                    parse_damage_source_trigger_filter_lexed(subject_tokens)?
             {
                 return Ok(TriggerSpec::DealsNoncombatDamageToPlayer {
                     source,
                     player,
-                    source_surface:
-                        crate::runtime_backend::grammar::trigger_subjects::parse_damage_source_surface(
-                            subject_tokens,
-                        ),
+                    source_surface,
+                });
+            }
+            if let Some((player, target, player_first)) =
+                parse_player_or_object_damage_recipient(&target_tokens)
+                && let Some((source, source_surface)) =
+                    parse_damage_source_trigger_filter_lexed(subject_tokens)?
+            {
+                let player_trigger = TriggerSpec::DealsDamageToPlayer {
+                    source: source.clone(),
+                    player,
+                };
+                let object_trigger = TriggerSpec::DealsDamageTo {
+                    source,
+                    target,
+                    source_surface,
+                };
+                return Ok(if player_first {
+                    TriggerSpec::Either(Box::new(player_trigger), Box::new(object_trigger))
+                } else {
+                    TriggerSpec::Either(Box::new(object_trigger), Box::new(player_trigger))
                 });
             }
             if let Some(player) = parse_trigger_subject_player_filter(&target_words)
-                && let Some(source) = parse_trigger_subject_filter_lexed(subject_tokens)?
+                && let Some((source, _)) = parse_damage_source_trigger_filter_lexed(subject_tokens)?
             {
                 return Ok(TriggerSpec::DealsDamageToPlayer { source, player });
             }
             if let Ok(target) = parse_object_filter_lexed(&target_tokens, false)
-                && let Some(source) = parse_trigger_subject_filter_lexed(subject_tokens)?
+                && let Some((source, source_surface)) =
+                    parse_damage_source_trigger_filter_lexed(subject_tokens)?
             {
                 return Ok(TriggerSpec::DealsDamageTo {
                     source,
                     target,
-                    source_surface:
-                        crate::runtime_backend::grammar::trigger_subjects::parse_damage_source_surface(
-                            subject_tokens,
-                        ),
+                    source_surface,
                 });
             }
         }
@@ -3884,11 +4032,21 @@ pub(crate) fn parse_trigger_clause_lexed(
             if has_draw_except_first_in_draw_step_pattern(tail) {
                 return Ok(TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player));
             }
-            if let Some(card_number) = parse_exact_draw_count_each_turn(tail) {
-                return Ok(TriggerSpec::PlayerDrawsNthCardEachTurn {
-                    player,
-                    card_number,
-                });
+            let card_numbers = parse_draw_numbers_each_turn(tail);
+            match card_numbers.as_slice() {
+                [card_number] => {
+                    return Ok(TriggerSpec::PlayerDrawsNthCardEachTurn {
+                        player,
+                        card_number: *card_number,
+                    });
+                }
+                [_, _, ..] => {
+                    return Ok(TriggerSpec::PlayerDrawsNumberedCardsEachTurn {
+                        player,
+                        card_numbers,
+                    });
+                }
+                _ => {}
             }
         }
     }
@@ -3975,6 +4133,14 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_words = &words[..sacrifice_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             let mut filter_tokens = &tokens[sacrifice_token_idx + 1..];
+            let filter_word_view = ActivationRestrictionCompatWords::new(filter_tokens);
+            let filter_words = filter_word_view.to_word_refs();
+            let one_or_more = trigger_grammar::find_trigger_surface_window(
+                &filter_words,
+                3,
+                ONE_OR_MORE_QUANTIFIER_PATTERN,
+            )
+            .is_some();
             let mut other = false;
             if filter_tokens.first().is_some_and(|token| {
                 token_matches_clause_shape(token, OTHER_OR_ANOTHER_EXACT_PATTERN)
@@ -4025,7 +4191,11 @@ pub(crate) fn parse_trigger_clause_lexed(
                     ))
                 })?
             };
-            return Ok(TriggerSpec::PlayerSacrifices { player, filter });
+            return Ok(TriggerSpec::PlayerSacrifices {
+                player,
+                filter,
+                one_or_more,
+            });
         }
     }
 
@@ -4214,15 +4384,19 @@ pub(crate) fn parse_trigger_clause_lexed(
     if trigger_pattern_accepts(&words, THIS_BECOMES_BLOCKED_BY_TRIGGER_PREFIX)
         && let Some(by_idx) = trigger_atom_token(tokens, TriggerClauseAtom::By)
     {
-        let blocker_tokens = trim_commas(&tokens[by_idx + 1..]);
+        let raw_blocker_tokens = trim_commas(&tokens[by_idx + 1..]);
+        let one_or_more = has_leading_one_or_more(&raw_blocker_tokens);
+        let blocker_tokens = strip_leading_one_or_more_lexed(&raw_blocker_tokens);
         if !blocker_tokens.is_empty() {
-            let blocker_filter =
-                parse_object_filter_lexed(&blocker_tokens, false).map_err(|_| {
+            let mut blocker_filter =
+                parse_object_filter_lexed(blocker_tokens, false).map_err(|_| {
                     CardTextError::ParseError(format!(
                         "unsupported blocking-object filter in trigger clause (clause: '{}')",
                         words.join(" ")
                     ))
                 })?;
+            preserve_trigger_filter_union_surface(&mut blocker_filter, blocker_tokens);
+            blocker_filter.set_union_one_or_more(one_or_more);
             return Ok(TriggerSpec::ThisBecomesBlockedByObject(blocker_filter));
         }
     }
@@ -4230,15 +4404,19 @@ pub(crate) fn parse_trigger_clause_lexed(
     if trigger_pattern_accepts(&words, THIS_BLOCKS_OR_BECOMES_BLOCKED_BY_TRIGGER_PREFIX)
         && let Some(by_idx) = trigger_atom_token(tokens, TriggerClauseAtom::By)
     {
-        let blocker_tokens = trim_commas(&tokens[by_idx + 1..]);
+        let raw_blocker_tokens = trim_commas(&tokens[by_idx + 1..]);
+        let one_or_more = has_leading_one_or_more(&raw_blocker_tokens);
+        let blocker_tokens = strip_leading_one_or_more_lexed(&raw_blocker_tokens);
         if !blocker_tokens.is_empty() {
-            let blocker_filter =
-                parse_object_filter_lexed(&blocker_tokens, false).map_err(|_| {
+            let mut blocker_filter =
+                parse_object_filter_lexed(blocker_tokens, false).map_err(|_| {
                     CardTextError::ParseError(format!(
                         "unsupported blocking-object filter in trigger clause (clause: '{}')",
                         words.join(" ")
                     ))
                 })?;
+            preserve_trigger_filter_union_surface(&mut blocker_filter, blocker_tokens);
+            blocker_filter.set_union_one_or_more(one_or_more);
             return Ok(TriggerSpec::Either(
                 Box::new(TriggerSpec::ThisBlocksObject(blocker_filter.clone())),
                 Box::new(TriggerSpec::ThisBecomesBlockedByObject(blocker_filter)),
@@ -4425,7 +4603,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                     if rhs_token_idx < subject_tokens.len() {
                         let rhs_tokens = trim_edge_punctuation(&subject_tokens[rhs_token_idx..]);
                         if !rhs_tokens.is_empty()
-                            && let Ok(filter) = parse_object_filter_lexed(&rhs_tokens, false)
+                            && let Ok(filter) = parse_object_filter_lexed(&rhs_tokens, true)
                         {
                             return Ok(TriggerSpec::Either(
                                 Box::new(TriggerSpec::ThisDies),
@@ -4478,7 +4656,8 @@ pub(crate) fn parse_trigger_clause_lexed(
                 return Ok(damaged_by_trigger);
             }
 
-            if let Ok(filter) = parse_object_filter_lexed(subject_tokens, other) {
+            if let Ok(mut filter) = parse_object_filter_lexed(subject_tokens, other) {
+                preserve_trigger_filter_union_surface(&mut filter, subject_tokens);
                 return Ok(if one_or_more {
                     TriggerSpec::DiesOneOrMore(filter)
                 } else {
@@ -4500,8 +4679,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                 idx += 1;
             }
             if normalized_subject_tokens.len() != subject_tokens.len()
-                && let Ok(filter) = parse_object_filter_lexed(&normalized_subject_tokens, other)
+                && let Ok(mut filter) = parse_object_filter_lexed(&normalized_subject_tokens, other)
             {
+                preserve_trigger_filter_union_surface(&mut filter, subject_tokens);
                 return Ok(if one_or_more {
                     TriggerSpec::DiesOneOrMore(filter)
                 } else {
@@ -4602,9 +4782,16 @@ pub(crate) fn parse_trigger_clause_lexed(
         _ if trigger_pattern_accepts(&words, BEGINNING_END_STEP_TRIGGER_PATTERN)
             && !trigger_pattern_accepts(&words, NEXT_END_STEP_TRIGGER_PATTERN) =>
         {
-            Ok(TriggerSpec::BeginningOfEndStep(
-                parse_possessive_clause_player_filter(&words),
-            ))
+            let player = parse_possessive_clause_player_filter(&words);
+            let definite_surface = player == PlayerFilter::Any
+                && words
+                    .windows(3)
+                    .any(|window| window == ["the", "end", "step"]);
+            Ok(if definite_surface {
+                TriggerSpec::BeginningOfTheEndStep
+            } else {
+                TriggerSpec::BeginningOfEndStep(player)
+            })
         }
         _ if trigger_pattern_accepts(&words, BEGINNING_UPKEEP_TRIGGER_PATTERN) => Ok(
             TriggerSpec::BeginningOfUpkeep(parse_possessive_clause_player_filter(&words)),

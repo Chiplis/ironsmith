@@ -15,6 +15,9 @@
     if let Some(compact) = describe_discard_reveal_hand_choose_discard_chosen(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_reveal_hand_choose_two_filters_then_discard(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_hand_choose_move(&filtered) {
         return compact;
     }
@@ -176,15 +179,23 @@
     {
         return compact;
     }
+    if filtered.len() == 4
+        && let Some(compact) = describe_reveal_hand_choose_two_filters_then_discard(&filtered)
+    {
+        return compact;
+    }
     if filtered.len() == 3
         && let Some(compact) = describe_reveal_hand_subset_choose_then_discard(&filtered)
     {
         return compact;
     }
     if filtered.len() == 4
-        && filtered[0]
+        && (filtered[0]
             .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
             .is_some()
+            || filtered[0]
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some())
         && let Some(compact) = describe_reveal_hand_subset_choose_then_discard(&filtered[1..])
     {
         return compact;

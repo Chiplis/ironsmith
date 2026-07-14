@@ -31,6 +31,7 @@ struct PlayerSubjectPhrase {
 
 const CONTROL_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
     subject_phrase(&["that", "player"], LeafPlayerReference::ThatPlayer),
+    subject_phrase(&["they"], LeafPlayerReference::ThatPlayer),
     subject_phrase(
         &["defending", "player"],
         LeafPlayerReference::DefendingPlayer,
@@ -69,6 +70,7 @@ const PLAYER_STATUS_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
 
 const PLAYER_HAS_QUANTITY_SUBJECT_PHRASES: &[PlayerSubjectPhrase] = &[
     subject_phrase(&["that", "player"], LeafPlayerReference::ThatPlayer),
+    subject_phrase(&["they"], LeafPlayerReference::ThatPlayer),
     subject_phrase(
         &["attacking", "player"],
         LeafPlayerReference::AttackingPlayer,

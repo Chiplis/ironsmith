@@ -32,6 +32,34 @@ fn parses_attacking_token_controller_subject_to_typed_filter() {
 }
 
 #[test]
+fn parses_relative_attachment_state_as_an_intrinsic_filter_constraint() {
+    for (text, expected_tag) in [
+        ("Creatures you control that are enchanted", "enchanted"),
+        ("Artifact you control that is equipped", "equipped"),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+            parse_exact_anthem_subject_grammar(&tokens)
+        else {
+            panic!("expected an attachment-qualified filter for {text}");
+        };
+
+        assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.tagged_constraints.len(), 1, "{filter:#?}");
+        assert_eq!(
+            filter.tagged_constraints[0].tag.as_str(),
+            expected_tag,
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.tagged_constraints[0].relation,
+            TaggedOpbjectRelation::IsTaggedObject,
+            "{filter:#?}"
+        );
+    }
+}
+
+#[test]
 fn classifies_speculative_fragments_without_suffix_recovery() {
     for fragment in [
         "all abilities and",

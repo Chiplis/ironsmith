@@ -74,15 +74,6 @@ impl EffectExecutor for EarthbendEffect {
                 );
                 execute_effect(game, &Effect::new(counters_effect), ctx)
             })?;
-        if counters_outcome.has_marker_change(|event| {
-            event.is_added()
-                && event.object() == Some(target_id)
-                && event.marker == CounterType::PlusOnePlusOne.into()
-        }) {
-            game.effect_store
-                .continuous_effects
-                .record_counter_change(target_id);
-        }
         events.extend(counters_outcome.events);
 
         let schedule = ScheduleDelayedTriggerEffect::new(

@@ -407,6 +407,88 @@ fn parse_permanent_gain_control_duration(
     Ok((shape.until, shape.condition, shape.source_surface))
 }
 
+fn parse_exiled_with_source_move_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::ExiledWithSourceMoveSurface> {
+    use ironsmith_core::{
+        ExiledWithSourceDestinationSurface as DestinationSurface, ExiledWithSourceMoveSurface,
+        ExiledWithSourceReferenceSurface as ReferenceSurface,
+        ExiledWithSourceSubjectSurface as SubjectSurface,
+    };
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let into = words.iter().position(|word| *word == "into")?;
+    let target_words = &words[..into];
+    let exiled = target_words.iter().position(|word| *word == "exiled")?;
+    let has_phrase = |phrase: &[&str]| {
+        target_words
+            .windows(phrase.len())
+            .any(|window| window == phrase)
+    };
+    let subject = if has_phrase(&["all", "cards"]) {
+        SubjectSurface::AllCards
+    } else if has_phrase(&["each", "card"]) {
+        SubjectSurface::EachCard
+    } else if has_phrase(&["one", "card"]) || has_phrase(&["a", "card"]) {
+        SubjectSurface::OneCard
+    } else if has_phrase(&["the", "exiled", "card"]) {
+        SubjectSurface::TheExiledCard
+    } else if has_phrase(&["the", "exiled", "cards"]) {
+        SubjectSurface::TheExiledCards
+    } else if has_phrase(&["the", "cards"]) {
+        SubjectSurface::TheCards
+    } else {
+        return None;
+    };
+
+    let source = if let Some(with_offset) = target_words[exiled..]
+        .iter()
+        .position(|word| *word == "with")
+    {
+        let source_words = &target_words[exiled + with_offset + 1..];
+        if source_words == ["it"] {
+            ReferenceSurface::It
+        } else {
+            let surface = crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(source_words)
+                .or_else(|| crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(source_words))?;
+            ReferenceSurface::Source(surface)
+        }
+    } else if matches!(
+        subject,
+        SubjectSurface::TheExiledCard | SubjectSurface::TheExiledCards
+    ) {
+        ReferenceSurface::Omitted
+    } else {
+        return None;
+    };
+
+    let destination_words = &words[into + 1..];
+    let destination_has = |phrase: &[&str]| {
+        destination_words
+            .windows(phrase.len())
+            .any(|window| window == phrase)
+    };
+    let destination = if destination_has(&["its", "owner"])
+        || destination_has(&["its", "owner's"])
+        || destination_has(&["its", "owners"])
+        || destination_has(&["its", "owners'"])
+    {
+        DestinationSurface::ItsOwner
+    } else if destination_has(&["their", "owners"]) || destination_has(&["their", "owners'"]) {
+        DestinationSurface::TheirOwners
+    } else if destination_has(&["their", "owner"]) || destination_has(&["their", "owner's"]) {
+        DestinationSurface::TheirOwner
+    } else {
+        DestinationSurface::ContextualPlayer
+    };
+
+    Some(ExiledWithSourceMoveSurface {
+        subject,
+        source,
+        destination,
+    })
+}
+
 pub(crate) fn parse_put_into_hand(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -484,6 +566,7 @@ pub(crate) fn parse_put_into_hand(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let exiled_with_source_surface = parse_exiled_with_source_move_surface(tokens);
 
     if let Some(shape) = cca_shapes::parse_revealed_remainder_shape(tokens) {
         let order = if shape.random_order {
@@ -494,7 +577,9 @@ pub(crate) fn parse_put_into_hand(
         return Ok(
             EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                 TagKey::from("__last_revealed__"),
-                Some(TagKey::from(IT_TAG)),
+                shape
+                    .exclude_current_reference
+                    .then(|| TagKey::from(IT_TAG)),
                 order,
                 cca_shapes::parse_destination_player(tokens).unwrap_or(player),
             ),
@@ -589,26 +674,38 @@ pub(crate) fn parse_put_into_hand(
     if let Some(filter_tokens) = cca_shapes::parse_all_exiled_into_hand_filter(tokens) {
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(wrap_return_with_delayed_timing(
-            EffectAst::subject_verb_return_all_to_hand(filter),
+            EffectAst::subject_verb_return_all_to_hand(filter)
+                .with_exiled_with_source_surface(exiled_with_source_surface.clone()),
             parse_put_into_hand_delayed_timing(tokens),
         ));
     }
 
     // "Put one of those cards on top of your library and the rest on the bottom of your library"
-    if let Some(choice_count) = cca_shapes::parse_tagged_on_top_library_shape(tokens) {
+    if let Some(shape) = cca_shapes::parse_tagged_on_top_library_shape(tokens) {
         let library_owner = cca_shapes::parse_destination_player(tokens).unwrap_or(player);
+        let looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens, "looked",
+        );
+        let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens, "chosen",
+        );
 
-        return Ok(EffectAst::subject_verb_rearrange_looked_cards_in_library(
-            library_owner,
-            TagKey::from(IT_TAG),
-            choice_count,
-        ));
+        return Ok(EffectAst::Sequence {
+            effects: EffectAst::compose_put_some_on_top_rest_on_bottom_of_library(
+                library_owner,
+                shape.count,
+                looked_tag,
+                chosen_tag,
+                shape.bottom_order,
+            ),
+        });
     }
 
     if let Some(put_shape) = cca_shapes::parse_tagged_into_hand_shape(tokens) {
         // "Put N of them into your hand and the rest on the bottom of your library in any order."
         if put_shape.rest_destination == Some(cca_shapes::RestDestinationShape::BottomOfLibrary)
             && let Some(choice_count) = put_shape.count
+            && let Some(bottom_order) = put_shape.bottom_order
         {
             let dest_player = cca_shapes::parse_destination_player(tokens).unwrap_or(player);
             let looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
@@ -624,6 +721,7 @@ pub(crate) fn parse_put_into_hand(
                     choice_count,
                     looked_tag,
                     chosen_tag,
+                    bottom_order,
                 ),
             });
         }
@@ -651,9 +749,14 @@ pub(crate) fn parse_put_into_hand(
             });
         }
 
+        let destination_player = cca_shapes::parse_destination_player(tokens).unwrap_or(player);
         let effect = EffectAst::subject_verb_put_into_hand(
-            player,
+            destination_player,
             ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
+        )
+        .with_move_to_zone_actor_surface(player)
+        .with_move_to_zone_plural_surface_if(
+            cca_shapes::is_plural_tagged_object_reference(tokens),
         );
         return Ok(wrap_return_with_delayed_timing(
             effect,
@@ -689,7 +792,7 @@ pub(crate) fn parse_put_into_hand(
             cca_shapes::DestinationFirstTargetShape::Objects(target_tokens) => {
                 if cca_shapes::starts_with_all_or_each(target_tokens) {
                     let filter = parse_object_filter(&target_tokens[1..], false)?;
-                    return Ok(EffectAst::subject_verb_return_all_to_battlefield(
+                    return Ok(EffectAst::subject_verb_put_all_onto_battlefield(
                         filter,
                         shape.tapped,
                         shape.face_down,
@@ -746,17 +849,54 @@ pub(crate) fn parse_put_into_hand(
         } else {
             parse_target_phrase(shape.target_tokens)?
         };
-        return Ok(EffectAst::subject_verb_move_to_zone(
-            target,
-            Zone::Library,
-            shape.placement == cca_shapes::LibraryPlacementShape::Top,
-            ReturnControllerAst::Preserve,
-            false,
-            None,
-        ));
+        let moves_all = cca_shapes::starts_with_all_or_each(shape.target_tokens)
+            || cca_shapes::is_exhaustive_hand_collection(shape.target_tokens);
+        let order = shape.order.map(|order| match order {
+            cca_shapes::LibraryPlacementOrderShape::Random => {
+                crate::cards::builders::LibraryBottomOrderAst::Random
+            }
+            cca_shapes::LibraryPlacementOrderShape::ChooserChooses => {
+                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
+            }
+        });
+        let effect = if moves_all {
+            EffectAst::subject_verb_move_all_to_zone(
+                target,
+                Zone::Library,
+                shape.placement == cca_shapes::LibraryPlacementShape::Top,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+        } else {
+            EffectAst::subject_verb_move_to_zone(
+                target,
+                Zone::Library,
+                shape.placement == cca_shapes::LibraryPlacementShape::Top,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+        };
+        return Ok(effect
+            .with_library_order(order, player)
+            .with_destination_player_surface(cca_shapes::parse_destination_player(
+                shape.destination_tokens,
+            ))
+            .with_destination_player_reference_surface(
+                cca_shapes::parse_destination_player_reference_surface(shape.destination_tokens),
+            )
+            .with_move_to_zone_actor_surface(player)
+            .with_move_to_zone_plural_surface_if(
+                cca_shapes::is_plural_tagged_object_reference(shape.target_tokens),
+            ));
     }
 
     if let Some(shape) = cca_shapes::parse_into_destination_shape(tokens) {
+        let destination_player_surface =
+            cca_shapes::parse_destination_player(shape.destination_tokens);
+        let destination_player_reference_surface =
+            cca_shapes::parse_destination_player_reference_surface(shape.destination_tokens);
         let zone = if let Some(zone) = shape.zone {
             Some(zone)
         } else if let Some(position) =
@@ -784,7 +924,10 @@ pub(crate) fn parse_put_into_hand(
                     ReturnControllerAst::Preserve,
                     false,
                     None,
-                ));
+                )
+                .with_destination_player_surface(destination_player_surface)
+                .with_destination_player_reference_surface(destination_player_reference_surface)
+                .with_move_to_zone_actor_surface(player));
             }
 
             if zone == Zone::Hand {
@@ -814,9 +957,14 @@ pub(crate) fn parse_put_into_hand(
                 }
 
                 if cca_shapes::is_tagged_object_reference(shape.target_tokens) {
+                    let destination_player = destination_player_surface.unwrap_or(player);
                     let effect = EffectAst::subject_verb_put_into_hand(
-                        player,
+                        destination_player,
                         ObjectRefAst::Tagged(TagKey::from(IT_TAG)),
+                    )
+                    .with_move_to_zone_actor_surface(player)
+                    .with_move_to_zone_plural_surface_if(
+                        cca_shapes::is_plural_tagged_object_reference(shape.target_tokens),
                     );
                     return Ok(wrap_return_with_delayed_timing(effect, delayed_hand_timing));
                 }
@@ -841,7 +989,14 @@ pub(crate) fn parse_put_into_hand(
                     false,
                     None,
                 )
-            };
+            }
+            .with_destination_player_surface(destination_player_surface)
+            .with_destination_player_reference_surface(destination_player_reference_surface)
+            .with_exiled_with_source_surface(exiled_with_source_surface.clone())
+            .with_move_to_zone_actor_surface(player)
+            .with_move_to_zone_plural_surface_if(
+                cca_shapes::is_plural_tagged_object_reference(shape.target_tokens),
+            );
             return Ok(if zone == Zone::Hand {
                 wrap_return_with_delayed_timing(effect, delayed_hand_timing)
             } else {
@@ -934,6 +1089,92 @@ pub(crate) fn parse_put_into_hand(
             .map(cca_controller)
             .unwrap_or(ReturnControllerAst::Preserve);
 
+        if let Some(choice_shape) =
+            crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+                target_tokens,
+            )
+        {
+            use crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor;
+
+            let chooser = match choice_shape.actor {
+                PossessiveObjectChoiceActor::You => Some(PlayerAst::You),
+                PossessiveObjectChoiceActor::SubjectPlayer => {
+                    extract_subject_player(subject.clone())
+                }
+                // An object-controller phrase needs a previously established
+                // object antecedent; leave it to the ordinary target path when
+                // the selected object itself would be circular.
+                PossessiveObjectChoiceActor::ObjectController => None,
+            };
+            if let Some(chooser) = chooser {
+                let parsed_target = parse_target_phrase(&choice_shape.object_tokens)?;
+                let (mut filter, count) = match parsed_target {
+                    TargetAst::Object(filter, _, _) => {
+                        (filter, crate::effect::ChoiceCount::exactly(1))
+                    }
+                    TargetAst::WithCount(inner, count) => match *inner {
+                        TargetAst::Object(filter, _, _) => (filter, count),
+                        _ => {
+                            return Err(CardTextError::ParseError(format!(
+                                "choice-owned battlefield move requires an object (clause: '{}')",
+                                clause_words.join(" ")
+                            )));
+                        }
+                    },
+                    _ => {
+                        return Err(CardTextError::ParseError(format!(
+                            "choice-owned battlefield move requires an object (clause: '{}')",
+                            clause_words.join(" ")
+                        )));
+                    }
+                };
+                if let Some(choice_owner) = crate::runtime_backend::families::activation_and_restrictions::controller_filter_for_token_player(
+                    chooser.clone(),
+                ) {
+                    if filter.owner == Some(PlayerFilter::IteratedPlayer) {
+                        filter.owner = Some(choice_owner.clone());
+                    }
+                    if filter.controller == Some(PlayerFilter::IteratedPlayer) {
+                        filter.controller = Some(choice_owner);
+                    }
+                }
+                let tag =
+                    crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                        target_tokens,
+                        "chosen",
+                    );
+                let choose = EffectAst::ChooseObjects {
+                    filter,
+                    count,
+                    count_value: None,
+                    player: chooser,
+                    tag: tag.clone(),
+                };
+                let move_chosen = EffectAst::subject_verb_move_to_zone_with_attacking(
+                    TargetAst::Tagged(tag, span_from_tokens(target_tokens)),
+                    Zone::Battlefield,
+                    false,
+                    battlefield_controller,
+                    destination_shape.tapped,
+                    destination_shape.attacking,
+                    destination_shape.face_down,
+                    attached_to_target.clone(),
+                );
+                let effect = EffectAst::Sequence {
+                    effects: vec![choose, move_chosen],
+                };
+                return Ok(if let Some(predicate) = trailing_predicate {
+                    EffectAst::Conditional {
+                        predicate,
+                        if_true: vec![effect],
+                        if_false: Vec::new(),
+                    }
+                } else {
+                    effect
+                });
+            }
+        }
+
         if cca_shapes::starts_with_all_or_each(target_tokens) {
             let mut filter = parse_object_filter(&target_tokens[1..], false)?;
             if cca_shapes::contains_from_it(&target_tokens[1..]) {
@@ -961,7 +1202,7 @@ pub(crate) fn parse_put_into_hand(
                     ];
                 }
             }
-            let effect = EffectAst::subject_verb_return_all_to_battlefield(
+            let effect = EffectAst::subject_verb_put_all_onto_battlefield(
                 filter,
                 destination_shape.tapped,
                 destination_shape.face_down,
@@ -1000,6 +1241,10 @@ pub(crate) fn parse_put_into_hand(
             destination_shape.attacking,
             destination_shape.face_down,
             attached_to_target,
+        )
+        .with_move_to_zone_actor_surface(player)
+        .with_move_to_zone_plural_surface_if(
+            cca_shapes::is_plural_tagged_object_reference(target_tokens),
         );
         return Ok(if let Some(predicate) = trailing_predicate {
             EffectAst::Conditional {

@@ -89,7 +89,4 @@ use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects
 use super::parser_support::split_tokens_for_parse;
 use super::reference_model::ReferenceEnv;
 use super::restriction_support::apply_pending_mana_restrictions;
-use super::util::{
-    find_first_sacrifice_cost_choice_tag, find_last_exile_cost_choice_tag,
-    join_sentences_with_period, parse_level_up_line_lexed,
-};
+use super::util::{join_sentences_with_period, parse_level_up_line_lexed};

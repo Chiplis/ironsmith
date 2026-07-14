@@ -5,12 +5,17 @@ impl WasmGame {
         starting_life: i32,
         seed: u64,
     ) {
+        let player_count = player_names.len();
         self.game = GameState::new_with_runtime_id_reset(player_names, starting_life);
         // Card definitions are a session-level catalog, not match state. In the
         // lean WASM build the browser loads per-card sources on demand before
         // validation; resetting the registry here would drop those definitions
         // before startMatch/reveals use them.
         self.game.set_random_seed(seed);
+        self.manabrew_game_id = format!("ironsmith-{seed:016x}");
+        self.manabrew_human_players = vec![true; player_count];
+        self.manabrew_next_prompt_id = 1;
+        self.manabrew_open_prompt = None;
         self.match_format = MatchFormatInput::Normal;
         self.pregame = None;
         self.loaded_decks = Vec::new();
@@ -212,18 +217,6 @@ impl WasmGame {
             .collect()
     }
 
-    fn parsed_pregame_begin_on_battlefield_spec(
-        &self,
-        card_id: ObjectId,
-        ability_index: usize,
-    ) -> Option<ironsmith::static_abilities::PregameBeginOnBattlefieldSpec> {
-        match self.parsed_pregame_action_kind(card_id, ability_index)? {
-            ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => Some(spec),
-            ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
-            | ironsmith::static_abilities::PregameActionKind::ChooseColor => None,
-        }
-    }
-
     fn parsed_pregame_action_kind(
         &self,
         card_id: ObjectId,
@@ -234,6 +227,28 @@ impl WasmGame {
             return None;
         };
         static_ability.pregame_action_kind()
+    }
+
+    fn parsed_pregame_action_effects(
+        &self,
+        card_id: ObjectId,
+        ability_index: usize,
+    ) -> Option<Vec<ironsmith::effect::Effect>> {
+        let ability = self.game.object(card_id)?.abilities.get(ability_index)?;
+        let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        static_ability
+            .pregame_action_effects()
+            .map(|effects| effects.to_vec())
+    }
+
+    fn opening_pregame_action_was_used(&self, card_id: ObjectId, ability_index: usize) -> bool {
+        self.pregame.as_ref().is_some_and(|pregame| {
+            pregame
+                .used_opening_actions
+                .contains(&(card_id, ability_index))
+        })
     }
 
     fn is_mulligan_redraw_pregame_action(&self, card_id: ObjectId, ability_index: usize) -> bool {
@@ -273,19 +288,27 @@ impl WasmGame {
                 continue;
             };
             for (ability_index, ability) in object.abilities.iter().enumerate() {
+                if self.opening_pregame_action_was_used(card_id, ability_index) {
+                    continue;
+                }
                 let ironsmith::ability::AbilityKind::Static(static_ability) = &ability.kind else {
                     continue;
                 };
-                let Some(ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(spec)) =
-                    static_ability.pregame_action_kind()
-                else {
+                let Some(kind) = static_ability.pregame_action_kind() else {
                     continue;
                 };
-                if spec.require_not_starting_player && starting_player == Some(player) {
-                    continue;
-                }
-                if other_cards_in_hand < spec.exile_cards_from_hand {
-                    continue;
+                match kind {
+                    ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => {
+                        if spec.require_not_starting_player && starting_player == Some(player) {
+                            continue;
+                        }
+                        if other_cards_in_hand < spec.exile_cards_from_hand {
+                            continue;
+                        }
+                    }
+                    ironsmith::static_abilities::PregameActionKind::RevealFromOpeningHand(_) => {}
+                    ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
+                    | ironsmith::static_abilities::PregameActionKind::ChooseColor => continue,
                 }
                 actions.push(LegalAction::UsePregameAction {
                     card_id,
@@ -294,6 +317,91 @@ impl WasmGame {
             }
         }
         actions
+    }
+
+    fn reveal_opening_hand_card_publicly(&mut self, player: PlayerId, card_id: ObjectId) {
+        let description = self
+            .game
+            .object(card_id)
+            .map(|object| format!("Reveal {} from opening hand", object.name))
+            .unwrap_or_else(|| "Reveal a card from opening hand".to_string());
+        for viewer_index in 0..self.game.players.len() {
+            let viewer = PlayerId::from_index(viewer_index as u8);
+            let view_ctx = ViewCardsContext::new(
+                viewer,
+                player,
+                Some(card_id),
+                Zone::Hand,
+                description.clone(),
+            )
+            .with_public(true);
+            merge_active_viewed_cards(
+                &self.game,
+                &mut self.active_viewed_cards,
+                viewer,
+                &[card_id],
+                &view_ctx,
+            );
+            merge_audit_viewed_cards(
+                &self.game,
+                &mut self.active_audit_viewed_cards,
+                viewer,
+                &[card_id],
+                &view_ctx,
+            );
+        }
+    }
+
+    fn execute_opening_hand_reveal_action(
+        &mut self,
+        player: PlayerId,
+        card_id: ObjectId,
+        ability_index: usize,
+    ) -> Result<(), JsValue> {
+        if self.opening_pregame_action_was_used(card_id, ability_index) {
+            return Err(JsValue::from_str(
+                "that opening-hand pregame action was already used",
+            ));
+        }
+        let effects = self
+            .parsed_pregame_action_effects(card_id, ability_index)
+            .filter(|effects| !effects.is_empty())
+            .ok_or_else(|| {
+                JsValue::from_str("opening-hand reveal action has no typed consequence")
+            })?;
+
+        let mut decision_maker = WasmReplayDecisionMaker::new(&[]);
+        for effect in &effects {
+            let mut ctx =
+                ironsmith::effects::EffectContext::new(card_id, player, &mut decision_maker);
+            ironsmith::effects::execute_effect(&mut self.game, effect, &mut ctx).map_err(
+                |err| {
+                    JsValue::from_str(&format!(
+                        "failed to register opening-hand reveal consequence: {err}"
+                    ))
+                },
+            )?;
+        }
+        let (pending_context, viewed_cards, audit_viewed_cards) = decision_maker.finish();
+        if pending_context.is_some() {
+            return Err(JsValue::from_str(
+                "opening-hand reveal consequence unexpectedly requested a decision",
+            ));
+        }
+        self.active_viewed_cards =
+            merge_carried_active_viewed_cards(self.active_viewed_cards.take(), viewed_cards);
+        self.active_audit_viewed_cards.extend(audit_viewed_cards);
+
+        self.reveal_opening_hand_card_publicly(player, card_id);
+        let Some(pregame) = self.pregame.as_mut() else {
+            return Err(JsValue::from_str(
+                "pregame state disappeared while registering an opening-hand reveal",
+            ));
+        };
+        pregame
+            .used_opening_actions
+            .insert((card_id, ability_index));
+        Ok(())
     }
 
     fn shuffle_hand_into_library_and_draw(&mut self, player: PlayerId, opening_hand_size: usize) {
@@ -505,8 +613,7 @@ impl WasmGame {
                 let Some(PregameState {
                     stage:
                         PregameStage::MulliganDecision {
-                            undecided_players,
-                            ..
+                            undecided_players, ..
                         },
                     ..
                 }) = self.pregame.as_mut()
@@ -564,6 +671,7 @@ impl WasmGame {
                     ));
                 }
                 *current_index += 1;
+                self.active_viewed_cards = None;
             }
             LegalAction::UsePregameAction {
                 card_id,
@@ -621,12 +729,34 @@ impl WasmGame {
                         "pregame action source must be in the current player's hand",
                     ));
                 }
-                let Some(spec) =
-                    self.parsed_pregame_begin_on_battlefield_spec(card_id, ability_index)
-                else {
+                if self.opening_pregame_action_was_used(card_id, ability_index) {
+                    return Err(JsValue::from_str(
+                        "that opening-hand pregame action was already used",
+                    ));
+                }
+                let Some(kind) = self.parsed_pregame_action_kind(card_id, ability_index) else {
                     return Err(JsValue::from_str(
                         "selected ability is not a supported pregame action",
                     ));
+                };
+                let spec = match kind {
+                    ironsmith::static_abilities::PregameActionKind::RevealFromOpeningHand(_) => {
+                        self.execute_opening_hand_reveal_action(
+                            player,
+                            card_id,
+                            ability_index,
+                        )?;
+                        return Ok(());
+                    }
+                    ironsmith::static_abilities::PregameActionKind::BeginOnBattlefield(spec) => {
+                        spec
+                    }
+                    ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
+                    | ironsmith::static_abilities::PregameActionKind::ChooseColor => {
+                        return Err(JsValue::from_str(
+                            "selected ability is not a supported opening pregame action",
+                        ));
+                    }
                 };
                 if spec.require_not_starting_player
                     && self.game.turn_store.turn_order.first().copied() == Some(player)
@@ -655,6 +785,7 @@ impl WasmGame {
                         PregameStage::OpeningActions {
                             pending_hand_exile, ..
                         },
+                    used_opening_actions,
                     ..
                 }) = self.pregame.as_mut()
                 else {
@@ -668,6 +799,7 @@ impl WasmGame {
                         source: new_id,
                         amount: exile_cards_from_hand,
                     });
+                used_opening_actions.insert((card_id, ability_index));
             }
             other => {
                 return Err(JsValue::from_str(&format!(
@@ -904,6 +1036,7 @@ impl WasmGame {
         }
 
         self.pending_decision = None;
+        self.manabrew_open_prompt = None;
         self.advance_until_decision()?;
         self.snapshot()
     }
@@ -914,7 +1047,8 @@ impl WasmGame {
         for player_id in player_ids {
             let _ = self.game.draw_cards(player_id, opening_hand_size);
         }
-        let pregame_order: Vec<PlayerId> = self.game.players.iter().map(|player| player.id).collect();
+        let pregame_order: Vec<PlayerId> =
+            self.game.players.iter().map(|player| player.id).collect();
         self.pregame = Some(PregameState::new(
             &pregame_order,
             opening_hand_size,

@@ -268,12 +268,37 @@ fn resolve_runtime_modification(
             name_override_surface,
             add_supertypes,
         } => {
-            let source = resolve_objects_for_effect(game, ctx, source)?
-                .into_iter()
-                .next()
-                .ok_or(ExecutionError::InvalidTarget)?;
+            let sacrificed_snapshot = source
+                .sacrificed_object_kind()
+                .and_then(|_| match source.base() {
+                    ChooseSpec::Tagged(tag) => ctx.get_tagged(tag.as_str()).cloned(),
+                    _ => None,
+                });
+            let source_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
+                snapshot.object_id
+            } else {
+                resolve_objects_for_effect(game, ctx, source)?
+                    .into_iter()
+                    .next()
+                    .ok_or(ExecutionError::InvalidTarget)?
+            };
+            let copiable_values = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
+                snapshot.copiable_values.clone()
+            } else {
+                let effects = game.all_continuous_effects();
+                crate::continuous::copiable_values_with_effects(
+                    source_id,
+                    game.objects_map(),
+                    &effects,
+                    &game.battlefield,
+                    game.commander_objects(),
+                    game,
+                )
+                .ok_or(ExecutionError::InvalidTarget)?
+            };
             Ok(Modification::CopyOf {
-                target_id: source,
+                target_id: source_id,
+                copiable_values: Box::new(copiable_values),
                 preserve_source_abilities: *preserve_source_abilities,
                 name_override: name_override.clone(),
                 name_override_surface: name_override_surface.clone(),
@@ -606,7 +631,10 @@ mod tests {
     use crate::object::Object;
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
-    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::target::{
+        ChooseSpecSurfaceHint, ObjectFilter, SacrificedObjectKind, TaggedObjectConstraint,
+        TaggedOpbjectRelation,
+    };
     use crate::types::{CardType, Supertype};
     use crate::zone::Zone;
 
@@ -624,6 +652,52 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    fn create_land(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Land])
+            .build();
+        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn temporary_creature_type_addition_keeps_and_then_restores_land_type() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Animator", alice);
+        let land = create_land(&mut game, "Animated Land", alice);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = Effect::new(
+            ApplyContinuousEffect::new(
+                EffectTarget::Specific(land),
+                Modification::AddCardTypes(vec![CardType::Creature]),
+                Until::EndOfTurn,
+            )
+            .with_additional_modification(Modification::SetPowerToughness {
+                power: Value::Fixed(3),
+                toughness: Value::Fixed(3),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            })
+            .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand)),
+        );
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("animate land");
+        assert!(game.current_card_types(land).is_some_and(|types| {
+            types.contains(&CardType::Land) && types.contains(&CardType::Creature)
+        }));
+        assert_eq!(game.current_power(land), Some(3));
+        assert_eq!(game.current_toughness(land), Some(3));
+
+        game.next_turn();
+        assert!(game.current_card_types(land).is_some_and(|types| {
+            types.contains(&CardType::Land) && !types.contains(&CardType::Creature)
+        }));
+        assert_eq!(game.current_power(land), None);
+        assert_eq!(game.current_toughness(land), None);
     }
 
     #[test]
@@ -692,6 +766,53 @@ mod tests {
         assert!(current.supertypes.contains(&Supertype::Legendary));
         assert_eq!(current.power, Some(2));
         assert_eq!(current.toughness, Some(2));
+    }
+
+    #[test]
+    fn sacrificed_continuous_copy_source_persists_snapshot_backed_values() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let copy_target = create_creature(&mut game, "Dane", alice);
+        let sacrificed = create_creature(&mut game, "Battlefield Form", alice);
+        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(sacrificed).expect("sacrifice source exists"),
+            &game,
+        );
+        let graveyard_id = game
+            .move_object(
+                sacrificed,
+                Zone::Graveyard,
+                crate::events::EventCause::effect(),
+            )
+            .expect("sacrifice source moves");
+        game.object_mut(graveyard_id)
+            .expect("moved card exists")
+            .name = "Graveyard Form".into();
+
+        let mut ctx = ExecutionContext::new_default(copy_target, alice);
+        ctx.set_tagged_objects("sacrifice_cost_0", vec![snapshot]);
+        let source = ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0")).with_surface_hint(
+            ChooseSpecSurfaceHint::SacrificedObject(SacrificedObjectKind::Creature),
+        );
+        let effect = Effect::new(ApplyContinuousEffect::new_runtime(
+            EffectTarget::Specific(copy_target),
+            RuntimeModification::CopyOf {
+                source,
+                preserve_source_abilities: true,
+                name_override: None,
+                name_override_surface: None,
+                add_supertypes: Vec::new(),
+            },
+            Until::EndOfTurn,
+        ));
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("apply snapshot-backed copy");
+        assert_eq!(
+            game.current_characteristics(copy_target)
+                .expect("copied characteristics")
+                .name,
+            "Battlefield Form"
+        );
     }
 
     #[test]

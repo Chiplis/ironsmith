@@ -24,6 +24,7 @@ use crate::game_state::{GameState, Phase};
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
+use crate::snapshot::CopiableValues;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::triggers::TriggerQueue;
 use crate::types::{CardType, Subtype};
@@ -1744,6 +1745,8 @@ fn test_clone_copies_base_not_modifications() {
         .power_toughness(PowerToughness::fixed(0, 0))
         .build();
     let clone_id = game.create_object_from_card(&clone_card, alice, Zone::Battlefield);
+    let bear_copiable_values =
+        CopiableValues::from_object(game.object(bear_id).expect("bear should exist"));
 
     // Apply copy effect in Layer 1
     let copy_effect = ContinuousEffect::new(
@@ -1752,6 +1755,7 @@ fn test_clone_copies_base_not_modifications() {
         EffectTarget::Source,
         Modification::CopyOf {
             target_id: bear_id,
+            copiable_values: Box::new(bear_copiable_values),
             preserve_source_abilities: false,
             name_override: None,
             name_override_surface: None,

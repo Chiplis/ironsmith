@@ -1311,6 +1311,18 @@ fn tagged_objects_for_trigger_event_impl(
             vec![snapshot],
         );
     }
+    if let Some(cast) = trigger_event.downcast::<crate::events::SpellCastEvent>()
+        && let Some(spell) = game.object(cast.spell)
+        && let Some(snapshots) = spell
+            .cast_tagged_objects
+            .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
+        && !snapshots.is_empty()
+    {
+        tagged.insert(
+            crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG),
+            snapshots.clone(),
+        );
+    }
     if include_other_attackers
         && let Some(attacked) =
             trigger_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
@@ -2660,7 +2672,7 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::You => player == controller,
         PlayerFilter::NotYou => player != controller,
         PlayerFilter::Opponent => player != controller,
-        PlayerFilter::Target(_) => true,
+        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => true,
         PlayerFilter::Specific(id) => player == *id,
         PlayerFilter::MostLifeTied => game
             .players

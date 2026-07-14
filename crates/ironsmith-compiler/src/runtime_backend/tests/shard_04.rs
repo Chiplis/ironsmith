@@ -269,10 +269,7 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_leading_this_turn_targeted_
     assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
     assert!(debug.contains("AttacksAndIsntBlocked"), "{debug}");
     assert!(debug.contains("IfResult"), "{debug}");
-    assert!(
-        debug.contains("PreventAllCombatDamageFromSource"),
-        "{debug}"
-    );
+    assert!(debug.contains("AssignNoCombatDamage"), "{debug}");
     assert!(debug.contains("source: Tagged"), "{debug}");
 }
 
@@ -528,6 +525,50 @@ pub(super) fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_gr
 }
 
 #[test]
+pub(super) fn gather_the_pack_replacement_keeps_revealed_source_set_for_remainder() {
+    let text = "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, put up to two creature cards from among the revealed cards into your hand instead of one.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gather the Pack")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("Gather the Pack should lower with its self-replacement");
+    let program = def.spell_effect.as_ref().expect("spell resolution");
+    let segment = program.segments.first().expect("resolution segment");
+    let replacement = segment
+        .self_replacements
+        .first()
+        .expect("spell-mastery replacement");
+    let choose = replacement
+        .replacement_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .expect("replacement creature choice");
+    assert_eq!(choose.zone, Some(Zone::Library));
+    assert_eq!(choose.filter.zone, Some(Zone::Library));
+    let revealed_source = choose
+        .filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint
+                    .tag
+                    .as_str()
+                    .starts_with("__sentence_helper_revealed_")
+        })
+        .map(|constraint| constraint.tag.clone())
+        .expect("choice should be scoped to the revealed collection");
+    let remainder = replacement
+        .replacement_effects
+        .iter()
+        .filter_map(|effect| {
+            effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+        })
+        .find(|for_each| for_each.tag == revealed_source)
+        .expect("remainder should iterate the revealed source collection");
+    assert_ne!(remainder.tag, choose.tag);
+}
+
+#[test]
 pub(super) fn rewrite_lexed_effect_sequence_preserves_reveal_top_counted_match_hand_rest_graveyard_bundle()
  {
     let text = "Reveal the top five cards of your library. Put up to two instant and/or sorcery cards from among them into your hand and the rest into your graveyard.";
@@ -612,6 +653,29 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_counted_battlefield_rest_b
     assert!(debug.contains("max: Some(2)"), "{debug}");
     assert!(debug.contains("ForEachTagged"), "{debug}");
     assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_moves_all_matching_viewed_cards_without_choice() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top X cards of your library. Put all land cards from among them onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match mandatory all-matching remainder sequence");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("TagMatchingObjects"), "{debug}");
+    assert!(!debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(debug.contains("battlefield_tapped: true"), "{debug}");
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
@@ -985,9 +1049,12 @@ pub(super) fn rewrite_sequence_registry_matches_may_cast_target_graveyard_spell_
         "may-cast-target-graveyard-spell-then-exile-replacement"
     );
     assert_eq!(matched.consumed_sentences, 2);
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("TargetOnly"), "{debug}");
+    assert!(debug.contains("TagAffected"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("IfResult"), "{debug}");
     assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
+    assert!(debug.contains("cause_policy: Any"), "{debug}");
 }
 
 #[test]
@@ -1032,10 +1099,49 @@ pub(super) fn rewrite_sequence_registry_matches_may_cast_target_graveyard_artifa
         "may-cast-target-graveyard-spell-then-exile-replacement"
     );
     assert_eq!(matched.consumed_sentences, 2);
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("TargetOnly"), "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_indefinite_creature_death_uses_multi_use_future_replacement() {
+    let lexed = lex_line("If a creature would die this turn, exile it instead.", 0)
+        .expect("future creature replacement should lex");
+    let parsed =
+        parse_effect_sentence_lexed(&lexed).expect("future creature replacement should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("duration: UntilEndOfTurn"), "{debug}");
+    assert!(debug.contains("cause_policy: Any"), "{debug}");
+    assert!(debug.contains("link_exiled_to_source: false"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_filtered_future_exile_and_delayed_return_links_all_objects() {
+    let sentences = registry_sentence_inputs(
+        "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. Return it to the battlefield under its owner's control at the beginning of the next end step.",
+    );
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("filtered future replacement sequence should match");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "filtered-future-exile-then-return-next-end-step"
+    );
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("duration: UntilEndOfTurn"), "{debug}");
+    assert!(debug.contains("cause_policy: Any"), "{debug}");
+    assert!(debug.contains("link_exiled_to_source: true"), "{debug}");
+    assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
+    assert!(debug.contains(crate::tag::SOURCE_EXILED_TAG), "{debug}");
+    assert!(debug.contains("controller: Owner"), "{debug}");
 }
 
 #[test]
@@ -1888,7 +1994,11 @@ pub(super) fn rewrite_lexed_effect_sequence_parses_may_rearrange_looked_cards_bu
 
     assert!(debug.contains("lookattopcards"), "{debug}");
     assert!(debug.contains("powerof"), "{debug}");
-    assert!(debug.contains("rearrangelookedcardsinlibrary"), "{debug}");
+    assert!(debug.contains("choosetaggedobjectsinzone"), "{debug}");
+    assert!(
+        debug.contains("puttaggedremainderonbottomoflibrary"),
+        "{debug}"
+    );
     assert!(
         debug.contains("min: 1") && debug.contains("dynamic_x: false"),
         "{debug}"
@@ -2147,6 +2257,83 @@ pub(super) fn rewrite_lexed_effect_sequence_parses_up_to_counted_looked_cards_in
 }
 
 #[test]
+pub(super) fn rewrite_lexed_reveal_top_optional_subset_preserves_split_random_remainder() {
+    let text = "Reveal the top X cards of your library, where X is the number of creature cards in your graveyard. You may put a green permanent card with mana value X or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("Hatchery Spider sequence should lex");
+
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("reveal-top subset sequence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("IsTaggedObject"), "{debug}");
+    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+    assert!(debug.contains("keep_tagged: Some"), "{debug}");
+    assert!(debug.contains("order: Random"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_lexed_reveal_top_counted_subset_preserves_inline_random_remainder() {
+    let text = "Reveal the top eight cards of your library. Put up to two noncreature artifact cards with total mana value less than or equal to the sacrificed artifact's mana value from among them onto the battlefield and the rest on the bottom of your library in a random order.";
+    let lexed = lex_line(text, 0).expect("Smelting Vat sequence should lex");
+
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("inline reveal-top subset sequence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("IsTaggedObject"), "{debug}");
+    assert!(
+        debug.contains("ChooseObjectsWithAggregateConstraint"),
+        "{debug}"
+    );
+    assert!(debug.contains("metric: ManaValue"), "{debug}");
+    assert!(debug.contains("sacrifice_cost_0"), "{debug}");
+    assert!(
+        !debug.contains("mana_value: Some"),
+        "the total mana-value limit must constrain the selected group, not each card: {debug}"
+    );
+    assert!(
+        debug.contains("min: 0") && debug.contains("max: Some(2)"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+    assert!(debug.contains("keep_tagged: Some"), "{debug}");
+    assert!(debug.contains("order: Random"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_lexed_reveal_top_subset_preserves_inline_graveyard_remainder() {
+    let text = "Reveal the top five cards of your library. Put a land card from among them onto the battlefield and the rest into your graveyard.";
+    let lexed = lex_line(text, 0).expect("Cavalier of Thorns sequence should lex");
+
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("inline reveal-top graveyard sequence should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("IsTaggedObject"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+    assert!(debug.contains("keep_tagged"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
 pub(super) fn rewrite_lexed_effect_sequence_parses_optional_consult_battlefield_graveyard_family() {
     let text = "You may reveal cards from the top of your library until you reveal a land card. If you do, put that card onto the battlefield and put all other cards revealed this way into your graveyard.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify optional consult text");
@@ -2368,6 +2555,23 @@ pub(super) fn rewrite_lexed_three_way_looked_card_dispositions_keep_distinct_sub
         );
         assert!(debug.contains("to_top: false"), "{text}: {debug}");
     }
+}
+
+#[test]
+pub(super) fn rewrite_lexed_counted_looked_card_partition_tags_the_exact_remainder() {
+    let text = "Look at the top three cards of your library. Put two of them into your hand and the other into your graveyard. Dark Bargain deals 2 damage to you.";
+    let lexed = lex_line(text, 0).expect("counted looked-card partition should lex");
+    let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("counted looked-card partition should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("min: 2"), "{debug}");
+    assert!(debug.contains("TagMatchingObjects"), "{debug}");
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
 }
 
 #[test]
@@ -2831,6 +3035,25 @@ pub(super) fn rewrite_lowered_ardenvale_paladin_adamant_counter_condition_keeps_
 }
 
 #[test]
+pub(super) fn rewrite_lowered_keeps_counter_entry_before_conditional_tapped_entry()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Counter Entry Variant")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "This creature enters with a number of stun counters on it equal to three minus X. If X is 2 or less, it enters tapped."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("EnterWithCounters"), "{debug}");
+    assert!(debug.contains("XTimes(\n                    -1"), "{debug}");
+    assert!(debug.contains("enters tapped"), "{debug}");
+    Ok(())
+}
+
+#[test]
 pub(super) fn rewrite_lexed_effect_sentence_supports_spent_to_cast_followup_on_that_permanent() {
     let text = "Tap target artifact or creature an opponent controls. If {S} was spent to cast this spell, that permanent doesn't untap during its controller's next untap step.";
     let lexed = lex_line(text, 0)
@@ -3097,10 +3320,50 @@ pub(super) fn rewrite_lowered_binds_event_object_intervening_if_to_triggering_ob
     )?;
 
     let debug = format!("{definition:#?}");
-    assert!(debug.contains("TaggedObjectMatches"), "{debug}");
+    assert!(debug.contains("TaggedObjectMatchedLastKnown"), "{debug}");
     assert!(debug.contains("\"triggering\""), "{debug}");
+    assert!(!debug.contains("TaggedObjectMatches("), "{debug}");
     assert!(!debug.contains("TargetMatches"), "{debug}");
     assert!(debug.contains("CreateTokenEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_lowered_preserves_negative_last_known_death_gate() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Infernal Vessel Variant")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "When this creature dies, if it wasn't a Demon, return it to the battlefield under its owner's control with two +1/+1 counters on it. It's a Demon in addition to its other types."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("Not("), "{debug}");
+    assert!(debug.contains("TaggedObjectMatchedLastKnown"), "{debug}");
+    assert!(debug.contains("Demon"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_lowered_keeps_followup_death_lki_as_body_conditional()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Overgrowth Variant")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Whenever another creature you control dies, you gain 1 life. If that creature was an Elemental, put a +1/+1 counter on this creature."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("GainLifeEffect"), "{debug}");
+    assert!(debug.contains("ConditionalEffect"), "{debug}");
+    assert!(debug.contains("TaggedObjectMatchedLastKnown"), "{debug}");
+    assert!(debug.contains("Elemental"), "{debug}");
     Ok(())
 }
 
@@ -3499,6 +3762,64 @@ pub(super) fn rewrite_lowered_each_player_gains_control_of_owned_objects_uses_it
     assert!(
         !debug.contains("ChangeControllerToEffectController"),
         "{debug}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn forced_block_it_keeps_the_prior_target_across_the_blocker_choice()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Feral Contest Variant")
+        .card_types(vec![CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Put a +1/+1 counter on target creature you control. Another target creature blocks it this turn if able."
+            .to_string(),
+        false,
+    )?;
+
+    let effects = definition
+        .spell_effect
+        .as_ref()
+        .expect("spell resolution")
+        .flattened_default_effects();
+    let prior_target_tags = effects
+        .iter()
+        .find_map(|effect| {
+            let mut current = effect;
+            let mut tags = Vec::new();
+            while let Some(tagged) = current.downcast_ref::<crate::effects::TaggedEffect>() {
+                tags.push(tagged.tag.clone());
+                current = &tagged.effect;
+            }
+            current
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .map(|_| tags)
+        })
+        .expect("counter effect should retain its target tag");
+    let cant = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>())
+        .expect("forced-block restriction");
+    let crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } =
+        &cant.restriction
+    else {
+        panic!("expected a specific forced-block restriction: {cant:#?}");
+    };
+    let [attacker_constraint] = attacker.tagged_constraints.as_slice() else {
+        panic!("expected one attacker tag: {attacker:#?}");
+    };
+    let [blocker_constraint] = blockers.tagged_constraints.as_slice() else {
+        panic!("expected one blocker tag: {blockers:#?}");
+    };
+
+    assert!(
+        prior_target_tags.contains(&attacker_constraint.tag),
+        "the attacker should be the creature targeted by the prior sentence: {effects:#?}"
+    );
+    assert_ne!(
+        attacker_constraint.tag, blocker_constraint.tag,
+        "the newly chosen blocker must not replace the prior attacker reference"
     );
     Ok(())
 }

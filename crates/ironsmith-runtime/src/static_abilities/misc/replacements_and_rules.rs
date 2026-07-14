@@ -2338,10 +2338,11 @@ impl StaticAbilityKind for PayLifeOrEnterTappedReplacement {
 }
 
 /// Parser-backed pregame action from opening hand.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PregameAction {
     pub kind: crate::static_abilities::PregameActionKind,
     pub text: String,
+    pub effects: Vec<crate::effect::Effect>,
 }
 
 impl PregameAction {
@@ -2349,6 +2350,19 @@ impl PregameAction {
         Self {
             kind,
             text: text.into(),
+            effects: Vec::new(),
+        }
+    }
+
+    pub fn with_effects(
+        kind: crate::static_abilities::PregameActionKind,
+        text: impl Into<String>,
+        effects: Vec<crate::effect::Effect>,
+    ) -> Self {
+        Self {
+            kind,
+            text: text.into(),
+            effects,
         }
     }
 }
@@ -2367,11 +2381,96 @@ impl StaticAbilityKind for PregameAction {
                 self.text.clone()
             }
             crate::static_abilities::PregameActionKind::ChooseColor => self.text.clone(),
+            crate::static_abilities::PregameActionKind::RevealFromOpeningHand(spec) => {
+                render_reveal_from_opening_hand_pregame(*spec, &self.effects)
+            }
         }
     }
 
     fn pregame_action_kind(&self) -> Option<crate::static_abilities::PregameActionKind> {
         Some(self.kind.clone())
+    }
+
+    fn pregame_action_effects(&self) -> Option<&[crate::effect::Effect]> {
+        Some(&self.effects)
+    }
+}
+
+fn lowercase_first(text: &str) -> String {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    first.to_lowercase().collect::<String>() + chars.as_str()
+}
+
+fn contextualize_delayed_spell_consequence(text: &str) -> String {
+    for prefix in [
+        "Counter it unless that object's controller pays",
+        "Counter it unless that player pays",
+        "Counter it unless they pay",
+    ] {
+        if let Some(rest) = text.strip_prefix(prefix) {
+            return format!("Counter that spell unless that player pays{rest}");
+        }
+    }
+    text.to_string()
+}
+
+fn render_reveal_from_opening_hand_pregame(
+    spec: crate::static_abilities::PregameRevealFromOpeningHandSpec,
+    effects: &[crate::effect::Effect],
+) -> String {
+    let prefix = "You may reveal this card from your opening hand. If you do";
+    let Some(schedule) = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
+    else {
+        return format!("{prefix}.");
+    };
+
+    let first_opponent_spell = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::SpellCastTrigger>()
+        .is_some_and(|trigger| {
+            trigger.first_spell_of_game && trigger.caster == crate::target::PlayerFilter::Opponent
+        });
+    let timing = if let Some(upkeep) = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+    {
+        match &upkeep.player {
+            crate::target::PlayerFilter::You => "at the beginning of your first upkeep".to_string(),
+            crate::target::PlayerFilter::Any => "at the beginning of the first upkeep".to_string(),
+            _ => lowercase_first(&schedule.trigger.display()),
+        }
+    } else if let Some(main) = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfMainPhaseTrigger>()
+    {
+        match (main.player.clone(), main.phase_type) {
+            (
+                crate::target::PlayerFilter::You,
+                crate::triggers::phase_step::MainPhaseType::Precombat,
+            ) => "at the beginning of your first main phase of the game".to_string(),
+            _ => lowercase_first(&schedule.trigger.display()),
+        }
+    } else if first_opponent_spell {
+        "when each opponent casts their first spell of the game".to_string()
+    } else {
+        lowercase_first(&schedule.trigger.display())
+    };
+
+    let mut consequence =
+        crate::compiled_text::compile_effect_list(schedule.effects.flattened_default_effects());
+    if first_opponent_spell {
+        consequence = contextualize_delayed_spell_consequence(&consequence);
+    }
+    let consequence = consequence.trim().trim_end_matches('.');
+    if spec.effect_before_timing {
+        format!("{prefix}, {} {timing}.", lowercase_first(consequence))
+    } else {
+        format!("{prefix}, {timing}, {}.", lowercase_first(consequence))
     }
 }
 

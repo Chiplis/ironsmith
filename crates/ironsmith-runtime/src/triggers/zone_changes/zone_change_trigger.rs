@@ -294,16 +294,13 @@ impl ZoneChangeTrigger {
                 let mut explicit_other = filter.clone();
                 explicit_other.other = false;
                 let description = explicit_other.description();
-                if !description.contains("creature") && !subject_is_creature_subtype_only(filter) {
-                    return format!("{description} other than this");
-                }
                 let mut subject = description
                     .strip_prefix("a ")
                     .or_else(|| description.strip_prefix("an "))
                     .map(str::to_string)
                     .unwrap_or(description);
-                if subject == "object" {
-                    subject = "object other than this".to_string();
+                if let Some(stripped) = subject.strip_prefix("another ") {
+                    subject = stripped.to_string();
                 }
                 return format!("another {subject}");
             }
@@ -327,6 +324,242 @@ impl ZoneChangeTrigger {
                 }
             }
             filter.description()
+        }
+
+        fn owned_zone_phrase(owner: Option<&PlayerFilter>, zone: &str) -> String {
+            match owner {
+                Some(PlayerFilter::You) => format!("your {zone}"),
+                Some(PlayerFilter::Opponent) => format!("an opponent's {zone}"),
+                Some(PlayerFilter::NotYou) => format!("another player's {zone}"),
+                Some(PlayerFilter::Teammate) => format!("a teammate's {zone}"),
+                Some(PlayerFilter::Any) | None => format!("a {zone}"),
+                Some(_) => format!("their {zone}"),
+            }
+        }
+
+        fn graveyard_origin_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
+            let owner = trigger.object_filter.owner.as_ref();
+            match &trigger.from {
+                ZonePattern::Any => Some("from anywhere".to_string()),
+                ZonePattern::Specific(Zone::Battlefield) => {
+                    Some("from the battlefield".to_string())
+                }
+                ZonePattern::Specific(Zone::Library) => {
+                    Some(format!("from {}", owned_zone_phrase(owner, "library")))
+                }
+                ZonePattern::Specific(Zone::Hand) => {
+                    Some(format!("from {}", owned_zone_phrase(owner, "hand")))
+                }
+                ZonePattern::Specific(Zone::Graveyard) => {
+                    Some(format!("from {}", owned_zone_phrase(owner, "graveyard")))
+                }
+                ZonePattern::Specific(Zone::Exile) => Some("from exile".to_string()),
+                ZonePattern::Specific(Zone::Command) => Some("from the command zone".to_string()),
+                ZonePattern::Specific(Zone::Stack) => Some("from the stack".to_string()),
+                ZonePattern::AnyExcept(zone) => {
+                    let excluded = match zone {
+                        Zone::Battlefield => "the battlefield",
+                        Zone::Library => "a library",
+                        Zone::Hand => "a hand",
+                        Zone::Graveyard => "a graveyard",
+                        Zone::Exile => "exile",
+                        Zone::Command => "the command zone",
+                        Zone::Stack => "the stack",
+                        Zone::OutsideGame => "outside the game",
+                    };
+                    Some(format!("from anywhere other than {excluded}"))
+                }
+                ZonePattern::OneOf(_) | ZonePattern::Specific(Zone::OutsideGame) => None,
+            }
+        }
+
+        fn graveyard_subject_description(trigger: &ZoneChangeTrigger) -> String {
+            let mut subject = trigger.object_filter.clone();
+
+            // A parsed `card` subject is represented by `nontoken` so tokens
+            // which briefly visit a graveyard do not satisfy it. For display,
+            // render that same filter in a card zone instead of leaking the
+            // implementation detail as "nontoken creature/permanent".
+            let explicit_card_subject = subject.nontoken
+                && !matches!(trigger.from, ZonePattern::Specific(Zone::Battlefield));
+            if explicit_card_subject {
+                subject.nontoken = false;
+                subject.zone = Some(Zone::Graveyard);
+            } else {
+                subject.zone = None;
+            }
+
+            // Ownership determines the destination graveyard below. Keeping
+            // it on the noun would duplicate the relation as "you own ...
+            // into your graveyard".
+            subject.owner = None;
+            subject.description()
+        }
+
+        fn pluralize_zone_change_word(word: &str) -> String {
+            let lower = word.to_ascii_lowercase();
+            let preserve_case = |lowercase: &str| {
+                if word
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_uppercase())
+                {
+                    let mut chars = lowercase.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
+                        }
+                        None => String::new(),
+                    }
+                } else {
+                    lowercase.to_string()
+                }
+            };
+            match lower.as_str() {
+                "mouse" => return preserve_case("mice"),
+                "elf" => return preserve_case("elves"),
+                "dwarf" => return preserve_case("dwarves"),
+                "wolf" => return preserve_case("wolves"),
+                "werewolf" => return preserve_case("werewolves"),
+                "myr" | "merfolk" | "equipment" | "plains" | "urzas" => {
+                    return word.to_string();
+                }
+                _ => {}
+            }
+            if lower.ends_with('y')
+                && lower.len() > 1
+                && !matches!(
+                    lower.chars().nth(lower.len() - 2),
+                    Some('a' | 'e' | 'i' | 'o' | 'u')
+                )
+            {
+                return format!("{}ies", &word[..word.len() - 1]);
+            }
+            if lower.ends_with('s')
+                || lower.ends_with('x')
+                || lower.ends_with('z')
+                || lower.ends_with("ch")
+                || lower.ends_with("sh")
+            {
+                return format!("{word}es");
+            }
+            format!("{word}s")
+        }
+
+        fn replace_bounded_phrase(text: &str, singular: &str, plural: &str) -> Option<String> {
+            let mut output = String::with_capacity(text.len() + plural.len());
+            let mut cursor = 0usize;
+            let mut replaced = false;
+            while let Some(relative) = text[cursor..].find(singular) {
+                let start = cursor + relative;
+                let end = start + singular.len();
+                let left_boundary = text[..start]
+                    .chars()
+                    .next_back()
+                    .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+                let right_boundary = text[end..]
+                    .chars()
+                    .next()
+                    .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+                if !left_boundary || !right_boundary {
+                    output.push_str(&text[cursor..end]);
+                    cursor = end;
+                    continue;
+                }
+                output.push_str(&text[cursor..start]);
+                output.push_str(plural);
+                cursor = end;
+                replaced = true;
+            }
+            if !replaced {
+                return None;
+            }
+            output.push_str(&text[cursor..]);
+            Some(output)
+        }
+
+        fn pluralize_zone_change_subject(subject: &str, filter: &ObjectFilter) -> String {
+            let subject = subject
+                .strip_prefix("a ")
+                .or_else(|| subject.strip_prefix("an "))
+                .unwrap_or(subject);
+            let mut subject = subject
+                .strip_prefix("another ")
+                .map(|rest| format!("other {rest}"))
+                .unwrap_or_else(|| subject.to_string());
+
+            let mut replaced_structured_noun = false;
+            for card_type in filter.card_types.iter().chain(filter.all_card_types.iter()) {
+                if let Some(replaced) =
+                    replace_bounded_phrase(&subject, card_type.name(), card_type.plural_name())
+                {
+                    subject = replaced;
+                    replaced_structured_noun = true;
+                }
+            }
+            for subtype in &filter.subtypes {
+                let singular = subtype.to_string();
+                let plural = pluralize_zone_change_word(&singular);
+                if let Some(replaced) = replace_bounded_phrase(&subject, &singular, &plural) {
+                    subject = replaced;
+                    replaced_structured_noun = true;
+                }
+            }
+            if replaced_structured_noun {
+                return subject;
+            }
+
+            let split_at = [
+                " with ",
+                " without ",
+                " that ",
+                " named ",
+                " not named ",
+                " you control",
+                " you don't control",
+                " an opponent controls",
+                " that player controls",
+                " attached to ",
+            ]
+            .into_iter()
+            .filter_map(|marker| subject.find(marker))
+            .min()
+            .unwrap_or(subject.len());
+            let (noun_phrase, qualifier) = subject.split_at(split_at);
+            let mut words = noun_phrase.split_whitespace().collect::<Vec<_>>();
+            let Some(noun) = words.pop() else {
+                return subject;
+            };
+            let plural = match noun.to_ascii_lowercase().as_str() {
+                word if word.ends_with('s') => noun.to_string(),
+                "card" => "cards".to_string(),
+                "creature" => "creatures".to_string(),
+                "permanent" => "permanents".to_string(),
+                "land" => "lands".to_string(),
+                "artifact" => "artifacts".to_string(),
+                "enchantment" => "enchantments".to_string(),
+                "planeswalker" => "planeswalkers".to_string(),
+                "battle" => "battles".to_string(),
+                "equipment" => noun.to_string(),
+                word if word.ends_with('y') && word.len() > 1 => {
+                    format!("{}ies", &noun[..noun.len() - 1])
+                }
+                word if word.ends_with('x')
+                    || word.ends_with('z')
+                    || word.ends_with("ch")
+                    || word.ends_with("sh") =>
+                {
+                    format!("{noun}es")
+                }
+                _ => format!("{noun}s"),
+            };
+            words.push(plural.as_str());
+            format!("{}{}", words.join(" "), qualifier)
+        }
+
+        fn subject_uses_mixed_death_surface(filter: &ObjectFilter) -> bool {
+            filter.union_connective() == crate::filter::ObjectFilterUnionConnective::AndOr
+                && filter.card_types.contains(&CardType::Creature)
         }
 
         fn enters_origin_phrase(trigger: &ZoneChangeTrigger) -> Option<String> {
@@ -457,6 +690,13 @@ impl ZoneChangeTrigger {
             ) && trigger.object_filter == ObjectFilter::default().nontoken()
         }
 
+        fn attached_subject_implies_battlefield(filter: &ObjectFilter) -> bool {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            })
+        }
+
         if let Some(display) = spell_or_ability_you_control_exiles_display(self) {
             return display;
         }
@@ -511,27 +751,10 @@ impl ZoneChangeTrigger {
             PlayerRelation::Any => {}
         }
 
-        // "a card is put into an opponent's graveyard from anywhere": a nontoken
-        // object of any type whose only constraint is its owner. Render the
-        // subject as "card" and surface the owner on the graveyard instead.
-        let card_into_owner_graveyard_owner = {
-            let owner_card_filter = self.object_filter.owner.clone().map(|owner| {
-                let mut expected = ObjectFilter::default().nontoken();
-                expected.owner = Some(owner.clone());
-                (owner, expected)
-            });
-            (matches!(self.to, ZonePattern::Specific(Zone::Graveyard))
-                && matches!(self.from, ZonePattern::Any))
-            .then_some(owner_card_filter)
-            .flatten()
-            .filter(|(_, expected)| self.object_filter == *expected)
-            .map(|(owner, _)| owner)
-        };
-
         // Object filter description
-        let mut filter_desc = if is_nontoken_card_subject_from_card_zones(self)
-            || card_into_owner_graveyard_owner.is_some()
-        {
+        let mut filter_desc = if self.to == ZonePattern::Specific(Zone::Graveyard) {
+            graveyard_subject_description(self)
+        } else if is_nontoken_card_subject_from_card_zones(self) {
             if self.count_mode == CountMode::OneOrMore {
                 "cards".to_string()
             } else {
@@ -556,6 +779,9 @@ impl ZoneChangeTrigger {
             && let Some(stripped) = filter_desc.strip_suffix(" you own")
         {
             filter_desc = stripped.to_string();
+        }
+        if self.count_mode == CountMode::OneOrMore {
+            filter_desc = pluralize_zone_change_subject(&filter_desc, &self.object_filter);
         }
         let has_article = filter_desc.starts_with("a ")
             || filter_desc.starts_with("an ")
@@ -587,36 +813,88 @@ impl ZoneChangeTrigger {
         // Zone change description
         match (&self.from, &self.to) {
             (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard))
-                if subject_is_always_creature(&self.object_filter) =>
+                if subject_is_always_creature(&self.object_filter)
+                    || subject_uses_mixed_death_surface(&self.object_filter) =>
             {
-                parts.push("dies".to_string());
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "die"
+                    } else {
+                        "dies"
+                    }
+                    .to_string(),
+                );
+            }
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard))
+                if attached_subject_implies_battlefield(&self.object_filter) =>
+            {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                parts.push(format!("{verb} put into {graveyard}"));
             }
             (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard)) => {
-                parts.push("is put into a graveyard from the battlefield".to_string());
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                parts.push(format!("{verb} put into {graveyard} from the battlefield"));
             }
             (ZonePattern::Specific(Zone::Hand), ZonePattern::Specific(Zone::Graveyard)) => {
-                parts.push("is discarded".to_string());
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "are discarded"
+                    } else {
+                        "is discarded"
+                    }
+                    .to_string(),
+                );
             }
             (_, ZonePattern::Specific(Zone::Battlefield))
                 if enters_origin_phrase(self).is_some() =>
             {
-                parts.push(format!("enters {}", enters_origin_phrase(self).unwrap()));
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "enter"
+                } else {
+                    "enters"
+                };
+                parts.push(format!("{verb} {}", enters_origin_phrase(self).unwrap()));
             }
             (_, ZonePattern::Specific(Zone::Battlefield)) => {
-                parts.push("enters the battlefield".to_string());
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "enter the battlefield"
+                    } else {
+                        "enters the battlefield"
+                    }
+                    .to_string(),
+                );
             }
             (ZonePattern::Specific(Zone::Battlefield), _) => {
-                parts.push("leaves the battlefield".to_string());
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "leave the battlefield"
+                    } else {
+                        "leaves the battlefield"
+                    }
+                    .to_string(),
+                );
             }
             (_, ZonePattern::Specific(Zone::Graveyard)) => {
-                let graveyard = match &card_into_owner_graveyard_owner {
-                    Some(crate::target::PlayerFilter::Opponent) => "an opponent's graveyard",
-                    Some(crate::target::PlayerFilter::You) => "your graveyard",
-                    _ => "a graveyard",
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
                 };
-                parts.push(format!("is put into {graveyard}"));
-                if matches!(self.from, ZonePattern::Any) {
-                    parts.push("from anywhere".to_string());
+                let graveyard = owned_zone_phrase(self.object_filter.owner.as_ref(), "graveyard");
+                parts.push(format!("{verb} put into {graveyard}"));
+                if let Some(origin) = graveyard_origin_phrase(self) {
+                    parts.push(origin);
                 }
             }
             (_, ZonePattern::Specific(Zone::Exile)) => {
@@ -1096,6 +1374,135 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever one or more cards are put into exile from your hand"
+        );
+    }
+
+    #[test]
+    fn library_to_owned_graveyard_preserves_card_subject_origin_and_batch_grammar() {
+        let mut filter = ObjectFilter::creature().nontoken();
+        filter.zone = None;
+        filter.owner = Some(PlayerFilter::You);
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Library)
+            .to(Zone::Graveyard)
+            .filter(filter)
+            .count(CountMode::OneOrMore);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more creature cards are put into your graveyard from your library"
+        );
+    }
+
+    #[test]
+    fn graveyard_card_subject_preserves_permanent_and_another_surfaces() {
+        let mut permanent_card = ObjectFilter::permanent_card().nontoken();
+        permanent_card.owner = Some(PlayerFilter::You);
+        let permanent_trigger = ZoneChangeTrigger::new()
+            .to(Zone::Graveyard)
+            .filter(permanent_card)
+            .count(CountMode::OneOrMore);
+        assert_eq!(
+            permanent_trigger.display(),
+            "Whenever one or more permanent cards are put into your graveyard from anywhere"
+        );
+
+        let mut another_card = ObjectFilter::default().nontoken().other();
+        another_card.owner = Some(PlayerFilter::You);
+        let another_trigger = ZoneChangeTrigger::new()
+            .to(Zone::Graveyard)
+            .filter(another_card);
+        assert_eq!(
+            another_trigger.display(),
+            "Whenever another card is put into your graveyard from anywhere"
+        );
+    }
+
+    #[test]
+    fn contextual_graveyard_owner_uses_their_for_destination_and_origin() {
+        let mut filter = ObjectFilter::land().nontoken();
+        filter.zone = None;
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Library)
+            .to(Zone::Graveyard)
+            .filter(filter)
+            .count(CountMode::OneOrMore);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more land cards are put into their graveyard from their library"
+        );
+    }
+
+    #[test]
+    fn battlefield_to_owned_graveyard_preserves_another_permanent_surface() {
+        let mut filter = ObjectFilter::artifact().other();
+        filter.zone = None;
+        filter.owner = Some(PlayerFilter::You);
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Graveyard)
+            .filter(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever another artifact is put into your graveyard from the battlefield"
+        );
+    }
+
+    #[test]
+    fn one_or_more_subtype_union_preserves_plural_and_or_etb_surface() {
+        let mut filter = ObjectFilter::default();
+        filter.subtypes = vec![
+            crate::types::Subtype::Rabbit,
+            crate::types::Subtype::Bat,
+            crate::types::Subtype::Bird,
+            crate::types::Subtype::Mouse,
+        ];
+        filter.controller = Some(PlayerFilter::You);
+        filter.other = true;
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+
+        let trigger = ZoneChangeTrigger::enters_battlefield(filter).count(CountMode::OneOrMore);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more other Rabbits, Bats, Birds, and/or Mice you control enter the battlefield"
+        );
+    }
+
+    #[test]
+    fn one_or_more_mixed_creature_artifact_union_uses_death_surface() {
+        let mut filter = ObjectFilter::default();
+        filter.card_types = vec![CardType::Creature, CardType::Artifact];
+        filter.controller = Some(PlayerFilter::You);
+        filter.other = true;
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+
+        let trigger = ZoneChangeTrigger::dies(filter).count(CountMode::OneOrMore);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more other creatures and/or artifacts you control die"
+        );
+    }
+
+    #[test]
+    fn type_or_subtype_union_preserves_another_and_and_or_etb_surface() {
+        let mut filter = ObjectFilter::default();
+        filter.card_types = vec![CardType::Artifact];
+        filter.subtypes = vec![crate::types::Subtype::Villain];
+        filter.type_or_subtype_union = true;
+        filter.controller = Some(PlayerFilter::You);
+        filter.other = true;
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+
+        let trigger = ZoneChangeTrigger::enters_battlefield(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever another artifact and/or Villain you control enters the battlefield"
         );
     }
 

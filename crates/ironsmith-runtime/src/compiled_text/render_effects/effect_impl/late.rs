@@ -56,6 +56,16 @@
                 "Choose one that hasn't been chosen —".to_string()
             };
         }
+        if let Some(basis) = describe_shared_spells_cast_modal_x_basis(choose_mode)
+            && let Some(prefix) = header.strip_suffix(" —")
+        {
+            header = format!("{prefix}. X is {basis} —");
+        }
+        if choose_mode.distinct_player_targets_per_mode
+            && let Some(prefix) = header.strip_suffix(" —")
+        {
+            header = format!("{prefix}. Each mode must target a different player.");
+        }
         let use_mode_source_text = choose_mode.modes.iter().all(|mode| {
             let source = mode.source_text.trim();
             !source.is_empty()
@@ -194,16 +204,24 @@
                 }
                 return text;
             }
-            if create_token.enters_tapped {
-                text.push_str(", tapped");
-            }
             if create_token.enters_attacking {
                 text.push_str(", attacking");
             }
             text
         };
+        let describe_created_token_blueprint = || {
+            let blueprint = describe_token_blueprint_with_presentation(
+                &create_token.token,
+                create_token.ability_presentation,
+            );
+            if create_token.enters_tapped && !create_token.enters_attacking {
+                format!("tapped {blueprint}")
+            } else {
+                blueprint
+            }
+        };
         if value_is_iterated_object_count(&create_token.count) {
-            let token_blueprint = describe_token_blueprint(&create_token.token);
+            let token_blueprint = describe_created_token_blueprint();
             let (token_main, token_ability) = split_token_ability_sentence(&token_blueprint);
             let mut text =
                 describe_create_token_action(&format!("a {token_main}"), &create_token.controller);
@@ -212,7 +230,7 @@
             return append_token_cleanup_sentences(text, true);
         }
         if let Some(for_each_count) = describe_create_for_each_count(&create_token.count) {
-            let token_blueprint = describe_token_blueprint(&create_token.token);
+            let token_blueprint = describe_created_token_blueprint();
             let (token_main, token_ability) = split_token_ability_sentence(&token_blueprint);
             let mut text = describe_create_token_action(
                 &format!("a {token_main} for each {for_each_count}"),
@@ -234,7 +252,7 @@
         }
         let use_where_x = should_render_token_count_with_where_x(&create_token.count);
         let singular_count = matches!(create_token.count, Value::Fixed(1)) && !use_where_x;
-        let token_blueprint = describe_token_blueprint(&create_token.token);
+        let token_blueprint = describe_created_token_blueprint();
         let token_phrase = if singular_count {
             token_blueprint
         } else {
@@ -261,19 +279,6 @@
         };
         let (token_main_raw, token_ability) = split_token_ability_sentence(&token_phrase);
         let mut token_main = token_main_raw.to_string();
-        let has_delayed_cleanup =
-            create_token.sacrifice_at_next_end_step || create_token.exile_at_next_end_step;
-        let haste_sentence =
-            if has_delayed_cleanup && let Some(stripped) = token_main.strip_suffix(" with haste") {
-                token_main = stripped.to_string();
-                Some(if singular_count {
-                    ". It gains haste".to_string()
-                } else {
-                    ". They gain haste".to_string()
-                })
-            } else {
-                None
-            };
         let dynamic_pt_where = if singular_count {
             normalize_dynamic_equal_pt_token_phrase(&token_main).map(|(normalized, where_x)| {
                 token_main = normalized;
@@ -282,7 +287,15 @@
         } else {
             None
         };
-        let object_text = if singular_count && token_main.contains(", a ") {
+        let object_text = if value_has_surface_hint(
+            &create_token.count,
+            ValueSurfaceHint::EqualTo,
+        ) {
+            format!(
+                "a number of {token_main} equal to {}",
+                describe_value(create_token.count.unhinted())
+            )
+        } else if singular_count && token_main.contains(", a ") {
             token_main
         } else if singular_count {
             singular_token_phrase_with_article(&token_main)
@@ -311,9 +324,6 @@
             text.push_str(&format!(", where X is {where_x}"));
         }
         text = append_token_ability_sentence(text, token_ability);
-        if let Some(haste_sentence) = haste_sentence {
-            text.push_str(&haste_sentence);
-        }
         return append_token_cleanup_sentences(text, singular_count);
     }
     if let Some(create_copy) = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>() {
@@ -346,17 +356,49 @@
             (false, true) => "attacking ",
             (false, false) => "",
         };
-        let mut text = match create_copy.count {
-            Value::Fixed(1) => format!("Create a {token_state}token that's a copy of {target}"),
+        let use_where_x = value_prefers_where_x(&create_copy.count);
+        let token_object = match create_copy.count {
+            _ if use_where_x => format!("X {token_state}tokens that are copies of {target}"),
+            Value::Fixed(1) => format!("a {token_state}token that's a copy of {target}"),
             Value::Fixed(n) => {
-                format!("Create {n} {token_state}tokens that are copies of {target}")
+                format!("{n} {token_state}tokens that are copies of {target}")
             }
             _ => format!(
-                "Create {} {token_state}tokens that are copies of {target}",
+                "{} {token_state}tokens that are copies of {target}",
                 describe_value(&create_copy.count)
             ),
         };
-        if !matches!(create_copy.controller, PlayerFilter::You) {
+        let copied_object_controller_is_actor = match (
+            &create_copy.controller,
+            create_copy.target.unhinted(),
+        ) {
+            (
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(controller_tag)),
+                ChooseSpec::Tagged(target_tag),
+            ) => controller_tag == target_tag,
+            (
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+                ChooseSpec::Target(_),
+            ) => true,
+            (
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(controller_tag)),
+                ChooseSpec::Iterated,
+            ) => controller_tag.as_str() == "__it__",
+            _ => false,
+        };
+        let mut text = if copied_object_controller_is_actor {
+            let actor = if target == "it" {
+                "Its controller".to_string()
+            } else {
+                format!("{}'s controller", capitalize_first(&target))
+            };
+            format!("{actor} creates {token_object}")
+        } else {
+            format!("Create {token_object}")
+        };
+        if !copied_object_controller_is_actor
+            && !matches!(create_copy.controller, PlayerFilter::You)
+        {
             text.push_str(&format!(
                 " under {} control",
                 describe_possessive_player_filter(&create_copy.controller)
@@ -364,9 +406,6 @@
         }
         if create_copy.enters_tapped && !inline_tapped {
             text.push_str(", tapped");
-        }
-        if create_copy.has_haste {
-            text.push_str(", with haste");
         }
         if create_copy.enters_attacking && !inline_attacking {
             if let Some(crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
@@ -381,41 +420,51 @@
                 text.push_str(", attacking");
             }
         }
-        if create_copy.exile_at_end_of_combat {
-            text.push_str(", and exile at end of combat");
-        }
-        if create_copy.sacrifice_at_next_end_step {
-            let timing = describe_next_end_step_cleanup_timing(&create_copy.next_end_step_player);
-            text.push_str(&format!(", and sacrifice it at the beginning of {timing}"));
-        }
-        if create_copy.exile_at_next_end_step {
-            let timing = describe_next_end_step_cleanup_timing(&create_copy.next_end_step_player);
-            text.push_str(&format!(", and exile it at the beginning of {timing}"));
-        }
+        let singular_copy = matches!(create_copy.count, Value::Fixed(1));
+        let append_copy_cleanup = |mut text: String| {
+            let created_object = if singular_copy {
+                "that token"
+            } else {
+                "those tokens"
+            };
+            if create_copy.exile_at_end_of_combat {
+                text.push_str(&format!(". Exile {created_object} at end of combat"));
+            }
+            if create_copy.sacrifice_at_next_end_step
+                && create_copy
+                    .sacrifice_at_next_end_step_ability_text
+                    .is_none()
+            {
+                let timing =
+                    describe_next_end_step_cleanup_timing(&create_copy.next_end_step_player);
+                text.push_str(&format!(
+                    ". Sacrifice {created_object} at the beginning of {timing}"
+                ));
+            }
+            if create_copy.exile_at_next_end_step {
+                let timing =
+                    describe_next_end_step_cleanup_timing(&create_copy.next_end_step_player);
+                text.push_str(&format!(
+                    ". Exile {created_object} at the beginning of {timing}"
+                ));
+            }
+            text
+        };
+        let mut exception_clauses = Vec::new();
         if create_copy.pt_adjustment.is_some() {
-            if matches!(create_copy.count, Value::Fixed(1)) {
-                text.push_str(
-                    ", except its power and toughness are each half that permanent's power and toughness, rounded up",
+            if singular_copy {
+                exception_clauses.push(
+                    "its power and toughness are each half that permanent's power and toughness, rounded up"
+                        .to_string(),
                 );
             } else {
-                text.push_str(
-                    ", except their power and toughness are each half that permanent's power and toughness, rounded up",
+                exception_clauses.push(
+                    "their power and toughness are each half that permanent's power and toughness, rounded up"
+                        .to_string(),
                 );
             }
         }
-        if matches!(&create_copy.count, Value::Fixed(1))
-            && let (Some((power, toughness)), Some(colors), Some(subtypes)) = (
-                create_copy.set_base_power_toughness,
-                create_copy.set_colors,
-                create_copy.set_subtypes.as_ref(),
-            )
-            && create_copy.set_card_types.is_none()
-            && create_copy.pt_adjustment.is_none()
-            && create_copy.added_card_types.is_empty()
-            && create_copy.added_subtypes.is_empty()
-            && create_copy.removed_supertypes.is_empty()
-            && create_copy.granted_static_abilities.is_empty()
-        {
+        let describe_copy_colors = |colors: crate::color::ColorSet| {
             let mut words = Vec::new();
             if colors.contains(crate::color::Color::White) {
                 words.push("white".to_string());
@@ -432,46 +481,63 @@
             if colors.contains(crate::color::Color::Green) {
                 words.push("green".to_string());
             }
-            words.extend(subtypes.iter().map(|subtype| subtype.to_string()));
-            text.push_str(&format!(
-                ", except it's a {power}/{toughness} {}",
-                words.join(" ")
-            ));
-            return text;
+            words
+        };
+        let mut base_power_toughness = create_copy.set_base_power_toughness;
+        let has_added_types =
+            !create_copy.added_card_types.is_empty() || !create_copy.added_subtypes.is_empty();
+        if has_added_types
+            && create_copy.set_colors.is_none()
+            && let Some((power, toughness)) = base_power_toughness.take()
+        {
+            let subject = if singular_copy { "it's" } else { "they're" };
+            exception_clauses.push(format!("{subject} {power}/{toughness}"));
         }
-        if let Some((power, toughness)) = create_copy.set_base_power_toughness {
-            text.push_str(&format!(
-                ", with base power and toughness {power}/{toughness}"
-            ));
+        if !create_copy.added_card_types.is_empty() || !create_copy.added_subtypes.is_empty() {
+            let mut type_words = create_copy
+                .set_colors
+                .map(&describe_copy_colors)
+                .unwrap_or_default();
+            type_words.extend(
+                create_copy
+                    .added_subtypes
+                    .iter()
+                    .map(|subtype| subtype.to_string()),
+            );
+            type_words.extend(create_copy.added_card_types.iter().map(|card_type| {
+                card_type.name().to_string()
+            }));
+            if !type_words.is_empty() {
+                let descriptor = type_words.join(" ");
+                let identity = if let Some((power, toughness)) = base_power_toughness
+                    && create_copy.set_colors.is_some()
+                {
+                    base_power_toughness = None;
+                    format!("{power}/{toughness} {descriptor}")
+                } else {
+                    with_indefinite_article(&descriptor)
+                };
+                let subject = if singular_copy { "it's" } else { "they're" };
+                let possessive = if singular_copy { "its" } else { "their" };
+                exception_clauses.push(format!(
+                    "{subject} {identity} in addition to {possessive} other types"
+                ));
+            }
         }
         if create_copy.set_colors.is_some()
             || create_copy.set_card_types.is_some()
             || create_copy.set_subtypes.is_some()
         {
-            let mut words = Vec::new();
-            if let Some(colors) = create_copy.set_colors {
-                if colors.contains(crate::color::Color::White) {
-                    words.push("white".to_string());
-                }
-                if colors.contains(crate::color::Color::Blue) {
-                    words.push("blue".to_string());
-                }
-                if colors.contains(crate::color::Color::Black) {
-                    words.push("black".to_string());
-                }
-                if colors.contains(crate::color::Color::Red) {
-                    words.push("red".to_string());
-                }
-                if colors.contains(crate::color::Color::Green) {
-                    words.push("green".to_string());
-                }
-            }
+            let mut words = if has_added_types {
+                Vec::new()
+            } else {
+                create_copy
+                    .set_colors
+                    .map(&describe_copy_colors)
+                    .unwrap_or_default()
+            };
             if let Some(subtypes) = &create_copy.set_subtypes {
-                words.extend(
-                    subtypes
-                        .iter()
-                        .map(|subtype| subtype.to_string().to_ascii_lowercase()),
-                );
+                words.extend(subtypes.iter().map(|subtype| subtype.to_string()));
             }
             if let Some(card_types) = &create_copy.set_card_types {
                 words.extend(
@@ -481,8 +547,25 @@
                 );
             }
             if !words.is_empty() {
-                text.push_str(", and it's ");
-                text.push_str(&words.join(" "));
+                let has_noun = create_copy
+                    .set_subtypes
+                    .as_ref()
+                    .is_some_and(|subtypes| !subtypes.is_empty())
+                    || create_copy
+                        .set_card_types
+                        .as_ref()
+                        .is_some_and(|card_types| !card_types.is_empty());
+                let descriptor = words.join(" ");
+                let identity = if let Some((power, toughness)) = base_power_toughness {
+                    base_power_toughness = None;
+                    format!("{power}/{toughness} {descriptor}")
+                } else if has_noun {
+                    with_indefinite_article(&descriptor)
+                } else {
+                    descriptor
+                };
+                let subject = if singular_copy { "it's" } else { "they're" };
+                let mut clause = format!("{subject} {identity}");
                 if let Some(card_types) = &create_copy.set_card_types
                     && card_types.len() == 1
                     && create_copy.set_colors.is_none()
@@ -490,48 +573,60 @@
                     && create_copy.added_card_types.is_empty()
                     && create_copy.added_subtypes.is_empty()
                 {
-                    text.push_str(" and it loses all other card types");
+                    clause.push_str(" and it loses all other card types");
                 }
+                exception_clauses.push(clause);
             }
         }
-        if !create_copy.added_card_types.is_empty() || !create_copy.added_subtypes.is_empty() {
-            let mut type_words: Vec<String> = create_copy
-                .added_card_types
-                .iter()
-                .map(|card_type| card_type.name().to_string())
-                .collect();
-            type_words.extend(
-                create_copy
-                    .added_subtypes
-                    .iter()
-                    .map(|subtype| subtype.to_string().to_ascii_lowercase()),
-            );
-            if !type_words.is_empty() {
-                text.push_str(", and it's ");
-                text.push_str(&type_words.join(" "));
-                text.push_str(" in addition to its other types");
-            }
+        if let Some((power, toughness)) = base_power_toughness {
+            let subject = if singular_copy { "it's" } else { "they're" };
+            exception_clauses.push(format!("{subject} {power}/{toughness}"));
         }
         if create_copy
             .removed_supertypes
             .iter()
             .any(|supertype| *supertype == Supertype::Legendary)
         {
-            text.push_str(", and it isn't legendary");
+            exception_clauses.push(if singular_copy {
+                "it isn't legendary".to_string()
+            } else {
+                "they aren't legendary".to_string()
+            });
+        }
+        if create_copy.has_haste {
+            exception_clauses.push(if singular_copy {
+                "it has haste".to_string()
+            } else {
+                "they have haste".to_string()
+            });
+        }
+        if let Some(ability_text) = &create_copy.sacrifice_at_next_end_step_ability_text {
+            exception_clauses.push(quote_token_granted_ability_text(ability_text));
         }
         if !create_copy.granted_static_abilities.is_empty() {
             let mut granted = Vec::new();
             for ability in &create_copy.granted_static_abilities {
                 let normalized = normalize_token_granted_static_ability_text(&ability.display());
-                let quoted = quote_token_granted_ability_text(&normalized);
-                if !granted.contains(&quoted) {
-                    granted.push(quoted);
+                let ability_text = if is_keyword_style_line(&normalized) {
+                    normalized.to_ascii_lowercase()
+                } else {
+                    quote_token_granted_ability_text(&normalized)
+                };
+                if !granted.contains(&ability_text) {
+                    granted.push(ability_text);
                 }
             }
-            text.push_str(", and it has ");
-            text.push_str(&join_with_and(&granted));
+            let subject = if singular_copy { "it has" } else { "they have" };
+            exception_clauses.push(format!("{subject} {}", join_with_and(&granted)));
         }
-        return text;
+        if !exception_clauses.is_empty() {
+            text.push_str(", except ");
+            text.push_str(&join_with_and(&exception_clauses));
+        }
+        if use_where_x {
+            text.push_str(&format!(", where X is {}", describe_value(&create_copy.count)));
+        }
+        return append_copy_cleanup(text);
     }
     if let Some(earthbend) = effect.downcast_ref::<crate::effects::EarthbendEffect>() {
         return format!("Earthbend {}", earthbend.counters);
@@ -572,7 +667,8 @@
             }
             _ => describe_possessive_player_filter(&manifest.player),
         };
-        return format!("Manifest the top card of {owner} library");
+        let action = if manifest.cloak { "Cloak" } else { "Manifest" };
+        return format!("{action} the top card of {owner} library");
     }
     if effect
         .downcast_ref::<crate::effects::ManifestCardFromHandEffect>()
@@ -696,6 +792,14 @@
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        if cant.duration == Until::Forever
+            && matches!(cant.restriction, crate::effect::Restriction::GainLife(_))
+        {
+            return format!(
+                "{} for the rest of the game",
+                describe_restriction(&cant.restriction)
+            );
+        }
         if cant.duration == Until::EndOfTurn
             && matches!(
                 &cant.restriction,
@@ -815,6 +919,16 @@
         );
     }
     if let Some(surveil) = effect.downcast_ref::<crate::effects::SurveilEffect>() {
+        if let Some(where_x) = describe_where_x_basis(&surveil.count) {
+            if surveil.player == PlayerFilter::You {
+                return format!("Surveil X, where X is {where_x}");
+            }
+            let player = describe_player_filter(&surveil.player);
+            return format!(
+                "{player} {} X, where X is {where_x}",
+                player_verb(&player, "surveil", "surveils")
+            );
+        }
         if surveil.player == PlayerFilter::You {
             return format!("Surveil {}", describe_value(&surveil.count));
         }
@@ -908,7 +1022,7 @@
     }
     if let Some(consult) = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>() {
         let player = describe_player_filter(&consult.player);
-        let library_owner = describe_possessive_player_filter(&consult.player);
+        let library_owner = if player == "you" { "your" } else { "their" };
         let (subject_verb, followup_verb) = match consult.mode {
             crate::effects::consult_helpers::LibraryConsultMode::Reveal => {
                 (player_verb(&player, "reveal", "reveals"), "reveal")
@@ -918,7 +1032,7 @@
             }
         };
         let pronoun = if player == "you" { "you" } else { "they" };
-        let selection = describe_search_selection_with_cards(&consult.filter.description());
+        let selection = describe_single_search_filter_in_zone(&consult.filter, Zone::Library);
         let stop_text = describe_consult_stop_text(
             &selection,
             &consult.stop_rule,
@@ -932,8 +1046,20 @@
         effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
     {
         let library_owner = describe_possessive_player_filter(&remainder.player);
-        let remainder_text = if remainder.keep_tagged.is_some() {
+        let remainder_text = if remainder.keep_tagged.is_some()
+            && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed")
+        {
+            "Put the rest of the revealed cards"
+        } else if remainder.keep_tagged.is_some()
+            && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "exiled")
+        {
+            "Put the rest of the exiled cards"
+        } else if remainder.keep_tagged.is_some() {
             "Put the remaining tagged cards"
+        } else if crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed") {
+            "Put the revealed cards"
+        } else if crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "exiled") {
+            "Put the exiled cards"
         } else {
             "Put the tagged remainder"
         };
@@ -941,10 +1067,9 @@
             crate::effects::consult_helpers::LibraryBottomOrder::Random => {
                 " in a random order".to_string()
             }
-            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => format!(
-                " in an order chosen by {}",
-                describe_player_filter(&remainder.player)
-            ),
+            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+                " in any order".to_string()
+            }
         };
         return format!("{remainder_text} on the bottom of {library_owner} library{order_text}");
     }
@@ -1042,8 +1167,24 @@
     }
     if let Some(investigate) = effect.downcast_ref::<crate::effects::InvestigateEffect>() {
         let player = describe_player_filter(&investigate.player);
+        if let Some(count) = describe_effect_count_backref(&investigate.count) {
+            return if player == "you" {
+                format!("Investigate {count} times")
+            } else {
+                format!("{player} investigates {count} times")
+            };
+        }
+        if let Some(where_x) = describe_where_x_basis(&investigate.count) {
+            return if player == "you" {
+                format!("Investigate X times, where X is {where_x}")
+            } else {
+                format!("{player} investigates X times, where X is {where_x}")
+            };
+        }
         return match (&investigate.count, player.as_str()) {
             (Value::Fixed(1), "you") => "Investigate".to_string(),
+            (Value::Fixed(2), "you") => "Investigate twice".to_string(),
+            (Value::Fixed(amount), "you") => format!("Investigate {amount} times"),
             (Value::Count(filter), "you") => {
                 format!(
                     "Investigate for each {}",
@@ -1057,6 +1198,7 @@
                 )
             }
             (Value::Fixed(1), _) => format!("{player} investigates"),
+            (Value::Fixed(2), _) => format!("{player} investigates twice"),
             (Value::Fixed(amount), _) => format!("{player} investigates {amount} times"),
             (Value::Count(filter), _) => format!(
                 "{player} investigates for each {}",
@@ -1113,12 +1255,21 @@
         );
     }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
-        let amount = describe_value(&amass.amount);
+        let (amount, where_x) = if value_prefers_where_x(&amass.amount) {
+            (
+                "X".to_string(),
+                describe_where_x_basis(&amass.amount)
+                    .map(|basis| format!(", where X is {basis}"))
+                    .unwrap_or_default(),
+            )
+        } else {
+            (describe_value(&amass.amount), String::new())
+        };
         if let Some(subtype) = amass.subtype {
             let subtype_name = subtype.to_string().to_ascii_lowercase();
-            return format!("Amass {} {amount}", pluralize_word(&subtype_name));
+            return format!("Amass {} {amount}{where_x}", pluralize_word(&subtype_name));
         }
-        return format!("Amass {amount}");
+        return format!("Amass {amount}{where_x}");
     }
     if let Some(poison) = effect.downcast_ref::<crate::effects::PoisonCountersEffect>() {
         let amount = match poison.count {
@@ -1160,6 +1311,9 @@
     if let Some(energy) = effect.downcast_ref::<crate::effects::EnergyCountersEffect>() {
         let player = describe_player_filter(&energy.player);
         let verb = player_verb(&player, "get", "gets");
+        if let Some(count) = describe_effect_count_backref(&energy.count) {
+            return format!("{player} {verb} {count} {{E}}");
+        }
         return match &energy.count {
             Value::Fixed(amount) if *amount > 0 => format!(
                 "{player} {verb} {}",
@@ -1203,11 +1357,21 @@
         };
     }
     if let Some(connive) = effect.downcast_ref::<crate::effects::ConniveEffect>() {
+        let target = describe_choose_spec(&connive.target);
+        let subject = if connive.target.count().is_single() {
+            target
+        } else {
+            format!("Each of {target}")
+        };
+        let verb = if connive.target.count().is_single() {
+            "connives"
+        } else {
+            "connive"
+        };
         return match &connive.count {
-            Value::Fixed(1) => format!("{} connives", describe_choose_spec(&connive.target)),
+            Value::Fixed(1) => format!("{subject} {verb}"),
             count => format!(
-                "{} connives X, where X is {}",
-                describe_choose_spec(&connive.target),
+                "{subject} {verb} X, where X is {}",
                 describe_value(count)
             ),
         };
@@ -1261,9 +1425,12 @@
         );
     }
     if let Some(skip_draw) = effect.downcast_ref::<crate::effects::SkipDrawStepEffect>() {
+        let player = describe_player_filter(&skip_draw.player);
         return format!(
-            "{} skips their next draw step",
-            describe_player_filter(&skip_draw.player)
+            "{} {} {} next draw step",
+            player,
+            player_verb(&player, "skip", "skips"),
+            describe_possessive_player_filter(&skip_draw.player),
         );
     }
     if let Some(end_turn) = effect.downcast_ref::<crate::effects::EndTurnEffect>() {
@@ -1355,6 +1522,17 @@
             ) {
                 return "Copy this spell for each spell cast before it this turn".to_string();
             }
+            if let Value::TurnHistoryCount(
+                ironsmith_core::TurnHistoryCount::SpellsCast {
+                    before_triggering_spell: true,
+                    ..
+                },
+            ) = copy_spell.count.unhinted()
+            {
+                let count = describe_value(&copy_spell.count);
+                let basis = count.strip_prefix("the number of ").unwrap_or(&count);
+                return format!("Copy it for each {basis}");
+            }
             if matches!(copy_spell.count, Value::Fixed(1)) {
                 if copy_spell
                     .removed_supertypes
@@ -1434,8 +1612,13 @@
             .as_ref()
             .map(describe_player_filter)
             .unwrap_or_else(|| "you".to_string());
+        let target_text = if choose_new.single_target_surface {
+            "a new target"
+        } else {
+            "new targets"
+        };
         return format!(
-            "{} {} new targets for the copy",
+            "{} {} {target_text} for the copy",
             chooser_text,
             if choose_new.may {
                 "may choose"
@@ -1554,6 +1737,36 @@
         );
     }
     if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
+        if add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && !add_any.distinct_colors
+            && add_any
+                .available_colors
+                .as_ref()
+                .is_none_or(|colors| crate::color::Color::ALL.iter().all(|c| colors.contains(c)))
+            && let Some(where_x) = describe_where_x_basis(&add_any.amount)
+        {
+            return format!(
+                "Add X mana in any combination of colors{}, where X is {where_x}",
+                describe_add_mana_destination_suffix(&add_any.player)
+            );
+        }
+        if add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && !add_any.distinct_colors
+            && let Some(colors) = &add_any.available_colors
+            && let Some(where_x) = describe_where_x_basis(&add_any.amount)
+        {
+            let options = colors
+                .iter()
+                .copied()
+                .map(crate::mana::ManaSymbol::from_color)
+                .map(describe_mana_symbol)
+                .collect::<Vec<_>>()
+                .join(" and/or ");
+            return format!(
+                "Add X mana in any combination of {options}{}, where X is {where_x}",
+                describe_add_mana_destination_suffix(&add_any.player)
+            );
+        }
         if !add_any.distinct_colors
             && add_any
                 .available_colors
@@ -1701,6 +1914,23 @@
         } else {
             ""
         };
+        if add_land_produced.mana_type_source
+            == crate::effects::ManaTypeSource::TriggeringEventProduced
+        {
+            let subject = capitalize_first(&describe_player_filter(&add_land_produced.player));
+            let verb = if matches!(add_land_produced.player, PlayerFilter::You) {
+                "add"
+            } else {
+                "adds"
+            };
+            let producer_description = add_land_produced.land_filter.description();
+            let producer = strip_leading_article(&producer_description);
+            return format!(
+                "{subject} {verb} {} mana of any{} {any_word} that {producer} produced",
+                describe_mana_amount_for_add_effect(&add_land_produced.amount),
+                one_word,
+            );
+        }
         return format!(
             "Add {} mana of any{} {}{} that {} could produce",
             describe_mana_amount_for_add_effect(&add_land_produced.amount),
@@ -1770,6 +2000,16 @@
         } else {
             ""
         };
+        let (amount_text, where_x_suffix) = if value_prefers_where_x(&prevent_damage.amount) {
+            (
+                "X".to_string(),
+                describe_where_x_basis(&prevent_damage.amount)
+                    .map(|basis| format!(", where X is {basis}"))
+                    .unwrap_or_default(),
+            )
+        } else {
+            (describe_value(&prevent_damage.amount), String::new())
+        };
         if let Some(put) = prevention_put_counters_follow_up(&prevent_damage.follow_up_effects) {
             let protected = if prevent_damage.protect_you_and_permanents_you_control {
                 "you and/or permanents you control".to_string()
@@ -1777,12 +2017,13 @@
                 describe_choose_spec(&prevent_damage.target)
             };
             return format!(
-                "Prevent the next {} {} that would be dealt to {} {}{}. For each 1 damage prevented this way, put a {} counter on {}",
-                describe_value(&prevent_damage.amount),
+                "Prevent the next {} {} that would be dealt to {} {}{}{}. For each 1 damage prevented this way, put a {} counter on {}",
+                amount_text,
                 damage_text,
                 protected,
                 timing,
                 source_text,
+                where_x_suffix,
                 describe_counter_type(put.counter_type),
                 describe_prevention_follow_up_target(&prevent_damage.target)
             );
@@ -1794,21 +2035,23 @@
         };
         if prevention_damage_any_target_follow_up(&prevent_damage.follow_up_effects).is_some() {
             return format!(
-                "Prevent the next {} {} that would be dealt to {} {}{}. If damage is prevented this way, this spell deals that much damage to any target",
-                describe_value(&prevent_damage.amount),
+                "Prevent the next {} {} that would be dealt to {} {}{}{}. If damage is prevented this way, this spell deals that much damage to any target",
+                amount_text,
                 damage_text,
                 protected,
                 timing,
-                source_text
+                source_text,
+                where_x_suffix
             );
         }
         return format!(
-            "Prevent the next {} {} that would be dealt to {} {}{}",
-            describe_value(&prevent_damage.amount),
+            "Prevent the next {} {} that would be dealt to {} {}{}{}",
+            amount_text,
             damage_text,
             protected,
             timing,
-            source_text
+            source_text,
+            where_x_suffix
         );
     }
     if let Some(prevent_all_target) =
@@ -2068,6 +2311,18 @@
         return format!(
             "All damage that would be dealt this turn to {target_set} is dealt to {destination} instead"
         );
+    }
+    if let Some(assign_none) = effect.downcast_ref::<crate::effects::AssignNoCombatDamageEffect>() {
+        let source = match assign_none.source.base() {
+            ChooseSpec::Source => "this creature".to_string(),
+            _ => describe_choose_spec(&assign_none.source),
+        };
+        let timing = match assign_none.until {
+            Until::EndOfTurn => "this turn".to_string(),
+            Until::EndOfCombat => "this combat".to_string(),
+            _ => describe_until(&assign_none.until),
+        };
+        return format!("{source} assigns no combat damage {timing}");
     }
     if let Some(prevent_from) =
         effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
@@ -2345,6 +2600,19 @@
         if delayed_text.starts_with("draw ") {
             delayed_text = format!("you {delayed_text}");
         }
+        if schedule.one_shot
+            && !schedule.start_next_turn
+            && !schedule.until_end_of_turn
+            && schedule
+                .trigger
+                .downcast_ref::<crate::triggers::BeginningOfMainPhaseTrigger>()
+                .is_some_and(|trigger| {
+                    trigger.phase_type == crate::triggers::phase_step::MainPhaseType::Either
+                })
+        {
+            let next_trigger = trigger_text.replacen("main phase", "next main phase", 1);
+            return format!("{next_trigger}, {delayed_text}");
+        }
         if schedule.target_tag.is_some()
             && (trigger_lower.contains("when this creature is dealt damage")
                 || trigger_lower.contains("whenever this creature is dealt damage"))
@@ -2426,7 +2694,7 @@
                 return format!("At the beginning of your next draw step, {delayed_text}");
             }
             if trigger_lower.contains("upkeep") {
-                return format!("At the beginning of the next turn's upkeep, {delayed_text}");
+                return describe_next_turn_upkeep_delayed_instruction(schedule, &delayed_text);
             }
             if trigger_lower.contains("draw step") {
                 return format!("At the beginning of the next turn's draw step, {delayed_text}");
@@ -2520,6 +2788,17 @@
             .zone_replacements
             .iter()
             .map(|register| {
+                if let Some(followup) = describe_countered_spell_exile_replacement_followup(
+                    &local.effect,
+                    register,
+                ) {
+                    return followup;
+                }
+                if let Some(followup) =
+                    describe_tagged_die_exile_replacement_followup(&local.effect, register)
+                {
+                    return followup;
+                }
                 let target = describe_choose_spec(&register.target);
                 let referent = if target.contains("spell") {
                     "that spell".to_string()
@@ -2566,6 +2845,31 @@
         return format!("{base}. {}", followups.join(". "));
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>() {
+        if register.from_zone == Some(Zone::Battlefield)
+            && register.to_zone.is_none()
+            && register.replacement_zone == Zone::Exile
+            && matches!(
+                register.mode,
+                crate::effects::ReplacementApplyMode::Resolution
+            )
+            && !register.optional
+            && register.counters.is_empty()
+        {
+            let target = describe_choose_spec(&register.target);
+            return format!(
+                "If {target} would leave the battlefield, exile it instead of putting it anywhere else"
+            );
+        }
+        if register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+            && matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot)
+            && !register.optional
+            && register.counters.is_empty()
+            && matches!(register.target.base(), ChooseSpec::Tagged(tag) if crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
+        {
+            return "If that spell would be put into a graveyard, exile it instead".to_string();
+        }
         let target = describe_choose_spec(&register.target);
         let from = register
             .from_zone
@@ -2642,6 +2946,26 @@
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
     {
+        if register.filter == ObjectFilter::creature()
+            && register.from_zone == Some(Zone::Battlefield)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+            && register.mode == crate::effects::ReplacementApplyMode::UntilEndOfTurn
+            && register.cause_filter.is_none()
+            && !register.require_cause_source_match
+        {
+            return "If a creature would die this turn, exile it instead".to_string();
+        }
+        if register.filter == ObjectFilter::permanent().controlled_by(PlayerFilter::You)
+            && register.from_zone == Some(Zone::Battlefield)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+            && register.mode == crate::effects::ReplacementApplyMode::UntilEndOfTurn
+            && register.cause_filter.is_none()
+            && !register.require_cause_source_match
+        {
+            return "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead".to_string();
+        }
         if register.filter == ObjectFilter::instant_or_sorcery().cast_by_you()
             && register.from_zone == Some(Zone::Stack)
             && register.to_zone == Some(Zone::Graveyard)
@@ -2672,20 +2996,34 @@
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
         let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+        let prefix = if register.mode == crate::effects::ReplacementApplyMode::OneShot {
+            "The next time"
+        } else {
+            "If"
+        };
         return format!(
-            "The next time {target} would go{from}{to}{duration}, it goes to {replacement} instead"
+            "{prefix} {target} would go{from}{to}{duration}, it goes to {replacement} instead"
         );
     }
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterDamagedBySourceZoneReplacementEffect>()
     {
-        if register.filter == ObjectFilter::creature()
+        if matches!(register.filter.zone, None | Some(Zone::Battlefield))
             && register.from_zone == Some(Zone::Battlefield)
             && register.to_zone == Some(Zone::Graveyard)
             && register.replacement_zone == Zone::Exile
         {
-            return "If a creature dealt damage this way would die this turn, exile it instead"
-                .to_string();
+            let subject = with_indefinite_article(strip_leading_article(
+                &register.filter.description(),
+            ));
+            let duration = match register.mode {
+                crate::effects::ReplacementApplyMode::OneShot
+                | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+                crate::effects::ReplacementApplyMode::Resolution => "",
+            };
+            return format!(
+                "If {subject} dealt damage this way would die{duration}, exile it instead"
+            );
         }
 
         let target = register.filter.description();
@@ -3057,6 +3395,9 @@
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn"
             }
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
+                "until your next end step"
+            }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 "for as long as it remains exiled"
             }
@@ -3083,6 +3424,11 @@
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
         let helper_exiled =
             crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled");
+        let helper_consult_match = crate::cards::is_sentence_helper_tag(
+            grant_play_tagged.tag.as_str(),
+            "consult_match",
+        );
+        let helper_tag = helper_tag || helper_consult_match;
         let object_text = if grant_play_tagged.allow_land && helper_exiled {
             if grant_play_tagged.cast_pool_is_plural {
                 "those cards".to_string()
@@ -3101,6 +3447,7 @@
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
+            || helper_consult_match
         {
             "that card".to_string()
         } else {
@@ -3112,8 +3459,20 @@
                 && grant_play_tagged.duration
                     == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
             {
+                if !grant_play_tagged.cast_pool_is_plural {
+                    let mana_clause = grant_play_tagged
+                        .mana_spend_cast_clause("that spell")
+                        .expect("flexible mana grant has a cast clause");
+                    return format!(
+                        "{} may cast that card this turn, and {mana_clause}",
+                        describe_player_filter(&grant_play_tagged.player),
+                    );
+                }
+                let mana_clause = grant_play_tagged
+                    .mana_spend_cast_clause("them")
+                    .expect("flexible mana grant has a cast clause");
                 return format!(
-                    "{} may cast spells from among those cards this turn, and you may spend mana as though it were mana of any color to cast them",
+                    "{} may cast spells from among those cards this turn, and {mana_clause}",
                     describe_player_filter(&grant_play_tagged.player),
                 );
             }
@@ -3122,8 +3481,11 @@
                 && grant_play_tagged.duration
                     == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
             {
+                let mana_clause = grant_play_tagged
+                    .mana_spend_cast_clause("that spell")
+                    .expect("flexible mana grant has a cast clause");
                 return format!(
-                    "Until the end of your next turn, {} may cast that card and you may spend mana as though it were mana of any color to cast that spell",
+                    "Until the end of your next turn, {} may cast that card and {mana_clause}",
                     describe_player_filter(&grant_play_tagged.player),
                 );
             }
@@ -3132,8 +3494,11 @@
             } else {
                 "them"
             };
+            let mana_clause = grant_play_tagged
+                .mana_spend_cast_clause(pronoun)
+                .expect("flexible mana grant has a cast clause");
             return format!(
-                "{} may {verb} {object_text} {timing}, and you may spend mana as though it were mana of any color to cast {pronoun}",
+                "{} may {verb} {object_text} {timing}, and {mana_clause}",
                 describe_player_filter(&grant_play_tagged.player),
             );
         }
@@ -3142,7 +3507,9 @@
             && grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
             && matches!(grant_play_tagged.player, PlayerFilter::You)
         {
-            if helper_exiled && !grant_play_tagged.cast_pool_is_plural {
+            if (helper_exiled || helper_consult_match)
+                && !grant_play_tagged.cast_pool_is_plural
+            {
                 return "you may cast that card this turn".to_string();
             }
             let cards_text = if grant_play_tagged.tag.as_str() == "exiled"
@@ -3203,6 +3570,10 @@
             || crate::cards::is_sentence_helper_tag(
                 grant_tagged_spell_free_cast.tag.as_str(),
                 "searched",
+            )
+            || crate::cards::is_sentence_helper_tag(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "consult_match",
             );
         let helper_exiled = crate::cards::is_sentence_helper_tag(
             grant_tagged_spell_free_cast.tag.as_str(),
@@ -3238,6 +3609,9 @@
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn"
             }
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
+                "until your next end step"
+            }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 "for as long as it remains exiled"
             }
@@ -3253,29 +3627,7 @@
     if let Some(may_cast_matching) =
         effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
     {
-        fn join_with_or(items: &[String]) -> String {
-            match items.len() {
-                0 => String::new(),
-                1 => items[0].clone(),
-                2 => format!("{} or {}", items[0], items[1]),
-                _ => {
-                    let mut out = items[..items.len() - 1].join(", ");
-                    out.push_str(", or ");
-                    out.push_str(&items[items.len() - 1]);
-                    out
-                }
-            }
-        }
-
         let player = describe_player_filter(&may_cast_matching.player);
-        let has_tagged_mana_value_cap =
-            may_cast_matching
-                .filter
-                .tagged_constraints
-                .iter()
-                .any(|constraint| {
-                    constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
-                });
         fn alternative_cast_kind_text(kind: crate::filter::AlternativeCastKind) -> &'static str {
             match kind {
                 crate::filter::AlternativeCastKind::Blitz => "blitz",
@@ -3309,29 +3661,11 @@
                 .owned_by(crate::target::PlayerFilter::You)
         {
             "your commander".to_string()
-        } else if let Some(kind) = may_cast_matching.filter.alternative_cast {
-            format!("a spell with {}", alternative_cast_kind_text(kind))
-        } else if !may_cast_matching.filter.card_types.is_empty() {
-            let card_type_words: Vec<String> = may_cast_matching
-                .filter
-                .card_types
-                .iter()
-                .map(|card_type| card_type.to_string().to_ascii_lowercase())
-                .collect();
-            let joined = join_with_or(&card_type_words);
-            let article = if joined.starts_with('i')
-                || joined.starts_with('a')
-                || joined.starts_with('e')
-                || joined.starts_with('o')
-                || joined.starts_with('u')
-            {
-                "an"
-            } else {
-                "a"
-            };
-            format!("{article} {joined} spell")
         } else {
-            describe_cast_limit_spell_filter(&may_cast_matching.filter)
+            describe_cast_spell_filter(
+                &may_cast_matching.filter,
+                CastSpellFilterContext::EnclosingPermission,
+            )
         };
         if spell_text == "spell" {
             spell_text = "a spell".to_string();
@@ -3340,7 +3674,7 @@
             && !spell_text.starts_with("the ")
             && !spell_text.starts_with("your ")
         {
-            spell_text = format!("a {spell_text}");
+            spell_text = with_indefinite_article(&spell_text);
         }
         let zone_text = match may_cast_matching.zone {
             Zone::Hand => {
@@ -3365,46 +3699,15 @@
             Zone::Command => "from the command zone".to_string(),
             Zone::OutsideGame => "from outside the game".to_string(),
         };
-        let mana_value_limit_text = if has_tagged_mana_value_cap {
-            " with mana value less than or equal to that spell's mana value".to_string()
-        } else if let Some(counter_type) = may_cast_matching.filter.mana_value_eq_counters_on_source
-        {
-            format!(
-                " with mana value equal to the number of {} counters on this artifact",
-                counter_type.description()
-            )
-        } else if matches!(
-            may_cast_matching.filter.mana_value,
-            Some(crate::filter::Comparison::LessThanOrEqualExpr(ref value))
-                if matches!(
-                    value.as_ref(),
-                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
-                )
-        ) {
-            " with mana value less than or equal to that amount".to_string()
-        } else if let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) =
-            may_cast_matching.filter.mana_value.as_ref()
-        {
-            format!(
-                " with mana value less than or equal to {}",
-                describe_value(value)
-            )
-        } else if let Some(crate::filter::Comparison::EqualExpr(value)) =
-            may_cast_matching.filter.mana_value.as_ref()
-        {
-            format!(" with mana value equal to {}", describe_value(value))
-        } else {
-            String::new()
-        };
         match may_cast_matching.payment {
             ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost => {
                 return format!(
-                    "{player} may cast {spell_text} {zone_text}{mana_value_limit_text} without paying its mana cost"
+                    "{player} may cast {spell_text} {zone_text} without paying its mana cost"
                 );
             }
             ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind) => {
                 return format!(
-                    "{player} may cast {spell_text} {zone_text}{mana_value_limit_text}. If you do, pay its {} cost rather than its mana cost",
+                    "{player} may cast {spell_text} {zone_text}. If you do, pay its {} cost rather than its mana cost",
                     alternative_cast_kind_text(kind)
                 );
             }
@@ -3415,16 +3718,6 @@
     {
         let player_text = describe_player_filter(&grant_next_spell_cost_reduction.player);
         let spell_text = describe_cast_limit_spell_filter(&grant_next_spell_cost_reduction.filter);
-        let spell_text = spell_text
-            .strip_prefix("spell matching ")
-            .map(|rest| {
-                if rest.contains("spell") || rest.contains("spells") {
-                    rest.to_string()
-                } else {
-                    format!("{rest} spell")
-                }
-            })
-            .unwrap_or(spell_text);
         let player_suffix = format!(" cast by {player_text}");
         let cast_by_text = grant_next_spell_cost_reduction
             .filter
@@ -3472,12 +3765,8 @@
                 && grant_next_spell_cost_reduction.filter.card_types.is_empty()
             {
                 format!("spells {player_text} cast from exile")
-            } else if spell_text.contains("spells") {
-                spell_text.to_string()
-            } else if let Some(rest) = spell_text.strip_prefix("spell") {
-                format!("spells{rest}")
             } else {
-                format!("{spell_text} spells")
+                pluralize_cast_spell_description(spell_text)
             };
             // The exile-cast-by-self surface ("spells you cast from exile") already names
             // the caster, so don't re-append it (which produced "... you casts cost ...").
@@ -3562,16 +3851,6 @@
         {
             spell_text = "an instant or sorcery spell from your hand".to_string();
         }
-        let spell_text = spell_text
-            .strip_prefix("spell matching ")
-            .map(|rest| {
-                if rest.contains("spell") || rest.contains("spells") {
-                    rest.to_string()
-                } else {
-                    format!("{rest} spell")
-                }
-            })
-            .unwrap_or(spell_text);
         let player_suffix = format!(" cast by {player_text}");
         let spell_text = spell_text
             .strip_suffix(player_suffix.as_str())
@@ -3823,6 +4102,15 @@
         {
             let group = small_number_word(*divisor as u32).unwrap_or_else(|| divisor.to_string());
             return format!("For each {group} counters removed this way, {repeated}");
+        }
+        if repeat.count.has_surface_hint(ValueSurfaceHint::ForEach)
+            && let Some((multiplier, basis)) =
+                crate::compiled_text::describe_counter_for_each_basis(&repeat.count)
+        {
+            if multiplier == 1 {
+                return format!("For each {basis}, {repeated}");
+            }
+            return format!("For each {basis}, {repeated} {multiplier} times");
         }
         return format!(
             "Repeat {} {} times",

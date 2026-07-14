@@ -5,7 +5,8 @@ use crate::cards::builders::{PredicateAst, TargetAst, TextSpan};
 use crate::effect::ChoiceCount;
 use crate::runtime_backend::grammar::primitives;
 use crate::runtime_backend::grammar::structure::{
-    parse_trailing_if_predicate_lexed, split_trailing_if_clause_lexed,
+    parse_predicate_with_grammar_entrypoint_lexed, parse_trailing_if_predicate_lexed,
+    split_trailing_if_clause_lexed,
 };
 use crate::runtime_backend::lexer::{OwnedLexToken, parser_token_word_refs, trim_lexed_commas};
 use crate::runtime_backend::util::parse_target_phrase;
@@ -125,6 +126,10 @@ pub(crate) enum CombatDamageTargetShape<'a> {
         instead_tail_tokens: &'a [OwnedLexToken],
     },
     TrailingIf {
+        target_tokens: &'a [OwnedLexToken],
+        predicate: PredicateAst,
+    },
+    TrailingUnless {
         target_tokens: &'a [OwnedLexToken],
         predicate: PredicateAst,
     },
@@ -396,6 +401,22 @@ pub(crate) fn parse_combat_divided_target_shape_lexed(
         return Err(CombatDividedTargetError::MissingTargetsAfterAmong);
     };
     let among_tail = trim_lexed_commas(after_among);
+    if let Some((_prefix, target_tokens)) = primitives::parse_prefix(
+        among_tail,
+        primitives::phrase(&["any", "number", "of"]).void(),
+    ) {
+        let target_tokens = trim_lexed_commas(target_tokens);
+        if target_tokens
+            .first()
+            .is_some_and(|token| matches!(token.as_word(), Some("those" | "them")))
+        {
+            return Ok(CombatDividedTargetShape {
+                count: ChoiceCount::any_number(),
+                target_tokens,
+                any_target: false,
+            });
+        }
+    }
     let Some((target_idx, _target_marker, _after_target)) =
         primitives::find_prefix(among_tail, || {
             primitives::any_phrase(&[&["target"], &["targets"]])
@@ -519,6 +540,21 @@ pub(crate) fn parse_combat_damage_target_shape_lexed(
             predicate_tokens: trim_lexed_commas(predicate_tokens),
             instead_tail_tokens: &target_tokens[instead_idx..],
         });
+    }
+    if let Some((unless_idx, (), predicate_tokens)) =
+        primitives::find_prefix(target_tokens, || primitives::kw("unless").void())
+    {
+        let leading_tokens = trim_lexed_commas(&target_tokens[..unless_idx]);
+        let predicate_tokens = trim_lexed_commas(predicate_tokens);
+        if !leading_tokens.is_empty()
+            && !predicate_tokens.is_empty()
+            && let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)
+        {
+            return Ok(CombatDamageTargetShape::TrailingUnless {
+                target_tokens: leading_tokens,
+                predicate,
+            });
+        }
     }
     if let Some(spec) = split_trailing_if_clause_lexed(target_tokens) {
         return Ok(CombatDamageTargetShape::TrailingIf {
@@ -696,5 +732,42 @@ mod tests {
             parse_combat_player_damage_target_shape_lexed(&tokens, false),
             Some(CombatPlayerDamageTargetShape::EachOtherOpponent)
         );
+
+        let tokens = lex_line(
+            "divided as its controller chooses among any number of those Wolves",
+            0,
+        )
+        .unwrap();
+        let shape = parse_combat_divided_target_shape_lexed(&tokens).unwrap();
+        assert!(shape.count.is_any_number());
+        assert_eq!(
+            parser_token_word_refs(shape.target_tokens),
+            ["those", "wolves"]
+        );
+    }
+
+    #[test]
+    fn parses_trailing_unless_before_the_damage_target_fallback() {
+        for text in [
+            "4 damage to that player unless they control a commander",
+            "2 damage to that player unless they control two or more basic lands",
+            "2 damage to that player unless they have exactly three or exactly four cards in hand",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let shape = parse_combat_damage_target_shape_lexed(&tokens, 1).unwrap();
+            let CombatDamageTargetShape::TrailingUnless {
+                target_tokens,
+                predicate,
+            } = shape
+            else {
+                panic!("expected trailing-unless shape for {text}");
+            };
+            assert_eq!(parser_token_word_refs(target_tokens), ["that", "player"]);
+            let predicate_debug = format!("{predicate:?}");
+            assert!(
+                predicate_debug.contains("Player") || predicate_debug.contains("ValueComparison"),
+                "unexpected predicate for {text}: {predicate_debug}"
+            );
+        }
     }
 }

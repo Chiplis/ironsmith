@@ -188,4 +188,12 @@ fn typed_multisentence_token_rules_preserve_costs_and_fallbacks() {
             }
         )]
     );
+
+    let any_color = parse_rules(
+        "colorless artifact token named Etherium Cell with \"{T}, Sacrifice this token: Add one mana of any color.\"",
+    );
+    assert_eq!(
+        any_color.embedded_rules,
+        vec![TokenEmbeddedRuleShape::TapSacrificeAddManaOfAnyColor]
+    );
 }

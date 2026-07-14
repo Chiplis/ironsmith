@@ -393,6 +393,120 @@ pub(super) fn test_rageform_parses_and_renders_aura_become_clause() {
         !rendered.contains("unsupported parser line fallback"),
         "Rageform should not rely on parser fallback markers: {rendered}"
     );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Rageform should have an enters trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    let manifested_tag = effects
+        .iter()
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()?;
+            Some(tagged.tag.clone())
+        })
+        .expect("manifest should export the manifested permanent under a tag");
+    let attach = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .expect("Rageform should attach itself after manifesting");
+    assert_eq!(attach.objects, ChooseSpec::Source);
+    assert_eq!(attach.target, ChooseSpec::Tagged(manifested_tag));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cryptic_coat_cloaks_then_attaches_to_the_cloaked_card() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cryptic Coat")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "When this Equipment enters, cloak the top card of your library, then attach this Equipment to it. (To cloak a card, put it onto the battlefield face down as a 2/2 creature with ward {2}. Turn it face up any time for its mana cost if it's a creature card.)\nEquipped creature gets +1/+0 and can't be blocked.\n{1}{U}: Return this Equipment to its owner's hand.",
+        )
+        .expect("Cryptic Coat should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("cloak the top card of your library"),
+        "expected cloak action in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("attach this equipment to it"),
+        "expected attachment follow-up in compiled text, got {rendered}"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cryptic Coat should have an enters trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    let cloaked_tag = effects
+        .iter()
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            let cloak = tagged
+                .effect
+                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()?;
+            cloak.cloak.then(|| tagged.tag.clone())
+        })
+        .expect("cloak should export the cloaked permanent under a tag");
+    let attach = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .expect("Cryptic Coat should attach itself after cloaking");
+    assert_eq!(attach.objects, ChooseSpec::Source);
+    assert_eq!(attach.target, ChooseSpec::Tagged(cloaked_tag));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn pre_war_formalwear_attaches_to_the_returned_creature() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Pre-War Formalwear")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "When this Equipment enters, return target creature card with mana value 3 or less from your graveyard to the battlefield and attach this Equipment to it.",
+        )
+        .expect("Pre-War Formalwear should parse strictly");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Pre-War Formalwear should have an enters trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    let returned_tag = effects
+        .iter()
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            let moved = tagged
+                .effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            (moved.zone == Zone::Battlefield).then(|| tagged.tag.clone())
+        })
+        .expect("the returned creature should be tagged after its zone change");
+    let attach = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .expect("Pre-War Formalwear should attach itself after the return");
+    assert_eq!(attach.objects, ChooseSpec::Source);
+    assert_eq!(attach.target, ChooseSpec::Tagged(returned_tag));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1468,22 +1582,34 @@ pub(super) fn test_parse_add_any_type_that_land_produced_clause() {
         )
         .expect("land-produced mana clause should parse");
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
-    assert!(
-        rendered.contains("whenever a player taps a land for mana"),
-        "expected tap-for-mana trigger text in oracle-like output, got {rendered}"
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Whenever a player taps a land for mana, that player adds one mana of any type that land produced."
     );
+
+    let debug = format!("{def:#?}");
     assert!(
-        rendered.contains("adds one mana of any type")
-            || rendered.contains("add one mana of any type")
-            || rendered.contains("add 1 mana of any type"),
-        "expected add-any-type mana text in oracle-like output, got {rendered}"
+        debug.contains("TapForManaTrigger")
+            && debug.contains("TriggeringEventProduced")
+            && debug.contains("player: IteratedPlayer"),
+        "expected actual-event mana semantics, got {debug}"
     );
-    assert!(
-        !rendered.contains("unsupported parser line fallback"),
-        "land-produced mana clause should not rely on unsupported fallback marker: {rendered}"
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_parse_tap_multiple_land_types_for_actual_mana_uses_oracle_list_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever a player taps a Mountain, Forest, or Plains for mana, that player adds one mana of any type that land produced.",
+        )
+        .expect("multi-subtype actual-mana trigger should parse");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join(" "),
+        "Whenever a player taps a Mountain, Forest, or Plains for mana, that player adds one mana of any type that land produced."
     );
 }
 
@@ -1828,9 +1954,8 @@ pub(super) fn test_parse_scent_of_cinder_uses_source_damage_surface() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("reveal any number of red cards in your hand")
-            && (rendered.contains("scent of cinder deals that much damage to any target")
-                || (rendered.contains("scent of cinder deals x damage to any target")
-                    && rendered.contains("where x is the number of cards revealed this way"))),
+            && rendered.contains("scent of cinder deals x damage to any target")
+            && rendered.contains("where x is the number of cards revealed this way"),
         "expected Scent of Cinder to keep its source-linked reveal-count damage text, got {rendered}"
     );
 }
@@ -2767,13 +2892,13 @@ pub(super) fn parse_sacrifice_any_number_then_return_that_many_uses_sacrifice_re
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_remove_all_counters_cost_binds_that_much_to_cost_x() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Relic Variant")
+pub(super) fn parse_relic_amulet_remove_all_counters_cost_binds_pronoun_that_much_to_cost_x() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Relic Amulet")
         .card_types(vec![CardType::Artifact])
         .parse_text(
-            "{2}, {T}, Remove all charge counters from this artifact: This artifact deals that much damage to target creature.",
+            "{2}, {T}, Remove all charge counters from this artifact: It deals that much damage to target creature.",
         )
-        .expect("remove-all-counter cost should bind that-much damage to cost X");
+        .expect("Relic Amulet's remove-all cost should bind pronoun that-much damage to cost X");
 
     let debug = format!("{:?}", def.abilities);
     assert!(

@@ -525,7 +525,7 @@ fn pre_rule_damage_this_way_player_followup(
         }
         Some(followup_shapes::DamagedPlayerFollowupShape::CantGainLifeRestOfGame) => {
             vec![EffectAst::IfResult {
-                predicate: IfResultPredicate::Did,
+                predicate: IfResultPredicate::DealtDamageToPlayer,
                 effects: vec![EffectAst::subject_verb_cant(
                     crate::effect::Restriction::gain_life(PlayerFilter::DamagedPlayer),
                     crate::effect::Until::Forever,
@@ -573,17 +573,10 @@ fn pre_rule_still_lands_followup(
     let is_still_lands_followup = is_still_lands_followup_sentence(sentence_tokens);
     let previous_sentence_is_land_animation =
         previous_sentence_is_temporary_land_animation(sentences, sentence_idx);
+    let marked_preceding_animation =
+        is_still_lands_followup && mark_last_animation_as_still_a_land(state.effects);
     if is_still_lands_followup
-        && (state.effects.iter().rev().any(|effect| {
-            matches!(
-                effect,
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::BecomeBasePtCreature { .. }
-                        | SubjectVerbActionAst::AddCardTypes { .. },
-                    ..
-                })
-            )
-        }) || previous_sentence_is_land_animation)
+        && (marked_preceding_animation || previous_sentence_is_land_animation)
     {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
@@ -591,6 +584,40 @@ fn pre_rule_still_lands_followup(
         }));
     }
     Ok(None)
+}
+
+fn mark_last_animation_as_still_a_land(effects: &mut [EffectAst]) -> bool {
+    for effect in effects.iter_mut().rev() {
+        if mark_animation_as_still_a_land(effect) {
+            return true;
+        }
+    }
+    false
+}
+
+fn mark_animation_as_still_a_land(effect: &mut EffectAst) -> bool {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::BecomeBasePtCreature {
+                preserve_other_types,
+                type_retention_surface,
+                ..
+            },
+        ..
+    }) = effect
+    {
+        *preserve_other_types = true;
+        *type_retention_surface = Some(ironsmith_core::TypeRetentionSurface::StillALand);
+        return true;
+    }
+
+    let mut marked = false;
+    for_each_nested_effects_mut(effect, true, |nested| {
+        if !marked {
+            marked = mark_last_animation_as_still_a_land(nested);
+        }
+    });
+    marked
 }
 
 pub(super) fn is_still_lands_followup_sentence(sentence_tokens: &[OwnedLexToken]) -> bool {
@@ -615,10 +642,15 @@ fn pre_rule_cant_be_regenerated_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !is_cant_be_regenerated_followup_sentence(sentence_tokens) {
+    let Some(shape) = followup_shapes::parse_cant_be_regenerated_followup(sentence_tokens) else {
         return Ok(None);
-    }
-    if apply_cant_be_regenerated_to_last_destroy_effect(state.effects) {
+    };
+    let applied = if shape.subject == followup_shapes::CantBeRegeneratedSubject::They {
+        apply_cant_be_regenerated_to_last_destroy_group(state.effects)
+    } else {
+        apply_cant_be_regenerated_to_last_destroy_effect(state.effects)
+    };
+    if applied {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
             route: None,
@@ -644,10 +676,7 @@ fn pre_rule_copy_and_cast_followups(
     sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if let Some((mut copy_effects, spec)) =
-        parse_same_sentence_copy_and_may_cast_copy(sentence_tokens)?
-    {
-        state.effects.append(&mut copy_effects);
+    if let Some(spec) = parse_same_sentence_copy_and_may_cast_copy(sentence_tokens)? {
         state.effects.push(build_may_cast_tagged_effect(&spec));
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
@@ -660,12 +689,10 @@ fn pre_rule_copy_and_cast_followups(
         if let Some(spec) = parse_may_cast_it_sentence(&next_tokens)
             && spec.as_copy
         {
-            let mut effects = parse_effect_sentence_lexed(sentence_tokens)?;
-            effects.push(build_may_cast_tagged_effect(&spec));
             return Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
                 tokens: sentence_tokens.to_vec(),
                 wrap_if_result: None,
-                direct_effects: Some(effects),
+                direct_effects: Some(vec![build_may_cast_tagged_effect(&spec)]),
                 consumed_sentences: 2,
             })));
         }
@@ -843,7 +870,7 @@ fn pre_rule_token_followups(
     if is_generic_token_reminder_sentence(reminder_tokens)
         && state.effects.last().is_some_and(effect_creates_any_token)
     {
-        if append_token_reminder_to_last_create_effect(state.effects, reminder_tokens) {
+        if append_token_reminder_to_last_create_effect(state.effects, reminder_tokens)? {
             let route = reminder_facts.lifecycle_head.then_some(
                 "subject-verb verb=Exile subject=implicit recognizer=token-copy-delayed-followup",
             );
@@ -1058,7 +1085,7 @@ fn pre_rule_if_no_one_does_followup(
 }
 
 fn pre_rule_if_you_win_followup(
-    _state: &mut SentenceDispatchState<'_>,
+    state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
@@ -1066,11 +1093,29 @@ fn pre_rule_if_you_win_followup(
     let Some(shape) = followup_shapes::parse_conditional_followup(sentence_tokens) else {
         return Ok(None);
     };
-    if shape.kind != followup_shapes::ConditionalFollowupKind::IfYouWin {
-        return Ok(None);
-    }
+    let predicate = match shape.kind {
+        followup_shapes::ConditionalFollowupKind::IfYouWinClash => IfResultPredicate::WonClash,
+        followup_shapes::ConditionalFollowupKind::IfYouWinFlip => IfResultPredicate::Did,
+        followup_shapes::ConditionalFollowupKind::IfYouWin => {
+            let preceded_by_clash = state.effects.last().is_some_and(|effect| {
+                matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Clash { .. },
+                        ..
+                    })
+                )
+            });
+            if preceded_by_clash {
+                IfResultPredicate::WonClash
+            } else {
+                IfResultPredicate::Did
+            }
+        }
+        _ => return Ok(None),
+    };
     let mut plan = SentenceParsePlan::new(trim_commas(shape.continuation_tokens).to_vec());
-    plan.wrap_if_result = Some(IfResultPredicate::Did);
+    plan.wrap_if_result = Some(predicate);
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
@@ -1341,6 +1386,100 @@ fn default_effects_for_self_replacement(
     (default_effects, carried_player)
 }
 
+fn tagged_object_reference(filter: &ObjectFilter) -> Option<&TagKey> {
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    (constraint.relation == TaggedOpbjectRelation::IsTaggedObject).then_some(&constraint.tag)
+}
+
+fn chosen_card_tag_from_hand_reveal_branch(effects: &[EffectAst]) -> Option<TagKey> {
+    effects.windows(2).rev().find_map(|pair| {
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::RevealCardsFromHand {
+                        tag: revealed_tag, ..
+                    },
+                ..
+            }),
+            EffectAst::ChooseObjects {
+                filter,
+                count,
+                tag: chosen_tag,
+                ..
+            },
+        ] = pair
+        else {
+            return None;
+        };
+        let chooses_one = count.min == 1
+            && count.max == Some(1)
+            && !count.dynamic_x
+            && !count.up_to_x
+            && !count.random;
+        (chooses_one && tagged_object_reference(filter) == Some(revealed_tag))
+            .then(|| chosen_tag.clone())
+    })
+}
+
+fn is_dependent_that_player_discard(effect: &EffectAst, chosen_tag: &TagKey) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject:
+            SubjectVerbSubjectAst {
+                role: SubjectVerbRoleAst::AffectedPlayer,
+                player: PlayerAst::That,
+            },
+        action:
+            SubjectVerbActionAst::Discard {
+                count: Value::Fixed(1),
+                random: false,
+                any_number: false,
+                filter: Some(filter),
+                tag: None,
+            },
+    }) = effect
+    else {
+        return false;
+    };
+    filter.zone == Some(Zone::Hand) && tagged_object_reference(filter) == Some(chosen_tag)
+}
+
+/// Keep a dependent "That player discards that card" inside the `if you do`
+/// branch that established both the player and the chosen-card antecedents.
+/// Reference resolution runs after sentence grouping, so moving the AST here
+/// lets both demonstratives bind within the branch instead of leaking to the
+/// surrounding ability sequence.
+fn post_rule_hand_reveal_choice_discard_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let [discard] = sentence_effects.as_slice() else {
+        return Ok(None);
+    };
+    let Some(EffectAst::IfResult {
+        effects: branch_effects,
+        ..
+    }) = state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+    let Some(chosen_tag) = chosen_card_tag_from_hand_reveal_branch(branch_effects) else {
+        return Ok(None);
+    };
+    if !is_dependent_that_player_discard(discard, &chosen_tag) {
+        return Ok(None);
+    }
+
+    branch_effects.extend(sentence_effects.drain(..));
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
 fn post_rule_delayed_trigger_result_followup(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -1356,7 +1495,8 @@ fn post_rule_delayed_trigger_result_followup(
         EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-        | EffectAst::DelayedUntilNextDrawStep { effects, .. },
+        | EffectAst::DelayedUntilNextDrawStep { effects, .. }
+        | EffectAst::DelayedUntilNextMainPhase { effects, .. },
     ) = state.effects.last_mut()
     else {
         return Ok(None);
@@ -1546,6 +1686,12 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         run: post_rule_future_zone_and_self_replacement,
     },
     SubjectVerbPostParseRuleDef {
+        id: "hand-reveal-choice-discard-followup",
+        priority: 25,
+        heads: &["that"],
+        run: post_rule_hand_reveal_choice_discard_followup,
+    },
+    SubjectVerbPostParseRuleDef {
         id: "delayed-trigger-result-followup",
         priority: 30,
         heads: &["if", "when"],
@@ -1558,3 +1704,90 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         run: post_rule_delayed_trigger_copy_retarget_followup,
     },
 ];
+
+#[cfg(test)]
+mod retained_land_followup_tests {
+    use super::*;
+
+    fn animation() -> EffectAst {
+        EffectAst::subject_verb_become_base_pt_creature(
+            Value::Fixed(3),
+            Value::Fixed(3),
+            TargetAst::Source(None),
+            vec![crate::types::CardType::Creature],
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            Vec::new(),
+            false,
+            None,
+            Until::EndOfTurn,
+        )
+    }
+
+    #[test]
+    fn still_land_followup_reaches_animation_inside_conditional_may() {
+        let mut effects = vec![EffectAst::Conditional {
+            predicate: PredicateAst::SourceIsTapped,
+            if_true: vec![EffectAst::May {
+                effects: vec![animation()],
+            }],
+            if_false: Vec::new(),
+        }];
+
+        assert!(mark_last_animation_as_still_a_land(&mut effects));
+        let EffectAst::Conditional { if_true, .. } = &effects[0] else {
+            panic!("expected conditional wrapper");
+        };
+        let [EffectAst::May { effects }] = if_true.as_slice() else {
+            panic!("expected may wrapper");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::BecomeBasePtCreature {
+                        preserve_other_types,
+                        type_retention_surface,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected nested animation");
+        };
+
+        assert!(*preserve_other_types);
+        assert_eq!(
+            *type_retention_surface,
+            Some(ironsmith_core::TypeRetentionSurface::StillALand)
+        );
+    }
+}
+
+#[cfg(test)]
+mod copy_cast_followup_tests {
+    #[test]
+    fn copy_card_then_may_cast_copy_uses_prior_moved_tag_without_copying_source() {
+        let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Copy Variant")
+            .card_types(vec![crate::CardType::Sorcery])
+            .parse_text(
+                "Exile target instant or sorcery card from your graveyard. Copy that card. You may cast the copy without paying its mana cost.",
+            )
+            .expect("copy-and-cast sequence should compile");
+        let debug = format!("{definition:#?}");
+
+        assert!(!debug.contains("CopySpellEffect"), "{debug}");
+        let cast_debug = debug
+            .split_once("CastTaggedEffect")
+            .map(|(_, tail)| tail)
+            .expect("sequence should lower to a tagged cast");
+        assert!(cast_debug.contains("__sentence_helper_exiled"), "{debug}");
+        assert!(cast_debug.contains("as_copy: true"), "{debug}");
+        assert!(
+            cast_debug.contains("without_paying_mana_cost: true"),
+            "{debug}"
+        );
+    }
+}

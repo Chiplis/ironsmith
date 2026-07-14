@@ -149,6 +149,8 @@ pub struct TargetRequirement {
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited, i.e., "any number").
     pub max_targets: Option<usize>,
+    /// Requirements in the same group must select different player targets.
+    pub distinct_player_group: Option<usize>,
 }
 
 impl TargetRequirement {
@@ -161,6 +163,7 @@ impl TargetRequirement {
             description,
             min_targets: 1,
             max_targets: Some(1),
+            distinct_player_group: None,
         }
     }
 
@@ -173,6 +176,7 @@ impl TargetRequirement {
             description,
             min_targets: 0,
             max_targets: None,
+            distinct_player_group: None,
         }
     }
 
@@ -191,6 +195,7 @@ impl TargetRequirement {
             description,
             min_targets: min,
             max_targets: max,
+            distinct_player_group: None,
         }
     }
 

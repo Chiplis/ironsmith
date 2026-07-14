@@ -592,6 +592,7 @@ pub struct ManifestDreadEffect;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestTopCardOfLibraryEffect {
     pub player: PlayerFilter,
+    pub cloak: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -599,7 +600,17 @@ pub struct ManifestCardFromHandEffect;
 
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            cloak: false,
+        }
+    }
+
+    pub fn cloak(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            cloak: true,
+        }
     }
 }
 
@@ -620,6 +631,7 @@ fn manifest_card(
     ctx: &mut ExecutionContext,
     card_id: ObjectId,
     controller: crate::ids::PlayerId,
+    cloak: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
     if game.object(card_id).is_none() {
         return Ok(EffectOutcome::count(0));
@@ -627,6 +639,16 @@ fn manifest_card(
 
     if let Some(card) = game.object_mut(card_id) {
         card.apply_face_down_cast_overlay();
+        if cloak {
+            card.abilities_mut()
+                .push(crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::ward(crate::cost::TotalCost::mana(
+                        crate::mana::ManaCost::from_pips(vec![vec![
+                            crate::mana::ManaSymbol::Generic(2),
+                        ]]),
+                    )),
+                ));
+        }
     }
 
     let outcome = match move_to_battlefield_with_options(
@@ -638,7 +660,16 @@ fn manifest_card(
         BattlefieldEntryOutcome::Moved(new_id) => {
             game.set_manifested(new_id);
             EffectOutcome::with_objects(vec![new_id]).with_event(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(KeywordActionKind::Manifest, controller, ctx.source, 1),
+                KeywordActionEvent::new(
+                    if cloak {
+                        KeywordActionKind::Cloak
+                    } else {
+                        KeywordActionKind::Manifest
+                    },
+                    controller,
+                    ctx.source,
+                    1,
+                ),
                 ctx.provenance,
             ))
         }
@@ -686,7 +717,7 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        manifest_card(game, ctx, card_id, ctx.controller)
+        manifest_card(game, ctx, card_id, ctx.controller, self.cloak)
     }
 }
 
@@ -735,7 +766,7 @@ impl EffectExecutor for ManifestCardFromHandEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        manifest_card(game, ctx, card_id, ctx.controller)
+        manifest_card(game, ctx, card_id, ctx.controller, false)
     }
 }
 
@@ -2102,6 +2133,57 @@ mod tests {
             .downcast_ref::<KeywordActionEvent>()
             .expect("expected keyword action event");
         assert_eq!(keyword.action, KeywordActionKind::Manifest);
+    }
+
+    #[test]
+    fn cloak_top_card_enters_face_down_with_ward_two_and_emits_cloak() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let _card = create_library_card(
+            &mut game,
+            alice,
+            202,
+            "Cloak Test Creature",
+            vec![CardType::Creature],
+            None,
+            Some(3),
+            Some(3),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = ManifestTopCardOfLibraryEffect::cloak(PlayerFilter::You)
+            .execute(&mut game, &mut ctx)
+            .expect("cloak should execute");
+        let cloaked_id = outcome
+            .value
+            .objects()
+            .and_then(|ids| ids.first().copied())
+            .expect("cloak should create one permanent");
+        let cloaked = game
+            .object(cloaked_id)
+            .expect("cloaked permanent should exist");
+
+        assert!(game.is_face_down(cloaked_id));
+        assert!(game.is_manifested(cloaked_id));
+        assert_eq!(game.calculated_power(cloaked_id), Some(2));
+        assert_eq!(game.calculated_toughness(cloaked_id), Some(2));
+        assert!(cloaked.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::Ward
+                    && static_ability.display() == "Ward {2}"
+        )));
+        let keyword = outcome
+            .events
+            .iter()
+            .find(|event| event.kind() == EventKind::KeywordAction)
+            .expect("expected keyword action event")
+            .inner()
+            .as_any()
+            .downcast_ref::<KeywordActionEvent>()
+            .expect("expected keyword action event");
+        assert_eq!(keyword.action, KeywordActionKind::Cloak);
     }
 
     #[test]

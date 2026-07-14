@@ -1226,6 +1226,10 @@ pub(crate) fn is_players_skip_upkeep_line_lexed(tokens: &[OwnedLexToken]) -> boo
     matches_exact_phrase_line_lexed(tokens, &["players", "skip", "their", "upkeep", "steps"])
 }
 
+pub(crate) fn is_skip_your_draw_step_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches_exact_phrase_line_lexed(tokens, &["skip", "your", "draw", "step"])
+}
+
 pub(crate) fn is_all_permanents_colorless_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["all", "permanents", "are", "colorless"])
 }

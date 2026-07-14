@@ -16,7 +16,9 @@ use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
 use crate::runtime_backend::grammar::effects::sequence_quad_shapes as quad_grammar;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
-use crate::runtime_backend::util::helper_tag_for_tokens;
+use crate::runtime_backend::util::{
+    helper_tag_for_tokens, strip_leading_token_words_any, trim_commas,
+};
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
 
@@ -53,10 +55,12 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
         }) => true,
         EffectAst::Sequence { effects }
         | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. } => {
             effects.iter().any(effect_ast_contains_sacrifice)
         }
+        EffectAst::TagAffected { effect, .. } => effect_ast_contains_sacrifice(effect),
         EffectAst::Conditional {
             if_true, if_false, ..
         }
@@ -76,6 +80,47 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
         }
         _ => false,
     }
+}
+
+/// A trailing reflexive "When ... this way" refers to the selected-card zone
+/// move, even when the oracle text describes the remainder before stating the
+/// reflexive ability.  Keep the runtime antecedent adjacent to the result node
+/// and leave rendering to restore the oracle sentence order.
+pub(crate) fn parse_top_cards_move_rest_then_typed_when_result(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(mut effects) = super::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom(
+        sentences,
+        sentence_idx,
+    )?
+    else {
+        return Ok(None);
+    };
+    let Ok(followup) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 3].lowered())
+    else {
+        return Ok(None);
+    };
+    let [when_result @ EffectAst::WhenResult { .. }] = followup.as_slice() else {
+        return Ok(None);
+    };
+    let Some(remainder) = effects.pop() else {
+        return Ok(None);
+    };
+    if !matches!(
+        &remainder,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::PutTaggedRemainderInZone { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+    effects.push(when_result.clone());
+    effects.push(remainder);
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_sacrifice_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
@@ -222,6 +267,242 @@ fn parse_may_reveal_up_to_from_looked_cards(
     Ok(Some((filter, shape.count)))
 }
 
+/// Preserves a conditional selected subset and one exact remainder across the
+/// common four-sentence shape:
+///
+/// "Look at ... . If <predicate>, put N of those cards into your hand.
+/// Otherwise, put M of them into your hand. Put the rest on the bottom ... ."
+///
+/// Both branches deliberately write the same `selected_tag`.  The final
+/// remainder can therefore be expressed once as `looked - selected` instead
+/// of taking whichever branch's last-object reference happened to survive
+/// conditional lowering.
+pub(crate) fn parse_look_at_top_conditional_hand_counts_then_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let Some((library_owner, count, false)) =
+        effect_sentences::parse_top_cards_view_sentence(&first_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let conditional_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    // Reuse the ordinary conditional sentence parser for the predicate.  It
+    // already understands comparative controller predicates such as
+    // "you control more creatures than each other player"; the standalone
+    // predicate grammar is intentionally narrower and caused this sequence
+    // rule to fall through even though the sentence parsed successfully on
+    // its own.
+    let Ok(parsed_conditional) = effect_sentences::parse_effect_sentence_lexed(&conditional_tokens)
+    else {
+        return Ok(None);
+    };
+    let [EffectAst::Conditional { predicate, .. }] = parsed_conditional.as_slice() else {
+        return Ok(None);
+    };
+    let predicate = predicate.clone();
+    // Sentence splitting removes the period and normalizes away the comma
+    // between the condition and its action.  The consult-family conditional
+    // splitter intentionally requires that punctuation boundary, so using it
+    // here made otherwise-valid conditional sentences unreachable.  The
+    // ordinary conditional parser above proves the sentence shape; locate the
+    // branch's leading action verb to preserve the exact counted selection.
+    let Some(if_true_start) = conditional_tokens
+        .iter()
+        .rposition(|token| token.is_word("put"))
+    else {
+        return Ok(None);
+    };
+    let if_true_tokens = trim_commas(&conditional_tokens[if_true_start..]);
+    let Some(if_true_count) = parse_counted_looked_cards_into_your_hand_tokens(&if_true_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let otherwise_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let if_false_tokens = strip_leading_token_words_any(&otherwise_tokens, &["otherwise"]);
+    let Some(if_false_count) = parse_counted_looked_cards_into_your_hand_tokens(if_false_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let remainder_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
+    let remainder_tokens = strip_leading_token_words_any(&remainder_tokens, &["then", "and"]);
+    if !is_put_rest_on_bottom_of_library_sentence(remainder_tokens) {
+        return Ok(None);
+    }
+    let Some(order) =
+        crate::runtime_backend::grammar::effects::parse_bottom_order(remainder_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(&first_tokens, "looked_conditional_partition");
+    let selected_tag = helper_tag_for_tokens(&conditional_tokens, "conditional_selected");
+    let choice = |count: u32| {
+        let mut filter = ObjectFilter::tagged(looked_tag.clone());
+        filter.zone = Some(Zone::Library);
+        vec![
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: ChoiceCount::exactly(count as usize),
+                player: PlayerAst::You,
+                tag: selected_tag.clone(),
+                zone: Zone::Library,
+            },
+            EffectAst::MoveTaggedGroupToZone {
+                tag: selected_tag.clone(),
+                zone: Zone::Hand,
+            },
+        ]
+    };
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(library_owner, count, looked_tag.clone()),
+        EffectAst::Conditional {
+            predicate,
+            if_true: choice(if_true_count),
+            if_false: choice(if_false_count),
+        },
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(selected_tag),
+            order,
+            library_owner,
+        ),
+    ]))
+}
+
+/// Keeps the original looked-card pool authoritative when an intervening
+/// optional sacrifice establishes a newer last-object reference:
+///
+/// "Look at ... . You may sacrifice ... . If you do, you may put a card from
+/// among those cards onto the battlefield. Put the rest on the bottom ... ."
+///
+/// The dynamic selection filter may still refer to the sacrificed object (for
+/// example through X), but its candidate domain is explicitly the earlier
+/// `looked_tag`; the complement is likewise computed from that tag.
+pub(crate) fn parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let Some((library_owner, count, false)) =
+        effect_sentences::parse_top_cards_view_sentence(&first_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let sacrifice_tokens = strip_leading_token_words_any(&second_tokens, &["then"]);
+    let Ok(sacrifice_effects) = effect_sentences::parse_effect_sentence_lexed(sacrifice_tokens)
+    else {
+        return Ok(None);
+    };
+    if !sacrifice_effects.iter().any(effect_ast_contains_sacrifice) {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let Some(followup) = crate::runtime_backend::front_end::grammar::sentence_markers::parse_conditional_followup_tokens(&third_tokens) else {
+        return Ok(None);
+    };
+    if followup.actor
+        != crate::runtime_backend::front_end::grammar::sentence_markers::ConditionalFollowupActor::You
+    {
+        return Ok(None);
+    }
+    let where_x_at = followup
+        .tail_tokens
+        .iter()
+        .position(|token| token.is_word("where"));
+    let action_tokens = trim_commas(
+        where_x_at
+            .and_then(|idx| followup.tail_tokens.get(..idx))
+            .unwrap_or(followup.tail_tokens),
+    );
+    let Some((chooser, mut filter, tapped)) =
+        effect_sentences::parse_may_put_filtered_looked_card_onto_battlefield(&action_tokens)?
+    else {
+        return Ok(None);
+    };
+    if let Some(where_x_at) = where_x_at {
+        let where_x_tokens = trim_commas(&followup.tail_tokens[where_x_at..]);
+        let Some(x_value) =
+            crate::runtime_backend::keyword_static::parse_value_binding_clause(&where_x_tokens)
+        else {
+            return Ok(None);
+        };
+        let Some(crate::filter::Comparison::LessThanOrEqualExpr(maximum)) =
+            filter.mana_value.as_mut()
+        else {
+            return Ok(None);
+        };
+        **maximum = crate::runtime_backend::util::replace_unbound_x_with_value(
+            (**maximum).clone(),
+            &x_value,
+            "looked-card selection after an intervening action",
+        )?;
+    }
+
+    let remainder_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
+    if !is_put_rest_on_bottom_of_library_sentence(&remainder_tokens) {
+        return Ok(None);
+    }
+    let Some(order) =
+        crate::runtime_backend::grammar::effects::parse_bottom_order(&remainder_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(&first_tokens, "looked_before_sacrifice");
+    let selected_tag = helper_tag_for_tokens(&third_tokens, "selected_after_sacrifice");
+    filter.zone = Some(Zone::Library);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        library_owner,
+        count,
+        looked_tag.clone(),
+    )];
+    effects.extend(sacrifice_effects);
+    effects.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: vec![
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: ChoiceCount::up_to(1),
+                player: chooser,
+                tag: selected_tag.clone(),
+                zone: Zone::Library,
+            },
+            EffectAst::ForEachTagged {
+                tag: selected_tag.clone(),
+                effects: vec![EffectAst::subject_verb_put_onto_battlefield(
+                    chooser,
+                    TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                    tapped,
+                    ReturnControllerAst::Preserve,
+                )],
+            },
+        ],
+    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(selected_tag),
+            order,
+            library_owner,
+        ),
+    );
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -251,6 +532,11 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
     if !is_put_rest_on_bottom_of_library_sentence(sentences[sentence_idx + 3].lowered()) {
         return Ok(None);
     }
+    let Some(bottom_order) = crate::runtime_backend::grammar::effects::parse_bottom_order(
+        sentences[sentence_idx + 3].lowered(),
+    ) else {
+        return Ok(None);
+    };
 
     let kicked_looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
         sentences[sentence_idx + 2].lowered(),
@@ -277,12 +563,14 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
                 crate::effect::ChoiceCount::exactly(kicked_count as usize),
                 kicked_looked_tag,
                 kicked_chosen_tag,
+                bottom_order,
             ),
             if_false: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
                 player,
                 crate::effect::ChoiceCount::exactly(base_count as usize),
                 base_looked_tag,
                 base_chosen_tag,
+                bottom_order,
             ),
         },
     ]))
@@ -405,12 +693,12 @@ fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
 
     vec![
         look,
-        EffectAst::ChooseObjects {
+        EffectAst::ChooseTaggedObjectsInZone {
             filter: battlefield_filter,
             count: ChoiceCount::up_to(1),
-            count_value: None,
             player: chooser,
             tag: battlefield_tag.clone(),
+            zone: Zone::Library,
         },
         EffectAst::IfEffectDidNotHappen {
             effect: Box::new(EffectAst::ForEachTagged {
@@ -423,12 +711,12 @@ fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
                 )],
             }),
             otherwise: vec![
-                EffectAst::ChooseObjects {
+                EffectAst::ChooseTaggedObjectsInZone {
                     filter: hand_filter,
                     count: ChoiceCount::exactly(1),
-                    count_value: None,
                     player: chooser,
                     tag: hand_tag.clone(),
+                    zone: Zone::Library,
                 },
                 EffectAst::ForEachTagged {
                     tag: hand_tag.clone(),
@@ -504,12 +792,12 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
 
     Ok(Some(vec![
         EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag),
-        EffectAst::ChooseObjects {
+        EffectAst::ChooseTaggedObjectsInZone {
             filter,
             count: reveal_count,
-            count_value: None,
             player,
             tag: revealed_tag.clone(),
+            zone: Zone::Library,
         },
         EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()),
         EffectAst::Conditional {
@@ -583,23 +871,52 @@ pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
     else {
         return Ok(None);
     };
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
-                player: permission_player,
-                allow_land,
-                without_paying_mana_cost,
-                allow_any_color_for_cast,
-                ..
-            },
-        ..
-    }) = permission
-    else {
-        return Ok(None);
-    };
-
     let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
     let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
+
+    // The final sentence can be either a temporary permission ("this turn")
+    // or an immediate cast instruction during resolution. Both consume the
+    // same selected exiled-card collection, but they must remain distinct at
+    // runtime: an immediate free cast is not an until-end-of-turn grant.
+    let permission_effect = match permission {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    player: permission_player,
+                    allow_land,
+                    without_paying_mana_cost,
+                    allow_any_color_for_cast,
+                    ..
+                },
+            ..
+        }) => EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+            exiled_tag.clone(),
+            permission_player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+        ),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CastTagged {
+                    player: permission_player,
+                    allow_land,
+                    as_copy,
+                    without_paying_mana_cost,
+                    cost_reduction,
+                    ..
+                },
+            ..
+        }) if !as_copy => EffectAst::subject_verb_cast_tagged(
+            exiled_tag.clone(),
+            permission_player,
+            allow_land,
+            false,
+            without_paying_mana_cost,
+            cost_reduction,
+        ),
+        _ => return Ok(None),
+    };
 
     let mut choice_filter = exile_filter;
     choice_filter
@@ -611,12 +928,12 @@ pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
 
     Ok(Some(vec![
         EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
-        EffectAst::ChooseObjects {
+        EffectAst::ChooseTaggedObjectsInZone {
             filter: choice_filter,
             count: ChoiceCount::up_to(1),
-            count_value: None,
             player,
             tag: exiled_tag.clone(),
+            zone: Zone::Library,
         },
         EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
@@ -625,13 +942,7 @@ pub(crate) fn parse_look_at_top_may_exile_match_rest_bottom_cast_exiled(
             order,
             player,
         ),
-        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            exiled_tag,
-            permission_player,
-            allow_land,
-            without_paying_mana_cost,
-            allow_any_color_for_cast,
-        ),
+        permission_effect,
     ]))
 }
 
@@ -665,12 +976,12 @@ pub(crate) fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
 
     Ok(Some(vec![
         EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
-        EffectAst::ChooseObjects {
+        EffectAst::ChooseTaggedObjectsInZone {
             filter: choice_filter,
             count: ChoiceCount::exactly(1),
-            count_value: None,
             player,
             tag: exiled_tag.clone(),
+            zone: Zone::Library,
         },
         EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
@@ -794,12 +1105,12 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
             count.clone(),
             looked_tag.clone(),
         ),
-        EffectAst::ChooseObjects {
+        EffectAst::ChooseTaggedObjectsInZone {
             filter: choice_filter,
             count: exile_count,
-            count_value: None,
             player: PlayerAst::You,
             tag: exiled_tag.clone(),
+            zone: Zone::Library,
         },
         EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
@@ -867,4 +1178,173 @@ pub(crate) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle
         SubjectVerbActionAst::ShuffleLibrary,
     ));
     Ok(Some(effects))
+}
+
+#[cfg(test)]
+mod looked_partition_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() {
+        let raw = [
+            "Look at the top five cards of your library",
+            "If you control more creatures than each other player, put two of those cards into your hand",
+            "Otherwise, put one of them into your hand",
+            "Then put the rest on the bottom of your library in any order",
+        ];
+        let lexed = raw
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
+            .collect::<Vec<_>>();
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+
+        let effects = parse_look_at_top_conditional_hand_counts_then_rest_bottom(&sentences, 0)
+            .expect("conditional partition parser should not error")
+            .expect("Advice from the Fae shape should parse");
+        assert_eq!(effects.len(), 3);
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::LookAtTopCards {
+                    tag: looked_tag, ..
+                },
+            ..
+        }) = &effects[0]
+        else {
+            panic!("expected explicit looked-card producer: {:?}", effects[0]);
+        };
+        let EffectAst::Conditional {
+            if_true, if_false, ..
+        } = &effects[1]
+        else {
+            panic!("expected cardinality conditional: {:?}", effects[1]);
+        };
+
+        let branch = |effects: &[EffectAst]| {
+            let [
+                EffectAst::ChooseTaggedObjectsInZone {
+                    count, tag, filter, ..
+                },
+                EffectAst::MoveTaggedGroupToZone {
+                    tag: moved_tag,
+                    zone: Zone::Hand,
+                },
+            ] = effects
+            else {
+                panic!("expected choose-and-move branch: {effects:?}");
+            };
+            assert_eq!(tag, moved_tag);
+            assert!(filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *looked_tag
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }));
+            (*count, tag.clone())
+        };
+        let (true_count, true_tag) = branch(if_true);
+        let (false_count, false_tag) = branch(if_false);
+        assert_eq!(true_count, ChoiceCount::exactly(2));
+        assert_eq!(false_count, ChoiceCount::exactly(1));
+        assert_eq!(true_tag, false_tag);
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    tag,
+                    keep_tagged: Some(keep_tagged),
+                    order,
+                    ..
+                },
+            ..
+        }) = &effects[2]
+        else {
+            panic!("expected exact bottom complement: {:?}", effects[2]);
+        };
+        assert_eq!(tag, looked_tag);
+        assert_eq!(keep_tagged, &true_tag);
+        assert_eq!(*order, LibraryBottomOrderAst::ChooserChooses);
+    }
+
+    #[test]
+    fn intervening_sacrifice_does_not_replace_the_looked_candidate_pool() {
+        let raw = [
+            "Look at the top seven cards of your library",
+            "Then you may sacrifice a creature",
+            "If you do, you may put a creature card with mana value X or less from among those cards onto the battlefield, where X is 1 plus the sacrificed creature's mana value",
+            "Put the rest on the bottom of your library in a random order",
+        ];
+        let lexed = raw
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
+            .collect::<Vec<_>>();
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+
+        let effects =
+            parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom(&sentences, 0)
+                .expect("intervening-action partition parser should not error")
+                .expect("Birthing Ritual shape should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::LookAtTopCards {
+                    tag: looked_tag, ..
+                },
+            ..
+        }) = &effects[0]
+        else {
+            panic!("expected explicit looked-card producer: {:?}", effects[0]);
+        };
+        let EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: selection,
+        } = &effects[effects.len() - 2]
+        else {
+            panic!("expected sacrifice-result gate: {effects:?}");
+        };
+        let [
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                tag: selected_tag,
+                count,
+                zone,
+                ..
+            },
+            EffectAst::ForEachTagged { tag: moved_tag, .. },
+        ] = selection.as_slice()
+        else {
+            panic!("expected selected subset and battlefield move: {selection:?}");
+        };
+        assert_eq!(*count, ChoiceCount::up_to(1));
+        assert_eq!(*zone, Zone::Library);
+        assert_eq!(selected_tag, moved_tag);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *looked_tag
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                    tag,
+                    keep_tagged: Some(keep_tagged),
+                    order,
+                    ..
+                },
+            ..
+        }) = effects.last().expect("bottom complement")
+        else {
+            panic!("expected exact bottom complement: {effects:?}");
+        };
+        assert_eq!(tag, looked_tag);
+        assert_eq!(keep_tagged, selected_tag);
+        assert_eq!(*order, LibraryBottomOrderAst::Random);
+    }
 }

@@ -1,5 +1,5 @@
 use super::super::super::keyword_static::{keyword_action_to_static_ability, parse_ability_line};
-use super::super::super::lexer::{LexedClause, OwnedLexToken};
+use super::super::super::lexer::{LexedClause, OwnedLexToken, TokenKind};
 use super::super::super::object_filters::parse_object_filter_lexed;
 use super::super::super::util::{
     parse_subject, parse_target_phrase, parse_value, span_from_tokens,
@@ -16,6 +16,24 @@ use crate::runtime_backend::grammar::effects::become_shapes as become_grammar;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::{CardType, SubtypeFamily};
 
+fn trailing_duration_belongs_to_quoted_ability(
+    tokens: &[OwnedLexToken],
+    remainder: &[OwnedLexToken],
+) -> bool {
+    // A suffix duration is outer only when it begins outside quoted rules text.
+    // Sentence splitting intentionally trims a closing quote that follows a
+    // period, so an odd quote count in the retained prefix is meaningful here.
+    if remainder.is_empty() || !tokens.starts_with(remainder) {
+        return false;
+    }
+    remainder
+        .iter()
+        .filter(|token| token.kind == TokenKind::Quote)
+        .count()
+        % 2
+        == 1
+}
+
 pub(crate) fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
@@ -31,7 +49,11 @@ pub(crate) fn parse_become_clause(
     {
         (duration, remainder, become_clause_tokens)
     } else if let Some((duration, remainder)) = parse_restriction_duration(&become_clause_tokens)? {
-        (duration, subject_tokens.clone(), remainder)
+        if trailing_duration_belongs_to_quoted_ability(&become_clause_tokens, &remainder) {
+            (Until::Forever, subject_tokens.clone(), become_clause_tokens)
+        } else {
+            (duration, subject_tokens.clone(), remainder)
+        }
     } else {
         (Until::Forever, subject_tokens.clone(), become_clause_tokens)
     };
@@ -224,13 +246,18 @@ pub(crate) fn parse_become_clause(
             let mut abilities = Vec::new();
             let mut granted_abilities = Vec::<GrantedAbilityAst>::new();
             let mut subtype_families = Vec::<SubtypeFamily>::new();
-            let suffix_supported =
+            let (suffix_supported, preserve_other_types, type_retention_surface) =
                 match become_grammar::parse_become_animation_suffix_shape(suffix_tokens) {
-                    become_grammar::BecomeAnimationSuffixShape::Ignored => true,
-                    become_grammar::BecomeAnimationSuffixShape::Unsupported => false,
+                    become_grammar::BecomeAnimationSuffixShape::Ignored {
+                        preserve_other_types,
+                        type_retention_surface,
+                    } => (true, preserve_other_types, type_retention_surface),
+                    become_grammar::BecomeAnimationSuffixShape::Unsupported => (false, false, None),
                     become_grammar::BecomeAnimationSuffixShape::With {
                         ability_tokens,
                         grants_all_creature_types,
+                        preserve_other_types,
+                        type_retention_surface,
                     } => {
                         if grants_all_creature_types {
                             subtype_families.push(SubtypeFamily::Creature);
@@ -240,7 +267,11 @@ pub(crate) fn parse_become_clause(
                                 ability_tokens,
                             );
                         if ability_tokens.is_empty() {
-                            grants_all_creature_types
+                            (
+                                grants_all_creature_types,
+                                preserve_other_types,
+                                type_retention_surface,
+                            )
                         } else if let Ok((parsed_abilities, _)) =
                             parse_granted_abilities_for_gain_clause(
                                 ability_tokens,
@@ -250,17 +281,21 @@ pub(crate) fn parse_become_clause(
                             && !parsed_abilities.is_empty()
                         {
                             granted_abilities = parsed_abilities;
-                            true
+                            (true, preserve_other_types, type_retention_surface)
                         } else {
-                            parse_ability_line(ability_tokens)
-                                .map(|actions| {
-                                    abilities = actions
-                                        .into_iter()
-                                        .filter_map(keyword_action_to_static_ability)
-                                        .collect::<Vec<_>>();
-                                    !abilities.is_empty()
-                                })
-                                .unwrap_or(false)
+                            (
+                                parse_ability_line(ability_tokens)
+                                    .map(|actions| {
+                                        abilities = actions
+                                            .into_iter()
+                                            .filter_map(keyword_action_to_static_ability)
+                                            .collect::<Vec<_>>();
+                                        !abilities.is_empty()
+                                    })
+                                    .unwrap_or(false),
+                                preserve_other_types,
+                                type_retention_surface,
+                            )
                         }
                     }
                 };
@@ -275,6 +310,8 @@ pub(crate) fn parse_become_clause(
                     None,
                     Vec::new(),
                     Vec::new(),
+                    preserve_other_types,
+                    type_retention_surface,
                     duration,
                 ));
             }
@@ -288,6 +325,8 @@ pub(crate) fn parse_become_clause(
                 prefix.colors,
                 abilities,
                 granted_abilities,
+                preserve_other_types,
+                type_retention_surface,
                 duration,
             ));
         }
@@ -307,6 +346,8 @@ pub(crate) fn parse_become_clause(
             descriptor.colors,
             Vec::new(),
             Vec::new(),
+            false,
+            None,
             duration,
         ));
     }
@@ -325,6 +366,8 @@ pub(crate) fn parse_become_clause(
             descriptor.colors,
             Vec::new(),
             Vec::new(),
+            false,
+            None,
             duration,
         ));
     }
@@ -338,10 +381,15 @@ pub(crate) fn parse_become_clause(
                 ],
             });
         }
-        become_grammar::BecomeSimpleDescriptorShape::CardTypes(card_types) => {
-            return Ok(EffectAst::subject_verb_add_card_types(
-                target, card_types, duration,
-            ));
+        become_grammar::BecomeSimpleDescriptorShape::CardTypes {
+            card_types,
+            preserve_other_types,
+        } => {
+            return Ok(if preserve_other_types {
+                EffectAst::subject_verb_add_card_types(target, card_types, duration)
+            } else {
+                EffectAst::subject_verb_set_card_types(target, card_types, duration)
+            });
         }
         become_grammar::BecomeSimpleDescriptorShape::Subtypes {
             subtypes,
@@ -380,4 +428,41 @@ pub(crate) fn parse_become_clause(
         "unsupported become clause (clause: '{}')",
         render_lower_words(&rest_tokens)
     )))
+}
+
+#[cfg(test)]
+mod quoted_duration_tests {
+    use super::*;
+
+    #[test]
+    fn duration_inside_unclosed_sentence_quote_is_not_taken_as_outer_duration() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "a 2/4 Wizard creature with \"Whenever you cast an instant or sorcery spell, this creature gets +1/+0 until end of turn.",
+            0,
+        )
+        .expect("quoted animation should lex");
+        let (_, remainder) = parse_restriction_duration(&tokens)
+            .expect("duration parsing should succeed")
+            .expect("inner duration should be recognized as a suffix");
+
+        assert!(trailing_duration_belongs_to_quoted_ability(
+            &tokens, &remainder
+        ));
+    }
+
+    #[test]
+    fn duration_after_balanced_quote_remains_the_outer_duration() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "a 1/1 Skeleton creature with \"{B}: Regenerate this creature.\" until end of turn",
+            0,
+        )
+        .expect("quoted animation should lex");
+        let (_, remainder) = parse_restriction_duration(&tokens)
+            .expect("duration parsing should succeed")
+            .expect("outer duration should be recognized as a suffix");
+
+        assert!(!trailing_duration_belongs_to_quoted_ability(
+            &tokens, &remainder
+        ));
+    }
 }

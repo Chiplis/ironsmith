@@ -1,4 +1,8 @@
 use super::*;
+use crate::effect::ValueComparisonOperator;
+
+#[path = "advanced/phase_step_gates.rs"]
+mod phase_step_gates;
 
 pub(super) fn parse_implicit_subject_and_predicate(
     tokens: &[OwnedLexToken],
@@ -181,9 +185,10 @@ pub(super) fn parse_empty_battlefield_predicate(tokens: &[OwnedLexToken]) -> Opt
     if !is_battlefield_zone_clause(zone) {
         return None;
     }
-    Some(PredicateAst::PlayerControlsNo {
-        player: PlayerAst::Any,
-        filter: ObjectFilter::creature(),
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(ObjectFilter::creature().in_zone(crate::zone::Zone::Battlefield)),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Fixed(0),
     })
 }
 
@@ -371,6 +376,7 @@ pub(super) fn parse_player_cards_in_hand_predicate(
         crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_condition(
             &present_tokens,
         )?;
+    let player_filter = condition.player.clone();
     let player = player_ast_from_status_player_filter(condition.player.clone())?;
 
     if !at_turn_start && player == PlayerAst::You && condition.is_no_cards_in_hand() {
@@ -392,6 +398,19 @@ pub(super) fn parse_player_cards_in_hand_predicate(
             (count - 1) as u32,
             at_turn_start,
         )),
+        crate::effect::Comparison::Equal(count)
+            if count >= 0
+                && !at_turn_start
+                && present_tokens
+                    .iter()
+                    .any(|token| token_word_is(token, "exactly")) =>
+        {
+            Some(PredicateAst::ValueComparison {
+                left: Value::CardsInHand(player_filter),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(count),
+            })
+        }
         // "you have a card in hand" parses as Equal(1) but means "at least one";
         // map the count-or-more reading so the turn-start variant resolves.
         crate::effect::Comparison::Equal(count) if count >= 0 => {
@@ -856,6 +875,10 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
     matches!(
         value,
         Value::X
+            | Value::Count(_)
+            | Value::CountScaled(_, _)
+            | Value::CountersOnSource(_)
+            | Value::CountersOn(_, _)
             | Value::PowerOf(_)
             | Value::ToughnessOf(_)
             | Value::SourcePower
@@ -1078,6 +1101,27 @@ pub(super) fn parse_player_life_change_this_turn_predicate(
             })
         }
     }
+}
+
+pub(super) fn parse_player_descended_this_turn_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let player = if surface::exact_any(
+        clause,
+        &[
+            &["you", "descended", "this", "turn"],
+            &["youve", "descended", "this", "turn"],
+        ],
+    ) {
+        PlayerAst::You
+    } else if surface::exact(clause, &["that", "player", "descended", "this", "turn"]) {
+        PlayerAst::That
+    } else {
+        return None;
+    };
+
+    Some(PredicateAst::PlayerDescendedThisTurn { player })
 }
 
 pub(super) fn parse_object_death_this_turn_predicate(
@@ -1326,11 +1370,51 @@ pub(super) fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
 }
 
 pub(super) fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_you_attacked_this_turn_shape(tokens)
+    parse_negative_attack_history_shape(tokens)
+        .or_else(|| parse_you_attacked_this_turn_shape(tokens))
         .or_else(|| parse_triggering_object_had_to_attack_this_combat_shape(tokens))
         .or_else(|| parse_you_attacked_with_n_or_more_creatures_shape(tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(tokens))
         .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(tokens))
+}
+
+/// Negative attack-history gates share the same turn-history predicates as
+/// positive raid-style checks. Keep the two subjects distinct: "this
+/// creature" asks about the source object, while "you ... with a creature"
+/// asks whether the source controller declared any attacker this turn.
+pub(super) fn parse_negative_attack_history_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    if surface::exact_any(
+        clause,
+        &[
+            &["this", "creature", "didnt", "attack", "this", "turn"],
+            &["this", "creature", "did", "not", "attack", "this", "turn"],
+        ],
+    ) {
+        return Some(PredicateAst::Not(Box::new(
+            PredicateAst::SourceAttackedThisTurn,
+        )));
+    }
+
+    if surface::exact_any(
+        clause,
+        &[
+            &[
+                "you", "didnt", "attack", "with", "a", "creature", "this", "turn",
+            ],
+            &[
+                "you", "did", "not", "attack", "with", "a", "creature", "this", "turn",
+            ],
+        ],
+    ) {
+        return Some(PredicateAst::Not(Box::new(
+            PredicateAst::YouAttackedThisTurn,
+        )));
+    }
+
+    None
 }
 
 pub(super) fn parse_you_attacked_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1521,12 +1605,52 @@ pub(super) fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
 }
 
 pub(super) fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_you_cast_source_shape(tokens)
+    parse_you_cast_source_from_shape(tokens)
+        .or_else(|| parse_you_cast_source_shape(tokens))
         .or_else(|| parse_tagged_was_cast_shape(tokens))
         .or_else(|| parse_this_spell_was_cast_from_shape(tokens))
         .or_else(|| parse_no_spells_cast_last_turn_shape(tokens))
         .or_else(|| parse_this_spell_paid_named_label_shape(tokens))
         .or_else(|| parse_target_was_kicked_shape(tokens))
+}
+
+pub(super) fn parse_you_cast_source_from_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::action("action", WinnowCaptureKind::WordCount(1)),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["from"])),
+        WinnowSequence::modifier("origin", WinnowCaptureKind::Rest),
+    ];
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let subject = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+    let action = matched.capture_clause_by_role(WinnowCaptureRole::Action, clause)?;
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    let origin = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
+    if !is_you_clause(subject)
+        || !is_cast_action_clause(action)
+        || !is_source_spell_object_clause(object)
+    {
+        return None;
+    }
+    let origin_tokens = origin.tokens();
+    if !token_slice_first_is(origin_tokens, "from") {
+        return None;
+    }
+    let origin_clause = LexedClause::new(&origin_tokens[1..]);
+    if surface::exact(
+        origin_clause,
+        &["anywhere", "other", "than", "your", "hand"],
+    ) {
+        return Some(PredicateAst::ThisSpellWasCastFromNonHand);
+    }
+    let origin_words = origin_clause.word_refs();
+    let zone = if origin_words.len() == 2 && origin_words[0] == "your" {
+        parse_zone_word(origin_words[1])?
+    } else {
+        spell_cast_origin_zone_clause(origin_clause)?
+    };
+    Some(PredicateAst::ThisSpellWasCastFromZone(zone))
 }
 
 pub(super) fn is_cast_action_clause(clause: LexedClause<'_>) -> bool {
@@ -1923,7 +2047,8 @@ pub(super) fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<
 }
 
 pub(super) fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_no_mana_spent_to_cast_shape(tokens)
+    parse_mana_from_source_spent_to_cast_shape(tokens)
+        .or_else(|| parse_no_mana_spent_to_cast_shape(tokens))
         .or_else(|| parse_no_colored_mana_spent_to_cast_shape(tokens))
         .or_else(|| parse_snow_mana_of_any_spell_color_spent_to_cast_shape(tokens))
         .or_else(|| parse_mana_symbol_spent_to_cast_shape(tokens))
@@ -1936,6 +2061,36 @@ pub(super) fn parse_mana_spent_capture_predicate(tokens: &[OwnedLexToken]) -> Op
                 PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol }
             })
         })
+}
+
+fn parse_mana_from_source_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let words = clause.word_refs();
+    if words.len() < 8 || words.first().copied() != Some("mana") || words.get(1) != Some(&"from") {
+        return None;
+    }
+    let spent_idx = words
+        .windows(4)
+        .position(|window| matches!(window, ["was" | "were", "spent", "to", "cast"]))?;
+    if spent_idx <= 2
+        || !matches!(
+            &words[spent_idx + 4..],
+            ["it"] | ["that", "spell"] | ["this", "spell"]
+        )
+    {
+        return None;
+    }
+    let source_end = clause.token_index_after_words(spent_idx)?;
+    let source_tokens = &clause.tokens()[2..source_end];
+    let source_filter = parse_object_filter(source_tokens, false).ok()?;
+    Some(PredicateAst::ValueComparison {
+        left: Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun: false,
+        },
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    })
 }
 
 pub(super) fn parse_no_mana_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2461,7 +2616,7 @@ pub(super) fn parse_tagged_historical_identity_shape(
     if !object_filter_has_identity(&filter) {
         return None;
     }
-    Some(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter))
+    Some(PredicateAst::ItMatchedLastKnown(filter))
 }
 
 pub(super) fn is_tagged_identity_subject_clause(clause: LexedClause<'_>) -> bool {
@@ -2621,17 +2776,23 @@ pub(super) fn parse_quantified_objects_in_graveyard_predicate(
     }
 
     let descriptor_tokens = &subject_tokens[used..];
-    let mut filter = parse_object_filter(descriptor_tokens, false)
-        .ok()
-        .or_else(|| {
-            descriptor_tokens
-                .last()
-                .filter(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
-                .and_then(|_| {
-                    let trimmed = &descriptor_tokens[..descriptor_tokens.len().saturating_sub(1)];
-                    parse_object_filter(trimmed, false).ok()
-                })
-        })?;
+    let mut filter = if descriptor_tokens
+        .iter()
+        .all(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
+    {
+        Some(ObjectFilter::default())
+    } else {
+        parse_object_filter(descriptor_tokens, false).ok()
+    }
+    .or_else(|| {
+        descriptor_tokens
+            .last()
+            .filter(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
+            .and_then(|_| {
+                let trimmed = &descriptor_tokens[..descriptor_tokens.len().saturating_sub(1)];
+                parse_object_filter(trimmed, false).ok()
+            })
+    })?;
     filter.zone = Some(Zone::Graveyard);
     if surface::exact(relation.tail_clause, &["your", "graveyard"]) {
         filter.owner = Some(PlayerFilter::You);
@@ -3685,6 +3846,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
+    if let Some(predicate) = phase_step_gates::parse_phase_step_gate_predicate(predicate_tokens)? {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_repeated_if_or_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
@@ -3998,6 +4163,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_player_descended_this_turn_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_object_death_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
@@ -4086,9 +4255,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if let Some(predicate) = parse_demonstrative_keyword_predicate(predicate_tokens) {
             return Ok(predicate);
         }
-        if let Some((descriptor_tokens, negative, has_card, tagged_that_enchantment)) =
-            demonstrative_descriptor_filter_tokens(predicate_tokens)
+        if let Some((
+            descriptor_tokens,
+            negative,
+            has_card,
+            tagged_that_enchantment,
+            mut match_time,
+        )) = demonstrative_descriptor_filter_tokens(predicate_tokens)
         {
+            // "was blocked this turn" is a passive historical-event predicate,
+            // not a copular last-known-characteristics predicate. It already
+            // has dedicated turn-history semantics and surface rendering.
+            let descriptor_clause = LexedClause::new(&descriptor_tokens);
+            if surface::exact(descriptor_clause, &["blocked", "this", "turn"]) {
+                match_time = DemonstrativeMatchTime::Current;
+            }
             if let Some(filter) = parse_single_card_type_card_descriptor_tokens(&descriptor_tokens)
             {
                 let predicate = if filter.card_types.len() == 1
@@ -4097,9 +4278,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                     && !filter.nontoken
                     && filter.excluded_card_types.is_empty()
                 {
-                    PredicateAst::ItIsLandCard
+                    if match_time == DemonstrativeMatchTime::LastKnown {
+                        PredicateAst::ItMatchedLastKnown(filter)
+                    } else {
+                        PredicateAst::ItIsLandCard
+                    }
                 } else {
-                    PredicateAst::ItMatches(filter)
+                    demonstrative_match_predicate(filter, match_time)
                 };
                 return Ok(if negative {
                     PredicateAst::Not(Box::new(predicate))
@@ -4117,20 +4302,24 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                     && !filter.nontoken
                     && filter.excluded_card_types.is_empty()
                 {
-                    let predicate = PredicateAst::ItIsLandCard;
+                    let predicate = if match_time == DemonstrativeMatchTime::LastKnown {
+                        PredicateAst::ItMatchedLastKnown(filter)
+                    } else {
+                        PredicateAst::ItIsLandCard
+                    };
                     return Ok(if negative {
                         PredicateAst::Not(Box::new(predicate))
                     } else {
                         predicate
                     });
                 }
-                if tagged_that_enchantment {
+                if tagged_that_enchantment && match_time == DemonstrativeMatchTime::Current {
                     return Ok(PredicateAst::TaggedMatches(
                         TagKey::from("triggering"),
                         filter,
                     ));
                 }
-                let predicate = PredicateAst::ItMatches(filter);
+                let predicate = demonstrative_match_predicate(filter, match_time);
                 return Ok(if negative {
                     PredicateAst::Not(Box::new(predicate))
                 } else {
@@ -4170,11 +4359,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if non_article_token_words_starts_with_any(predicate_tokens, THAT_PLAYER_CONTROLS_PREFIXES) {
+        let prefix_len = if predicate_tokens
+            .first()
+            .is_some_and(|token| token_word_is(token, "they"))
+        {
+            2
+        } else {
+            3
+        };
         if let Some(predicate) = parse_player_controls_predicate(
             predicate_tokens,
             PlayerAst::That,
             None,
-            3,
+            prefix_len,
             false,
             false,
         )? {

@@ -232,6 +232,17 @@ pub(crate) fn parse_cant_restrictions(
 
     let segments = grammar::split_lexed_slices_on_and(tokens);
     if segments.len() > 1 {
+        // A conjunction before the clause's only negation belongs to the
+        // subject ("each attacking creature and each blocking creature
+        // doesn't ..."), rather than separating multiple restrictions.
+        if segments
+            .first()
+            .is_some_and(|segment| find_negation_span(segment).is_none())
+        {
+            return parse_cant_restriction_clause(tokens)
+                .map(|restriction| restriction.map(|parsed| vec![parsed]));
+        }
+
         let shared_subject = find_negation_span(&segments[0])
             .map(|(neg_start, _)| trim_commas(&segments[0][..neg_start]))
             .unwrap_or_default();
@@ -610,6 +621,43 @@ fn parse_and_or_disjunction_filter(
     let mut disjunction = ObjectFilter::default();
     disjunction.any_of = filters;
     Ok(Some(disjunction))
+}
+
+fn parse_distributive_compound_subject_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let separators = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| {
+            let separator = token
+                .as_word()
+                .is_some_and(|word| matches!(word, "and" | "or"));
+            let starts_distributive_arm = tokens
+                .get(index + 1)
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| matches!(word, "each" | "every"));
+            (separator && starts_distributive_arm).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    if separators.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filters = Vec::with_capacity(separators.len() + 1);
+    let mut start = 0usize;
+    for end in separators.into_iter().chain(std::iter::once(tokens.len())) {
+        let segment = trim_commas(&tokens[start..end]);
+        let Some(filter) = parse_subject_object_filter(&segment)? else {
+            return Ok(None);
+        };
+        filters.push(filter);
+        start = end.saturating_add(1);
+    }
+
+    let mut compound = ObjectFilter::default();
+    compound.any_of = filters;
+    Ok(Some(compound))
 }
 
 fn invert_except_by_blocker_filter(allowed: &ObjectFilter) -> Option<ObjectFilter> {
@@ -1060,6 +1108,10 @@ pub(crate) fn parse_subject_object_filter(
             "unsupported subject object filter (clause: '{}')",
             words_all.join(" ")
         )));
+    }
+
+    if let Some(filter) = parse_distributive_compound_subject_filter(tokens)? {
+        return Ok(Some(filter));
     }
 
     if let Ok(filter) = parse_object_filter(tokens, false)

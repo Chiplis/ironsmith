@@ -7,4 +7,6 @@ pub use crate::filter::{
     Comparison, FilterContext, ObjectFilter, ObjectRef, PlayerFilter, PlayerFilterExt, PtReference,
     TaggedObjectConstraint, TaggedOpbjectRelation,
 };
-pub use ironsmith_core::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
+pub use ironsmith_core::{
+    ChooseSpec, ChooseSpecSurfaceHint, SacrificedObjectKind, SourceReferenceSurface,
+};

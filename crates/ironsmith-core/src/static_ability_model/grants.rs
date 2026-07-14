@@ -14,6 +14,8 @@ pub struct Anthem {
     pub power: AnthemValue,
     pub toughness: AnthemValue,
     pub condition: Option<Condition>,
+    /// Original leading set quantifier, retained only for compiled-text surface.
+    pub set_quantifier_surface: Option<SetQuantifierSurface>,
     /// True when the original oracle text expressed the scaling count with a
     /// "where X is …" clause rather than "for each …". Purely a surface hint
     /// for rendering; the count itself is identical either way.
@@ -39,6 +41,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            set_quantifier_surface: None,
             count_uses_where_x: false,
             replacement_surface: None,
         }
@@ -49,6 +52,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            set_quantifier_surface: None,
             count_uses_where_x: false,
             replacement_surface: None,
         }
@@ -64,6 +68,10 @@ impl Anthem {
     }
     pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
         self.count_uses_where_x = uses_where_x;
+        self
+    }
+    pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
+        self.set_quantifier_surface = surface;
         self
     }
     pub fn with_replacement_surface(mut self, power: i32, toughness: i32) -> Self {
@@ -116,6 +124,8 @@ pub struct GrantAbility<T, E, C, Cond> {
     pub filter: ObjectFilter,
     pub ability: AbilityModel<T, E, C, Cond>,
     pub condition: Option<Condition>,
+    /// Original leading set quantifier, retained only for compiled-text surface.
+    pub set_quantifier_surface: Option<SetQuantifierSurface>,
 }
 
 impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
@@ -124,6 +134,7 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
             filter,
             ability,
             condition: None,
+            set_quantifier_surface: None,
         }
     }
     pub fn source(ability: impl Into<AbilityModel<T, E, C, Cond>>) -> Self {
@@ -131,10 +142,15 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
             filter: ObjectFilter::source(),
             ability: ability.into(),
             condition: None,
+            set_quantifier_surface: None,
         }
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
         self.condition = Some(condition);
+        self
+    }
+    pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
+        self.set_quantifier_surface = surface;
         self
     }
 }
@@ -145,6 +161,8 @@ pub struct GrantObjectAbilityForFilter<T, E, C, Cond> {
     pub ability: AbilityModel<T, E, C, Cond>,
     pub display: String,
     pub condition: Option<Condition>,
+    /// Original leading set quantifier, retained only for compiled-text surface.
+    pub set_quantifier_surface: Option<SetQuantifierSurface>,
 }
 
 impl<T, E, C, Cond> std::fmt::Debug for GrantObjectAbilityForFilter<T, E, C, Cond>
@@ -164,6 +182,7 @@ where
             )
             .field("display", &self.display)
             .field("condition", &self.condition)
+            .field("set_quantifier_surface", &self.set_quantifier_surface)
             .finish()
     }
 }
@@ -179,10 +198,15 @@ impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
             ability,
             display: display.into(),
             condition: None,
+            set_quantifier_surface: None,
         }
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
         self.condition = Some(condition);
+        self
+    }
+    pub fn with_set_quantifier_surface(mut self, surface: Option<SetQuantifierSurface>) -> Self {
+        self.set_quantifier_surface = surface;
         self
     }
 }
@@ -268,13 +292,30 @@ impl CopyTriggeredAbilities {
 pub struct CostReduction {
     pub filter: ObjectFilter,
     pub amount: Value,
+    pub condition: Option<Condition>,
+    pub per_target: bool,
 }
 
 impl CostReduction {
     pub fn new(filter: ObjectFilter, amount: Value) -> Self {
-        Self { filter, amount }
+        Self {
+            filter,
+            amount,
+            condition: None,
+            per_target: false,
+        }
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+
+    pub fn with_condition(mut self, condition: Condition) -> Self {
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -298,6 +339,8 @@ impl OptionalLifeAdditionalCost {
 pub struct CostReductionManaCost {
     pub filter: ObjectFilter,
     pub cost: ManaCost,
+    pub condition: Option<Condition>,
+    pub per_target: bool,
     pub optional_life_additional_cost: Option<OptionalLifeAdditionalCost>,
 }
 
@@ -306,6 +349,8 @@ impl CostReductionManaCost {
         Self {
             filter,
             cost,
+            condition: None,
+            per_target: false,
             optional_life_additional_cost: None,
         }
     }
@@ -319,7 +364,16 @@ impl CostReductionManaCost {
             Some(OptionalLifeAdditionalCost::new(label, life_cost));
         self
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Condition) -> Self {
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -329,6 +383,7 @@ pub struct CostIncrease {
     pub filter: ObjectFilter,
     pub amount: Value,
     pub condition: Option<Condition>,
+    pub per_target: bool,
 }
 
 impl CostIncrease {
@@ -337,10 +392,19 @@ impl CostIncrease {
             filter,
             amount,
             condition: None,
+            per_target: false,
         }
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -349,13 +413,29 @@ impl CostIncrease {
 pub struct CostIncreaseManaCost {
     pub filter: ObjectFilter,
     pub cost: ManaCost,
+    pub condition: Option<Condition>,
+    pub per_target: bool,
 }
 
 impl CostIncreaseManaCost {
     pub fn new(filter: ObjectFilter, cost: ManaCost) -> Self {
-        Self { filter, cost }
+        Self {
+            filter,
+            cost,
+            condition: None,
+            per_target: false,
+        }
     }
-    pub fn with_condition(self, _condition: Condition) -> Self {
+    pub fn with_condition(mut self, condition: Condition) -> Self {
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => Condition::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
+        self
+    }
+
+    pub fn with_per_target(mut self) -> Self {
+        self.per_target = true;
         self
     }
 }
@@ -365,6 +445,12 @@ pub struct ThisSpellCostReduction<Cond> {
     pub amount: Value,
     pub condition: Cond,
     pub affinity_filter: Option<ObjectFilter>,
+    /// Limits this self-reduction to one alternative casting method.
+    ///
+    /// This is distinct from an object filter because the ability lives on the
+    /// spell being cast and must inspect the casting choice currently being
+    /// evaluated (for example, "less to cast this way" after flashback).
+    pub alternative_cast: Option<crate::AlternativeCastKind>,
 }
 
 impl<Cond> ThisSpellCostReduction<Cond> {
@@ -373,11 +459,17 @@ impl<Cond> ThisSpellCostReduction<Cond> {
             amount,
             condition,
             affinity_filter: None,
+            alternative_cast: None,
         }
     }
 
     pub fn with_affinity_filter(mut self, filter: ObjectFilter) -> Self {
         self.affinity_filter = Some(filter);
+        self
+    }
+
+    pub fn with_alternative_cast(mut self, kind: crate::AlternativeCastKind) -> Self {
+        self.alternative_cast = Some(kind);
         self
     }
 }

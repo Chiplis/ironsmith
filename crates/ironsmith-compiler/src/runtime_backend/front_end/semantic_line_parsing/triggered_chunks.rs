@@ -317,6 +317,7 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
         || filter.targets_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
         || filter.targets_only_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
+        || filter.attached_to_object.as_deref().is_some_and(|attached_to| filter_references_tag(attached_to, tag))
         || filter.any_of.iter().any(|branch| filter_references_tag(branch, tag))
 }
 

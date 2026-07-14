@@ -199,6 +199,7 @@ pub enum ExecutionFact {
     PlayerAffectedObjectMemory(Vec<(PlayerId, Vec<OutcomeObjectMemory>)>),
     PlayerCounts(Vec<(PlayerId, i32)>),
     ExcessDamageDealt,
+    ExcessDamage(u32),
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
     OtherNumber(u32),
@@ -793,6 +794,12 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::ExcessDamageDealt => {
                 outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::ExcessDamageDealt))
             }
+            Self::DealtDamageToPlayer => outcome
+                .events_of_type::<crate::events::DamageEvent>()
+                .any(|event| {
+                    event.amount > 0
+                        && matches!(event.target, crate::events::DamageTarget::Player(_))
+                }),
             Self::AffectedObjectMatchesCardType { card_type, negated } => {
                 outcome.affected_object_memory().is_some_and(|memories| {
                     memories
@@ -818,7 +825,7 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
 
 pub use ironsmith_core::value_model::{
     Condition, EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope, Restriction,
-    Value,
+    SourceCounterThresholdSurface, Value,
 };
 
 pub(crate) trait RestrictionExt {
@@ -1676,6 +1683,12 @@ impl Effect {
         Self::new(ManifestTopCardOfLibraryEffect::new(player))
     }
 
+    /// Create a "cloak the top card of [library]" effect.
+    pub fn cloak_top_card_of_library(player: crate::filter::PlayerFilter) -> Self {
+        use crate::effects::ManifestTopCardOfLibraryEffect;
+        Self::new(ManifestTopCardOfLibraryEffect::cloak(player))
+    }
+
     /// Create a "manifest a card from your hand" effect.
     pub fn manifest_card_from_hand() -> Self {
         use crate::effects::ManifestCardFromHandEffect;
@@ -2491,6 +2504,12 @@ impl Effect {
             CombatDamagePreventionTarget::All,
             until,
         ))
+    }
+
+    /// Make a chosen object assign no combat damage for a duration.
+    pub fn assign_no_combat_damage(source: ChooseSpec, until: Until) -> Self {
+        use crate::effects::AssignNoCombatDamageEffect;
+        Self::new(AssignNoCombatDamageEffect::new(source, until))
     }
 
     /// Create a "prevent all combat damage from a chosen source" effect.
@@ -4491,6 +4510,37 @@ mod tests {
         assert!(EffectPredicate::WasDeclined.evaluate_outcome(&outcome));
         assert!(!EffectPredicate::Chosen.evaluate_outcome(&outcome));
         assert!(!EffectPredicate::Happened.evaluate_outcome(&outcome));
+    }
+
+    #[test]
+    fn dealt_damage_to_player_predicate_checks_damage_events() {
+        let source = ObjectId::from_raw(1);
+        let player = PlayerId::from_index(1);
+        let player_damage =
+            EffectOutcome::resolved().with_event(crate::events::RawEvent::new_with_provenance(
+                crate::events::DamageEvent::with_cause(
+                    source,
+                    crate::events::DamageTarget::Player(player),
+                    2,
+                    false,
+                    crate::events::EventCause::effect(),
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ));
+        let object_damage =
+            EffectOutcome::resolved().with_event(crate::events::RawEvent::new_with_provenance(
+                crate::events::DamageEvent::with_cause(
+                    source,
+                    crate::events::DamageTarget::Object(ObjectId::from_raw(2)),
+                    2,
+                    false,
+                    crate::events::EventCause::effect(),
+                ),
+                crate::provenance::ProvNodeId::default(),
+            ));
+
+        assert!(EffectPredicate::DealtDamageToPlayer.evaluate_outcome(&player_damage));
+        assert!(!EffectPredicate::DealtDamageToPlayer.evaluate_outcome(&object_damage));
     }
 
     #[test]

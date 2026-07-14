@@ -68,7 +68,14 @@ fn parses_pt_words_with_winnow() {
         parse_pt_word("-1/*"),
         Some(PtSurface {
             power: PtComponent::Fixed(-1),
-            toughness: PtComponent::Dynamic,
+            toughness: PtComponent::Star,
+        })
+    );
+    assert_eq!(
+        parse_pt_word("x/1"),
+        Some(PtSurface {
+            power: PtComponent::X,
+            toughness: PtComponent::Fixed(1),
         })
     );
     assert_eq!(parse_unsigned_pt_word("2/3"), Some((2, 3)));

@@ -68,6 +68,16 @@ pub struct SearchLibrarySlotAst<Filter = crate::target::ObjectFilter> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZoneReplacementDurationAst {
     OneShot,
+    UntilEndOfTurn,
+    Persistent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FutureZoneReplacementCausePolicyAst {
+    /// Match zone changes regardless of what caused them.
+    Any,
+    /// Match only when the changed object is also the source of the effect-like cause.
+    ChangedObjectIsCause,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

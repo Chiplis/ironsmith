@@ -14,6 +14,7 @@ const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
 const EXILED_COLLECTION_TAG_PREFIX: &str = "exiled_";
 const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
 const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
+const SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX: &str = "__sentence_helper_consult_match";
 
 fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
     tag.strip_prefix(prefix).is_some()
@@ -34,6 +35,10 @@ pub(crate) fn is_exile_cost_collection_tag(tag: &str) -> bool {
 
 pub(crate) fn is_sentence_helper_exiled_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, SENTENCE_HELPER_EXILED_TAG_PREFIX)
+}
+
+pub(crate) fn is_sentence_helper_consult_match_tag(tag: &str) -> bool {
+    tag_str_has_prefix(tag, SENTENCE_HELPER_CONSULT_MATCH_TAG_PREFIX)
 }
 
 pub(crate) fn is_exiled_collection_tag(tag: &str) -> bool {
@@ -89,8 +94,11 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
     assert_effect_ast_variant_coverage(effect);
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::DealDistributedDamage { target, source, .. } => {
+                visit(target);
+                visit(source);
+            }
             SubjectVerbActionAst::DealDamage { target, .. }
-            | SubjectVerbActionAst::DealDistributedDamage { target, .. }
             | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
             | SubjectVerbActionAst::Tap { target }
             | SubjectVerbActionAst::Untap { target }
@@ -131,7 +139,8 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
-            | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
+            | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target, .. }
+            | SubjectVerbActionAst::AssignNoCombatDamage { source: target, .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
@@ -210,6 +219,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PumpForEach { target, .. }
             | SubjectVerbActionAst::PumpByLastEffect { target, .. }
             | SubjectVerbActionAst::AddCardTypes { target, .. }
+            | SubjectVerbActionAst::SetCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { target, .. }
@@ -278,6 +288,10 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
                 || effects_reference_tag_in_object_position(if_true, tag)
                 || effects_reference_tag_in_object_position(if_false, tag)
         }
+        EffectAst::TrailingUnless { predicate, effects } => {
+            predicate_references_tag(predicate, tag)
+                || effects_reference_tag_in_object_position(effects, tag)
+        }
         EffectAst::ForEachObject { filter, effects } => {
             filter_references_tag(filter, tag)
                 || effects_reference_tag_in_object_position(effects, tag)
@@ -321,6 +335,10 @@ pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             .as_deref()
             .is_some_and(|targets| filter_references_tag(targets, tag))
         || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(|attached_to| filter_references_tag(attached_to, tag))
+        || filter
             .any_of
             .iter()
             .any(|branch| filter_references_tag(branch, tag))
@@ -332,7 +350,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             SubjectVerbActionAst::DestroyAll { filter, .. }
             | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
             | SubjectVerbActionAst::ExileAll { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToHand { filter }
+            | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
             | SubjectVerbActionAst::PutCountersAll { filter, .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { filter, .. }
@@ -380,17 +398,16 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     {
         return true;
     }
+    if let EffectAst::ChooseObjectsWithAggregateConstraint { constraint, .. } = effect
+        && value_references_tag(&constraint.maximum, tag)
+    {
+        return true;
+    }
     if let Some(filter) = effect_tagged_filter(effect) {
         return filter_references_tag(filter, tag);
     }
 
     match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PutIntoHand { object },
-            ..
-        }) => match object {
-            ObjectRefAst::Tagged(found) => found.as_str() == tag,
-        },
         EffectAst::Conditional {
             predicate,
             if_true,
@@ -405,6 +422,9 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             predicate_references_tag(predicate, tag)
                 || effects_reference_tag(if_true, tag)
                 || effects_reference_tag(if_false, tag)
+        }
+        EffectAst::TrailingUnless { predicate, effects } => {
+            predicate_references_tag(predicate, tag) || effects_reference_tag(effects, tag)
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. },
@@ -493,7 +513,9 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag),
         Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
-        Value::ManaValueOf(spec) => choose_spec_references_tag(spec, tag),
+        Value::ManaValueOf(spec) | Value::ManaSymbolsInManaCostOf { spec, .. } => {
+            choose_spec_references_tag(spec, tag)
+        }
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
         _ => false,
@@ -503,8 +525,10 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
 pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
     match predicate {
         PredicateAst::ItMatches(filter)
+        | PredicateAst::ItMatchedLastKnown(filter)
         | PredicateAst::TargetMatches(filter)
         | PredicateAst::SourceMatches(filter)
+        | PredicateAst::AttachedToSourceMatches(filter)
         | PredicateAst::NoVoteObjectsMatched { filter }
         | PredicateAst::ObjectEnteredBattlefieldThisTurn(filter)
         | PredicateAst::ObjectEnteredBattlefieldLastTurn(filter)
@@ -593,7 +617,9 @@ pub(crate) fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> boo
 
 pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
     match filter {
-        PlayerFilter::Target(inner) => player_filter_references_tag(inner, tag),
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
+            player_filter_references_tag(inner, tag)
+        }
         PlayerFilter::ControllerOf(reference)
         | PlayerFilter::OwnerOf(reference)
         | PlayerFilter::AliasedOwnerOf(reference)
@@ -682,9 +708,25 @@ fn filter_references_event_derived_amount(filter: &ObjectFilter) -> bool {
             .as_ref()
             .is_some_and(comparison_references_event_derived_amount)
         || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(filter_references_event_derived_amount)
+        || filter
             .any_of
             .iter()
             .any(filter_references_event_derived_amount)
+}
+
+fn target_references_event_derived_amount(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Object(filter, _, _) => filter_references_event_derived_amount(filter),
+        TargetAst::WithCount(inner, _) => target_references_event_derived_amount(inner),
+        TargetAst::WithCountValue(inner, _, value) => {
+            target_references_event_derived_amount(inner)
+                || value_references_event_derived_amount(value)
+        }
+        _ => false,
+    }
 }
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
@@ -708,6 +750,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         SubjectVerbActionAst::LoseLife { amount }
         | SubjectVerbActionAst::GainLife { amount }
         | SubjectVerbActionAst::DealDamage { amount, .. }
+        | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
         | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
         | SubjectVerbActionAst::DealDamageEach { amount, .. }
         | SubjectVerbActionAst::PreventDamage { amount, .. }
@@ -741,8 +784,11 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             x_value: Some(value),
             ..
         } => Some(value),
-        SubjectVerbActionAst::DealDamageEqualToPower { .. }
-        | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
+        SubjectVerbActionAst::SearchLibrary {
+            count_value: Some(value),
+            ..
+        } => Some(value),
+        SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
         | SubjectVerbActionAst::RevealHand
         | SubjectVerbActionAst::RevealTop
         | SubjectVerbActionAst::RevealTagged { .. }
@@ -760,6 +806,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ConniveIterated
         | SubjectVerbActionAst::OpenAttraction
         | SubjectVerbActionAst::ManifestTopCardOfLibrary
+        | SubjectVerbActionAst::CloakTopCardOfLibrary
         | SubjectVerbActionAst::ManifestCardFromHand
         | SubjectVerbActionAst::ManifestDread
         | SubjectVerbActionAst::Earthbend { .. }
@@ -861,13 +908,12 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::DoubleCountersOnEach { .. }
         | SubjectVerbActionAst::Sacrifice { .. }
         | SubjectVerbActionAst::SacrificeAll { .. }
-        | SubjectVerbActionAst::PutIntoHand { .. }
         | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-        | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
         | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
         | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
         | SubjectVerbActionAst::GrantProtectionChoice { .. }
         | SubjectVerbActionAst::PreventAllCombatDamage { .. }
+        | SubjectVerbActionAst::AssignNoCombatDamage { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
@@ -908,6 +954,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PumpAll { .. }
         | SubjectVerbActionAst::PumpByLastEffect { .. }
         | SubjectVerbActionAst::AddCardTypes { .. }
+        | SubjectVerbActionAst::SetCardTypes { .. }
         | SubjectVerbActionAst::RemoveCardTypes { .. }
         | SubjectVerbActionAst::AddSubtypes { .. }
         | SubjectVerbActionAst::SetCreatureSubtypes { .. }
@@ -964,7 +1011,26 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
 
 pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
+    let mut target_references = false;
+    with_direct_effect_targets(effect, |target| {
+        target_references |= target_references_event_derived_amount(target);
+    });
+    if target_references {
+        return true;
+    }
     match effect {
+        EffectAst::ChooseObjects {
+            count_value: Some(count_value),
+            ..
+        }
+        | EffectAst::ChooseObjectsBottomOfLibrary {
+            count_value: Some(count_value),
+            ..
+        }
+        | EffectAst::ChooseObjectsAcrossZones {
+            count_value: Some(count_value),
+            ..
+        } => value_references_event_derived_amount(count_value),
         EffectAst::SubjectVerb(subject_verb) => {
             subject_verb_action_value(&subject_verb.action)
                 .is_some_and(value_references_event_derived_amount)
@@ -1012,7 +1078,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
                     SubjectVerbActionAst::DestroyAll { filter, .. }
                     | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
                     | SubjectVerbActionAst::ExileAll { filter, .. }
-                    | SubjectVerbActionAst::ReturnAllToHand { filter }
+                    | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
                     | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
                     | SubjectVerbActionAst::TapAll { filter }
                     | SubjectVerbActionAst::UntapAll { filter }
@@ -1167,7 +1233,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::DestroyAll { filter, .. }
             | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
             | SubjectVerbActionAst::ExileAll { filter, .. }
-            | SubjectVerbActionAst::ReturnAllToHand { filter }
+            | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
             | SubjectVerbActionAst::TapAll { filter }
             | SubjectVerbActionAst::UntapAll { filter }
@@ -1183,9 +1249,6 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             } => {
                 filter_references_tag(tap_filter, IT_TAG)
                     || filter_references_tag(untap_filter, IT_TAG)
-            }
-            SubjectVerbActionAst::PutIntoHand { object } => {
-                matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == IT_TAG)
             }
             SubjectVerbActionAst::ExileTopOfLibrary {
                 count,
@@ -1205,8 +1268,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 filter,
                 ..
             } => value_references_tag(count, IT_TAG) || filter_references_tag(filter, IT_TAG),
-            SubjectVerbActionAst::RearrangeLookedCardsInLibrary { tag, .. }
-            | SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
+            SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
             SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
             | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 filter_references_tag(filter, IT_TAG)
@@ -1275,6 +1337,11 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
+        EffectAst::TrailingUnless { predicate, effects } => {
+            predicate_uses_implicit_it_reference(predicate)
+                || predicate_references_tag(predicate, IT_TAG)
+                || effects_reference_it_tag(effects)
+        }
         EffectAst::ForEachTagged { tag, effects } => {
             tag.as_str() == IT_TAG || effects_reference_it_tag(effects)
         }
@@ -1302,6 +1369,7 @@ fn predicate_uses_implicit_it_reference(predicate: &PredicateAst) -> bool {
         PredicateAst::ItIsLandCard
         | PredicateAst::ItIsSoulbondPaired
         | PredicateAst::ItMatches(_)
+        | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::TargetMatches(_) => true,
         PredicateAst::Not(inner) => predicate_uses_implicit_it_reference(inner),
         PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {

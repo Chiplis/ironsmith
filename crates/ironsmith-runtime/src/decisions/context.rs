@@ -1279,6 +1279,8 @@ pub struct TargetRequirementContext {
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
     pub max_targets: Option<usize>,
+    /// Requirements in the same group must select different player targets.
+    pub distinct_player_group: Option<usize>,
 }
 
 impl TargetRequirementContext {
@@ -1293,6 +1295,7 @@ impl TargetRequirementContext {
             legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
+            distinct_player_group: None,
         }
     }
 }

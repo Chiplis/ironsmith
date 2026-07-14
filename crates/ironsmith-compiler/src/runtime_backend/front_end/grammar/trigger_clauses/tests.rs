@@ -149,3 +149,115 @@ fn grouped_opponent_life_loss_reaches_the_typed_trigger_ast() {
         crate::triggers::Trigger::players_lose_life_one_or_more(PlayerFilter::Opponent),
     );
 }
+
+#[test]
+fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
+    let tokens = tokenize_line(
+        "a red source you control deals damage to one or more permanents and/or players",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap();
+
+    assert_eq!(
+        crate::runtime_backend::compile_support::compile_trigger_spec(parsed.clone()).display(),
+        "Whenever a red source you control deals damage to one or more permanents and/or players"
+    );
+
+    let crate::runtime_backend::ast::TriggerSpec::Either(object, player) = parsed else {
+        panic!("expected player/object damage union");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::DealsDamageTo {
+        source,
+        target,
+        source_surface,
+    } = *object
+    else {
+        panic!("expected object damage branch");
+    };
+    assert_eq!(source.zone, None);
+    assert_eq!(source.controller, Some(PlayerFilter::You));
+    assert_eq!(source.colors, Some(crate::color::ColorSet::RED));
+    assert_eq!(source_surface, crate::triggers::DamageSourceSurface::Source);
+    assert_eq!(
+        target.union_connective(),
+        crate::filter::ObjectFilterUnionConnective::AndOr
+    );
+    assert!(target.union_is_one_or_more());
+    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer {
+        source: player_source,
+        player,
+    } = *player
+    else {
+        panic!("expected player damage branch");
+    };
+    assert_eq!(player, PlayerFilter::Any);
+    assert_eq!(player_source, source);
+}
+
+#[test]
+fn parses_one_or_more_and_or_blockers_as_shared_union_metadata() {
+    let tokens = tokenize_line(
+        "this creature blocks or becomes blocked by one or more blue and/or black creatures",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap();
+
+    let crate::runtime_backend::ast::TriggerSpec::Either(blocks, becomes_blocked) = parsed else {
+        panic!("expected blocks/becomes-blocked trigger union");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::ThisBlocksObject(blocker) = *blocks else {
+        panic!("expected filtered blocks branch");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::ThisBecomesBlockedByObject(blocking) =
+        *becomes_blocked
+    else {
+        panic!("expected filtered becomes-blocked branch");
+    };
+
+    assert_eq!(blocker, blocking);
+    assert_eq!(
+        blocker.union_connective(),
+        crate::filter::ObjectFilterUnionConnective::AndOr
+    );
+    assert!(blocker.union_is_one_or_more());
+    assert_eq!(blocker.card_types, [CardType::Creature]);
+}
+
+#[test]
+fn zone_change_unions_reach_runtime_with_quantifier_and_connective_surfaces() {
+    let cases = [
+        (
+            "one or more other creatures and/or artifacts you control die",
+            "Whenever one or more other creatures and/or artifacts you control die",
+        ),
+        (
+            "one or more other Rabbits, Bats, Birds, and/or Mice you control enter",
+            "Whenever one or more other Rabbits, Bats, Birds, and/or Mice you control enter the battlefield",
+        ),
+        (
+            "another Villain and/or artifact you control enters",
+            "Whenever another artifact and/or Villain you control enters the battlefield",
+        ),
+    ];
+
+    for (clause, expected) in cases {
+        let tokens = tokenize_line(clause, 0);
+        let parsed = crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
+        assert_eq!(
+            crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+            expected,
+            "unexpected compiled trigger surface for {clause:?}"
+        );
+    }
+}

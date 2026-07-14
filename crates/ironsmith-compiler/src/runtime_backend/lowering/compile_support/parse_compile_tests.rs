@@ -131,6 +131,52 @@ fn compile_investigate_uses_ast_count() {
 }
 
 #[test]
+fn move_to_zone_lowering_preserves_oracle_verb_and_explicit_actor() {
+    let move_ast = |verb_surface, player| {
+        let EffectAst::SubjectVerb(mut subject_verb) = EffectAst::subject_verb_move_to_zone(
+            TargetAst::Source(None),
+            crate::zone::Zone::Hand,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )
+        .with_move_to_zone_verb_surface(verb_surface)
+        else {
+            unreachable!("move constructor must produce a subject-verb AST")
+        };
+        subject_verb.subject.player = player;
+        EffectAst::SubjectVerb(subject_verb)
+    };
+
+    for (surface, player, expected_actor) in [
+        (
+            ironsmith_core::MoveToZoneVerbSurface::Put,
+            PlayerAst::Opponent,
+            PlayerFilter::Opponent,
+        ),
+        (
+            ironsmith_core::MoveToZoneVerbSurface::Return,
+            PlayerAst::You,
+            PlayerFilter::You,
+        ),
+    ] {
+        let (effects, choices) = compile_effect(
+            &move_ast(surface, player),
+            &mut EffectLoweringContext::new(),
+        )
+        .expect("typed move-to-zone AST should lower");
+        assert!(choices.is_empty());
+        let lowered = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+            .expect("move-to-zone effect should remain typed");
+        assert_eq!(lowered.verb_surface, surface);
+        assert_eq!(lowered.actor_surface, Some(expected_actor));
+    }
+}
+
+#[test]
 fn parse_text_investigate_twice_compiles_to_count_two() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Investigate Probe")
         .card_types(vec![CardType::Sorcery])
@@ -149,6 +195,43 @@ fn parse_text_investigate_twice_compiles_to_count_two() {
         "investigate count: {debug}"
     );
     assert!(debug.contains("player: You"), "investigate player: {debug}");
+}
+
+#[test]
+fn reveal_consult_exports_full_collection_for_later_cleanup() {
+    for (card_type, text, order, reflexive) in [
+        (
+            CardType::Creature,
+            "{2}{R}: Reveal cards from the top of your library until you reveal a nonland card. This creature gets +X/+0 until end of turn, where X is that card's mana value. Put the revealed cards on the bottom of your library in any order.",
+            "ChooserChooses",
+            false,
+        ),
+        (
+            CardType::Instant,
+            "Reveal cards from the top of your library until you reveal a nonland card. Put the revealed cards on the bottom of your library in a random order. When you reveal a nonland card this way, this deals damage equal to that card's mana value to any target.",
+            "Random",
+            true,
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Consult Cleanup Probe")
+            .card_types(vec![card_type])
+            .parse_text(text)
+            .expect("consult followed by full revealed-set cleanup should lower");
+
+        let debug = format!("{def:#?}");
+        assert!(debug.contains("ConsultTopOfLibraryEffect"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+            "{debug}"
+        );
+        assert!(debug.contains(order), "{debug}");
+        if reflexive {
+            assert!(debug.contains("ReflexiveTriggerEffect"), "{debug}");
+            assert!(debug.contains("DealDamageEffect"), "{debug}");
+            assert!(debug.contains("ManaValueOf"), "{debug}");
+            assert!(debug.contains("AnyTarget"), "{debug}");
+        }
+    }
 }
 
 #[test]
@@ -175,6 +258,81 @@ fn compile_amass_tags_output_when_followup_references_it() {
     );
     assert!(debug.contains("amount: Fixed(2)"), "amass amount: {debug}");
     assert_eq!(ctx.last_object_tag.as_deref(), Some("amassed_0"));
+}
+
+#[test]
+fn coordinated_equal_target_specs_keep_distinct_lowered_target_slots() {
+    let repeated_target = TargetAst::WithCount(
+        Box::new(TargetAst::Object(
+            ObjectFilter::creature().other(),
+            None,
+            None,
+        )),
+        ChoiceCount::up_to(1),
+    );
+    let coordinated = EffectAst::Coordinated {
+        effects: vec![
+            EffectAst::subject_verb_pump(
+                Value::Fixed(-3),
+                Value::Fixed(0),
+                repeated_target.clone(),
+                Until::YourNextTurn,
+                None,
+            ),
+            EffectAst::subject_verb_pump(
+                Value::Fixed(-2),
+                Value::Fixed(0),
+                repeated_target.clone(),
+                Until::YourNextTurn,
+                None,
+            ),
+            EffectAst::subject_verb_pump(
+                Value::Fixed(-1),
+                Value::Fixed(0),
+                repeated_target,
+                Until::YourNextTurn,
+                None,
+            ),
+        ],
+        leading_duration: false,
+    };
+    let mut ctx = EffectLoweringContext::new();
+    ctx.auto_tag_object_targets = true;
+
+    // Exercise the enclosing annotated-sequence boundary used by production
+    // card compilation. Calling `compile_effect` directly misses the choice
+    // merge that previously collapsed the two equal optional target slots.
+    let (effects, choices) = compile_effects(std::slice::from_ref(&coordinated), &mut ctx)
+        .expect("compile coordination");
+
+    assert_eq!(
+        choices.len(),
+        3,
+        "equal-looking target words are three choices"
+    );
+    assert_eq!(choices[0], choices[1]);
+    assert_eq!(choices[1], choices[2]);
+    let sequence = effects
+        .first()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
+        .expect("coordinated lowering should produce a sequence");
+    assert_eq!(sequence.effects.len(), 3, "no synthetic TargetOnly prelude");
+    let tags = sequence
+        .effects
+        .iter()
+        .map(|effect| {
+            let tagged = effect
+                .as_tagged()
+                .expect("each target introduction is tagged");
+            assert!(tagged.effect.as_apply_continuous().is_some());
+            tagged.tag.clone()
+        })
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        tags.len(),
+        3,
+        "each target choice has its own runtime identity"
+    );
 }
 
 #[test]
@@ -512,6 +670,298 @@ fn typed_token_rules_shape_lowers_static_pt_ability() {
 }
 
 #[test]
+fn inline_quoted_token_trigger_stays_on_the_created_token() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Token Trigger Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a 2/2 red Goblin Shaman creature token with \"Whenever this token attacks, create a Treasure token.\"",
+        )
+        .expect("inline quoted token trigger should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Goblin token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("Triggered")
+            && debug.contains("Attacks")
+            && debug.contains("CreateTokenEffect"),
+        "quoted attack trigger should be nested in the Goblin definition: {debug}"
+    );
+}
+
+#[test]
+fn pest_token_attack_trigger_keeps_its_life_gain() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pest Trigger Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a 1/1 black and green Pest creature token with \"Whenever this token attacks, you gain 1 life.\"",
+        )
+        .expect("Pest attack trigger should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Pest token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("Triggered")
+            && debug.contains("Attacks")
+            && debug.contains("GainLifeEffect"),
+        "the quoted attack/life ability should remain on the Pest: {debug}"
+    );
+}
+
+#[test]
+fn full_send_in_the_pest_keeps_nested_token_attack_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Send in the Pest")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each opponent discards a card. You create a 1/1 black and green Pest creature token with \"Whenever this token attacks, you gain 1 life.\"",
+        )
+        .expect("full Send in the Pest oracle text should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("Triggered")
+            && debug.contains("Attacks")
+            && debug.contains("GainLifeEffect"),
+        "full-card production dispatch must retain the Pest ability: {debug}"
+    );
+}
+
+#[test]
+fn create_token_modifiers_do_not_leak_from_for_each_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Counted Tapped Permanents Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a Treasure token for each tapped Assassin, Pirate, and/or Vehicle you control.",
+        )
+        .expect("dynamic Treasure creation should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Treasure token");
+
+    assert!(
+        !create.enters_tapped,
+        "the counted permanents are tapped, not the created Treasure: {create:#?}"
+    );
+}
+
+#[test]
+fn token_self_attack_requirement_lowers_as_must_attack() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Alien Rules Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a 1/1 red Alien creature token with haste and \"This token attacks each combat if able.\"",
+        )
+        .expect("Alien attack requirement should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Alien token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("MustAttack"),
+        "the quoted attack requirement should remain on the Alien: {debug}"
+    );
+}
+
+#[test]
+fn full_alien_invasion_keeps_nested_token_attack_requirement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Alien Invasion")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of combat on your turn, create a 1/1 red Alien creature token with haste and \"This token attacks each combat if able.\" Put a +1/+1 counter on it for each invasion counter on this enchantment, then put an invasion counter on this enchantment.",
+        )
+        .expect("full Alien Invasion oracle text should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect") && debug.contains("MustAttack"),
+        "full-card production dispatch must retain the Alien attack requirement: {debug}"
+    );
+}
+
+#[test]
+fn token_pronoun_followup_parses_under_the_token_source_identity() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Token CDA Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a white Avatar creature token. It has \"This token's power and toughness are each equal to your life total.\"",
+        )
+        .expect("token CDA follow-up should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Avatar token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("CharacteristicDefiningPT") && debug.contains("LifeTotal"),
+        "the Avatar CDA should belong to the created token: {debug}"
+    );
+}
+
+#[test]
+fn token_pronoun_activation_resolves_this_token_to_source() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Regeneration Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a 1/1 black Skeleton creature token. It has \"{B}: Regenerate this token.\"",
+        )
+        .expect("token regeneration ability should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Skeleton token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("RegenerateEffect") && debug.contains("Source"),
+        "`this token` should lower to the regeneration ability's source: {debug}"
+    );
+}
+
+#[test]
+fn multiple_quoted_artifact_token_rules_are_all_nested() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Artifact Rules Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a tapped colorless artifact token named Meteorite with \"When this token enters, it deals 2 damage to any target\" and \"{T}: Add one mana of any color.\"",
+        )
+        .expect("multiple artifact-token rules should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Meteorite token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("Triggered")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("Activated")
+            && debug.contains("AddManaOfAnyColorEffect"),
+        "both quoted Meteorite abilities should remain on its definition: {debug}"
+    );
+}
+
+#[test]
+fn quoted_tap_sacrifice_any_color_rule_keeps_both_costs() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Etherium Cell Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a colorless artifact token named Etherium Cell with \"{T}, Sacrifice this token: Add one mana of any color.\"",
+        )
+        .expect("Etherium Cell rule should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Etherium Cell token");
+    let activated = create
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Etherium Cell activated mana ability");
+    assert!(matches!(
+        activated.mana_cost.costs(),
+        [crate::costs::Cost::Tap, crate::costs::Cost::SacrificeSelf]
+    ));
+    assert!(
+        format!("{:#?}", activated.effects).contains("AddManaOfAnyColorEffect"),
+        "{activated:#?}"
+    );
+}
+
+#[test]
+fn later_quoted_artifact_token_activation_is_not_dropped() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Notebook Rules Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create Tamiyo's Notebook, a legendary colorless Book artifact token with \"Spells you cast cost {2} less to cast\" and \"{T}: Draw a card.\"",
+        )
+        .expect("both Notebook abilities should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Notebook token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("DrawCardEffect"),
+        "the second quoted Notebook ability should remain attached: {debug}"
+    );
+}
+
+#[test]
+fn full_tamiyo_compleated_sage_keeps_both_notebook_abilities() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tamiyo, Compleated Sage")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(5)
+        .parse_text(
+            "Compleated\n+1: Tap up to one target artifact or creature. It doesn't untap during its controller's next untap step.\n−X: Exile target nonland permanent card with mana value X from your graveyard. Create a token that's a copy of that card.\n−7: Create Tamiyo's Notebook, a legendary colorless Book artifact token with \"Spells you cast cost {2} less to cast\" and \"{T}: Draw a card.\"",
+        )
+        .expect("full Tamiyo oracle text should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("CostReduction")
+            && debug.contains("DrawCardEffect"),
+        "full-card production dispatch must retain both Notebook abilities: {debug}"
+    );
+}
+
+#[test]
+fn quoted_sacrifice_damage_activation_stays_on_created_token() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Token Activation Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a 1/1 colorless Triskelavite artifact creature token with flying. It has \"Sacrifice this token: This token deals 1 damage to any target.\"",
+        )
+        .expect("token sacrifice activation should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("created Triskelavite token");
+    let debug = format!("{:#?}", create.token.abilities);
+    assert!(
+        debug.contains("Activated")
+            && debug.contains("SacrificeSelf")
+            && debug.contains("DealDamageEffect"),
+        "quoted activation should be part of the Triskelavite definition: {debug}"
+    );
+}
+
+#[test]
 fn endure_builds_typed_spirit_without_token_text_parsing() {
     let action = SubjectVerbActionAst::Endure {
         target: TargetAst::Object(ObjectFilter::source(), None, None),
@@ -802,6 +1252,88 @@ fn compile_effects_with_explicit_frame_uses_annotated_reference_frames() {
 }
 
 #[test]
+fn synthesis_pod_consult_match_keeps_its_tag_through_exile_and_cast() {
+    let match_tag = TagKey::from("__sentence_helper_consult_match_l0_s0_e0");
+    let effects = vec![
+        EffectAst::subject_verb_consult_top_of_library(
+            PlayerAst::You,
+            crate::cards::builders::LibraryConsultModeAst::Reveal,
+            ObjectFilter::default(),
+            crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1)),
+            TagKey::from("__sentence_helper_revealed_l0_s0_e0"),
+            match_tag.clone(),
+        ),
+        EffectAst::subject_verb_exile(
+            TargetAst::Tagged(match_tag.clone(), Some(TextSpan::synthetic())),
+            false,
+        ),
+        EffectAst::subject_verb_cast_tagged(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            false,
+            false,
+            true,
+            None,
+        ),
+    ];
+
+    let (compiled, _, _) = compile_effects_with_explicit_frame(
+        &effects,
+        &mut IdGenContext::default(),
+        LoweringFrame::default(),
+    )
+    .expect("compile Synthesis Pod consult/exile/cast chain");
+
+    let cast = compiled
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::CastTaggedEffect>())
+        .expect("consult follow-up should cast its tagged match");
+    assert_eq!(cast.tag, match_tag);
+}
+
+#[test]
+fn praetors_grasp_search_exile_uses_source_exiled_permission_provenance() {
+    let searched_tag = TagKey::from("searched_face_down");
+    let mut searched_filter = ObjectFilter::default().in_zone(Zone::Library);
+    searched_filter.owner = Some(PlayerFilter::Opponent);
+    let effects = vec![
+        EffectAst::ChooseObjects {
+            filter: searched_filter,
+            count: crate::effect::ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: searched_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(
+            TargetAst::Tagged(searched_tag.clone(), Some(TextSpan::synthetic())),
+            true,
+        ),
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            true,
+            false,
+            false,
+            None,
+        ),
+    ];
+
+    let (compiled, _, _) = compile_effects_with_explicit_frame(
+        &effects,
+        &mut IdGenContext::default(),
+        LoweringFrame::default(),
+    )
+    .expect("compile Praetor's Grasp search/exile/play chain");
+
+    let grant = compiled
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>())
+        .expect("searched exiled card should receive a play permission");
+    assert_eq!(grant.tag.as_str(), crate::tag::SOURCE_EXILED_TAG);
+    assert_ne!(grant.tag, searched_tag);
+}
+
+#[test]
 fn compile_may_branch_preserves_auto_tagged_destroy_followup() {
     let effects = vec![
         EffectAst::May {
@@ -873,6 +1405,40 @@ fn compile_optional_turn_skip_keeps_if_result_inside_may_branch() {
     let debug = format!("{compiled:?}");
     assert!(debug.contains("SkipTurnEffect"), "{debug}");
     assert!(debug.contains("UntapEffect"), "{debug}");
+}
+
+#[test]
+fn compile_last_known_countered_spell_preserves_stack_identity() {
+    let mut target_filter = ObjectFilter::creature().in_zone(Zone::Stack);
+    target_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+    let mut legendary_spell = ObjectFilter::spell();
+    legendary_spell.supertypes = vec![crate::types::Supertype::Legendary];
+    let effects = vec![
+        EffectAst::subject_verb_counter(TargetAst::Object(
+            target_filter,
+            Some(TextSpan::synthetic()),
+            None,
+        )),
+        EffectAst::Conditional {
+            predicate: PredicateAst::ItMatchedLastKnown(legendary_spell),
+            if_true: vec![EffectAst::subject_verb_ring_tempts_you(PlayerAst::You)],
+            if_false: Vec::new(),
+        },
+    ];
+
+    let mut ctx = EffectLoweringContext::new();
+    let (compiled, _) = compile_effects(&effects, &mut ctx)
+        .expect("countered-spell last-known predicate should lower");
+    let debug = format!("{compiled:#?}");
+    assert!(debug.contains("TaggedObjectMatchedLastKnown"), "{debug}");
+    assert!(
+        debug.contains("zone: Some(\n                        Stack"),
+        "{debug}"
+    );
+    assert!(
+        debug.contains("stack_kind: Some(\n                        Spell"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -956,6 +1522,56 @@ fn compile_next_spell_grant_after_targeted_player_effect_binds_that_player() {
     assert!(
         !debug.contains("cast_by: Some(IteratedPlayer)"),
         "grant filter caster should be rebound: {debug}"
+    );
+    assert!(
+        debug.contains("AliasedTarget(Any)"),
+        "follow-up player should retain selected-target provenance: {debug}"
+    );
+}
+
+#[test]
+fn devour_flesh_carries_its_target_into_the_life_gain_without_retargeting() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Devour Flesh")
+        .parse_text(
+            "Target player sacrifices a creature of their choice, then gains life equal to that creature's toughness.",
+        )
+        .expect("Devour Flesh should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("SacrificeEffect"),
+        "sacrifice effect: {debug}"
+    );
+    assert!(
+        debug.contains("GainLifeEffect"),
+        "life-gain effect: {debug}"
+    );
+    assert!(
+        debug.contains("player: AliasedTarget(Any)"),
+        "implicit follow-up should use the previously selected target: {debug}"
+    );
+}
+
+#[test]
+fn restorative_technique_keeps_the_target_as_searcher_and_library_owner() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Restorative Technique")
+        .parse_text(
+            "Target player gains 2 life, then searches their library for a basic land card, puts it onto the battlefield tapped, then shuffles. Put a +1/+1 counter on up to one target creature.",
+        )
+        .expect("Restorative Technique should parse");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        debug.contains("SearchLibraryEffect"),
+        "search effect: {debug}"
+    );
+    assert!(
+        debug.contains("ShuffleLibraryEffect"),
+        "shuffle effect: {debug}"
+    );
+    assert!(
+        debug.matches("AliasedTarget(Any)").count() >= 2,
+        "searcher/library owner and shuffle should share the selected player: {debug}"
     );
 }
 

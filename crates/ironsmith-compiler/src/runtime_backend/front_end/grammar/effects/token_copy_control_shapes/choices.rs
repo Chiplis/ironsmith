@@ -14,7 +14,9 @@ pub(crate) struct SacrificeChoiceShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ExileSourceCounterShape<'a> {
+    pub(crate) target_tokens: &'a [OwnedLexToken],
     pub(crate) descriptor_tokens: &'a [OwnedLexToken],
+    pub(crate) source_reference: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,8 +152,8 @@ pub(crate) fn parse_exile_source_counter_shape(
     let (_, body) = primitives::parse_prefix(tokens, primitives::kw("exile"))?;
     let (source_tokens, counter_tokens) =
         primitives::split_lexed_once_on_separator(body, || primitives::kw("with").void())?;
-    let source_tokens = trim_lexed_commas(source_tokens);
-    if !source_surface_supported(source_tokens) {
+    let target_tokens = trim_lexed_commas(source_tokens);
+    if target_tokens.is_empty() {
         return None;
     }
     let (descriptor_tokens, _) =
@@ -164,7 +166,11 @@ pub(crate) fn parse_exile_source_counter_shape(
                 .void()
         })?;
     let descriptor_tokens = trim_lexed_commas(descriptor_tokens);
-    (!descriptor_tokens.is_empty()).then_some(ExileSourceCounterShape { descriptor_tokens })
+    (!descriptor_tokens.is_empty()).then_some(ExileSourceCounterShape {
+        target_tokens,
+        descriptor_tokens,
+        source_reference: source_surface_supported(target_tokens),
+    })
 }
 
 fn trailing_filter_copula(token: &OwnedLexToken) -> bool {

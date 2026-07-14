@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
-use crate::effect::ChoiceCount;
+use crate::effect::{ChoiceCount, Value};
 use crate::runtime_backend::grammar::{leaf, primitives};
 use crate::runtime_backend::lexer::{LexStream, LexedClause, OwnedLexToken, TokenWordView};
 
@@ -29,9 +29,17 @@ pub(crate) struct LookedCardFilterShape<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct LookedCardExileRemainderShape<'a> {
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) count: ChoiceCount,
+    pub(crate) order: LibraryBottomOrderAst,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct LookedCardRevealShape<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
     pub(crate) count: ChoiceCount,
+    pub(crate) x_value: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -290,6 +298,13 @@ fn from_among_them<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
+fn where_x_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    opt(primitives::comma()).parse_next(&mut *input)?;
+    primitives::phrase(&["where", "x", "is"])
+        .void()
+        .parse_next(input)
+}
+
 pub(crate) fn parse_may_reveal_looked_card_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardRevealShape<'_>> {
@@ -298,12 +313,43 @@ pub(crate) fn parse_may_reveal_looked_card_shape(
     let count_surface = trimmed(count_surface);
     let parsed = leaf::parse_leaf_choice_count_prefix_tokens(count_surface)?;
     let filter_surface = trimmed(&count_surface[parsed.consumed..]);
-    let (among_idx, (), _) = primitives::find_prefix(filter_surface, || from_among_them)?;
+    let (among_idx, (), after_among) = primitives::find_prefix(filter_surface, || from_among_them)?;
     let filter_tokens = trimmed(&filter_surface[..among_idx]);
+    let after_among = trimmed(after_among);
+    let x_value = if after_among.is_empty() {
+        None
+    } else {
+        let ((), value_tokens) = primitives::parse_prefix(after_among, where_x_prefix)?;
+        Some(super::looked_card_shapes::parse_where_x_value(trimmed(
+            value_tokens,
+        ))?)
+    };
     (!filter_tokens.is_empty()).then_some(LookedCardRevealShape {
         filter_tokens,
         count: parsed.count,
+        x_value,
     })
+}
+
+fn put_revealed_into_hand_then_shuffle<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        primitives::phrase(&["put", "the", "revealed", "cards", "into", "your", "hand"]),
+        primitives::phrase(&["put", "those", "cards", "into", "your", "hand"]),
+        primitives::phrase(&["put", "them", "into", "your", "hand"]),
+    ))
+    .void()
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["then", "shuffle"])
+        .void()
+        .parse_next(input)?;
+    opt(primitives::phrase(&["your", "library"]))
+        .void()
+        .parse_next(input)
+}
+
+pub(crate) fn parse_put_revealed_into_hand_then_shuffle_shape(tokens: &[OwnedLexToken]) -> bool {
+    exact_unit(tokens, put_revealed_into_hand_then_shuffle)
 }
 
 fn bargained<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -364,6 +410,33 @@ pub(crate) fn parse_may_exile_looked_card_shape(
     (!filter_tokens.is_empty()).then_some(LookedCardFilterShape { filter_tokens })
 }
 
+pub(crate) fn parse_exile_looked_card_and_remainder_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedCardExileRemainderShape<'_>> {
+    let clause = trimmed(tokens);
+    let ((), count_surface) = primitives::parse_prefix(clause, |input: &mut LexStream<'_>| {
+        primitives::kw("exile").void().parse_next(input)
+    })?;
+    let count_surface = trimmed(count_surface);
+    let parsed = leaf::parse_leaf_choice_count_prefix_tokens(count_surface)?;
+    let filter_surface = trimmed(&count_surface[parsed.consumed..]);
+    let (among_idx, (), after_among) = primitives::find_prefix(filter_surface, || from_among_them)?;
+    let filter_tokens = trimmed(&filter_surface[..among_idx]);
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    let ((), remainder_tokens) =
+        primitives::parse_prefix(trimmed(after_among), |input: &mut LexStream<'_>| {
+            primitives::kw("and").void().parse_next(input)
+        })?;
+    let order = parse_looked_remainder_bottom_shape(trimmed(remainder_tokens))?;
+    Some(LookedCardExileRemainderShape {
+        filter_tokens,
+        count: parsed.count,
+        order,
+    })
+}
+
 pub(crate) fn parse_look_exile_split_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookExileSplitShape<'_>> {
@@ -403,6 +476,17 @@ mod tests {
         assert!(parse_otherwise_revealed_hand_shape(&lex(
             "Otherwise, put the revealed cards into your hand"
         )));
+
+        let compound_tokens = lex(
+            "Exile up to one nonland card from among them and put the rest on the bottom of your library in a random order",
+        );
+        let compound = parse_exile_looked_card_and_remainder_shape(&compound_tokens).unwrap();
+        assert_eq!(compound.count, ChoiceCount::up_to(1));
+        assert_eq!(compound.order, LibraryBottomOrderAst::Random);
+        assert_eq!(
+            TokenWordView::new(compound.filter_tokens).word_refs(),
+            vec!["nonland", "card"]
+        );
     }
 
     #[test]

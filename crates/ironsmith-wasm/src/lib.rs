@@ -15,7 +15,6 @@ use std::time::Instant;
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use wasm_bindgen::prelude::*;
 
 use ironsmith::cards::{CardDefinition, CardRegistry};
@@ -138,68 +137,58 @@ struct CachedSnapshot {
     perf: SnapshotPerfMetrics,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ManabrewOverlayKind {
-    HiddenCard,
-    ZoneCard,
-    Permanent,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ManabrewOverlayCacheKey {
-    seat: u8,
-    kind: ManabrewOverlayKind,
-    hash: u64,
+#[derive(Debug, Clone)]
+enum ManabrewPromptBinding {
+    Priority {
+        actions: HashMap<String, usize>,
+        pass_index: usize,
+    },
+    Mulligan {
+        keep_index: usize,
+        mulligan_index: usize,
+    },
+    Boolean,
+    Number,
+    Options {
+        indices: Vec<usize>,
+    },
+    Objects {
+        objects: HashMap<String, ObjectId>,
+    },
+    Targets {
+        targets: HashMap<String, Target>,
+    },
+    Attackers {
+        attackers: HashMap<String, ObjectId>,
+        targets: HashMap<String, AttackTarget>,
+    },
+    Blockers {
+        objects: HashMap<String, ObjectId>,
+    },
+    Reorder {
+        indices: HashMap<String, usize>,
+    },
+    Colors {
+        indices: HashMap<String, usize>,
+    },
+    Partition {
+        objects: HashMap<String, ObjectId>,
+        secondary_zone_index: usize,
+    },
+    Payment {
+        actions: HashMap<String, usize>,
+        pay_index: Option<usize>,
+    },
 }
 
 #[derive(Debug, Clone)]
-struct ManabrewOverlayCacheValue {
-    fingerprint: String,
-    value: JsonValue,
-}
-
-const MANABREW_OVERLAY_CACHE_LIMIT: usize = 16_384;
-
-#[derive(Debug, Default)]
-struct ManabrewOverlayCache {
-    values: HashMap<ManabrewOverlayCacheKey, ManabrewOverlayCacheValue>,
-}
-
-impl ManabrewOverlayCache {
-    fn get_or_insert_with(
-        &mut self,
-        seat: PlayerId,
-        kind: ManabrewOverlayKind,
-        discriminator: &str,
-        source: &JsonValue,
-        build: impl FnOnce() -> JsonValue,
-    ) -> JsonValue {
-        let fingerprint = format!("{discriminator}|{source}");
-        let hash = hash_debug_value(&fingerprint);
-        let key = ManabrewOverlayCacheKey {
-            seat: seat.0,
-            kind,
-            hash,
-        };
-        if let Some(cached) = self.values.get(&key)
-            && cached.fingerprint == fingerprint
-        {
-            return cached.value.clone();
-        }
-
-        let value = build();
-        if self.values.len() >= MANABREW_OVERLAY_CACHE_LIMIT {
-            self.values.clear();
-        }
-        self.values.insert(
-            key,
-            ManabrewOverlayCacheValue {
-                fingerprint,
-                value: value.clone(),
-            },
-        );
-        value
-    }
+struct ManabrewOpenPrompt {
+    prompt_id: u32,
+    deciding_player: PlayerId,
+    decision_hash: u64,
+    source_card_id: Option<String>,
+    input: manabrew_protocol::prompts::PromptInput,
+    binding: ManabrewPromptBinding,
 }
 
 fn hash_debug_value(value: &impl std::fmt::Debug) -> u64 {
@@ -2747,7 +2736,7 @@ impl GameOverView {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum UiCommand {
     PriorityAction {
@@ -2783,27 +2772,27 @@ enum UiCommand {
     },
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum TargetInput {
     Player { player: u8 },
     Object { object: u64 },
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum AttackTargetInput {
     Player { player: u8 },
     Planeswalker { object: u64 },
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct AttackerDeclarationInput {
     creature: u64,
     target: AttackTargetInput,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct BlockerDeclarationInput {
     blocker: u64,
     blocking: u64,
@@ -3383,7 +3372,10 @@ pub struct WasmGame {
     snapshot_object_view_cache: SnapshotObjectViewCache,
     #[cfg(target_arch = "wasm32")]
     snapshot_js_encoding_cache: SnapshotJsEncodingCache,
-    manabrew_overlay_cache: ManabrewOverlayCache,
+    manabrew_game_id: String,
+    manabrew_human_players: Vec<bool>,
+    manabrew_next_prompt_id: u32,
+    manabrew_open_prompt: Option<ManabrewOpenPrompt>,
     cached_snapshot: Option<CachedSnapshot>,
 }
 
@@ -3939,6 +3931,7 @@ struct PregameState {
     opening_hand_size: usize,
     format: MatchFormatInput,
     mulligans_taken: HashMap<PlayerId, u32>,
+    used_opening_actions: HashSet<(ObjectId, usize)>,
     stage: PregameStage,
 }
 
@@ -3971,6 +3964,7 @@ impl PregameState {
             opening_hand_size,
             format,
             mulligans_taken: HashMap::new(),
+            used_opening_actions: HashSet::new(),
             stage: PregameStage::MulliganDecision {
                 undecided_players: turn_order.to_vec(),
                 round_mulliganers: Vec::new(),

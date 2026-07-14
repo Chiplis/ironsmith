@@ -64,6 +64,21 @@ fn parse_embedded_rule_subject<'a>(
     .parse_next(input)
 }
 
+fn parse_reciprocal_non_subtype_blocking_rule<'a>(
+    input: &mut crate::runtime_backend::front_end::lexer::LexStream<'a>,
+) -> WResult<TokenEmbeddedRuleShape> {
+    parse_embedded_rule_subject.parse_next(input)?;
+    alt((primitives::kw("cant"), primitives::kw("can't"))).parse_next(input)?;
+    primitives::phrase(&["block", "or", "be", "blocked", "by"]).parse_next(input)?;
+    let subtype = any
+        .verify_map(|token: &OwnedLexToken| {
+            leaf::parse_leaf_non_subtype_complete(token.parser_text()).ok()
+        })
+        .parse_next(input)?;
+    alt((primitives::kw("creature"), primitives::kw("creatures"))).parse_next(input)?;
+    Ok(TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures { subtype })
+}
+
 fn parse_damage_triggered_rule<'a>(
     input: &mut crate::runtime_backend::front_end::lexer::LexStream<'a>,
 ) -> WResult<TokenEmbeddedRuleShape> {
@@ -180,6 +195,17 @@ fn parse_tap_sacrifice_mana_life_rule<'a>(
     ))
 }
 
+fn parse_tap_sacrifice_any_color_rule<'a>(
+    input: &mut crate::runtime_backend::front_end::lexer::LexStream<'a>,
+) -> WResult<TokenEmbeddedRuleShape> {
+    parse_tap_symbol.parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["sacrifice", "this", "token"]).parse_next(input)?;
+    primitives::colon().parse_next(input)?;
+    primitives::phrase(&["add", "one", "mana", "of", "any", "color"]).parse_next(input)?;
+    Ok(TokenEmbeddedRuleShape::TapSacrificeAddManaOfAnyColor)
+}
+
 fn parse_land_enters_counter_rule<'a>(
     input: &mut crate::runtime_backend::front_end::lexer::LexStream<'a>,
 ) -> WResult<LandEntersCounterRuleShape<'a>> {
@@ -234,7 +260,7 @@ fn token_rule_target_is_self(target_tokens: &[OwnedLexToken], named_token: Optio
         || named_token.is_some_and(|name| trimmed_render(target_tokens).eq_ignore_ascii_case(name))
 }
 
-pub(super) fn parse_embedded_token_rule_tokens(
+pub(crate) fn parse_embedded_token_rule_tokens(
     tokens: &[OwnedLexToken],
     named_token: Option<&str>,
 ) -> Option<TokenEmbeddedRuleShape> {
@@ -242,9 +268,11 @@ pub(super) fn parse_embedded_token_rule_tokens(
         .map(|shape| shape.body_tokens)
         .unwrap_or(tokens);
     for parser in [
+        parse_reciprocal_non_subtype_blocking_rule,
         parse_dies_create_builtin_token_rule,
         parse_damage_triggered_rule,
         parse_upkeep_sacrifice_else_damage_rule,
+        parse_tap_sacrifice_any_color_rule,
         parse_tap_sacrifice_mana_life_rule,
     ] {
         if let Ok(rule) = primitives::parse_all(
@@ -297,4 +325,37 @@ pub(crate) fn parse_inline_noncreature_spell_damage_tokens(
     Some(InlineNoncreatureSpellDamageShape {
         amount: damage_amount(&words)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::types::Subtype;
+
+    #[test]
+    fn reciprocal_non_subtype_blocking_rule_is_typed() {
+        let tokens = lex_line(
+            "This token can't block or be blocked by non-Spirit creatures.",
+            0,
+        )
+        .expect("reciprocal blocking rule should lex");
+
+        assert_eq!(
+            parse_embedded_token_rule_tokens(&tokens, None),
+            Some(
+                TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
+                    subtype: Subtype::Spirit,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn reciprocal_rule_parser_does_not_capture_unconditional_blocking_rules() {
+        for text in ["This token can't block.", "This token can't be blocked."] {
+            let tokens = lex_line(text, 0).expect("unconditional blocking rule should lex");
+            assert_eq!(parse_embedded_token_rule_tokens(&tokens, None), None);
+        }
+    }
 }

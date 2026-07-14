@@ -1,10 +1,12 @@
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, PredicateAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, OwnedLexToken, PlayerAst,
+    PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey,
+    TargetAst,
 };
 use crate::diagnostics::TextSpan;
 use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::effects::for_each_shapes::{
@@ -119,6 +121,10 @@ pub(crate) fn parse_get_for_each_count_value(
     if for_each_shapes::parse_for_each_target_subject_shape(tokens).is_none() {
         return Ok(None);
     }
+    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+    {
+        return Ok(Some(value));
+    }
     let words = LexedClause::new(tokens).word_refs();
     let Some((value, _)) = parse_for_each_count_value_words(&words) else {
         return Err(CardTextError::ParseError(
@@ -181,12 +187,14 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             clause
         )));
     }
-    let x_value = parse_value_binding_clause(binding_tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported where-X gets clause (clause: '{}')",
-            clause
-        ))
-    })?;
+    let x_value = parse_value_binding_clause(binding_tokens)
+        .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported where-X gets clause (clause: '{}')",
+                clause
+            ))
+        })?;
     out_power = replace_unbound_x_with_value(out_power, &x_value, &clause)?;
     out_toughness = replace_unbound_x_with_value(out_toughness, &x_value, &clause)?;
     Ok((out_power, out_toughness, shape.duration, shape.condition))
@@ -213,18 +221,20 @@ pub(crate) fn force_implicit_token_controller_you(effects: &mut [EffectAst]) {
     }
 }
 
-fn force_implicit_choose_chooser_you(effects: &mut [EffectAst]) {
+fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
     for effect in effects {
         match effect {
             EffectAst::ChooseObjects { player, .. }
             | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
             | EffectAst::ChooseObjectsBottomOfLibrary { player, .. }
+            | EffectAst::ChooseObjectsAcrossZones { player, .. }
+            | EffectAst::ChooseTaggedObjectsInZone { player, .. }
                 if matches!(*player, PlayerAst::Implicit) =>
             {
-                *player = PlayerAst::You;
+                *player = chooser;
             }
             _ => for_each_nested_effects_mut(effect, true, |nested| {
-                force_implicit_choose_chooser_you(nested);
+                bind_implicit_choose_chooser(nested, chooser);
             }),
         }
     }
@@ -447,6 +457,7 @@ pub(crate) fn parse_for_each_opponent_clause(
                 return Ok(Some(EffectAst::ForEachOpponentDid {
                     effects: parse_effect_chain_inner(effect_tokens)?,
                     predicate: tagged_predicate(tagged_filter_tokens),
+                    result_predicate: IfResultPredicate::Did,
                 }));
             }
             WhoClauseShape::DidAction {
@@ -471,6 +482,7 @@ pub(crate) fn parse_for_each_opponent_clause(
                 return Ok(Some(EffectAst::ForEachOpponentDid {
                     effects,
                     predicate: None,
+                    result_predicate: IfResultPredicate::AcceptedChoice,
                 }));
             }
         }
@@ -479,7 +491,14 @@ pub(crate) fn parse_for_each_opponent_clause(
     let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
     let mut effects = parse_maybe_effects(&normalized, false, true)?;
     if for_each_shapes::starts_choose(outer.inner_tokens) {
-        force_implicit_choose_chooser_you(&mut effects);
+        bind_implicit_choose_chooser(
+            &mut effects,
+            if outer.participant_is_actor {
+                PlayerAst::That
+            } else {
+                PlayerAst::You
+            },
+        );
     }
     Ok(Some(wrap_opponents(&iteration_filter, effects)))
 }
@@ -601,6 +620,7 @@ pub(crate) fn parse_for_each_player_clause(
                 return Ok(Some(EffectAst::ForEachPlayerDid {
                     effects: parse_effect_chain_inner(effect_tokens)?,
                     predicate: tagged_predicate(tagged_filter_tokens),
+                    result_predicate: IfResultPredicate::Did,
                 }));
             }
             WhoClauseShape::DidAction {
@@ -625,6 +645,7 @@ pub(crate) fn parse_for_each_player_clause(
                 return Ok(Some(EffectAst::ForEachPlayerDid {
                     effects,
                     predicate: None,
+                    result_predicate: IfResultPredicate::AcceptedChoice,
                 }));
             }
         }
@@ -633,7 +654,47 @@ pub(crate) fn parse_for_each_player_clause(
     let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
     let mut effects = parse_maybe_effects(&normalized, false, false)?;
     if for_each_shapes::starts_choose(outer.inner_tokens) {
-        force_implicit_choose_chooser_you(&mut effects);
+        bind_implicit_choose_chooser(
+            &mut effects,
+            if outer.participant_is_actor {
+                PlayerAst::That
+            } else {
+                PlayerAst::You
+            },
+        );
     }
     Ok(Some(wrap_players(&iteration_filter, effects)))
+}
+
+#[cfg(test)]
+mod participant_choice_ownership_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn parsed_debug(text: &str) -> String {
+        let tokens = lex_line(text, 0).expect("participant choice should lex");
+        let effect =
+            if text.starts_with("Each opponent") || text.starts_with("For each opponent") {
+                parse_for_each_opponent_clause(&tokens)
+            } else {
+                parse_for_each_player_clause(&tokens)
+            }
+            .expect("participant choice should parse")
+            .expect("participant choice shape should match");
+        format!("{effect:#?}")
+    }
+
+    #[test]
+    fn participant_subject_owns_choice_but_for_each_imperative_does_not() {
+        let each_opponent =
+            parsed_debug("Each opponent chooses a creature they control and sacrifices it.");
+        assert!(each_opponent.contains("player: That"), "{each_opponent}");
+        assert!(!each_opponent.contains("player: You"), "{each_opponent}");
+
+        let each_player = parsed_debug("Each player chooses a creature they control.");
+        assert!(each_player.contains("player: That"), "{each_player}");
+
+        let controller = parsed_debug("For each opponent, choose a creature they control.");
+        assert!(controller.contains("player: You"), "{controller}");
+    }
 }

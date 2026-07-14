@@ -352,6 +352,10 @@ pub(crate) fn interpret_trigger_model(
             player,
             card_number,
         } => crate::triggers::Trigger::player_draws_nth_card_each_turn(player, card_number),
+        TriggerKind::PlayerDrawsNumberedCardsEachTurn {
+            player,
+            card_numbers,
+        } => crate::triggers::Trigger::player_draws_numbered_cards_each_turn(player, card_numbers),
         TriggerKind::PlayerDiscardsCardCausedByController {
             player,
             filter,
@@ -379,9 +383,15 @@ pub(crate) fn interpret_trigger_model(
             filter,
             from_source,
         } => crate::triggers::Trigger::player_reveals_card(player, filter, from_source),
-        TriggerKind::PlayerSacrifices { player, filter } => {
-            crate::triggers::Trigger::player_sacrifices(player, filter)
-        }
+        TriggerKind::PlayerSacrifices {
+            player,
+            filter,
+            one_or_more_surface,
+        } => crate::triggers::Trigger::player_sacrifices_with_surface(
+            player,
+            filter,
+            one_or_more_surface,
+        ),
         TriggerKind::TokensCreated {
             player,
             filter,
@@ -472,9 +482,14 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::beginning_of_combat(player)
         }
         TriggerKind::EndOfCombat => crate::triggers::Trigger::end_of_combat(),
-        TriggerKind::BeginningOfEndStep { player } => {
-            crate::triggers::Trigger::beginning_of_end_step(player)
-        }
+        TriggerKind::BeginningOfEndStep { player, surface } => match surface {
+            ironsmith_core::trigger_model::EndStepSurface::Definite => {
+                crate::triggers::Trigger::beginning_of_the_end_step()
+            }
+            ironsmith_core::trigger_model::EndStepSurface::Each => {
+                crate::triggers::Trigger::beginning_of_end_step(player)
+            }
+        },
         TriggerKind::BeginningOfPrecombatMainPhase { player } => {
             crate::triggers::Trigger::beginning_of_precombat_main_phase(player)
         }
@@ -583,6 +598,15 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player) => {
                 Self::beginning_of_combat(player)
             }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfMainPhase(player) => {
+                Self::beginning_of_main_phase(player)
+            }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfPrecombatMainPhase(player) => {
+                Self::beginning_of_precombat_main_phase(player)
+            }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfPostcombatMainPhase(player) => {
+                Self::beginning_of_postcombat_main_phase(player)
+            }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
             ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
                 source_description,
@@ -643,13 +667,17 @@ impl super::Trigger {
                 min_spells_this_turn,
                 exact_spells_this_turn,
                 from_not_hand,
-            } => Self::spell_cast_qualified(
-                filter,
-                caster,
-                during_turn,
-                min_spells_this_turn,
-                exact_spells_this_turn,
-                from_not_hand,
+                first_spell_of_game,
+            } => Self::new(
+                super::SpellCastTrigger::qualified(
+                    filter,
+                    caster,
+                    during_turn,
+                    min_spells_this_turn,
+                    exact_spells_this_turn,
+                    from_not_hand,
+                )
+                .with_first_spell_of_game(first_spell_of_game),
             ),
             ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand { player, filter } => {
                 Self::player_plays_land(player, filter)

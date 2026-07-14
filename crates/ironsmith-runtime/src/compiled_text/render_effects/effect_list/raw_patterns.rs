@@ -1,5 +1,73 @@
 {
 
+    if let Some(compact) = describe_targeted_card_set_total_mana_value_then_return(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_may_exile_one_from_triggered_set_then_cast(effects) {
+        return compact;
+    }
+
+    if let Some(compact) =
+        describe_consult_reveal_put_battlefield_then_shuffle_effects(effects)
+    {
+        return compact;
+    }
+    if let Some(compact) = describe_pre_clause_structural_effect_list(effects) {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_target_player_cast_and_creatures_attack_restrictions(effects)
+    {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_tagged_continuous_then_counter_conditional_draw(&raw_effects)
+    {
+        return compact;
+    }
+    if let Some(compact) = describe_redundant_target_only_pair(effects) {
+        return compact;
+    }
+    if let [first, second] = effects
+        && let Some(compact) = describe_target_continuous_fanout_pair(first, second)
+            .or_else(|| describe_target_prevention_fanout_pair(first, second))
+    {
+        return compact;
+    }
+    if let [first, second] = effects
+        && let Some(compact) = describe_linked_same_source_damage_pair(first, second)
+    {
+        return compact;
+    }
+    if let [first, second] = effects
+        && let Some(compact) = describe_target_creature_damage_fanout_pair(first, second)
+    {
+        return compact;
+    }
+    if effects.len() >= 2
+        && let Some(compact) =
+            describe_target_same_name_action_fanout_pair(&effects[0], &effects[1])
+    {
+        if effects.len() == 2 {
+            return compact;
+        }
+        let suffix = describe_effect_list(&effects[2..]);
+        return format!(
+            "{}. {}",
+            compact.trim_end_matches('.'),
+            capitalize_first(suffix.trim_end_matches('.'))
+        );
+    }
+    if effects.len() >= 2
+        && let Some(prefix) = describe_gain_control_then_untap_structural(&effects[..2])
+    {
+        if effects.len() == 2 {
+            return prefix;
+        }
+        let suffix = describe_effect_list(&effects[2..]);
+        return format!("{prefix}. {}", suffix.trim_end_matches('.'));
+    }
+
 
 
 
@@ -175,6 +243,18 @@
     if let Some(compact) = describe_random_choose_then_destroy_rest(effects) {
         return compact;
     }
+    if let Some(compact) = describe_reveal_hand_choose_two_filters_then_discard(&raw_effects) {
+        return compact;
+    }
+    if raw_effects.len() == 4
+        && raw_effects[0]
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some()
+        && let Some(compact) =
+            describe_reveal_hand_subset_choose_then_discard(&raw_effects[1..])
+    {
+        return compact;
+    }
     if let Some(compact) = describe_discard_reveal_hand_choose_discard_chosen(&raw_effects) {
         return compact;
     }
@@ -225,6 +305,9 @@
         return compact;
     }
 
+    if let Some(compact) = describe_gain_life_then_put_same_x_counters(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_gain_life_then_distribute_creatures_died_counters(effects) {
         return compact;
     }
@@ -347,6 +430,12 @@
     if let Some(compact) = describe_each_opponent_exile_top_then_cast_until_eot_any_color(effects) {
         return compact;
     }
+    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_id_backed_prior_action_count_consumer(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -402,6 +491,11 @@
         return compact;
     }
     if let Some(compact) = describe_return_then_conditional_animation(effects) {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_immediate_life_gain_then_delayed_source_return(&raw_effects)
+    {
         return compact;
     }
 
@@ -479,6 +573,12 @@
     }
 
 
+    if let Some(compact) = describe_targeted_conditional_action_then_fight(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_two_distinct_targets_conditional_then_fight(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_two_distinct_targets_counter_then_fight(&raw_effects) {
         return compact;
     }

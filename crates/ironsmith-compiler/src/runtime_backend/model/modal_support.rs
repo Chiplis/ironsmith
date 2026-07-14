@@ -160,6 +160,7 @@ pub(crate) fn parse_modal_header(
         same_mode_more_than_once: modal_flags.same_mode_more_than_once,
         mode_must_be_unchosen: modal_flags.mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn: modal_flags.mode_must_be_unchosen_this_turn,
+        distinct_player_targets_per_mode: modal_flags.distinct_player_targets_per_mode,
         commander_allows_both: modal_flags.commander_allows_both,
         choose_both_control_card_types: modal_flags.choose_both_control_card_types,
         choose_both_exact_life_total: modal_flags.choose_both_exact_life_total,
@@ -336,6 +337,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
             | SubjectVerbActionAst::Earthbend { .. }
@@ -435,15 +437,14 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
-            | SubjectVerbActionAst::PutIntoHand { .. }
             | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-            | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
             | SubjectVerbActionAst::ScaleXValue { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
+            | SubjectVerbActionAst::AssignNoCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
@@ -497,6 +498,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::BecomeBasePtCreature { .. }
             | SubjectVerbActionAst::PumpByLastEffect { .. }
             | SubjectVerbActionAst::AddCardTypes { .. }
+            | SubjectVerbActionAst::SetCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { .. }
@@ -564,10 +566,15 @@ fn parse_modal_header_prefix_effects(
         if let Some(gate_spec) = split_trailing_modal_gate_clause(tokens) {
             let effect_predicate = match gate_spec.predicate {
                 IfResultPredicate::Did => EffectPredicate::Happened,
+                IfResultPredicate::WonClash => {
+                    EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+                }
+                IfResultPredicate::AcceptedChoice => EffectPredicate::Chosen,
                 IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
                 IfResultPredicate::SearchedLibrary => EffectPredicate::SearchedLibrary,
                 IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
+                IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
                 IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
                     EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
                 }

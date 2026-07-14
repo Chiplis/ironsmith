@@ -13,12 +13,14 @@ use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
 use crate::object::Object;
 use crate::target::{ObjectFilter, PlayerFilter};
+pub use ironsmith_core::ManaTypeSource;
 
-/// Effect that adds mana constrained to what matching lands could produce.
+/// Effect that adds mana constrained by a set of land-produced mana types.
 ///
 /// This models text like:
 /// - "Add one mana of any color that a land an opponent controls could produce."
 /// - "Add one mana of any type that a Gate you control could produce."
+/// - "That player adds one mana of any type that land produced."
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfLandProducedTypesEffect {
     /// Number of mana to add.
@@ -31,6 +33,8 @@ pub struct AddManaOfLandProducedTypesEffect {
     pub allow_colorless: bool,
     /// If true, all mana must be the same type.
     pub same_type: bool,
+    /// Whether to inspect potential land abilities or the actual triggering event.
+    pub mana_type_source: ManaTypeSource,
 }
 
 impl AddManaOfLandProducedTypesEffect {
@@ -47,6 +51,24 @@ impl AddManaOfLandProducedTypesEffect {
             land_filter,
             allow_colorless,
             same_type,
+            mana_type_source: ManaTypeSource::MatchingLandsCouldProduce,
+        }
+    }
+
+    pub fn from_triggering_event(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        land_filter: ObjectFilter,
+        allow_colorless: bool,
+        same_type: bool,
+    ) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            land_filter,
+            allow_colorless,
+            same_type,
+            mana_type_source: ManaTypeSource::TriggeringEventProduced,
         }
     }
 }
@@ -67,7 +89,14 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let available = collect_available_mana_symbols(game, ctx, &self.land_filter);
+        let available = match self.mana_type_source {
+            ManaTypeSource::MatchingLandsCouldProduce => {
+                collect_available_mana_symbols(game, ctx, &self.land_filter)
+            }
+            ManaTypeSource::TriggeringEventProduced => {
+                collect_triggering_event_mana_symbols(game, ctx, &self.land_filter)
+            }
+        };
         let available = available
             .into_iter()
             .filter(|symbol| is_allowed_symbol(*symbol, self.allow_colorless))
@@ -98,6 +127,54 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
             amount as i32,
         ))
     }
+}
+
+fn collect_triggering_event_mana_symbols(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    source_filter: &ObjectFilter,
+) -> Vec<ManaSymbol> {
+    let Some(event) = ctx
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
+    else {
+        return Vec::new();
+    };
+
+    // A captured snapshot is the characteristics of the mana source at the
+    // moment it produced mana. Prefer it to the possibly changed live object.
+    let filter_ctx = ctx.filter_context(game);
+    let source_matches = if let Some(snapshot) = event.snapshot.as_ref() {
+        source_filter.matches_snapshot(snapshot, &filter_ctx, game)
+    } else if let Some(source) = game.object(event.source) {
+        source_filter.matches(source, &filter_ctx, game)
+    } else {
+        false
+    };
+    if !source_matches {
+        return Vec::new();
+    }
+
+    let mut symbols = event
+        .mana
+        .iter()
+        .copied()
+        .filter(|symbol| {
+            matches!(
+                symbol,
+                ManaSymbol::White
+                    | ManaSymbol::Blue
+                    | ManaSymbol::Black
+                    | ManaSymbol::Red
+                    | ManaSymbol::Green
+                    | ManaSymbol::Colorless
+            )
+        })
+        .collect::<Vec<_>>();
+    symbols.sort_by_key(|symbol| canonical_symbol_order(*symbol));
+    symbols.dedup();
+    symbols
 }
 
 fn collect_available_mana_symbols(
@@ -207,5 +284,96 @@ fn canonical_symbol_order(symbol: ManaSymbol) -> usize {
         ManaSymbol::Green => 4,
         ManaSymbol::Colorless => 5,
         _ => 100,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::CardDefinitionBuilder;
+    use crate::events::mana::ManaProductionProvenance;
+    use crate::ids::{CardId, PlayerId};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    #[test]
+    fn triggering_event_mode_adds_only_a_type_the_land_actually_produced() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let land = CardDefinitionBuilder::new(CardId::new(), "Abilityless Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_definition(&land, bob, Zone::Battlefield);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(land_id).expect("land should exist"), &game);
+
+        // Resolve from LKI to prove this does not recompute what the current
+        // battlefield object could produce.
+        game.remove_object(land_id);
+        let event = crate::events::ManaAddedEvent::new(land_id, bob, bob, vec![ManaSymbol::Red])
+            .with_snapshot(Some(snapshot))
+            .with_production_provenance(ManaProductionProvenance::TappedSourceForMana)
+            .into_trigger_event();
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+        let effect = AddManaOfLandProducedTypesEffect::from_triggering_event(
+            1,
+            PlayerFilter::IteratedPlayer,
+            ObjectFilter::land(),
+            true,
+            false,
+        );
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("actual produced-type effect should resolve");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(1));
+        assert_eq!(game.player(bob).expect("Bob should exist").mana_pool.red, 1);
+        assert_eq!(
+            game.player(bob).expect("Bob should exist").mana_pool.green,
+            0
+        );
+    }
+
+    #[test]
+    fn triggering_event_mode_respects_type_and_source_filter_restrictions() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let land = CardDefinitionBuilder::new(CardId::new(), "Ordinary Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(land_id).expect("land should exist"), &game);
+        let event =
+            crate::events::ManaAddedEvent::new(land_id, alice, alice, vec![ManaSymbol::Colorless])
+                .with_snapshot(Some(snapshot))
+                .with_production_provenance(ManaProductionProvenance::TappedSourceForMana)
+                .into_trigger_event();
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+        let effect = AddManaOfLandProducedTypesEffect::from_triggering_event(
+            1,
+            PlayerFilter::You,
+            ObjectFilter::land(),
+            false,
+            false,
+        );
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("color-restricted produced-type effect should resolve");
+
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
+        assert_eq!(
+            game.player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .colorless,
+            0
+        );
     }
 }

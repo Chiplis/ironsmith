@@ -1217,6 +1217,22 @@ pub(super) fn rewrite_structure_leading_result_prefix_parser_splits_numeric_rang
         render_token_slice(prefix.trailing_tokens),
         "You may put that card on top of your library."
     );
+
+    let compact_ascii_tokens = lex_line("10-19 | You draw a card.", 0)
+        .expect("rewrite lexer should classify compact ASCII numeric result prefix");
+    let compact_ascii_prefix =
+        super::super::grammar::structure::split_leading_result_prefix_lexed(&compact_ascii_tokens)
+            .expect("structure helper should detect compact ASCII numeric result prefix");
+    assert_eq!(
+        compact_ascii_prefix.predicate,
+        crate::cards::builders::IfResultPredicate::Value(
+            crate::effect::Comparison::BetweenInclusive(10, 19)
+        )
+    );
+    assert_eq!(
+        render_token_slice(compact_ascii_prefix.trailing_tokens),
+        "You draw a card."
+    );
 }
 
 #[test]
@@ -1671,6 +1687,86 @@ pub(super) fn rewrite_structure_triggered_conditional_clause_parser_splits_happi
             && predicate_debug.contains("StartingLifeTotal"),
         "expected Happily Ever After's full gate to stay modeled, got {predicate_debug}"
     );
+}
+
+#[test]
+pub(super) fn rewrite_structure_triggered_conditional_clause_keeps_search_action_after_gate() {
+    for (text, predicate_marker, expected_effect_words) in [
+        (
+            "When this Aura enters, if it was kicked, you may search your library for a card named Gigantiform, put it onto the battlefield, then shuffle.",
+            "ThisSpellWasKicked",
+            &[
+                "you",
+                "may",
+                "search",
+                "your",
+                "library",
+                "for",
+                "a",
+                "card",
+                "named",
+                "Gigantiform",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "then",
+                "shuffle",
+            ][..],
+        ),
+        (
+            "When this creature dies, if it had no time counters on it, you may search your library for an enchantment card, put it onto the battlefield, then shuffle.",
+            "TriggeringObjectHadCounters",
+            &[
+                "you",
+                "may",
+                "search",
+                "your",
+                "library",
+                "for",
+                "an",
+                "enchantment",
+                "card",
+                "put",
+                "it",
+                "onto",
+                "the",
+                "battlefield",
+                "then",
+                "shuffle",
+            ][..],
+        ),
+        (
+            "When this creature enters, if it was kicked, search your library for a land card with a basic land type, reveal it, put it into your hand, then shuffle.",
+            "ThisSpellWasKicked",
+            &[
+                "search", "your", "library", "for", "a", "land", "card", "with", "a", "basic",
+                "land", "type", "reveal", "it", "put", "it", "into", "your", "hand", "then",
+                "shuffle",
+            ][..],
+        ),
+    ] {
+        let tokens = lex_line(text, 0).expect("conditional search line should lex");
+        let spec =
+            super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+                .expect("conditional search line should split at its intervening-if gate");
+        let predicate_debug = format!("{:?}", spec.predicate);
+        assert!(
+            predicate_debug.contains(predicate_marker),
+            "expected {predicate_marker} gate, got {predicate_debug}"
+        );
+        let effect_words = spec
+            .effects_tokens
+            .iter()
+            .filter_map(|token| token.as_word())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            effect_words.as_slice(),
+            expected_effect_words,
+            "search action must remain wholly inside the effect clause for {text}"
+        );
+    }
 }
 
 #[test]
@@ -2889,6 +2985,14 @@ pub(super) fn rewrite_lexed_mana_restrictions_parse_supported_spell_filter_shape
     assert_eq!(graveyard.zone, Some(crate::zone::Zone::Graveyard));
     assert_eq!(graveyard.owner, Some(crate::target::PlayerFilter::You));
 
+    let flashback =
+        parse_filter("Spend this mana only to cast spells with flashback from a graveyard.");
+    assert_eq!(flashback.zone, Some(crate::zone::Zone::Graveyard));
+    assert_eq!(
+        flashback.alternative_cast,
+        Some(crate::filter::AlternativeCastKind::Flashback)
+    );
+
     let exile = parse_filter("Spend this mana only to cast spells from exile.");
     assert_eq!(exile.zone, Some(crate::zone::Zone::Exile));
 
@@ -3023,6 +3127,24 @@ pub(super) fn rewrite_counter_removal_cost_binds_that_much_for_mana_addition() {
         debug.contains("mana_usage_restrictions") && debug.contains("Artifact"),
         "expected parsed mana ability to carry artifact-only usage restriction, got {debug}"
     );
+}
+
+#[test]
+pub(super) fn rewrite_removed_counter_mana_scalars_keep_this_way_surface_hint() {
+    for text in [
+        "{T}, Remove any number of storage counters from this land: Add {B} for each storage counter removed this way.",
+        "{T}, Remove any number of charge counters from this artifact: Add {B}, then add an additional {B} for each charge counter removed this way.",
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Removed Counter Mana Variant")
+            .card_types(vec![CardType::Artifact])
+            .parse_text(text)
+            .expect("removed-counter mana scalar should parse");
+        let debug = format!("{def:#?}");
+
+        assert!(debug.contains("AddScaledManaEffect"), "{debug}");
+        assert!(debug.contains("CountersRemovedThisWay"), "{debug}");
+        assert!(debug.contains("X"), "{debug}");
+    }
 }
 
 #[test]
@@ -3339,6 +3461,31 @@ pub(super) fn rewrite_triggered_it_damage_source_binds_to_triggering_object() {
     assert!(
         !compact.contains("zone:Some(Hand)"),
         "triggered 'it' should not fall back to a hand-card antecedent, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn dealt_damage_trigger_binds_it_to_damaged_object_and_tests_player_result() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dealt Damage Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever this creature is dealt damage, it deals that much damage to any other target. If a player is dealt damage this way, they can't gain life for the rest of the game.",
+        )
+        .expect("dealt-damage trigger and player-result followup should parse");
+    let rendered = format!("{def:#?}");
+    let compact = rendered.split_whitespace().collect::<String>();
+
+    assert!(
+        compact.contains("TagTriggeringDamageTargetEffect")
+            && compact.contains("TagKey(\"damaged\"")
+            && compact.contains("ExecuteWithSourceEffect")
+            && compact.contains("source:Tagged")
+            && compact.contains("predicate:DealtDamageToPlayer"),
+        "expected the damaged object to deal damage and the followup to test player damage, got {rendered}"
+    );
+    assert!(
+        !compact.contains("predicate:Happened"),
+        "player-damage followup must not accept an arbitrary successful damage result: {rendered}"
     );
 }
 

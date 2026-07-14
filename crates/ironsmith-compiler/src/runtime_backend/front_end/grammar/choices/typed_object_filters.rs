@@ -1,7 +1,7 @@
 use crate::cards::builders::{IT_TAG, TagKey};
-use crate::effect::ChoiceCount;
-use crate::filter::TaggedObjectConstraint;
-use crate::runtime_backend::front_end::lexer::OwnedLexToken;
+use crate::effect::{ChoiceCount, Value};
+use crate::filter::{Comparison, TaggedObjectConstraint};
+use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView};
 use crate::target::{ObjectFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
@@ -54,6 +54,83 @@ pub(crate) struct TypedChoiceBecomeShape<'a> {
     pub(crate) tail_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChoiceAggregateKind {
+    GreatestManaValue,
+    GreatestPower,
+}
+
+fn split_choice_aggregate_words<'a, 'b>(
+    words: &'a [&'b str],
+) -> Option<(ChoiceAggregateKind, &'a [&'b str], &'a [&'b str])> {
+    for (marker, kind) in [
+        (
+            &["with", "the", "greatest", "mana", "value", "among"][..],
+            ChoiceAggregateKind::GreatestManaValue,
+        ),
+        (
+            &["with", "the", "greatest", "power", "among"][..],
+            ChoiceAggregateKind::GreatestPower,
+        ),
+    ] {
+        let Some(index) = words
+            .windows(marker.len())
+            .position(|window| window == marker)
+        else {
+            continue;
+        };
+        let object_words = words.get(..index)?;
+        let scope_words = words.get(index + marker.len()..)?;
+        if !object_words.is_empty() && !scope_words.is_empty() {
+            return Some((kind, object_words, scope_words));
+        }
+    }
+    None
+}
+
+fn parse_typed_choice_filter_words(
+    words: &[&str],
+) -> Result<ObjectFilter, ChoiceObjectClauseSyntaxError> {
+    let Some((kind, object_words, scope_words)) = split_choice_aggregate_words(words) else {
+        return crate::runtime_backend::object_filters::parse_object_filter_words(words, false)
+            .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter);
+    };
+
+    let mut filter =
+        crate::runtime_backend::object_filters::parse_object_filter_words(object_words, false)
+            .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)?;
+    let scope =
+        crate::runtime_backend::object_filters::parse_object_filter_words(scope_words, false)
+            .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)?;
+
+    // The selected object is a member of the aggregate's comparison set.
+    // Preserve its explicitly parsed noun while inheriting the set's player
+    // and zone boundaries (for example, "among creatures they control").
+    if filter.card_types.is_empty() {
+        filter.card_types = scope.card_types.clone();
+    }
+    if filter.controller.is_none() {
+        filter.controller = scope.controller.clone();
+    }
+    if filter.owner.is_none() {
+        filter.owner = scope.owner.clone();
+    }
+    if filter.zone.is_none() {
+        filter.zone = scope.zone.clone();
+    }
+    match kind {
+        ChoiceAggregateKind::GreatestManaValue => {
+            filter.mana_value = Some(Comparison::EqualExpr(Box::new(Value::GreatestManaValue(
+                scope,
+            ))));
+        }
+        ChoiceAggregateKind::GreatestPower => {
+            filter.power = Some(Comparison::EqualExpr(Box::new(Value::GreatestPower(scope))));
+        }
+    }
+    Ok(filter)
+}
+
 pub(crate) fn parse_typed_target_player_choice_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TypedTargetPlayerChoice>, ChoiceObjectClauseSyntaxError> {
@@ -67,9 +144,8 @@ pub(crate) fn parse_typed_target_player_choice_tokens(
         return Ok(None);
     }
 
-    let filter =
-        crate::runtime_backend::object_filters::parse_object_filter(shape.filter_tokens, false)
-            .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)?;
+    let filter_words = TokenWordView::new(shape.filter_tokens).word_refs();
+    let filter = parse_typed_choice_filter_words(&filter_words)?;
     let filter = expand_graveyard_or_hand_disjunction_filter(filter, shape.filter_facts);
     Ok(Some(TypedTargetPlayerChoice {
         actor: shape.actor,
@@ -106,8 +182,7 @@ pub(crate) fn parse_typed_choice_object_clause_tokens(
     let mut filter = if references_it && shape.filter_facts.bare_card {
         ObjectFilter::default()
     } else {
-        crate::runtime_backend::object_filters::parse_object_filter_words(&filter_words, false)
-            .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)?
+        parse_typed_choice_filter_words(&filter_words)?
     };
     filter = expand_graveyard_or_hand_disjunction_filter(filter, shape.filter_facts);
     if references_it {
@@ -286,6 +361,34 @@ mod tests {
                 .iter()
                 .any(|constraint| constraint.tag.as_str() == IT_TAG)
         );
+    }
+
+    #[test]
+    fn typed_choice_preserves_greatest_value_domain_and_implicit_actor() {
+        let tokens = lex_line(
+            "Choose a creature with the greatest mana value among creatures they control.",
+            0,
+        )
+        .unwrap();
+        let TypedChoiceObjectClauseKind::Object(parsed) =
+            parse_typed_choice_object_clause_tokens(&tokens)
+                .unwrap()
+                .unwrap()
+        else {
+            panic!("expected object choice");
+        };
+
+        assert_eq!(parsed.actor, ChoiceClauseActor::Implicit);
+        assert_eq!(
+            parsed.filter.controller,
+            Some(crate::target::PlayerFilter::IteratedPlayer)
+        );
+        assert!(matches!(
+            parsed.filter.mana_value,
+            Some(Comparison::EqualExpr(value))
+                if matches!(value.as_ref(), Value::GreatestManaValue(scope)
+                    if scope.controller == Some(crate::target::PlayerFilter::IteratedPlayer))
+        ));
     }
 
     #[test]

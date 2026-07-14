@@ -52,6 +52,14 @@ pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     })
 }
 
+fn draw_count_with_surface(count: Value, additional: bool) -> Value {
+    if additional {
+        count.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalCards)
+    } else {
+        count
+    }
+}
+
 pub(crate) fn parse_draw(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -89,7 +97,7 @@ pub(crate) fn parse_draw(
         SubjectVerbRoleAst::AffectedPlayer,
         player,
         SubjectVerbActionAst::Draw {
-            count: count.clone(),
+            count: draw_count_with_surface(count.clone(), head.additional),
         },
     );
 
@@ -122,7 +130,7 @@ pub(crate) fn parse_draw(
                     SubjectVerbRoleAst::AffectedPlayer,
                     player,
                     SubjectVerbActionAst::Draw {
-                        count: count.clone(),
+                        count: draw_count_with_surface(count.clone(), head.additional),
                     },
                 );
             } else if let Some(parsed) = parse_draw_trailing_clause(&tail, effect.clone())? {
@@ -366,7 +374,9 @@ pub(crate) fn parse_draw_card_prefixed_count_value(
         return Ok(Some(value));
     }
     if let Some(value) = parse_draw_equal_to_value(tokens)? {
-        return Ok(Some(value));
+        return Ok(Some(
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+        ));
     }
     if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
         return Ok(Some(value));
@@ -382,28 +392,52 @@ fn parse_draw_for_each_object_filter_value(
         return Ok(None);
     };
 
+    if let Some(history_value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(&filter_tokens)
+    {
+        return Ok(Some(history_value.with_surface_hint(
+            ironsmith_core::ValueSurfaceHint::ForEach,
+        )));
+    }
+
     if let Some(known_value) = parse_draw_for_each_known_count_value(&filter_tokens)? {
-        return Ok(Some(known_value));
+        return Ok(Some(
+            known_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
     }
 
     if let Some(cast_this_turn_value) =
         crate::runtime_backend::grammar::shared_util::value_semantics::parse_spells_cast_this_turn_matching_count_value_lexed(&filter_tokens)
     {
-        return Ok(Some(cast_this_turn_value));
+        return Ok(Some(cast_this_turn_value.with_surface_hint(
+            ironsmith_core::ValueSurfaceHint::ForEach,
+        )));
     }
 
     if let Some(this_way_value) = parse_draw_for_each_this_way_metric_value(&filter_tokens) {
-        return Ok(Some(this_way_value));
+        return Ok(Some(
+            this_way_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
     }
 
     if let Some(counter_value) = parse_draw_for_each_counter_reference_value(&filter_tokens) {
-        return Ok(Some(counter_value));
+        return Ok(Some(
+            counter_value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
     }
 
-    Ok(Some(Value::Count(parse_object_filter(
-        &filter_tokens,
-        false,
-    )?)))
+    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    if let Some(player) = crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_party_size_player(&filter_words)
+    {
+        return Ok(Some(
+            Value::PartySize(player)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
+    }
+
+    Ok(Some(
+        Value::Count(parse_object_filter(&filter_tokens, false)?)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+    ))
 }
 
 fn parse_draw_for_each_known_count_value(
@@ -440,6 +474,14 @@ pub(crate) fn parse_draw_equal_to_value(
     let Some(shape) = zone_move_grammar::parse_draw_equal_shape(tokens) else {
         return Ok(None);
     };
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words
+        .windows(2)
+        .any(|window| window == ["differently", "named"])
+        && let Some(value) = parse_equal_to_number_of_filter_value(tokens)
+    {
+        return Ok(Some(value));
+    }
     if matches!(
         shape,
         zone_move_grammar::DrawEqualShape::GreatestCardsDiscardedThisWay
@@ -726,4 +768,64 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             dynamic_display_hint,
         ),
     ));
+}
+
+#[cfg(test)]
+mod turn_history_draw_tests {
+    use super::*;
+
+    fn lex(text: &str) -> Vec<OwnedLexToken> {
+        let mut tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+        for token in &mut tokens {
+            token.lowercase_word();
+        }
+        tokens
+    }
+
+    #[test]
+    fn additional_draw_surface_survives_into_the_subject_verb_ast() {
+        let parsed = parse_draw(&lex("an additional card"), None).expect("additional draw parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) = parsed
+        else {
+            panic!("expected subject-verb draw AST");
+        };
+        assert_eq!(count.unhinted(), &Value::Fixed(1));
+        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalCards));
+    }
+
+    #[test]
+    fn draw_for_each_prefers_typed_turn_history_over_live_object_filters() {
+        let zubera =
+            parse_draw_for_each_object_filter_value(&lex("for each Zubera that died this turn"))
+                .expect("draw value parse")
+                .expect("history value");
+        assert!(zubera.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        assert!(
+            matches!(
+                zubera.unhinted(),
+                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(_))
+            ),
+            "{zubera:?}"
+        );
+
+        let paradox = parse_draw_for_each_object_filter_value(&lex(
+            "for each spell you've cast this turn from anywhere other than your hand",
+        ))
+        .expect("draw value parse")
+        .expect("history value");
+        assert!(paradox.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        assert!(
+            matches!(
+                paradox.unhinted(),
+                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast {
+                    from_outside_hand: true,
+                    ..
+                })
+            ),
+            "{paradox:?}"
+        );
+    }
 }

@@ -204,6 +204,7 @@ def build_block(card):
     toughness = pick_field(card, face, "toughness")
     loyalty = pick_field(card, face, "loyalty")
     defense = pick_field(card, face, "defense")
+    first_printed_set_name = card.get("first_printed_set_name")
 
     if is_non_playable(card, type_line, oracle_text):
         return None
@@ -213,6 +214,8 @@ def build_block(card):
         lines.append(f"Mana cost: {mana_cost}")
     if type_line:
         lines.append(f"Type: {type_line}")
+    if first_printed_set_name:
+        lines.append(f"First printed set: {first_printed_set_name}")
     if power is not None and toughness is not None:
         lines.append(f"Power/Toughness: {power}/{toughness}")
     if loyalty is not None:

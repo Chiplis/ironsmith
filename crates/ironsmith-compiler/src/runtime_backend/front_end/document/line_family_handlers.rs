@@ -64,11 +64,18 @@ pub(super) fn run_labeled_line_family(
 }
 
 fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> StaticLineCst {
+    let marker = render_token_slice(&ctx.line.tokens).trim().to_string();
     StaticLineCst {
         info: ctx.line.info.clone(),
         parse_tokens: ctx.line.tokens.clone(),
         chosen_option: None,
-        parsed: None,
+        // Ticket-threshold rows on a sticker sheet are presentation entries,
+        // not abilities of the sticker-sheet card itself. Lower the complete
+        // row directly so trigger-shaped and keyword-shaped bodies cannot be
+        // reclassified after the `Stickers` metadata line has identified it.
+        parsed: Some(LineAst::StaticAbility(
+            crate::static_abilities::StaticAbility::keyword_marker(marker).into(),
+        )),
     }
 }
 
@@ -140,16 +147,8 @@ pub(super) fn run_max_speed_labeled_line_family(
         )));
     }
 
-    let mut activation_tokens = tokens_without_terminal_period(&body_line.tokens).to_vec();
-    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
-    push_synthetic_words(
-        &mut activation_tokens,
-        &["activate", "only", "if", "you", "have", "max", "speed"],
-    );
-    activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
-    let activation_line = rewrite_line_tokens(ctx.line, &activation_tokens);
     if let Some((cost_tokens, effect_parse_tokens)) =
-        split_activation_text_tokens_lexed(&activation_line.tokens)
+        split_activation_text_tokens_lexed(&body_line.tokens)
     {
         let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
             &ctx.preprocessed.builder,
@@ -164,7 +163,8 @@ pub(super) fn run_max_speed_labeled_line_family(
                         cost,
                         cost_parse_tokens: normalized_cost_tokens,
                         effect_parse_tokens,
-                        chosen_option: None,
+                        presentation: activated_presentation_from_preprocessed_line(ctx.line),
+                        chosen_option: Some(ChosenOptionContext::MaxSpeed),
                     }),
                     ctx.idx + 1,
                 )));
@@ -578,6 +578,7 @@ pub(super) fn run_station_line_family(
         cost,
         cost_parse_tokens: normalized_cost_tokens,
         effect_parse_tokens,
+        presentation: None,
         chosen_option: None,
     })];
 
@@ -675,6 +676,7 @@ pub(super) fn run_station_threshold_line_family(
             cost,
             cost_parse_tokens: normalized_cost_tokens,
             effect_parse_tokens,
+            presentation: None,
             chosen_option: Some(chosen_option),
         }));
         return Ok(Some(LineDispatchResult {
@@ -1049,6 +1051,7 @@ pub(super) fn run_activation_line_family(
                     cost,
                     cost_parse_tokens: normalized_cost_tokens,
                     effect_parse_tokens,
+                    presentation: activated_presentation_from_preprocessed_line(ctx.line),
                     chosen_option: None,
                 };
                 let (activated, next_idx) = extend_activated_line_with_result_followups(
@@ -1444,8 +1447,10 @@ pub(super) fn run_statement_probe_line_family(
             )
         )
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
-        && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
+        && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?
     {
+        statement_line.info.semantic_facts.statement.presentation_label =
+            activated_presentation_from_preprocessed_line(ctx.line);
         let (statement_line, next_idx) = extend_statement_line_with_result_followups(
             &ctx.preprocessed.items,
             ctx.idx,
@@ -1485,14 +1490,21 @@ pub(super) fn run_static_line_family(
 pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    Ok(parse_statement_line_cst(ctx.line)?.map(|statement_line| {
-        let (statement_line, next_idx) = extend_statement_line_with_result_followups(
-            &ctx.preprocessed.items,
-            ctx.idx,
-            statement_line,
-        );
-        LineDispatchResult::single(RewriteLineCst::Statement(statement_line), next_idx)
-    }))
+    Ok(
+        parse_statement_line_cst(ctx.line)?.map(|mut statement_line| {
+            statement_line
+                .info
+                .semantic_facts
+                .statement
+                .presentation_label = activated_presentation_from_preprocessed_line(ctx.line);
+            let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+                &ctx.preprocessed.items,
+                ctx.idx,
+                statement_line,
+            );
+            LineDispatchResult::single(RewriteLineCst::Statement(statement_line), next_idx)
+        }),
+    )
 }
 
 pub(super) fn run_leading_unless_statement_line_family(
@@ -1604,6 +1616,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
         cost,
         cost_parse_tokens: normalized_cost_tokens,
         effect_parse_tokens,
+        presentation: None,
         chosen_option: None,
     });
 
@@ -1636,4 +1649,68 @@ fn parse_keyword_activation_prefix_static_or_rewrite(
         "parser could not split leading sentence before keyword ability: '{}'",
         line.info.raw_line
     )))
+}
+
+#[cfg(test)]
+mod ticket_marker_tests {
+    use super::*;
+
+    fn compiled_sticker_marker_labels(name: &str, text: &str) -> Vec<String> {
+        let compiled = crate::runtime_backend::compile_card_text(
+            CardDefinitionBuilder::new(crate::ids::CardId::new(), name),
+            text,
+            false,
+        )
+        .unwrap_or_else(|err| panic!("{name} should compile as a sticker sheet: {err:?}"));
+
+        assert!(
+            compiled.definition.spell_effect.is_none(),
+            "sticker-sheet rows must not become spell effects: {:#?}",
+            compiled.definition
+        );
+        compiled
+            .definition
+            .abilities
+            .iter()
+            .map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Static(static_ability) => {
+                    static_ability.display().to_ascii_lowercase()
+                }
+                other => panic!("sticker-sheet row became a runtime ability: {other:#?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sticker_ticket_keyword_rows_keep_their_threshold_header() {
+        let labels = compiled_sticker_marker_labels(
+            "Trendy Circus Pirate",
+            "Stickers\n\
+             {TK}{TK} — Deathtouch\n\
+             {TK}{TK}{TK}{TK}{TK} — Whenever this creature deals combat damage to a player, create that many 1/1 green Squirrel creature tokens.\n\
+             {TK}{TK} — 5/1\n\
+             {TK}{TK}{TK} — 3/6",
+        );
+
+        assert_eq!(labels.len(), 4, "{labels:#?}");
+        assert_eq!(labels[0], "{tk}{tk} — deathtouch");
+        assert!(labels[1].starts_with("{tk}{tk}{tk}{tk}{tk} — whenever "));
+    }
+
+    #[test]
+    fn sticker_ticket_double_labeled_trigger_stays_one_presentation_row() {
+        let labels = compiled_sticker_marker_labels(
+            "Werewolf Lightning Mage",
+            "Stickers\n\
+             {TK}{TK} — Landfall — Whenever a land enters under your control, put a +1/+1 counter on this permanent.\n\
+             {TK}{TK}{TK}{TK} — Whenever a creature blocks this creature, that creature gets -4/-4 until end of turn.\n\
+             {TK}{TK} — 4/1\n\
+             {TK}{TK}{TK} — 3/5",
+        );
+
+        assert_eq!(labels.len(), 4, "{labels:#?}");
+        assert!(labels[0].starts_with("{tk}{tk} — landfall — whenever "));
+        assert!(labels[0].ends_with("put a +1/+1 counter on this permanent."));
+        assert!(labels[1].starts_with("{tk}{tk}{tk}{tk} — whenever "));
+    }
 }

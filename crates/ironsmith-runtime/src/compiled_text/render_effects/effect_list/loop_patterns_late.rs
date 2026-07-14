@@ -1,4 +1,78 @@
 {
+        if idx + 6 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_top) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(hand_choose) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(matching_choose) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(rest) =
+                filtered[idx + 6].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) =
+                describe_looked_one_hand_then_matching_to_zone_rest_graveyard(
+                    look_at_top,
+                    Some(reveal_top),
+                    hand_choose,
+                    filtered[idx + 3],
+                    matching_choose,
+                    filtered[idx + 5],
+                    rest,
+                )
+        {
+            parts.push(compact);
+            idx += 7;
+            continue;
+        }
+        if idx + 5 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(hand_choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(matching_choose) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(rest) =
+                filtered[idx + 5].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) =
+                describe_looked_one_hand_then_matching_to_zone_rest_graveyard(
+                    look_at_top,
+                    None,
+                    hand_choose,
+                    filtered[idx + 2],
+                    matching_choose,
+                    filtered[idx + 4],
+                    rest,
+                )
+        {
+            parts.push(compact);
+            idx += 6;
+            continue;
+        }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 2].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(remainder) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            && let Some(distribute) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) =
+                describe_looked_reveal_selection_rest_bottom_land_creature_split(
+                    look_at_top,
+                    choose,
+                    reveal,
+                    remainder,
+                    distribute,
+                )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(rendered) =
                 describe_damage_and_die_replacement_bundle(&filtered[idx..idx + 3])
@@ -196,6 +270,22 @@
             idx += 3;
             continue;
         }
+        if idx + 1 < filtered.len() {
+            let create_and_grant = [(*filtered[idx]).clone(), (*filtered[idx + 1]).clone()];
+            if let Some(rendered) = describe_create_token_then_grant_same_tag(&create_and_grant) {
+                parts.push(rendered);
+                idx += 2;
+                continue;
+            }
+        }
+        if idx + 1 < filtered.len()
+            && let Some(rendered) =
+                describe_target_pump_unblockable_bundle(&filtered[idx..idx + 2])
+        {
+            parts.push(rendered);
+            idx += 2;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(rendered) = describe_tap_freeze_bundle(&filtered[idx..idx + 2])
         {
@@ -215,6 +305,43 @@
         {
             parts.push(rendered);
             idx += 2;
+            continue;
+        }
+
+        if idx + 2 < filtered.len()
+            && let Some(rendered) = render_random_exile_choose_copy_then_cast_copy(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+
+        if idx + 2 < filtered.len()
+            && let Some(rendered) =
+                render_shuffle_exile_top_then_cast_any_number_with_mana_value_cap(&[
+                    filtered[idx],
+                    filtered[idx + 1],
+                    filtered[idx + 2],
+                ])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+
+        if idx + 2 < filtered.len()
+            && let Some(rendered) = render_exile_top_then_put_from_among_onto_battlefield(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(rendered);
+            idx += 3;
             continue;
         }
 
@@ -520,7 +647,7 @@
             && consult_reveal_put_battlefield_then_shuffle_selection(for_each).as_deref()
                 == Some("creature")
         {
-            parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
+            parts.push("Exile two target creatures. For each of those creatures, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles the rest into their library".to_string());
             idx += 3;
             continue;
         }
@@ -535,7 +662,7 @@
             && consult_reveal_put_battlefield_then_shuffle_effects(&for_each.effects).as_deref()
                 == Some("creature")
         {
-            parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
+            parts.push("Exile two target creatures. For each of those creatures, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles the rest into their library".to_string());
             idx += 2;
             continue;
         }
@@ -550,7 +677,7 @@
             && consult_reveal_put_battlefield_then_shuffle_selection(for_each).as_deref()
                 == Some("creature")
         {
-            parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
+            parts.push("Exile two target creatures. For each of those creatures, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles the rest into their library".to_string());
             idx += 2;
             continue;
         }
@@ -564,7 +691,7 @@
             && consult_reveal_put_battlefield_then_shuffle_selection(for_each).as_deref()
                 == Some("creature")
         {
-            parts.push("Exile two target creatures. For each creature exiled this way, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles".to_string());
+            parts.push("Exile two target creatures. For each of those creatures, its controller reveals cards from the top of their library until they reveal a creature card, puts that card onto the battlefield, then shuffles the rest into their library".to_string());
             idx += 2;
             continue;
         }
@@ -818,6 +945,13 @@
             idx += 2;
             continue;
         }
+        if let Some((compact, consumed)) =
+            describe_immediate_observation_conditionals(&filtered[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(reveal_top) =
                 filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
@@ -977,7 +1111,22 @@
         }
         if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
-            && let Some(deal) = filtered[idx + 1].downcast_ref::<crate::effects::DealDamageEffect>()
+            && let Some(deal) = filtered[idx + 1]
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .or_else(|| {
+                    filtered[idx + 1]
+                        .downcast_ref::<crate::effects::TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+                        })
+                        .and_then(|with_source| {
+                            with_source
+                                .effect
+                                .downcast_ref::<crate::effects::DealDamageEffect>()
+                        })
+                })
             && let Some(compact) = describe_tagged_target_then_power_damage(tagged, deal)
         {
             parts.push(compact);
@@ -1228,6 +1377,21 @@
                 continue;
             }
         }
+        if idx + 2 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(shuffle) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && let Some(compact) = describe_search_choose_then_cast_then_shuffle(
+                choose,
+                filtered[idx + 1],
+                shuffle,
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -1367,6 +1531,33 @@
         {
             parts.push(compact);
             idx += 5;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(for_players) = with_id
+                .effect
+                .downcast_ref::<crate::effects::ForPlayersEffect>()
+            && for_players.filter == PlayerFilter::Opponent
+            && let [lose_effect] = for_players.effects.as_slice()
+            && let Some(lose) = lose_effect.downcast_ref::<crate::effects::LoseLifeEffect>()
+            && matches!(lose.player, ChooseSpec::Player(PlayerFilter::IteratedPlayer))
+            && let Some(gain) = filtered[idx + 1].downcast_ref::<crate::effects::GainLifeEffect>()
+            && matches!(gain.player, ChooseSpec::Player(PlayerFilter::You))
+            && matches!(
+                gain.amount.unhinted(),
+                Value::EffectMetric {
+                    effect_id,
+                    metric: crate::effect::EffectMetric::LifeLost,
+                    ..
+                } if *effect_id == with_id.id
+            )
+            && let Some(where_x) = describe_where_x_basis(&lose.amount)
+        {
+            parts.push(format!(
+                "Each opponent loses X life, where X is {where_x}. You gain life equal to the life lost this way"
+            ));
+            idx += 2;
             continue;
         }
         if idx + 1 < filtered.len()
@@ -1774,6 +1965,30 @@
             idx += 5;
             continue;
         }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_tagged) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(tag_matching) =
+                filtered[idx + 2].downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+            && let Some((_, move_matching)) = for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some(remainder) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(compact) =
+                describe_look_at_top_then_reveal_put_all_matching_onto_battlefield_rest_bottom(
+                    look_at_top,
+                    reveal_tagged,
+                    tag_matching,
+                    move_matching,
+                    remainder,
+                )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 3 < filtered.len()
             && let Some(choose_name) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseCardNameEffect>()
@@ -1827,6 +2042,28 @@
             idx += 3;
             continue;
         }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_tagged) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(choose) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(remainder) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(compact) = describe_look_at_top_choose_battlefield_rest_bottom(
+                look_at_top,
+                Some(reveal_tagged),
+                choose,
+                filtered[idx + 3],
+                remainder,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 3 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -1837,6 +2074,7 @@
             )
             && let Some(compact) = describe_look_at_top_choose_battlefield_rest_bottom(
                 look_at_top,
+                None,
                 choose,
                 filtered[idx + 2],
                 remainder,
@@ -2156,6 +2394,7 @@
             && let Some((_, rest)) = for_each_tagged_for_compaction(filtered[idx + 3])
             && let Some(compact) = describe_look_at_top_then_put_matching_to_zone_rest_hand(
                 look_at_top,
+                None,
                 choose,
                 move_chosen,
                 rest,
@@ -2163,6 +2402,27 @@
         {
             parts.push(compact);
             idx += 4;
+            continue;
+        }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(reveal_tagged) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && let Some(choose) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some((_, move_chosen)) = for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some((_, rest)) = for_each_tagged_for_compaction(filtered[idx + 4])
+            && let Some(compact) = describe_look_at_top_then_put_matching_to_zone_rest_hand(
+                look_at_top,
+                Some(reveal_tagged),
+                choose,
+                move_chosen,
+                rest,
+            )
+        {
+            parts.push(compact);
+            idx += 5;
             continue;
         }
         if idx + 3 < filtered.len()
@@ -2399,6 +2659,22 @@
             idx += 3;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some((compact, consumed)) =
+                describe_choose_sacrifice_then_same_player_actions(&filtered[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
+        if idx + 3 < filtered.len()
+            && let Some((compact, consumed)) =
+                describe_two_choose_sacrifices_same_player(&filtered[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -2425,6 +2701,16 @@
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(destroy) = destroy_effect_for_choose_compaction(filtered[idx + 1])
             && let Some(compact) = describe_choose_then_destroy(choose, destroy)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_tap_then_put_counters_same_target(
+                filtered[idx],
+                filtered[idx + 1],
+            )
         {
             parts.push(compact);
             idx += 2;
@@ -2530,9 +2816,61 @@
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(compact) = describe_discard_then_exile_same_player_graveyard(
+                filtered[idx],
+                filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some((compact, consumed)) =
+                describe_same_referenced_player_action_sequence(&filtered[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_action_and_get_energy_pair(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_same_actor_gain_then_draw(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_same_actor_draw_then_gain(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(draw) = filtered[idx].downcast_ref::<crate::effects::DrawCardsEffect>()
             && let Some(discard) = filtered[idx + 1].downcast_ref::<crate::effects::DiscardEffect>()
             && let Some(compact) = describe_draw_then_discard(draw, discard)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(first_draw) = draw_cards_view(filtered[idx])
+            && let Some(second_draw) = draw_cards_view(filtered[idx + 1])
+            && let Some(compact) =
+                describe_fixed_draw_then_equal_to_draw(first_draw, second_draw)
         {
             parts.push(compact);
             idx += 2;
@@ -2683,6 +3021,18 @@
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) =
+                filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(if_effect) =
+                filtered[idx + 1].downcast_ref::<crate::effects::IfEffect>()
+            && let Some(compact) =
+                describe_may_tagged_mill_then_if_do_put_milled_cards(with_id, if_effect)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(tagged_mill) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(mill) = tagged_mill
@@ -2725,19 +3075,35 @@
             idx += 4;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some((source_tag, mill)) = mill_with_collection_tag(filtered[idx])
+            && let Some(first_choice) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(second_choice) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some((_, move_chosen)) =
+                for_each_tagged_for_compaction(filtered[idx + 3])
+            && let Some(compact) = describe_mill_then_put_milled_cards(
+                source_tag.as_str(),
+                mill,
+                &[first_choice, second_choice],
+                move_chosen,
+            )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 2 < filtered.len()
-            && let Some(tagged_mill) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
-            && let Some(mill) = tagged_mill
-                .effect
-                .downcast_ref::<crate::effects::MillEffect>()
+            && let Some((source_tag, mill)) = mill_with_collection_tag(filtered[idx])
             && let Some(choose) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 2])
-            && let Some(compact) = describe_tagged_mill_then_put_milled_card_into_hand(
-                tagged_mill,
+            && let Some((_, move_chosen)) = for_each_tagged_for_compaction(filtered[idx + 2])
+            && let Some(compact) = describe_mill_then_put_milled_cards(
+                source_tag.as_str(),
                 mill,
-                choose,
-                move_to_hand,
+                &[choose],
+                move_chosen,
             )
         {
             parts.push(compact);
@@ -2885,9 +3251,29 @@
                 continue;
             }
         }
+        if let Some((compact, consumed)) =
+            describe_longest_conjoined_counter_or_draw_sequence(&filtered[idx..])
+        {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_result_producer_then_for_each_tagged(
+                filtered[idx],
+                filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         let mut rendered = describe_effect(filtered[idx]);
         if !rendered.is_empty() {
-            if !parts.is_empty() && rendered.starts_with("If ") {
+            let is_your_turn_followup = filtered[idx]
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .is_some_and(|conditional| conditional.condition == Condition::YourTurn);
+            if !parts.is_empty() && rendered.starts_with("If ") && !is_your_turn_followup {
                 rendered = format!("Then {}", lowercase_first(&rendered));
                 if let Some(comma_idx) = rendered.find(", ") {
                     let tail = lowercase_first(&rendered[comma_idx + 2..]);

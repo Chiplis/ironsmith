@@ -12,7 +12,7 @@ mod end_of_combat;
 
 pub use beginning_of_combat::BeginningOfCombatTrigger;
 pub use beginning_of_draw_step::BeginningOfDrawStepTrigger;
-pub use beginning_of_end_step::BeginningOfEndStepTrigger;
+pub use beginning_of_end_step::{BeginningOfEndStepTrigger, EndStepSurface};
 pub use beginning_of_main_phase::{BeginningOfMainPhaseTrigger, MainPhaseType};
 pub use beginning_of_upkeep::BeginningOfUpkeepTrigger;
 pub use end_of_combat::EndOfCombatTrigger;

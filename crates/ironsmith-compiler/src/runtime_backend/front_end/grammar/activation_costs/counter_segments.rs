@@ -132,11 +132,15 @@ pub(crate) fn parse_remove_counter_segment_tokens(
     };
 
     if dynamic {
-        return if target_among {
+        return if target_among || count > 0 {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
                 counter_type,
                 count,
-                filter,
+                filter: if target_among {
+                    filter
+                } else {
+                    crate::target::ObjectFilter::source()
+                },
                 display_x,
                 dynamic: true,
             })

@@ -1375,34 +1375,11 @@ pub(super) fn instead_followup_classifier_uses_tokens_not_raw_oracle_text() {
     let adapter = function_source(
         &adapter,
         "pub(crate) fn classify_instead_followup_tokens",
-        "pub(crate) fn find_first_sacrifice_cost_choice_tag",
+        "pub(crate) fn activation_cost_reference_imports",
     );
     assert!(
         adapter.contains("grammar::effects::classify_instead_followup_semantics_tokens(tokens)"),
         "{adapter_relative} should only forward typed tokens to the grammar owner"
-    );
-}
-
-#[test]
-pub(super) fn shared_util_cost_tag_lookup_uses_named_tag_helpers() {
-    let root = workspace_root();
-    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
-    let content = read_repo_file(&root, relative);
-    let helper = function_source(
-        &content,
-        "pub(crate) fn find_first_sacrifice_cost_choice_tag",
-        "pub(crate) fn value_contains_unbound_x",
-    );
-    let actual = non_test_raw_text_check_literals(helper)
-        .into_iter()
-        .map(|literal| format!("{relative} -> {literal}"))
-        .collect::<BTreeSet<_>>();
-
-    let expected = BTreeSet::new();
-
-    assert_eq!(
-        actual, expected,
-        "cost tag lookup helpers should route through named tag classifiers, not raw tag prefix literals"
     );
 }
 

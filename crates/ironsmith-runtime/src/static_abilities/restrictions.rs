@@ -302,6 +302,27 @@ impl StaticAbilityKind for Cascade {
     }
 }
 
+/// "Ascend" on a permanent.
+///
+/// The designation check is performed during continuous-state refresh after
+/// continuous effects have been reapplied, as required by rule 702.131b.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Ascend;
+
+impl StaticAbilityKind for Ascend {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Ascend
+    }
+
+    fn display(&self) -> String {
+        "Ascend".to_string()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+}
+
 /// "As you cascade, you may put a land card from among the exiled cards onto the battlefield tapped."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CascadeLandDrop;
@@ -514,6 +535,7 @@ impl StaticAbilityKind for CantBeCountered {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleRestriction {
     pub restriction: Restriction,
+    pub additional_restrictions: Vec<Restriction>,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
 }
@@ -522,6 +544,20 @@ impl RuleRestriction {
     pub fn new(restriction: Restriction, display: String) -> Self {
         Self {
             restriction,
+            additional_restrictions: Vec::new(),
+            display,
+            condition: None,
+        }
+    }
+
+    pub fn new_many(restrictions: Vec<Restriction>, display: String) -> Self {
+        let mut restrictions = restrictions.into_iter();
+        let restriction = restrictions
+            .next()
+            .expect("a rule-restriction ability requires at least one restriction");
+        Self {
+            restriction,
+            additional_restrictions: restrictions.collect(),
             display,
             condition: None,
         }
@@ -606,6 +642,16 @@ impl StaticAbilityKind for RuleRestriction {
         Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
+    fn rule_restriction_parts(
+        &self,
+    ) -> Option<(
+        &crate::effect::Restriction,
+        &str,
+        Option<&crate::ConditionExpr>,
+    )> {
+        Some((&self.restriction, &self.display, self.condition.as_ref()))
+    }
+
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         let Some(condition) = &self.condition else {
             return true;
@@ -633,6 +679,9 @@ impl StaticAbilityKind for RuleRestriction {
         let mut tracker = CantEffectTracker::default();
         self.restriction
             .apply(game, &mut tracker, controller, Some(source), None);
+        for restriction in &self.additional_restrictions {
+            restriction.apply(game, &mut tracker, controller, Some(source), None);
+        }
         game.effect_store.cant_effects.merge(tracker);
     }
 }

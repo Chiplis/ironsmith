@@ -258,6 +258,7 @@ impl TriggerMatcher for AttacksTrigger {
 
     fn display(&self) -> String {
         let mut display_filter = self.filter.clone();
+        let explicit_attack_with_group = display_filter.union_is_one_or_more();
         // Attacking already implies a creature; oracle says "another Cat you
         // control attacks", not "another Cat creature you control attacks".
         if display_filter.card_types == [crate::types::CardType::Creature]
@@ -288,6 +289,7 @@ impl TriggerMatcher for AttacksTrigger {
             (Some(PlayerFilter::Opponent), false) => {
                 " an opponent or a planeswalker controlled by an opponent"
             }
+            (Some(PlayerFilter::Any), false) => " a player or planeswalker",
             (Some(PlayerFilter::You), true) => " you",
             _ => "",
         };
@@ -334,6 +336,13 @@ impl TriggerMatcher for AttacksTrigger {
                     );
                 }
                 return format!("Whenever {min_total} or more {subject} attack{target_tail}");
+            }
+            if explicit_attack_with_group && subject.contains(" you control") {
+                let controlled_subject = subject.replacen(" you control", "", 1);
+                return format!(
+                    "Whenever you attack{target_tail} with one or more {}",
+                    pluralize_attack_subject(&controlled_subject)
+                );
             }
             if subject == "creature you control" && target_tail.is_empty() {
                 return "Whenever you attack".to_string();
@@ -528,6 +537,31 @@ mod tests {
         let trigger = AttacksTrigger::one_or_more(filter);
 
         assert_eq!(trigger.display(), "Whenever you attack a player");
+    }
+
+    #[test]
+    fn explicit_attack_with_group_preserves_count_antecedent_surface() {
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.set_union_one_or_more(true);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack with one or more creatures"
+        );
+    }
+
+    #[test]
+    fn explicit_attack_with_group_preserves_player_or_planeswalker_target_surface() {
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Any);
+        filter.set_union_one_or_more(true);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack a player or planeswalker with one or more creatures"
+        );
     }
 
     #[test]

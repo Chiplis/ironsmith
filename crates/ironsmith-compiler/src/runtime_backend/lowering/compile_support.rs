@@ -1,5 +1,5 @@
 use super::grammar::token_definitions as token_grammar;
-use super::token_definition::TokenDefinitionSpec;
+use super::token_definition::{ConstructArtifactScalingShape, TokenDefinitionSpec};
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming, TriggeredAbility};
 use crate::card::PowerToughness;
 use crate::cards::CardDefinition;
@@ -44,11 +44,12 @@ use super::lowering_support::{
     rewrite_prepare_effects_with_trigger_context_for_lowering,
 };
 use super::reference_helpers::{
-    choose_spec_targets_object, infer_player_filter_from_object_filter, is_you_player_filter,
-    object_filter_as_tagged_reference, resolve_attach_object_spec, resolve_it_tag,
-    resolve_it_tag_key, resolve_non_target_player_filter, resolve_restriction_it_tag,
-    resolve_target_spec_with_choices, resolve_unless_player_filter, resolve_value_it_tag,
-    watch_tag_from_filter,
+    as_followup_player_alias, choose_spec_targets_object, infer_player_filter_from_object_filter,
+    is_you_player_filter, object_filter_as_tagged_reference, resolve_attach_object_spec,
+    resolve_it_tag, resolve_it_tag_key, resolve_non_target_player_filter,
+    resolve_restriction_it_tag, resolve_target_spec_with_choices, resolve_total_cost_it_tags,
+    resolve_unless_player_filter, resolve_value_it_tag, watch_tag_from_filter,
+    with_target_reference_surface_hint,
 };
 use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,
@@ -108,6 +109,7 @@ pub(crate) use control_flow_handlers::{
     with_preserved_lowering_context,
 };
 pub(crate) use effect_dispatch::compile_effect;
+pub(crate) use effect_handlers::compile_delayed_trigger_spec;
 pub(crate) use iterated_player_validation::{
     choose_spec_mentions_iterated_player, condition_mentions_iterated_player,
     effect_mentions_iterated_player, effects_contain_pending_effect_metric,
@@ -135,7 +137,7 @@ pub(crate) use tag_support::{
     effect_references_its_controller, effect_references_tag, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag,
     effects_reference_tag_in_object_position, filter_references_tag, is_exile_cost_collection_tag,
-    is_revealed_collection_tag, is_searched_collection_tag,
+    is_revealed_collection_tag, is_searched_collection_tag, is_sentence_helper_consult_match_tag,
     is_sentence_helper_exiled_collection_tag, predicate_references_tag,
     value_references_event_derived_amount,
 };
@@ -177,7 +179,19 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::SourceChosenOption(option) => Condition::SourceChosenOption(option.clone()),
         PredicateAst::ItMatches(filter) => {
             let mut resolved = filter.clone();
-            resolved.zone = None;
+            // A same-name relation whose right-hand side is still the
+            // implicit `__it__` binding describes an existential comparison
+            // set (for example, "it has the same name as a card in your
+            // graveyard"). Preserve that set's zone for runtime evaluation;
+            // ordinary identity predicates continue to ignore the referenced
+            // object's current zone.
+            let is_same_name_comparison_set = filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::cards::builders::IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
+            });
+            if !is_same_name_comparison_set {
+                resolved.zone = None;
+            }
             if let Some(tag) = saved_last_tag.clone() {
                 Condition::TaggedObjectMatches(tag.into(), resolved)
             } else if refs.has_source_object_antecedent() {
@@ -185,6 +199,28 @@ pub(crate) fn compile_condition_from_predicate_ast(
             } else {
                 Condition::TargetMatches(resolved)
             }
+        }
+        PredicateAst::ItMatchedLastKnown(filter) => {
+            let mut resolved = filter.clone();
+            // Battlefield-origin identity predicates deliberately ignore the
+            // filter constructor's live-zone restriction and consult only the
+            // stored snapshot. A stack spell is different: `spell` is part of
+            // the historical identity being tested, not merely its location.
+            // Preserve that typed origin so both evaluation and rendering know
+            // a countered object was a spell rather than a permanent.
+            if resolved.zone == Some(Zone::Stack) {
+                resolved
+                    .stack_kind
+                    .get_or_insert(crate::filter::StackObjectKind::Spell);
+            } else {
+                resolved.zone = None;
+            }
+            let tag = saved_last_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "past-tense object predicate has no snapshot-bearing antecedent".to_string(),
+                )
+            })?;
+            Condition::TaggedObjectMatchedLastKnown(tag.into(), resolved)
         }
         PredicateAst::TargetMatches(filter) => {
             let mut resolved = resolve_it_tag(filter, &refs)?;
@@ -475,6 +511,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHadLandEnterBattlefieldThisTurn { player }
         }
+        PredicateAst::PlayerDescendedThisTurn { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerDescendedThisTurn { player }
+        }
         PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn {
@@ -610,6 +650,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
             filter: filter.clone(),
         },
         PredicateAst::SourceMatches(filter) => Condition::SourceMatches(filter.clone()),
+        PredicateAst::AttachedToSourceMatches(filter) => {
+            Condition::AttachedToSourceMatches(filter.clone())
+        }
         PredicateAst::TriggeringObjectHadToAttackThisCombat => {
             Condition::TriggeringObjectHadToAttackThisCombat
         }
@@ -632,9 +675,11 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count,
+            surface,
         } => Condition::SourceHasCounterAtLeast {
             counter_type: *counter_type,
             count: *count,
+            surface: surface.clone(),
         },
         PredicateAst::SourceHasCountersAtLeast(count) => {
             Condition::SourceHasCountersAtLeast(*count)
@@ -823,10 +868,8 @@ pub(crate) fn compile_annotated_effects_with_context(
         if let Some((effect_sequence, effect_choices, consumed)) =
             compile_vote_sequence(&annotated.effects[idx..], ctx)?
         {
+            merge_compiled_choices(&mut choices, &effect_sequence, effect_choices);
             compiled.extend(effect_sequence);
-            for choice in effect_choices {
-                push_choice(&mut choices, choice);
-            }
             apply_local_reference_env(ctx, &annotated.effects[idx + consumed - 1].out_env);
             idx += consumed;
             continue;
@@ -839,10 +882,8 @@ pub(crate) fn compile_annotated_effects_with_context(
                 ctx,
             )?
         {
+            merge_compiled_choices(&mut choices, &effect_sequence, effect_choices);
             compiled.extend(effect_sequence);
-            for choice in effect_choices {
-                push_choice(&mut choices, choice);
-            }
             apply_local_reference_env(ctx, &annotated.effects[idx + 1].out_env);
             idx += 2;
             continue;
@@ -855,10 +896,8 @@ pub(crate) fn compile_annotated_effects_with_context(
                 ctx,
             )?
         {
+            merge_compiled_choices(&mut choices, &effect_sequence, effect_choices);
             compiled.extend(effect_sequence);
-            for choice in effect_choices {
-                push_choice(&mut choices, choice);
-            }
             apply_local_reference_env(ctx, &annotated.effects[idx + 1].out_env);
             idx += 2;
             continue;
@@ -871,10 +910,8 @@ pub(crate) fn compile_annotated_effects_with_context(
                 ctx,
             )?
         {
+            merge_compiled_choices(&mut choices, &effect_sequence, effect_choices);
             compiled.extend(effect_sequence);
-            for choice in effect_choices {
-                push_choice(&mut choices, choice);
-            }
             apply_local_reference_env(ctx, &annotated.effects[idx + 1].out_env);
             idx += 2;
             continue;
@@ -887,10 +924,8 @@ pub(crate) fn compile_annotated_effects_with_context(
                 ctx,
             )?
         {
+            merge_compiled_choices(&mut choices, &effect_sequence, effect_choices);
             compiled.extend(effect_sequence);
-            for choice in effect_choices {
-                push_choice(&mut choices, choice);
-            }
             apply_local_reference_env(ctx, &annotated.effects[idx + 1].out_env);
             idx += 2;
             continue;
@@ -900,16 +935,21 @@ pub(crate) fn compile_annotated_effects_with_context(
             && let Some((effect_sequence, effect_choices)) =
                 compile_result_followup(&current.effect, &annotated.effects[idx + 1].effect, ctx)?
         {
+            merge_compiled_choices(&mut choices, &effect_sequence, effect_choices);
             compiled.extend(effect_sequence);
-            for choice in effect_choices {
-                push_choice(&mut choices, choice);
-            }
             apply_local_reference_env(ctx, &annotated.effects[idx + 1].out_env);
             idx += 2;
             continue;
         }
 
+        ctx.reserve_object_result_tag(
+            current
+                .out_env
+                .known_last_object_tag()
+                .map(|tag| tag.as_str().to_string()),
+        );
         let (mut effect_list, effect_choices) = compile_effect(&current.effect, ctx)?;
+        ctx.reserve_object_result_tag(None);
         if let Some(id) = current.assigned_effect_id {
             if !effect_list.is_empty() {
                 assign_effect_result_id(
@@ -920,10 +960,8 @@ pub(crate) fn compile_annotated_effects_with_context(
             }
         }
         let effect_list_is_empty = effect_list.is_empty();
+        merge_compiled_choices(&mut choices, &effect_list, effect_choices);
         compiled.extend(effect_list);
-        for choice in effect_choices {
-            push_choice(&mut choices, choice);
-        }
         let mut frame_out = current.out_env.to_lowering_frame(false, false);
         if current.assigned_effect_id.is_some() && effect_list_is_empty {
             frame_out.last_effect_id = None;
@@ -934,6 +972,51 @@ pub(crate) fn compile_annotated_effects_with_context(
 
     let compiled = prepend_missing_target_choice_prelude(compiled, &choices);
     Ok((compiled, choices))
+}
+
+/// Merge a lowered child program's choices without erasing target
+/// occurrences that the child deliberately kept distinct.
+///
+/// Most lowering paths return a set-like choice list, so the historical
+/// `push_choice` behavior remains correct. Coordinated clauses are the one
+/// important exception: two explicit target phrases may have equal-looking
+/// `ChooseSpec`s while still being separate target slots. Their lowering path
+/// signals that distinction by returning duplicate occurrences. Preserve that
+/// multiset as it crosses enclosing sequence/control-flow boundaries.
+fn merge_compiled_choices(
+    choices: &mut Vec<ChooseSpec>,
+    compiled: &[Effect],
+    incoming: Vec<ChooseSpec>,
+) {
+    let preserves_explicit_occurrences = incoming
+        .iter()
+        .enumerate()
+        .any(|(idx, choice)| incoming[idx + 1..].iter().any(|later| later == choice))
+        && compiled.iter().any(effect_contains_coordinated_sequence);
+    if preserves_explicit_occurrences {
+        choices.extend(incoming);
+    } else {
+        for choice in incoming {
+            push_choice(choices, choice);
+        }
+    }
+}
+
+fn effect_contains_coordinated_sequence(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .is_some_and(|sequence| sequence.surface != ironsmith_core::SequenceSurface::Sequential)
+    {
+        return true;
+    }
+
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && effect_contains_coordinated_sequence(child) {
+            found = true;
+        }
+    });
+    found
 }
 
 fn assign_effect_result_id(
@@ -993,9 +1076,21 @@ fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
     if effect.target_spec().is_some_and(|spec| spec == choice) {
         return true;
     }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_exposes_target_choice(&tagged.effect, choice);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return effect_exposes_target_choice(&with_id.effect, choice);
+    }
     effect
-        .downcast_ref::<crate::effects::TaggedEffect>()
-        .is_some_and(|tagged| effect_exposes_target_choice(&tagged.effect, choice))
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .filter(|sequence| sequence.surface != ironsmith_core::SequenceSurface::Sequential)
+        .is_some_and(|sequence| {
+            sequence
+                .effects
+                .iter()
+                .any(|child| effect_exposes_target_choice(child, choice))
+        })
 }
 
 fn effect_contains_exchange_control(effect: &Effect) -> bool {
@@ -1053,6 +1148,12 @@ fn preserve_chooser_relative_player_filters(
     ) {
         resolved.entered_battlefield_controller = Some(PlayerFilter::IteratedPlayer);
     }
+    if matches!(
+        original.attached_to_player,
+        Some(PlayerFilter::IteratedPlayer)
+    ) {
+        resolved.attached_to_player = Some(PlayerFilter::IteratedPlayer);
+    }
     if let (Some(original_targets), Some(resolved_targets)) = (
         original.targets_object.as_deref(),
         resolved.targets_object.as_deref_mut(),
@@ -1064,6 +1165,16 @@ fn preserve_chooser_relative_player_filters(
         resolved.targets_only_object.as_deref_mut(),
     ) {
         preserve_chooser_relative_player_filters(original_targets, resolved_targets, chooser);
+    }
+    if let (Some(original_attached_to), Some(resolved_attached_to)) = (
+        original.attached_to_object.as_deref(),
+        resolved.attached_to_object.as_deref_mut(),
+    ) {
+        preserve_chooser_relative_player_filters(
+            original_attached_to,
+            resolved_attached_to,
+            chooser,
+        );
     }
     for (original_any_of, resolved_any_of) in original.any_of.iter().zip(resolved.any_of.iter_mut())
     {
@@ -1078,6 +1189,7 @@ fn bind_relative_iterated_player_filters_to_chooser(
     if matches!(chooser, PlayerFilter::IteratedPlayer) {
         return;
     }
+    let chooser = as_followup_player_alias(chooser.clone());
 
     if matches!(filter.owner, Some(PlayerFilter::IteratedPlayer)) {
         filter.owner = Some(chooser.clone());
@@ -1109,14 +1221,23 @@ fn bind_relative_iterated_player_filters_to_chooser(
     ) {
         filter.entered_battlefield_controller = Some(chooser.clone());
     }
+    if matches!(
+        filter.attached_to_player,
+        Some(PlayerFilter::IteratedPlayer)
+    ) {
+        filter.attached_to_player = Some(chooser.clone());
+    }
     if let Some(targets) = filter.targets_object.as_deref_mut() {
-        bind_relative_iterated_player_filters_to_chooser(targets, chooser);
+        bind_relative_iterated_player_filters_to_chooser(targets, &chooser);
     }
     if let Some(targets) = filter.targets_only_object.as_deref_mut() {
-        bind_relative_iterated_player_filters_to_chooser(targets, chooser);
+        bind_relative_iterated_player_filters_to_chooser(targets, &chooser);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+        bind_relative_iterated_player_filters_to_chooser(attached_to, &chooser);
     }
     for any_of in &mut filter.any_of {
-        bind_relative_iterated_player_filters_to_chooser(any_of, chooser);
+        bind_relative_iterated_player_filters_to_chooser(any_of, &chooser);
     }
 }
 
@@ -1130,9 +1251,20 @@ fn bind_relative_iterated_player_to_last_player_filter(
     }
 
     if matches!(player_filter, PlayerFilter::IteratedPlayer) {
-        *player_filter = last_player_filter.clone();
+        *player_filter = as_followup_player_alias(last_player_filter.clone());
     }
     bind_relative_iterated_player_filters_to_chooser(filter, last_player_filter);
+}
+
+fn bind_relative_iterated_player_filter_to_player_filter(
+    relative: &mut PlayerFilter,
+    player_filter: &PlayerFilter,
+) {
+    if matches!(relative, PlayerFilter::IteratedPlayer)
+        && !matches!(player_filter, PlayerFilter::IteratedPlayer)
+    {
+        *relative = as_followup_player_alias(player_filter.clone());
+    }
 }
 
 fn bind_relative_iterated_player_in_value_to_player_filter(
@@ -1175,33 +1307,61 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         Value::StaticAbilitiesAmong { filter, .. } => {
             bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
         }
-        Value::CreaturesDiedThisTurnControlledBy(filter) => {
-            if matches!(filter, PlayerFilter::IteratedPlayer)
-                && !matches!(player_filter, PlayerFilter::IteratedPlayer)
-            {
-                *filter = player_filter.clone();
+        Value::TurnHistoryCount(query) => {
+            use ironsmith_core::TurnHistoryCount;
+
+            match query {
+                TurnHistoryCount::Died(filter) | TurnHistoryCount::EnteredBattlefield(filter) => {
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                }
+                TurnHistoryCount::TokensCreated(player)
+                | TurnHistoryCount::OpponentsAttacked(player)
+                | TurnHistoryCount::PlayersDiscarded(player)
+                | TurnHistoryCount::PlayersDealtDamage(player)
+                | TurnHistoryCount::DiscardedOrCycled(player)
+                | TurnHistoryCount::Cycled(player)
+                | TurnHistoryCount::PlayersLostLife(player)
+                | TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
+                    bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+                }
+                TurnHistoryCount::PutIntoGraveyard { owner, .. } => {
+                    bind_relative_iterated_player_filter_to_player_filter(owner, player_filter);
+                }
+                TurnHistoryCount::MovedZones { filter, .. }
+                | TurnHistoryCount::CountersPutOn { filter, .. } => {
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                }
+                TurnHistoryCount::Sacrificed { player, filter }
+                | TurnHistoryCount::CreaturesAttackedWith { player, filter } => {
+                    bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                }
+                TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => {
+                    bind_relative_iterated_player_filter_to_player_filter(players, player_filter);
+                    bind_relative_iterated_player_filters_to_chooser(sources, player_filter);
+                }
+                TurnHistoryCount::SpellsCast { player, filter, .. } => {
+                    bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+                    bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+                }
             }
         }
+        Value::CreaturesDiedThisTurnControlledBy(filter) => {
+            bind_relative_iterated_player_filter_to_player_filter(filter, player_filter);
+        }
         Value::Devotion { player, .. } | Value::DevotionToChosenColor(player) => {
-            if matches!(player, PlayerFilter::IteratedPlayer)
-                && !matches!(player_filter, PlayerFilter::IteratedPlayer)
-            {
-                *player = player_filter.clone();
-            }
+            bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
         }
         Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
         | Value::HalfStartingLifeTotalRoundedUp(player)
         | Value::HalfStartingLifeTotalRoundedDown(player) => {
-            if matches!(player, PlayerFilter::IteratedPlayer)
-                && !matches!(player_filter, PlayerFilter::IteratedPlayer)
-            {
-                *player = player_filter.clone();
-            }
+            bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
         }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
         }
@@ -1225,7 +1385,7 @@ fn bind_relative_iterated_player_in_choose_spec_to_player_filter(
             if matches!(player, PlayerFilter::IteratedPlayer)
                 && !matches!(player_filter, PlayerFilter::IteratedPlayer)
             {
-                *player = player_filter.clone();
+                *player = as_followup_player_alias(player_filter.clone());
             }
         }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
@@ -1584,7 +1744,7 @@ fn resolve_effect_player_filter(
                 .as_ref()
                 .is_some_and(|existing| !is_you_player_filter(existing));
         if !preserve_existing_non_you {
-            ctx.last_player_filter = Some(filter.clone());
+            ctx.last_player_filter = Some(as_followup_player_alias(filter.clone()));
         }
     }
     Ok((filter, choices))
@@ -2210,6 +2370,30 @@ fn apply_embedded_token_rules(
 ) -> CardDefinitionBuilder {
     for rule in &rules.embedded_rules {
         builder = match rule {
+            token_grammar::TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
+                subtype,
+            } => {
+                let source = ObjectFilter::source();
+                let non_subtype_creature =
+                    ObjectFilter::creature().without_subtype(*subtype);
+                let restrictions = vec![
+                    crate::effect::Restriction::block_specific_attacker(
+                        source.clone(),
+                        non_subtype_creature.clone(),
+                    ),
+                    crate::effect::Restriction::block_specific_attacker(
+                        non_subtype_creature,
+                        source,
+                    ),
+                ];
+                let display = format!(
+                    "This token can't block or be blocked by non-{subtype} creatures."
+                );
+                builder.with_ability(Ability::static_ability(StaticAbility::restrictions(
+                    restrictions,
+                    display,
+                )))
+            }
             token_grammar::TokenEmbeddedRuleShape::OpponentCastsCreatureRemoveCreatureTypeUntilEndOfTurn => {
                 let effect = Effect::new(crate::effects::ApplyContinuousEffect::new(
                     crate::continuous::EffectTarget::Source,
@@ -2371,6 +2555,29 @@ fn apply_embedded_token_rules(
                         choices: Vec::new(),
                         intervening_if: None,
                         presentation_label: None,
+                    }),
+                    functional_zones: vec![Zone::Battlefield],
+                })
+            }
+            token_grammar::TokenEmbeddedRuleShape::TapSacrificeAddManaOfAnyColor => {
+                let costs = TotalCost::from_costs(vec![
+                    crate::costs::Cost::tap(),
+                    crate::costs::Cost::sacrifice_self(),
+                ]);
+                builder.with_ability(Ability {
+                    kind: AbilityKind::Activated(ActivatedAbility {
+                        mana_cost: costs,
+                        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                            Effect::add_mana_of_any_color(1),
+                        ]),
+                        choices: Vec::new(),
+                        timing: ActivationTiming::AnyTime,
+                        additional_restrictions: Vec::new(),
+                        activation_restrictions: Vec::new(),
+                        mana_output: Some(Vec::new()),
+                        activation_condition: None,
+                        mana_usage_restrictions: Vec::new(),
+                        is_loyalty_ability: false,
                     }),
                     functional_zones: vec![Zone::Battlefield],
                 })
@@ -2811,6 +3018,11 @@ fn build_vehicle_token_definition(
     if let Some((power, toughness)) = shape.power_toughness {
         builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
     }
+    if shape.colorless {
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
+            ObjectFilter::source(),
+        )));
+    }
     if shape.flying {
         builder = builder.flying();
     }
@@ -2832,7 +3044,9 @@ fn build_artifact_token_definition(
     if !shape.subtypes.is_empty() {
         builder = builder.subtypes(shape.subtypes);
     }
-    if shape.colorless {
+    if !shape.colors.is_empty() {
+        builder = builder.color_indicator(shape.colors);
+    } else if shape.colorless {
         builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
             ObjectFilter::source(),
         )));
@@ -3190,19 +3404,36 @@ fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefini
                 .power_toughness(PowerToughness::fixed(3, 3))
                 .build(),
         ),
-        TokenDefinitionSpec::Construct => {
-            let count = Value::Count(ObjectFilter::artifact().you_control());
-            Some(
-                CardDefinitionBuilder::new(CardId::new(), "Construct")
-                    .token()
-                    .card_types(vec![CardType::Artifact, CardType::Creature])
-                    .subtypes(vec![Subtype::Construct])
-                    .power_toughness(PowerToughness::fixed(0, 0))
-                    .with_ability(Ability::static_ability(
+        TokenDefinitionSpec::Construct(construct) => {
+            let mut builder = CardDefinitionBuilder::new(CardId::new(), "Construct")
+                .token()
+                .card_types(vec![CardType::Artifact, CardType::Creature])
+                .subtypes(vec![Subtype::Construct])
+                .power_toughness(PowerToughness::fixed(
+                    construct.power_toughness.0,
+                    construct.power_toughness.1,
+                ));
+            match construct.artifact_scaling {
+                Some(ConstructArtifactScalingShape::CharacteristicDefining) => {
+                    let count = Value::Count(ObjectFilter::artifact().you_control());
+                    builder = builder.with_ability(Ability::static_ability(
                         StaticAbility::characteristic_defining_pt(count.clone(), count),
-                    ))
-                    .build(),
-            )
+                    ));
+                }
+                Some(ConstructArtifactScalingShape::GetsPlusOnePerArtifact) => {
+                    let count = crate::static_abilities::AnthemCountExpression::MatchingFilter(
+                        ObjectFilter::artifact().you_control(),
+                    );
+                    let anthem = crate::static_abilities::Anthem::for_source(0, 0).with_values(
+                        crate::static_abilities::AnthemValue::scaled(1, count.clone()),
+                        crate::static_abilities::AnthemValue::scaled(1, count),
+                    );
+                    builder =
+                        builder.with_ability(Ability::static_ability(StaticAbility::new(anthem)));
+                }
+                None => {}
+            }
+            Some(builder.build())
         }
         TokenDefinitionSpec::Shapeshifter(shapeshifter) => {
             let mut builder = CardDefinitionBuilder::new(CardId::new(), "Shapeshifter")

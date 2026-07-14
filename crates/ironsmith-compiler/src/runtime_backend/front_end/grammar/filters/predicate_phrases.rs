@@ -153,6 +153,8 @@ const THAT_PLAYER_CONTROLS_PREFIXES: &[&[&str]] = &[
     &["that", "player", "controls"],
     &["that", "players", "control"],
     &["that", "players", "controls"],
+    &["they", "control"],
+    &["they", "controls"],
 ];
 const WITH_DIFFERENT_POWERS_TAIL_PHRASES: &[&[&str]] = &[
     &["with", "different", "powers"],
@@ -230,7 +232,7 @@ const PREDICATE_REFERENCE_NOUN_WORDS: &[&str] = &[
 ];
 const ENCHANTMENT_WORD: &str = "enchantment";
 const PREDICATE_REFERENCE_START_WORDS: &[&str] = &[
-    "it", "its", "this", "that", "you", "your", "opponent", "player", "target", "source",
+    "it", "its", "this", "that", "you", "your", "opponent", "player", "target", "source", "there",
 ];
 const OR_COMPARISON_TAIL_WORDS: &[&str] = &["more", "fewer", "less", "greater", "equal"];
 const ITS_WORDS: &[&str] = &["its", "it's"];
@@ -1098,6 +1100,7 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count: 1,
+        surface: crate::SourceCounterThresholdSurface::SourceHas,
     })
 }
 
@@ -1162,6 +1165,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count,
+        surface: crate::SourceCounterThresholdSurface::SourceHas,
     })
 }
 
@@ -1425,9 +1429,7 @@ fn parse_there_are_source_counters_at_least_predicate(
         return None;
     }
     let target = matched.capture_clause("target", clause)?;
-    if !is_exact_counter_on_source_tail_clause(target) {
-        return None;
-    }
+    let source_surface = counter_on_source_surface(target)?;
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (comparison, used) = predicate_quantity_prefix_tokens(counter_clause.tokens())?;
     let count = comparison_to_at_least_threshold(&comparison)?;
@@ -1438,22 +1440,34 @@ fn parse_there_are_source_counters_at_least_predicate(
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count,
+        surface: crate::SourceCounterThresholdSurface::ThereAreOn(source_surface),
     })
 }
 
 fn is_exact_counter_on_source_tail_clause(clause: LexedClause<'_>) -> bool {
+    counter_on_source_surface(clause).is_some()
+}
+
+fn counter_on_source_surface(
+    clause: LexedClause<'_>,
+) -> Option<crate::target::SourceReferenceSurface> {
     const COUNTER_ON_SOURCE_TAIL_PATTERN: WinnowSequence<'static> = WinnowSequence::new(&[
         WinnowSequence::word("on"),
         WinnowSequence::subject("source", WinnowCaptureKind::Rest),
     ]);
 
-    let Some(matched) = COUNTER_ON_SOURCE_TAIL_PATTERN.parse_full(clause) else {
-        return false;
-    };
-    let Some(source) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else {
-        return false;
-    };
-    is_source_state_subject_clause(source)
+    let matched = COUNTER_ON_SOURCE_TAIL_PATTERN.parse_full(clause)?;
+    let source = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
+    if !is_source_state_subject_clause(source) {
+        return None;
+    }
+    let words = source.word_refs();
+    source_reference_surface_for_words(&words)
+        .or_else(|| this_source_surface_for_words(&words))
+        .or_else(|| {
+            (!words.is_empty())
+                .then(|| crate::target::SourceReferenceSurface::ThisPermanentType(words.join(" ")))
+        })
 }
 
 fn parse_source_exiled_with_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1484,6 +1498,7 @@ fn parse_source_exiled_with_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
         Box::new(PredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count: counter.count,
+            surface: crate::SourceCounterThresholdSurface::SourceHas,
         }),
     ))
 }
@@ -2133,6 +2148,9 @@ fn parse_player_controls_predicate(
 fn predicate_from_control_condition(
     control_condition: crate::runtime_backend::grammar::conditions::ControlConditionAst,
 ) -> PredicateAst {
+    if let Some(predicate) = predicate_for_each_global_greatest_power(&control_condition) {
+        return predicate;
+    }
     if let Some(count) = control_condition.exact_count() {
         return PredicateAst::PlayerControlsExactly {
             player: control_condition.player,
@@ -2164,6 +2182,58 @@ fn predicate_from_control_condition(
         player: control_condition.player,
         filter: control_condition.filter,
     }
+}
+
+fn predicate_for_each_global_greatest_power(
+    control_condition: &crate::runtime_backend::grammar::conditions::ControlConditionAst,
+) -> Option<PredicateAst> {
+    if control_condition.player != PlayerAst::You
+        || !control_condition
+            .quantity_words
+            .iter()
+            .map(String::as_str)
+            .eq(["each"])
+        || !is_creature_on_battlefield_with_greatest_power(&control_condition.object_words)
+    {
+        return None;
+    }
+
+    let mut global_creatures = control_condition.filter.clone();
+    global_creatures.controller = None;
+    global_creatures.power = None;
+    global_creatures.zone = Some(Zone::Battlefield);
+
+    let mut greatest_creatures = global_creatures.clone();
+    greatest_creatures.power = Some(crate::filter::Comparison::EqualExpr(Box::new(
+        Value::GreatestPower(global_creatures),
+    )));
+    let mut greatest_creatures_you_control = greatest_creatures.clone();
+    greatest_creatures_you_control.controller = Some(PlayerFilter::You);
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(greatest_creatures_you_control),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Count(greatest_creatures),
+    })
+}
+
+fn is_creature_on_battlefield_with_greatest_power(words: &[String]) -> bool {
+    let mut words = words.iter().map(String::as_str);
+    if !matches!(words.next(), Some("creature" | "creatures")) || words.next() != Some("on") {
+        return false;
+    }
+    let mut word = words.next();
+    if word == Some("the") {
+        word = words.next();
+    }
+    if word != Some("battlefield") || words.next() != Some("with") {
+        return false;
+    }
+    let mut word = words.next();
+    if word == Some("the") {
+        word = words.next();
+    }
+    word == Some("greatest") && words.next() == Some("power") && words.next().is_none()
 }
 
 fn parse_this_ability_resolution_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2313,6 +2383,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
     for (candidate, stripped_card_noun) in candidates {
         if candidate.tokens().is_empty() {
             let mut filter = ObjectFilter::default();
+            filter.set_explicit_card_noun(stripped_card_noun);
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
                     tag: TagKey::from(CHOSEN_NAME_TAG),
@@ -2324,6 +2395,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
         if let Ok(mut filter) = parse_object_filter(candidate.tokens(), false) {
             if stripped_card_noun {
                 filter.zone = None;
+                filter.set_explicit_card_noun(true);
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -2336,6 +2408,7 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
         if let Some(mut filter) = parse_color_only_object_filter_clause(candidate) {
             if stripped_card_noun {
                 filter.zone = None;
+                filter.set_explicit_card_noun(true);
             }
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -2398,6 +2471,17 @@ fn parse_passive_this_way_tagged_object_predicate(
     let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) else {
         return Ok(None);
     };
+    let action_clause = matched
+        .capture_clause_by_role(WinnowCaptureRole::Action, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing action in passive this-way predicate".to_string())
+        })?;
+    let action_words = action_clause.word_refs();
+    let reference_tag = if action_words.get(1) == Some(&"sacrificed") {
+        THIS_WAY_SACRIFICED_TAG
+    } else {
+        IT_TAG
+    };
     let filter_clause = matched
         .capture_clause_by_role(WinnowCaptureRole::Object, clause)
         .ok_or_else(|| {
@@ -2410,7 +2494,7 @@ fn parse_passive_this_way_tagged_object_predicate(
         return Ok(None);
     };
     Ok(Some(PredicateAst::TaggedMatches(
-        TagKey::from(IT_TAG),
+        TagKey::from(reference_tag),
         filter,
     )))
 }
@@ -2811,6 +2895,12 @@ enum DemonstrativeReferenceKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DemonstrativeMatchTime {
+    Current,
+    LastKnown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct DemonstrativeReferencePrefix {
     word_len: usize,
     kind: DemonstrativeReferenceKind,
@@ -2884,7 +2974,13 @@ fn clause_word_at_is_any(clause: LexedClause<'_>, word_idx: usize, expected: &[&
 #[rustfmt::skip]
 fn demonstrative_descriptor_filter_tokens(
     tokens: &[OwnedLexToken],
-) -> Option<(Vec<OwnedLexToken>, bool, bool, bool)> {
+) -> Option<(
+    Vec<OwnedLexToken>,
+    bool,
+    bool,
+    bool,
+    DemonstrativeMatchTime,
+)> {
     let clause = LexedClause::new(tokens);
     let words = clause.words();
     let reference = demonstrative_reference_prefix(clause)?;
@@ -2900,6 +2996,7 @@ fn demonstrative_descriptor_filter_tokens(
     });
     let mut descriptor_start = reference_end;
     let mut negative = false;
+    let mut match_time = DemonstrativeMatchTime::Current;
     if clause_word_range_matches_any_phrase(clause, descriptor_start, DOESNT_HAVE_PHRASES) {
         descriptor_start += 2;
         negative = true;
@@ -2909,6 +3006,16 @@ fn demonstrative_descriptor_filter_tokens(
     }
     if clause_word_at_is_any(clause, descriptor_start, IS_OR_ARE_WORDS) {
         descriptor_start += 1;
+    // Keep present-tense `has`/`have` in the descriptor. The object-filter
+    // grammar consumes that verb as part of counter clauses such as "it has a
+    // counter on it"; stripping it here turns the remainder into an
+    // unsupported standalone noun phrase.
+    } else if clause_word_at_is_any(clause, descriptor_start, &["was", "were"]) {
+        descriptor_start += 1;
+        match_time = DemonstrativeMatchTime::LastKnown;
+    } else if clause_word_at_is_any(clause, descriptor_start, &["had"]) {
+        descriptor_start += 1;
+        match_time = DemonstrativeMatchTime::LastKnown;
     } else if clause_word_range_matches_any_phrase(
         clause,
         descriptor_start,
@@ -2916,6 +3023,19 @@ fn demonstrative_descriptor_filter_tokens(
     ) {
         descriptor_start += 1;
         negative = true;
+    } else if clause_word_range_matches_any_phrase(
+        clause,
+        descriptor_start,
+        &[
+            &["wasnt"],
+            &["wasn't"],
+            &["werent"],
+            &["weren't"],
+        ],
+    ) {
+        descriptor_start += 1;
+        negative = true;
+        match_time = DemonstrativeMatchTime::LastKnown;
     }
 
     if clause_word_at_is_any(clause, descriptor_start, &["not"]) {
@@ -2939,7 +3059,18 @@ fn demonstrative_descriptor_filter_tokens(
         negative,
         has_card,
         tagged_that_enchantment,
+        match_time,
     ))
+}
+
+fn demonstrative_match_predicate(
+    filter: ObjectFilter,
+    match_time: DemonstrativeMatchTime,
+) -> PredicateAst {
+    match match_time {
+        DemonstrativeMatchTime::Current => PredicateAst::ItMatches(filter),
+        DemonstrativeMatchTime::LastKnown => PredicateAst::ItMatchedLastKnown(filter),
+    }
 }
 
 fn demonstrative_reference_kind(tokens: &[OwnedLexToken]) -> Option<DemonstrativeReferenceKind> {
@@ -2949,7 +3080,7 @@ fn demonstrative_reference_kind(tokens: &[OwnedLexToken]) -> Option<Demonstrativ
 fn parse_demonstrative_or_descriptor_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some((descriptor_tokens, negative, _has_card, tagged_that_enchantment)) =
+    let Some((descriptor_tokens, negative, _has_card, tagged_that_enchantment, match_time)) =
         demonstrative_descriptor_filter_tokens(tokens)
     else {
         return Ok(None);
@@ -2980,8 +3111,8 @@ fn parse_demonstrative_or_descriptor_predicate(
     }
 
     Ok(Some(PredicateAst::Or(
-        Box::new(PredicateAst::ItMatches(left)),
-        Box::new(PredicateAst::ItMatches(right)),
+        Box::new(demonstrative_match_predicate(left, match_time)),
+        Box::new(demonstrative_match_predicate(right, match_time)),
     )))
 }
 
@@ -3023,7 +3154,9 @@ fn parse_demonstrative_toxic_predicate(tokens: &[OwnedLexToken]) -> Option<Predi
 fn parse_demonstrative_power_or_toughness_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some((descriptor_tokens, _, _, _)) = demonstrative_descriptor_filter_tokens(tokens) else {
+    let Some((descriptor_tokens, _, _, _, mut match_time)) =
+        demonstrative_descriptor_filter_tokens(tokens)
+    else {
         return Ok(None);
     };
     let descriptor_words = LexedClause::new(&descriptor_tokens).word_refs();
@@ -3031,6 +3164,12 @@ fn parse_demonstrative_power_or_toughness_predicate(
         return Ok(None);
     }
     let axis = descriptor_words[0];
+    if descriptor_words
+        .get(1)
+        .is_some_and(|word| word_is_any(word, &["was", "were"]))
+    {
+        match_time = DemonstrativeMatchTime::LastKnown;
+    }
     let value_tail = if descriptor_words
         .get(1)
         .is_some_and(|word| word_is_any(word, BE_VERB_WORDS))
@@ -3050,7 +3189,7 @@ fn parse_demonstrative_power_or_toughness_predicate(
     } else {
         filter.toughness = Some(cmp);
     }
-    Ok(Some(PredicateAst::ItMatches(filter)))
+    Ok(Some(demonstrative_match_predicate(filter, match_time)))
 }
 
 fn parse_demonstrative_mana_value_predicate(
@@ -3076,10 +3215,21 @@ fn parse_demonstrative_mana_value_predicate(
     let Some(subject) = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause) else {
         return Ok(None);
     };
+    // A disjunction in the subject belongs to the predicate grammar, not to
+    // the object-filter prefix of a single mana-value comparison.  Let the
+    // outer `or` parser preserve each branch's independent constraints (for
+    // example, land OR creature-with-a-bounded-mana-value).
+    if subject
+        .tokens()
+        .iter()
+        .any(|token| token_word_is(token, OR_WORD))
+    {
+        return Ok(None);
+    }
     let mut filter = if is_it_demonstrative_subject_clause(subject) {
         ObjectFilter::default()
     } else {
-        let Some((mut descriptor_tokens, negative, _has_card, tagged_that_enchantment)) =
+        let Some((mut descriptor_tokens, negative, _has_card, tagged_that_enchantment, _)) =
             demonstrative_descriptor_filter_tokens(subject.tokens())
         else {
             return Ok(None);
@@ -3120,7 +3270,16 @@ fn parse_demonstrative_mana_value_predicate(
         return Ok(None);
     };
     filter.mana_value = Some(cmp);
-    Ok(Some(PredicateAst::ItMatches(filter)))
+    let match_time = if clause
+        .word_refs()
+        .iter()
+        .any(|word| word_is_any(word, &["was", "were"]))
+    {
+        DemonstrativeMatchTime::LastKnown
+    } else {
+        DemonstrativeMatchTime::Current
+    };
+    Ok(Some(demonstrative_match_predicate(filter, match_time)))
 }
 
 fn parse_demonstrative_total_power_toughness_predicate(
@@ -3181,8 +3340,21 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
 }
 
 fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let (descriptor_tokens, _, _, _) = demonstrative_descriptor_filter_tokens(tokens)?;
+    let (descriptor_tokens, _, _, _, _) = demonstrative_descriptor_filter_tokens(tokens)?;
     let descriptor = LexedClause::new(&descriptor_tokens);
+    if surface::exact_any(
+        descriptor,
+        &[
+            &[
+                "shares", "a", "creature", "type", "with", "this", "creature",
+            ],
+            &["shares", "creature", "type", "with", "this", "creature"],
+        ],
+    ) {
+        let mut filter = ObjectFilter::creature();
+        filter.shares_creature_type_with_source = true;
+        return Some(PredicateAst::ItMatches(filter));
+    }
     if surface::exact_any(
         descriptor,
         &[
@@ -3282,7 +3454,64 @@ fn contains_most_common_color_among_all_permanents_clause(tokens: &[OwnedLexToke
         .is_some()
 }
 
+fn parse_shared_suffix_exact_count_or(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    for or_idx in (0..tokens.len()).rev() {
+        if !token_word_is(&tokens[or_idx], OR_WORD) {
+            continue;
+        }
+        let left_tokens = &tokens[..or_idx];
+        let right_tokens = &tokens[or_idx + 1..];
+        if left_tokens.is_empty()
+            || right_tokens.len() < 3
+            || !right_tokens
+                .first()
+                .is_some_and(|token| token_word_is(token, "exactly"))
+            || !left_tokens
+                .iter()
+                .any(|token| token_word_is(token, "exactly"))
+        {
+            continue;
+        }
+        let Some(have_idx) = left_tokens
+            .iter()
+            .rposition(|token| token_word_is(token, "has") || token_word_is(token, "have"))
+        else {
+            continue;
+        };
+        let subject_and_verb = &left_tokens[..=have_idx];
+
+        // The noun phrase is printed once after the second exact count. Try
+        // each possible suffix boundary and let the full predicate grammar
+        // validate both reconstructed branches.
+        for suffix_start in 2..right_tokens.len() {
+            let shared_suffix = &right_tokens[suffix_start..];
+            if shared_suffix.is_empty() {
+                continue;
+            }
+            let mut complete_left = left_tokens.to_vec();
+            complete_left.extend_from_slice(shared_suffix);
+            let mut complete_right = subject_and_verb.to_vec();
+            complete_right.extend_from_slice(right_tokens);
+
+            let Ok(left) = parse_predicate(&complete_left) else {
+                continue;
+            };
+            let Ok(right) = parse_predicate(&complete_right) else {
+                continue;
+            };
+            return Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))));
+        }
+    }
+
+    Ok(None)
+}
+
 fn parse_or_predicate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, CardTextError> {
+    if let Some(predicate) = parse_shared_suffix_exact_count_or(tokens)? {
+        return Ok(Some(predicate));
+    }
     let Some(last_or_idx) = tokens
         .iter()
         .enumerate()

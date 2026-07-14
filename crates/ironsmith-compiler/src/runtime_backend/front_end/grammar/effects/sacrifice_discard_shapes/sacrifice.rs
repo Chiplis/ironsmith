@@ -82,6 +82,11 @@ pub(crate) struct SacrificeCountShape<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SacrificeHalfRoundedUpShape<'a> {
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+}
+
 pub(crate) fn parse_sacrifice_mana_spent_symbol(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
     let [mana_token, rest @ ..] = tokens else {
         return None;
@@ -186,6 +191,18 @@ pub(crate) fn parse_sacrifice_quantity_shape(
     Some(SacrificeQuantityShape::AllOrEach {
         filter_tokens: rest,
         other,
+    })
+}
+
+pub(crate) fn parse_sacrifice_half_rounded_up_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SacrificeHalfRoundedUpShape<'_>> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["half", "the"]).void())?;
+    let before_rounding = primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "up"]])
+        .map(|(_, stripped)| stripped)?;
+    let object = parse_sacrifice_object_shape(before_rounding);
+    (!object.filter_tokens.is_empty()).then_some(SacrificeHalfRoundedUpShape {
+        filter_tokens: object.filter_tokens,
     })
 }
 
@@ -330,5 +347,19 @@ mod tests {
         assert_eq!(shape.count, 2);
         assert!(shape.other);
         assert_eq!(parser_token_word_refs(shape.filter_tokens), ["creatures"]);
+    }
+
+    #[test]
+    fn sacrifice_half_rounded_up_shape_preserves_controlled_filter() {
+        let tokens = lex_line(
+            "half the creatures they control of their choice, rounded up",
+            0,
+        )
+        .unwrap();
+        let shape = parse_sacrifice_half_rounded_up_shape(&tokens).unwrap();
+        assert_eq!(
+            parser_token_word_refs(shape.filter_tokens),
+            ["creatures", "they", "control"]
+        );
     }
 }

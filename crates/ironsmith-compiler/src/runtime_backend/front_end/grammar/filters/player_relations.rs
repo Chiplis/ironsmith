@@ -31,6 +31,12 @@ pub(super) struct SegmentPhraseVariant {
 
 const LEADING_TAGGED_REFERENCE_WORDS: &[&str] = &["that", "those", "chosen"];
 const IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
+const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
+    &["put", "onto", "battlefield", "with", "this", "artifact"],
+    &["put", "onto", "battlefield", "with", "this", "enchantment"],
+    &["put", "onto", "battlefield", "with", "this", "permanent"],
+    &["put", "onto", "battlefield", "with", "this", "source"],
+];
 
 fn relation_phrase<'a>(
     expected: &'static [&'static str],
@@ -64,6 +70,17 @@ fn parse_relation_verb_word_slice(
     .parse_next(input)
 }
 
+fn parse_passive_relation_verb_word_slice(
+    input: &mut primitives::WordSliceInput<'_>,
+) -> WResult<PlayerRelationVerb> {
+    alt((
+        relation_phrase(&["cast", "by"]).value(PlayerRelationVerb::Cast),
+        relation_phrase(&["controlled", "by"]).value(PlayerRelationVerb::Control),
+        relation_phrase(&["owned", "by"]).value(PlayerRelationVerb::Own),
+    ))
+    .parse_next(input)
+}
+
 fn parse_relation_subject_word_slice(
     input: &mut primitives::WordSliceInput<'_>,
     pronoun_player_filter: &PlayerFilter,
@@ -90,6 +107,7 @@ fn parse_relation_subject_word_slice(
             relation_phrase(&["you"]).value(PlayerFilter::You),
             relation_phrase(&["opponent"]).value(PlayerFilter::Opponent),
             relation_phrase(&["opponents"]).value(PlayerFilter::Opponent),
+            relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
             relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
         )),
     ))
@@ -265,6 +283,12 @@ fn parse_relation_verb_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usiz
     Some((verb, words.len().saturating_sub(input.len())))
 }
 
+fn parse_passive_relation_verb_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    let verb = parse_passive_relation_verb_word_slice(&mut input).ok()?;
+    Some((verb, words.len().saturating_sub(input.len())))
+}
+
 fn parse_relation_subject_shape(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
@@ -398,6 +422,30 @@ pub(super) fn try_apply_player_relation_clause(
 
     apply_player_relation(filter, player, verb);
     Some(subject_consumed + verb_consumed)
+}
+
+pub(super) fn try_apply_passive_player_relation_clause(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
+) -> Option<usize> {
+    let (verb, verb_consumed) = parse_passive_relation_verb_shape(words)?;
+    let (player, subject_consumed) =
+        parse_player_relation_subject(&words[verb_consumed..], pronoun_player_filter)?;
+
+    if matches!(player, PlayerFilter::Defending | PlayerFilter::Attacking)
+        && !matches!(verb, PlayerRelationVerb::Control)
+    {
+        return None;
+    }
+    if matches!(player, PlayerFilter::ControllerOf(_))
+        && !matches!(verb, PlayerRelationVerb::Control)
+    {
+        return None;
+    }
+
+    apply_player_relation(filter, player, verb);
+    Some(verb_consumed + subject_consumed)
 }
 
 pub(super) fn try_apply_negated_you_relation_clause(
@@ -808,6 +856,84 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
     true
 }
 
+pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, phrase)) =
+        PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES
+            .iter()
+            .find_map(|phrase| {
+                relation_phrase_word_span(all_words, phrase).map(|(start, _)| (start, *phrase))
+            })
+    else {
+        return false;
+    };
+
+    filter.put_onto_battlefield_with_source = true;
+    filter.put_onto_battlefield_with_source_surface =
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            format!("this {}", phrase.last().copied().unwrap_or("permanent")),
+        ));
+    filter.zone = Some(Zone::Battlefield);
+    all_words.drain(word_start..word_start + phrase.len());
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &[
+                    "put",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "with",
+                    "this",
+                    "artifact",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "put",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "with",
+                    "this",
+                    "enchantment",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "put",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "with",
+                    "this",
+                    "permanent",
+                ],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &[
+                    "put",
+                    "onto",
+                    "the",
+                    "battlefield",
+                    "with",
+                    "this",
+                    "source",
+                ],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
 pub(super) fn parse_drawn_this_turn_words(words: &[&str]) -> Option<usize> {
     parse_drawn_this_turn_shape(words)
 }
@@ -995,12 +1121,27 @@ mod tests {
                 2,
             ),
             (&["they", "control"][..], pronoun.clone(), 1),
+            (&["voter", "owns"][..], PlayerFilter::IteratedPlayer, 1),
         ] {
             assert_eq!(
                 parse_player_relation_subject(words, &pronoun),
                 Some((expected, consumed))
             );
         }
+    }
+
+    #[test]
+    fn applies_passive_voter_owner_relation() {
+        let mut filter = ObjectFilter::default();
+        assert_eq!(
+            try_apply_passive_player_relation_clause(
+                &mut filter,
+                &["owned", "by", "voter", "tail"],
+                &PlayerFilter::Any,
+            ),
+            Some(3)
+        );
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use self::subject_verb_followups::{
-    PostParseFollowupResult, PreParseFollowupResult, is_still_lands_followup_sentence,
-    previous_sentence_is_temporary_land_animation, run_post_parse_followup_registry,
+    PostParseFollowupResult, PreParseFollowupResult, run_post_parse_followup_registry,
     run_pre_parse_followup_registry,
 };
 use super::super::activation_and_restrictions::{
@@ -11,7 +10,9 @@ use super::super::effect_ast_traversal::{
 };
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::primitives::{self as grammar};
-use super::super::grammar::structure::split_leading_result_prefix_lexed;
+use super::super::grammar::structure::{
+    LeadingResultPrefixKind, split_leading_result_prefix_lexed,
+};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, split_lexed_sentences,
@@ -58,10 +59,37 @@ const EXILE_PHRASE: &[&str] = &["exile"];
 const HAND_PHRASE: &[&str] = &["hand"];
 const LIBRARY_PHRASE: &[&str] = &["library"];
 const WOULD_DIE_THIS_TURN_PHRASE: &[&str] = &["would", "die", "this", "turn"];
+const A_CREATURE_WOULD_DIE_THIS_TURN_PHRASE: &[&str] =
+    &["a", "creature", "would", "die", "this", "turn"];
+const A_PERMANENT_YOU_CONTROL_WOULD_BE_PUT_PHRASE: &[&str] = &[
+    "a",
+    "permanent",
+    "you",
+    "control",
+    "would",
+    "be",
+    "put",
+    "into",
+    "a",
+    "graveyard",
+    "from",
+    "the",
+    "battlefield",
+    "this",
+    "turn",
+];
+const WOULD_LEAVE_THE_BATTLEFIELD_PHRASE: &[&str] = &["would", "leave", "the", "battlefield"];
 const DEALT_DAMAGE_THIS_WAY_PHRASE: &[&str] = &["dealt", "damage", "this", "way"];
 const DEALT_DAMAGE_BY_PHRASE: &[&str] = &["dealt", "damage", "by"];
 const PERMANENT_DEALT_DAMAGE_PHRASE: &[&str] = &["permanent", "dealt", "damage"];
+const CREATURE_OPPONENT_CONTROLS_WOULD_DIE_PHRASE: &[&str] = &[
+    "creature", "an", "opponent", "controls", "would", "die", "this", "turn",
+];
+const THAT_CREATURE_WOULD_DIE_THIS_TURN_PHRASE: &[&str] =
+    &["that", "creature", "would", "die", "this", "turn"];
 const WOULD_BE_PUT_INTO_PHRASE: &[&str] = &["would", "be", "put", "into"];
+const THAT_SPELL_WOULD_PHRASE: &[&str] = &["that", "spell", "would"];
+const INSTEAD_PHRASE: &[&str] = &["instead"];
 const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
 const YOUR_GRAVEYARD_PHRASE: &[&str] = &["your", "graveyard"];
 const EXILE_THAT_CARD_INSTEAD_PHRASE: &[&str] = &["exile", "that", "card", "instead"];
@@ -137,6 +165,10 @@ fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Un
                 ..
             }
             | SubjectVerbActionAst::AddCardTypes {
+                duration: effect_duration,
+                ..
+            }
+            | SubjectVerbActionAst::SetCardTypes {
                 duration: effect_duration,
                 ..
             }
@@ -556,6 +588,43 @@ impl SentenceParsePlan {
     }
 }
 
+fn preserve_leading_result_prefix_for_sequence(
+    sentence_tokens: &[OwnedLexToken],
+    effects: &mut Vec<EffectAst>,
+) {
+    let Some(prefix) = split_leading_result_prefix_lexed(sentence_tokens) else {
+        return;
+    };
+    let already_preserved = matches!(
+        (prefix.kind, effects.as_slice()),
+        (
+            LeadingResultPrefixKind::If,
+            [EffectAst::IfResult { predicate, .. }]
+        ) if *predicate == prefix.predicate
+    ) || matches!(
+        (prefix.kind, effects.as_slice()),
+        (
+            LeadingResultPrefixKind::When,
+            [EffectAst::WhenResult { predicate, .. }]
+        ) if *predicate == prefix.predicate
+    );
+    if already_preserved {
+        return;
+    }
+
+    let nested = std::mem::take(effects);
+    effects.push(match prefix.kind {
+        LeadingResultPrefixKind::If => EffectAst::IfResult {
+            predicate: prefix.predicate,
+            effects: nested,
+        },
+        LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            predicate: prefix.predicate,
+            effects: nested,
+        },
+    });
+}
+
 fn sentence_contains(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
     contains_token_word_sequence(tokens, phrase)
 }
@@ -590,6 +659,20 @@ fn future_zone_replacement_counters(
 
 fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
+        && sentence_contains(tokens, EXILE_PHRASE)
+        && sentence_contains(tokens, INSTEAD_PHRASE)
+    {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
+            target(),
+            Some(Zone::Battlefield),
+            None,
+            Zone::Exile,
+            ZoneReplacementDurationAst::Persistent,
+        ));
+    }
+
     if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
         && sentence_contains(tokens, INSTEAD_OF_PHRASE)
         && sentence_contains(tokens, GRAVEYARD_PHRASE)
@@ -636,18 +719,39 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
         && sentence_contains(tokens, GRAVEYARD_PHRASE)
         && sentence_contains(tokens, LIBRARY_PHRASE)
     {
-        return Some(EffectAst::subject_verb_register_zone_replacement(
-            target(),
-            Some(Zone::Stack),
-            Some(Zone::Graveyard),
-            Zone::Library,
-            ZoneReplacementDurationAst::OneShot,
-        ));
+        let placement =
+            effect_grammar::dispatch_entry_shapes::parse_countered_spell_library_placement_tokens(
+                tokens,
+            )?;
+        return Some(
+            EffectAst::subject_verb_register_zone_replacement_with_library_placement(
+                target(),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Library,
+                placement,
+                ZoneReplacementDurationAst::OneShot,
+            ),
+        );
     }
 
     if sentence_contains(tokens, WOULD_DIE_THIS_TURN_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)
     {
+        if tokens.first().is_some_and(|token| token.is_word("if"))
+            && sentence_contains(tokens, A_CREATURE_WOULD_DIE_THIS_TURN_PHRASE)
+        {
+            return Some(EffectAst::subject_verb_register_future_zone_replacement(
+                ObjectFilter::creature(),
+                Some(Zone::Battlefield),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::UntilEndOfTurn,
+                crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+                false,
+            ));
+        }
+
         if sentence_contains(tokens, DEALT_DAMAGE_THIS_WAY_PHRASE)
             || sentence_contains(tokens, DEALT_DAMAGE_BY_PHRASE)
         {
@@ -667,9 +771,35 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
             );
         }
 
+        let target = if sentence_contains(tokens, CREATURE_OPPONENT_CONTROLS_WOULD_DIE_PHRASE) {
+            TargetAst::Object(
+                ObjectFilter::creature()
+                    .controlled_by(PlayerFilter::Opponent)
+                    .match_tagged(IT_TAG, TaggedOpbjectRelation::IsTaggedObject),
+                None,
+                None,
+            )
+        } else {
+            target()
+        };
+        return Some(EffectAst::subject_verb_register_zone_replacement(
+            target,
+            Some(Zone::Battlefield),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
+    if sentence_contains(tokens, THAT_SPELL_WOULD_PHRASE)
+        && sentence_contains(tokens, WOULD_BE_PUT_INTO_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(tokens, EXILE_PHRASE)
+        && sentence_contains(tokens, INSTEAD_PHRASE)
+    {
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
-            Some(Zone::Battlefield),
+            Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Exile,
             ZoneReplacementDurationAst::OneShot,
@@ -681,6 +811,20 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
         && sentence_contains(tokens, THIS_TURN_PHRASE)
         && sentence_contains(tokens, EXILE_PHRASE)
     {
+        if tokens.first().is_some_and(|token| token.is_word("if"))
+            && sentence_contains(tokens, A_PERMANENT_YOU_CONTROL_WOULD_BE_PUT_PHRASE)
+        {
+            return Some(EffectAst::subject_verb_register_future_zone_replacement(
+                ObjectFilter::permanent().controlled_by(PlayerFilter::You),
+                Some(Zone::Battlefield),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                ZoneReplacementDurationAst::UntilEndOfTurn,
+                crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+                false,
+            ));
+        }
+
         if sentence_contains(tokens, YOUR_GRAVEYARD_PHRASE)
             && sentence_contains(tokens, EXILE_THAT_CARD_INSTEAD_PHRASE)
         {
@@ -718,6 +862,8 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
             Some(Zone::Graveyard),
             Zone::Hand,
             ZoneReplacementDurationAst::OneShot,
+            crate::cards::builders::FutureZoneReplacementCausePolicyAst::ChangedObjectIsCause,
+            false,
         ));
     }
 
@@ -736,6 +882,104 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
     }
 
     None
+}
+
+fn damage_regeneration_exile_followup_from_sentence_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let shape = effect_grammar::followup_shapes::parse_damage_regeneration_exile_followup(tokens)?;
+    let replacement = future_zone_replacement_from_sentence_tokens(tokens)?;
+    let tagged_target = TagKey::from(IT_TAG);
+    let regeneration_filter = ObjectFilter::creature()
+        .match_tagged(tagged_target.clone(), TaggedOpbjectRelation::IsTaggedObject);
+    let cant_regenerate = EffectAst::subject_verb_cant(
+        crate::effect::Restriction::be_regenerated(regeneration_filter),
+        Until::EndOfTurn,
+        None,
+    );
+    let predicate = match shape.gate {
+        effect_grammar::followup_shapes::DamageRegenerationExileGate::DamagedObjectIsCreature => {
+            PredicateAst::TaggedMatches(tagged_target, ObjectFilter::creature())
+        }
+        effect_grammar::followup_shapes::DamageRegenerationExileGate::ThisSpellWasKicked => {
+            PredicateAst::ThisSpellWasKicked
+        }
+    };
+
+    Some(vec![EffectAst::Conditional {
+        predicate,
+        if_true: vec![cant_regenerate, replacement],
+        if_false: Vec::new(),
+    }])
+}
+
+fn secondary_fight_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Fight { creature2, .. },
+        ..
+    }) = effect
+    {
+        return Some(creature2.clone());
+    }
+
+    let mut found = None;
+    for_each_nested_effects(effect, false, |nested| {
+        if found.is_none() {
+            found = nested
+                .iter()
+                .rev()
+                .find_map(secondary_fight_target_from_effect);
+        }
+    });
+    found
+}
+
+fn rebind_fight_death_replacement_target(
+    replacement: &mut EffectAst,
+    previous_effect: Option<&EffectAst>,
+    sentence_tokens: &[OwnedLexToken],
+) {
+    if !sentence_contains(sentence_tokens, WOULD_DIE_THIS_TURN_PHRASE)
+        || !sentence_contains(sentence_tokens, EXILE_PHRASE)
+        || (!sentence_contains(sentence_tokens, THAT_CREATURE_WOULD_DIE_THIS_TURN_PHRASE)
+            && !sentence_contains(sentence_tokens, CREATURE_OPPONENT_CONTROLS_WOULD_DIE_PHRASE))
+    {
+        return;
+    }
+    let Some(fight_target) = previous_effect.and_then(secondary_fight_target_from_effect) else {
+        return;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::RegisterZoneReplacement {
+                target,
+                from_zone: Some(Zone::Battlefield),
+                to_zone: Some(Zone::Graveyard),
+                replacement_zone: Zone::Exile,
+                duration: ZoneReplacementDurationAst::OneShot,
+                ..
+            },
+        ..
+    }) = replacement
+    else {
+        return;
+    };
+    *target = fight_target;
+}
+
+fn append_replacement_to_trailing_reflexive_result(
+    effects: &mut [EffectAst],
+    replacement: EffectAst,
+) -> Result<(), EffectAst> {
+    let Some(EffectAst::WhenResult {
+        effects: reflexive_effects,
+        ..
+    }) = effects.last_mut()
+    else {
+        return Err(replacement);
+    };
+    reflexive_effects.push(replacement);
+    Ok(())
 }
 
 fn maybe_rewrite_future_zone_replacement_sentence(
@@ -877,6 +1121,41 @@ fn maybe_append_trailing_that_much_life_loss(
     if !sentence_effects.iter().any(effect_is_life_loss) {
         sentence_effects.push(life_loss);
     }
+}
+
+fn maybe_append_reexile_returned_objects(
+    sentence_effects: &mut Vec<EffectAst>,
+    sentence_tokens: &[OwnedLexToken],
+) {
+    if !grammar::has_phrase(sentence_tokens, &["then", "exile", "them", "again"]) {
+        return;
+    }
+
+    if let [EffectAst::IfResult { effects, .. }] = sentence_effects.as_mut_slice() {
+        append_reexile_returned_objects_if_missing(effects);
+        return;
+    }
+    append_reexile_returned_objects_if_missing(sentence_effects);
+}
+
+fn append_reexile_returned_objects_if_missing(effects: &mut Vec<EffectAst>) {
+    let already_exiles = effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { .. } | SubjectVerbActionAst::ExileAll { .. },
+                ..
+            })
+        )
+    });
+    if already_exiles {
+        return;
+    }
+
+    effects.push(EffectAst::subject_verb_exile(
+        TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        false,
+    ));
 }
 
 fn effect_is_life_loss(effect: &EffectAst) -> bool {
@@ -1028,9 +1307,175 @@ pub(super) fn parse_if_you_cant_sentence(
     consult_family::parse_if_you_cant_sentence(tokens)
 }
 
+pub(crate) fn with_where_x_surface_hints(
+    mut value: Value,
+    binding_tokens: &[OwnedLexToken],
+) -> Value {
+    let words = crate::runtime_backend::token_word_refs(binding_tokens);
+    let explicit_count_surface = words.contains(&"number")
+        && words.iter().any(|word| {
+            matches!(
+                *word,
+                "card"
+                    | "cards"
+                    | "counter"
+                    | "counters"
+                    | "creature"
+                    | "creatures"
+                    | "permanent"
+                    | "permanents"
+            )
+        });
+    let counts_objects = matches!(
+        value.unhinted(),
+        Value::Count(_)
+            | Value::CountScaled(_, _)
+            | Value::EffectMetric {
+                metric: ironsmith_core::EffectMetric::Count
+                    | ironsmith_core::EffectMetric::ChosenCount
+                    | ironsmith_core::EffectMetric::AffectedCount,
+                ..
+            }
+            | Value::PendingEffectMetric {
+                metric: ironsmith_core::EffectMetric::Count
+                    | ironsmith_core::EffectMetric::ChosenCount
+                    | ironsmith_core::EffectMetric::AffectedCount,
+                ..
+            }
+    ) || (explicit_count_surface
+        && matches!(
+            value.unhinted(),
+            Value::EffectValue(_)
+                | Value::EffectValueOffset(_, _)
+                | Value::PendingEffectMetric { .. }
+                | Value::PendingEffectMetricOffset { .. }
+        ));
+    value = value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+    let mentions_energy = binding_tokens.iter().any(|token| {
+        token.as_word() == Some("e")
+            || (token.kind == TokenKind::ManaGroup && token.mana_group_inner() == Some("e"))
+    });
+    if mentions_energy
+        && words.contains(&"paid")
+        && words.contains(&"this")
+        && words.contains(&"way")
+    {
+        value = value.with_surface_hint(ValueSurfaceHint::EnergyPaidThisWay);
+    } else if words.contains(&"mana")
+        && words.contains(&"value")
+        && words.contains(&"permanent")
+        && words.contains(&"exiled")
+        && words.contains(&"way")
+    {
+        value = value.with_surface_hint(ValueSurfaceHint::ManaValueOfPermanentExiledThisWay);
+    } else if words.contains(&"result") {
+        value = value.with_surface_hint(ValueSurfaceHint::PriorEffectResult);
+    } else if counts_objects && words.contains(&"revealed") && words.contains(&"way") {
+        value = value.with_surface_hint(ValueSurfaceHint::CardsRevealedThisWay);
+    } else if counts_objects && words.contains(&"exiled") && words.contains(&"way") {
+        value = value.with_surface_hint(ValueSurfaceHint::CardsExiledThisWay);
+    } else if counts_objects && words.contains(&"discarded") && words.contains(&"way") {
+        value = value.with_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay);
+    } else if counts_objects && words.contains(&"sacrificed") && words.contains(&"way") {
+        value = value.with_surface_hint(ValueSurfaceHint::PermanentsSacrificedThisWay);
+    } else if counts_objects
+        && words.contains(&"counters")
+        && words.contains(&"removed")
+        && words.contains(&"way")
+    {
+        value = value.with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay);
+    }
+    value
+}
+
 fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn annotate_counter_followup_surface(effects: &mut [EffectAst], hint: ValueSurfaceHint) {
+        fn annotate(effect: &mut EffectAst, hint: ValueSurfaceHint) {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters { count, .. },
+                ..
+            }) = effect
+            {
+                *count = count.clone().with_surface_hint(hint);
+            }
+            for_each_nested_effects_mut(effect, true, |nested| {
+                for child in nested {
+                    annotate(child, hint);
+                }
+            });
+        }
+
+        for effect in effects {
+            annotate(effect, hint);
+        }
+    }
+
+    fn preserve_plural_counter_antecedent(
+        sentence_tokens: &[OwnedLexToken],
+        effects: &mut Vec<EffectAst>,
+    ) {
+        const PLURAL_ANTECEDENT_ALIAS: &str = "plural_antecedent_cards";
+
+        if !contains_token_word_sequence(sentence_tokens, &["among", "those", "cards"]) {
+            return;
+        }
+
+        fn bind_aggregate_filter(value: &mut Value, alias: &TagKey) -> bool {
+            let filter = match value {
+                Value::SurfaceHinted { value, .. } => return bind_aggregate_filter(value, alias),
+                Value::GreatestPower(filter)
+                | Value::GreatestToughness(filter)
+                | Value::GreatestManaValue(filter)
+                | Value::TotalPower(filter)
+                | Value::TotalToughness(filter)
+                | Value::TotalManaValue(filter)
+                | Value::BasicLandTypesAmong(filter)
+                | Value::CreatureTypesAmong(filter)
+                | Value::CardTypesAmong(filter)
+                | Value::ColorsAmong(filter) => filter,
+                _ => return false,
+            };
+
+            let mut rebound = false;
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.tag.as_str() == IT_TAG {
+                    constraint.tag = alias.clone();
+                    rebound = true;
+                }
+            }
+            rebound
+        }
+
+        fn bind_effect(effect: &mut EffectAst, alias: &TagKey) -> bool {
+            let mut rebound = false;
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters { count, .. },
+                ..
+            }) = effect
+            {
+                rebound |= bind_aggregate_filter(count, alias);
+            }
+            for_each_nested_effects_mut(effect, true, |nested| {
+                for child in nested {
+                    rebound |= bind_effect(child, alias);
+                }
+            });
+            rebound
+        }
+
+        let alias = TagKey::from(PLURAL_ANTECEDENT_ALIAS);
+        let rebound = effects.iter_mut().fold(false, |rebound, effect| {
+            rebound | bind_effect(effect, &alias)
+        });
+        if rebound {
+            // Capture the plural discourse set before a nested create/return
+            // action replaces the ordinary singular `it` antecedent.
+            effects.insert(0, EffectAst::SnapshotLastObjectTag { into: alias });
+        }
+    }
+
     fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
         let binding_tokens =
             effect_grammar::dispatch_entry_shapes::parse_where_x_usage_shape_tokens(tokens)
@@ -1039,6 +1484,10 @@ fn parse_effect_sentences_from_sentence_inputs(
                     effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
                         .map(|shape| shape.where_tokens)
                 })?;
+        if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(binding_tokens)
+        {
+            return Some(with_where_x_surface_hints(value, tokens));
+        }
         if let Some((_, value)) =
             effect_grammar::sentence_predicate_shapes::parse_where_x_value_shape_tokens(
                 binding_tokens,
@@ -1046,10 +1495,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             )
             .and_then(super::dispatch_inner::lower_where_x_shape)
         {
-            return Some(value.with_surface_hint(ValueSurfaceHint::WhereXIs));
+            return Some(with_where_x_surface_hints(value, tokens));
         }
         parse_value_binding_clause(binding_tokens)
-            .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+            .map(|value| with_where_x_surface_hints(value, tokens))
     }
 
     fn parse_leading_flip_result_sentence(
@@ -1199,6 +1648,7 @@ fn parse_effect_sentences_from_sentence_inputs(
                     &sequence_words.join(" "),
                 )?;
             }
+            preserve_leading_result_prefix_for_sequence(sentence, &mut matched.effects);
             let stage = if let Some(feature_tag) = matched.feature_tag {
                 format!(
                     "parse_effect_sentences:subject-verb-sequence:{}:{feature_tag}",
@@ -1301,15 +1751,28 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        if is_still_lands_followup_sentence(&sentence_tokens)
-            && previous_sentence_is_temporary_land_animation(&sentences, sentence_idx)
+        if let Some(compound_rider) =
+            damage_regeneration_exile_followup_from_sentence_tokens(&sentence_tokens)
         {
+            effects.extend(compound_rider);
+            carried_context = None;
             sentence_idx += 1;
             continue;
         }
 
-        if let Some(replacement) = future_zone_replacement_from_sentence_tokens(&sentence_tokens) {
-            effects.push(replacement);
+        if let Some(mut replacement) =
+            future_zone_replacement_from_sentence_tokens(&sentence_tokens)
+        {
+            rebind_fight_death_replacement_target(
+                &mut replacement,
+                effects.last(),
+                &sentence_tokens,
+            );
+            if let Err(replacement) =
+                append_replacement_to_trailing_reflexive_result(&mut effects, replacement)
+            {
+                effects.push(replacement);
+            }
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -1360,6 +1823,27 @@ fn parse_effect_sentences_from_sentence_inputs(
         } else {
             parse_effect_sentence_lexed(&parse_plan.tokens)?
         };
+        preserve_plural_counter_antecedent(&parse_plan.tokens, &mut sentence_effects);
+        let sentence_words = crate::runtime_backend::token_word_refs(&parse_plan.tokens);
+        if sentence_words.contains(&"then") {
+            annotate_counter_followup_surface(
+                &mut sentence_effects,
+                ValueSurfaceHint::CounterFollowupThen,
+            );
+        } else if sentence_idx > 0 && sentence_words.first().copied() == Some("put") {
+            annotate_counter_followup_surface(
+                &mut sentence_effects,
+                ValueSurfaceHint::CounterFollowupSeparateSentence,
+            );
+        }
+        // `sentence_tokens` may intentionally have had inline token rules
+        // stripped before outer subject/verb dispatch. The resulting create
+        // action is now known, so attach every quoted token ability from the
+        // untouched source sentence under the created token's own identity.
+        super::creation_handlers::attach_inline_token_granted_abilities_to_last_create(
+            &mut sentence_effects,
+            sentence,
+        );
         if let Some(predicate) = parse_plan.wrap_if_result {
             sentence_effects = vec![EffectAst::IfResult {
                 predicate,
@@ -1367,9 +1851,13 @@ fn parse_effect_sentences_from_sentence_inputs(
             }];
             carried_context = None;
         }
-        if sentence_where_x.is_none()
-            && let Some(where_value) = carried_where_x.as_ref()
-        {
+        if let Some(where_value) = sentence_where_x.as_ref() {
+            replace_unbound_x_in_effects_anywhere(
+                &mut sentence_effects,
+                where_value,
+                &crate::runtime_backend::token_word_refs(&parse_plan.tokens).join(" "),
+            )?;
+        } else if let Some(where_value) = carried_where_x.as_ref() {
             replace_unbound_x_in_effects_anywhere(
                 &mut sentence_effects,
                 where_value,
@@ -1377,6 +1865,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             )?;
         }
         maybe_append_trailing_that_much_life_loss(&mut sentence_effects, &parse_plan.tokens);
+        maybe_append_reexile_returned_objects(&mut sentence_effects, &parse_plan.tokens);
         let previous_damage_target = effects.last().and_then(primary_damage_target_from_effect);
         repair_that_object_power_damage_subject(
             &mut sentence_effects,
@@ -1493,6 +1982,9 @@ pub(crate) fn parse_effect_sentences_lexed(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
         let mut effects = parse_effect_sentences_lexed_inner(tokens)?;
+        transport_coin_flip_outcomes_into_owner(&mut effects);
+        preserve_linked_target_fanout_group(tokens, &mut effects);
+        preserve_tapped_this_way_group_for_later_distribution(tokens, &mut effects);
         let instead_shape = effect_grammar::parse_instead_followup_shape_tokens(tokens);
         if instead_shape.conditional_intro
             && instead_shape.semantics == InsteadSemantics::SelfReplacement
@@ -1509,6 +2001,304 @@ pub(crate) fn parse_effect_sentences_lexed(
         }
         Ok(effects)
     })
+}
+
+fn is_direct_coin_flip(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::FlipCoin,
+            ..
+        })
+    )
+}
+
+fn coin_flip_owner_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    let effects = match effect {
+        EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::AnyPlayerMay { effects }
+        | EffectAst::ForEachObject { effects, .. } => effects,
+        _ => return None,
+    };
+    if !effects.last().is_some_and(is_direct_coin_flip) {
+        return None;
+    }
+    Some(effects)
+}
+
+fn is_coin_flip_outcome(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::Did | IfResultPredicate::DidNot,
+            ..
+        }
+    )
+}
+
+/// Keep outcome clauses with the coin flip that establishes their result.
+///
+/// Sentence parsing initially produces siblings for constructs such as
+/// "you may flip ... If you win ..." and "for each creature, flip ... If
+/// you win ...". Leaving those siblings in place makes lowering bind the
+/// result to the `May`/`ForEachObject` wrapper instead of to the flip itself;
+/// it also lets declining an optional flip masquerade as losing it. Moving
+/// only contiguous win/lose branches into an owner whose final action is a
+/// coin flip preserves both the optional and per-iteration scopes.
+fn transport_coin_flip_outcomes_into_owner(effects: &mut Vec<EffectAst>) {
+    let mut owner_index = 0;
+    while owner_index < effects.len() {
+        let owns_coin_flip = coin_flip_owner_body_mut(&mut effects[owner_index]).is_some();
+        if owns_coin_flip {
+            let mut end = owner_index + 1;
+            while effects.get(end).is_some_and(is_coin_flip_outcome) {
+                end += 1;
+            }
+            if end > owner_index + 1 {
+                let outcomes = effects.drain(owner_index + 1..end).collect::<Vec<_>>();
+                coin_flip_owner_body_mut(&mut effects[owner_index])
+                    .expect("coin-flip owner was matched before draining outcomes")
+                    .extend(outcomes);
+            }
+        }
+
+        owner_index += 1;
+    }
+}
+
+fn direct_all_object_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+        return None;
+    };
+    match action {
+        SubjectVerbActionAst::DestroyAll { filter, .. }
+        | SubjectVerbActionAst::ExileAll { filter, .. }
+        | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
+        | SubjectVerbActionAst::UntapAll { filter }
+        | SubjectVerbActionAst::PumpAll { filter, .. }
+        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. } => Some(filter),
+        _ => None,
+    }
+}
+
+fn direct_all_object_filter_mut(effect: &mut EffectAst) -> Option<&mut ObjectFilter> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+        return None;
+    };
+    match action {
+        SubjectVerbActionAst::DestroyAll { filter, .. }
+        | SubjectVerbActionAst::ExileAll { filter, .. }
+        | SubjectVerbActionAst::ReturnAllToHand { filter, .. }
+        | SubjectVerbActionAst::UntapAll { filter }
+        | SubjectVerbActionAst::PumpAll { filter, .. }
+        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. } => Some(filter),
+        _ => None,
+    }
+}
+
+fn filter_has_linked_it_constraint(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == IT_TAG
+            && matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::SameNameAsTagged
+                    | TaggedOpbjectRelation::SharesColorWithTagged
+            )
+    })
+}
+
+fn filter_has_it_reference(filter: &ObjectFilter) -> bool {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+}
+
+/// Keep a compound target-plus-linked-set subject available to later
+/// demonstratives. The individual fanout action must still exclude the target,
+/// while "those creatures/cards" refers to the union of both parts.
+fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut Vec<EffectAst>) {
+    for effect in effects.iter_mut() {
+        if let EffectAst::Sequence { effects: nested }
+        | EffectAst::Coordinated {
+            effects: nested, ..
+        } = effect
+        {
+            preserve_linked_target_fanout_group(tokens, nested);
+        }
+    }
+    if effects.len() < 3 {
+        return;
+    }
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let has_trailing_that_name = words
+        .windows(3)
+        .any(|window| window == ["with", "that", "name"]);
+
+    for first_idx in 0..effects.len().saturating_sub(2) {
+        let second_idx = first_idx + 1;
+        let Some(linked_filter) = direct_all_object_filter(&effects[second_idx]) else {
+            continue;
+        };
+        let excludes_primary = linked_filter.other
+            || linked_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+            });
+        if !filter_has_linked_it_constraint(linked_filter) || !excludes_primary {
+            continue;
+        }
+
+        // Three-part same-name lists may spell the final reference as "with
+        // that name". Preserve that structured relation instead of leaving the
+        // last set as an unrestricted all-permanents action.
+        if has_trailing_that_name
+            && let Some(trailing_filter) = effects
+                .get_mut(second_idx + 1)
+                .and_then(direct_all_object_filter_mut)
+            && !filter_has_it_reference(trailing_filter)
+        {
+            trailing_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
+        }
+
+        if !effects[second_idx + 1..]
+            .iter()
+            .filter_map(direct_all_object_filter)
+            .any(filter_has_it_reference)
+        {
+            continue;
+        }
+
+        let group_alias = TagKey::from(format!("linked_fanout_group_{first_idx}"));
+        let mut related_filter = direct_all_object_filter(&effects[second_idx])
+            .expect("linked fanout filter was just matched")
+            .clone();
+
+        related_filter
+            .tagged_constraints
+            .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsNotTaggedObject);
+        related_filter.other = false;
+
+        // The later demonstrative refers to the union of the explicit target
+        // and the linked fanout, not merely to objects satisfying the fanout
+        // relation. That distinction matters for a colorless Radiance target:
+        // it belongs to "those creatures" even though it shares no color with
+        // itself. Keep the union structural so execution and rendering agree.
+        let mut primary_filter = ObjectFilter::default();
+        primary_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let mut group_filter = related_filter.clone();
+        group_filter.other = false;
+        group_filter.tagged_constraints.clear();
+        group_filter.any_of.clear();
+        group_filter.any_of.push(primary_filter);
+        group_filter.any_of.push(related_filter);
+        let group_zones = group_filter.zone.into_iter().collect::<Vec<_>>();
+
+        // Keep the target and fanout's direct `it` references intact until
+        // reference resolution. The fanout deliberately preserves the prior
+        // target tag, so the group snapshot can resolve `it` to that same
+        // concrete runtime tag. A lowering-only SnapshotLastObjectTag alias is
+        // insufficient here: later player references would retain the alias
+        // even though no runtime effect ever binds it.
+        for effect in &mut effects[second_idx + 1..] {
+            if let Some(filter) = direct_all_object_filter_mut(effect) {
+                for constraint in &mut filter.tagged_constraints {
+                    if constraint.tag.as_str() == IT_TAG {
+                        constraint.tag = group_alias.clone();
+                    }
+                }
+            }
+        }
+
+        effects.insert(
+            second_idx + 1,
+            EffectAst::subject_verb_tag_matching_objects(group_filter, group_zones, group_alias),
+        );
+        return;
+    }
+}
+
+fn preserve_tapped_this_way_group_for_later_distribution(
+    tokens: &[OwnedLexToken],
+    effects: &mut Vec<EffectAst>,
+) {
+    const TAPPED_GROUP_ALIAS: &str = "tapped_this_way_group";
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words
+        .windows(3)
+        .any(|window| window == ["tapped", "this", "way"])
+        || !words
+            .windows(4)
+            .any(|window| window == ["any", "number", "of", "those"])
+        || !words.iter().any(|word| *word == "divided")
+    {
+        return;
+    }
+
+    let Some(tap_index) = effects.iter().position(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TapAll { .. },
+                ..
+            })
+        )
+    }) else {
+        return;
+    };
+    let Some(distributed_index) = effects.iter().position(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDistributedDamage { .. },
+                ..
+            })
+        )
+    }) else {
+        return;
+    };
+
+    let alias = TagKey::from(TAPPED_GROUP_ALIAS);
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::DealDistributedDamage { target, .. },
+        ..
+    }) = &mut effects[distributed_index]
+    {
+        fn bind_target(target: &mut TargetAst, alias: &TagKey) {
+            match target {
+                TargetAst::Object(filter, _, _) => {
+                    for constraint in &mut filter.tagged_constraints {
+                        if constraint.tag.as_str() == IT_TAG {
+                            constraint.tag = alias.clone();
+                        }
+                    }
+                }
+                TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                    bind_target(inner, alias);
+                }
+                _ => {}
+            }
+        }
+        bind_target(target, &alias);
+    }
+
+    effects.insert(
+        tap_index + 1,
+        EffectAst::SnapshotLastObjectTag { into: alias },
+    );
 }
 
 fn apply_mana_usage_restriction_to_previous_effect(
@@ -1707,13 +2497,14 @@ fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Ve
     }
 }
 
-pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
-    effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens).is_some()
-}
-
 pub(crate) fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens)
         .is_some_and(|shape| shape.this_turn)
+}
+
+#[cfg(test)]
+pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    effect_grammar::followup_shapes::parse_cant_be_regenerated_followup(tokens).is_some()
 }
 
 pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(
@@ -1723,6 +2514,26 @@ pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(
         return false;
     };
     apply_cant_be_regenerated_to_effect(last)
+}
+
+pub(crate) fn apply_cant_be_regenerated_to_last_destroy_group(
+    effects: &mut Vec<EffectAst>,
+) -> bool {
+    let Some(last) = effects.last_mut() else {
+        return false;
+    };
+    let EffectAst::Coordinated {
+        effects: coordinated,
+        ..
+    } = last
+    else {
+        return apply_cant_be_regenerated_to_effect(last);
+    };
+    let mut applied = false;
+    for effect in coordinated {
+        applied |= apply_cant_be_regenerated_to_effect(effect);
+    }
+    applied
 }
 
 pub(crate) fn apply_cant_be_regenerated_to_last_target_effect(
@@ -1805,6 +2616,50 @@ mod tests {
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         parse_top_cards_view_sentence, parse_typed_effect_bundle_lexed,
     };
+
+    fn contains_still_land_animation(effects: &[crate::cards::builders::EffectAst]) -> bool {
+        effects.iter().any(|effect| {
+            if let crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                            preserve_other_types,
+                            type_retention_surface,
+                            ..
+                        },
+                    ..
+                },
+            ) = effect
+                && *preserve_other_types
+                && *type_retention_surface == Some(ironsmith_core::TypeRetentionSurface::StillALand)
+            {
+                return true;
+            }
+
+            let mut found = false;
+            super::for_each_nested_effects(effect, true, |nested| {
+                found |= contains_still_land_animation(nested);
+            });
+            found
+        })
+    }
+
+    #[test]
+    fn still_lands_sentence_reaches_followup_registry() {
+        let tokens = lex_line(
+            "Untap up to two target lands you control. They become 5/5 Elemental creatures with flying and haste until end of turn. They're still lands.",
+            0,
+        )
+        .expect("land animation fixture should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("land animation with retained-type followup should parse");
+
+        assert!(
+            contains_still_land_animation(&parsed),
+            "the retained-land sentence must annotate the preceding animation: {parsed:#?}"
+        );
+    }
 
     #[test]
     fn consult_mana_value_condition_normalizes_spell_apostrophe_prefix() {
@@ -2255,7 +3110,7 @@ mod tests {
             ))
         ));
         let Some(crate::cards::builders::EffectAst::IfResult {
-            predicate: crate::cards::builders::IfResultPredicate::Did,
+            predicate: crate::cards::builders::IfResultPredicate::WonClash,
             effects,
         }) = parsed.last()
         else {
@@ -2297,6 +3152,55 @@ mod tests {
                 && lowered_debug.contains("Trample"),
             "lowered branch must retain the clash condition and both rewards: {lowered_debug}"
         );
+    }
+
+    #[test]
+    fn leading_if_you_do_keeps_a_matched_consult_sequence_gated() {
+        let tokens = lex_line(
+            "You may exile it. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and put all other cards revealed this way into your graveyard.",
+            0,
+        )
+        .expect("Gamekeeper-style result sequence should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("Gamekeeper-style result sequence should parse");
+        let [crate::cards::builders::EffectAst::MayByPlayer { .. }, gated] = parsed.as_slice()
+        else {
+            panic!("expected an optional antecedent followed by one gated sequence: {parsed:#?}");
+        };
+        let crate::cards::builders::EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects,
+        } = gated
+        else {
+            panic!("expected the consult procedure to remain under `If you do`: {gated:#?}");
+        };
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+                    ..
+                }
+            )
+        )));
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::MoveToZone {
+                        zone: crate::zone::Zone::Battlefield,
+                        ..
+                    },
+                    ..
+                }
+            )
+        )));
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::ForEachTagged { .. }
+        )));
     }
 
     #[test]
@@ -2350,6 +3254,167 @@ mod tests {
         let debug = format!("{lowered:#?}");
         assert!(debug.contains("self_replacements"), "{debug}");
         assert!(debug.contains("CreatureDiedThisTurn"), "{debug}");
+    }
+
+    #[test]
+    fn fight_death_replacement_tracks_the_secondary_fighter() {
+        for text in [
+            "This creature fights target creature you don't control. If that creature would die this turn, exile it instead.",
+            "This creature fights up to one target creature an opponent controls. If that creature would die this turn, exile it instead.",
+            "Target creature you control fights target creature an opponent controls. If the creature an opponent controls would die this turn, exile it instead.",
+        ] {
+            let tokens = lex_line(text, 0).expect("lex fight death-replacement sequence");
+            let parsed = super::parse_effect_sentences_lexed(&tokens)
+                .expect("parse fight death-replacement sequence");
+
+            let fight_target = parsed
+                .first()
+                .and_then(super::secondary_fight_target_from_effect)
+                .unwrap_or_else(|| panic!("expected a fight effect for {text:?}: {parsed:#?}"));
+            let replacement_target = parsed.iter().find_map(|effect| {
+                let crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::RegisterZoneReplacement {
+                                target,
+                                ..
+                            },
+                        ..
+                    },
+                ) = effect
+                else {
+                    return None;
+                };
+                Some(target)
+            });
+
+            assert_eq!(
+                replacement_target,
+                Some(&fight_target),
+                "replacement must follow fight's secondary target for {text:?}: {parsed:#?}"
+            );
+
+            let lowered =
+                crate::runtime_backend::compile_support::compile_statement_effects(&parsed)
+                    .unwrap_or_else(|error| {
+                        panic!("lower fight replacement for {text:?}: {error}")
+                    });
+            assert!(
+                format!("{lowered:#?}").contains("RegisterZoneReplacementEffect"),
+                "expected event-layer replacement for {text:?}: {lowered:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn compound_damage_regeneration_exile_keeps_its_gate() {
+        for (text, kicked) in [
+            (
+                "If it's a creature, it can't be regenerated this turn, and if it would die this turn, exile it instead.",
+                false,
+            ),
+            (
+                "If this spell was kicked, that creature can't be regenerated this turn and if it would die this turn, exile it instead.",
+                true,
+            ),
+        ] {
+            let tokens = lex_line(text, 0).expect("lex compound regeneration/exile rider");
+            let parsed = super::damage_regeneration_exile_followup_from_sentence_tokens(&tokens)
+                .expect("parse compound regeneration/exile rider");
+            let [
+                crate::cards::builders::EffectAst::Conditional {
+                    predicate,
+                    if_true,
+                    if_false,
+                },
+            ] = parsed.as_slice()
+            else {
+                panic!("expected one gated compound rider for {text:?}: {parsed:#?}");
+            };
+
+            if kicked {
+                assert!(matches!(
+                    predicate,
+                    crate::cards::builders::PredicateAst::ThisSpellWasKicked
+                ));
+            } else {
+                let crate::cards::builders::PredicateAst::TaggedMatches(tag, filter) = predicate
+                else {
+                    panic!("expected creature gate for {text:?}: {parsed:#?}");
+                };
+                assert_eq!(tag.as_str(), crate::cards::builders::IT_TAG);
+                assert_eq!(filter, &crate::target::ObjectFilter::creature());
+            }
+            assert!(if_false.is_empty());
+            assert!(matches!(
+                if_true.as_slice(),
+                [
+                    crate::cards::builders::EffectAst::SubjectVerb(
+                        crate::cards::builders::SubjectVerbEffectAst {
+                            action: crate::cards::builders::SubjectVerbActionAst::Cant { .. },
+                            ..
+                        },
+                    ),
+                    crate::cards::builders::EffectAst::SubjectVerb(
+                        crate::cards::builders::SubjectVerbEffectAst {
+                            action:
+                                crate::cards::builders::SubjectVerbActionAst::RegisterZoneReplacement {
+                                    from_zone: Some(crate::zone::Zone::Battlefield),
+                                    to_zone: Some(crate::zone::Zone::Graveyard),
+                                    replacement_zone: crate::zone::Zone::Exile,
+                                    duration:
+                                        crate::cards::builders::ZoneReplacementDurationAst::OneShot,
+                                    ..
+                                },
+                            ..
+                        },
+                    ),
+                ]
+            ));
+        }
+    }
+
+    #[test]
+    fn bare_imperative_choose_does_not_inherit_a_previous_opponent_loop() {
+        let tokens = lex_line(
+            "Exile all opponents' graveyards. Choose a nonland card exiled this way.",
+            0,
+        )
+        .expect("multi-sentence opponent-exile choice should lex");
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("multi-sentence opponent-exile choice should parse");
+
+        assert!(
+            matches!(
+                parsed.get(1),
+                Some(crate::cards::builders::EffectAst::ChooseObjects {
+                    player: crate::cards::builders::PlayerAst::You,
+                    ..
+                })
+            ),
+            "{parsed:#?}"
+        );
+    }
+
+    #[test]
+    fn passive_voter_owner_survives_inside_a_vote_option() {
+        let tokens = lex_line(
+            "Each player votes for time or money. For each money vote, choose a permanent owned by the voter and gain control of it.",
+            0,
+        )
+        .expect("vote option with a voter-owned choice should lex");
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("vote option with a voter-owned choice should parse");
+        let Some(crate::cards::builders::EffectAst::VoteOption { effects, .. }) = parsed.get(1)
+        else {
+            panic!("expected a typed vote option, got {parsed:#?}");
+        };
+        let Some(crate::cards::builders::EffectAst::ChooseObjects { filter, .. }) = effects.first()
+        else {
+            panic!("expected the vote option to start with an object choice: {effects:#?}");
+        };
+
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
     }
 }
 
@@ -2420,6 +3485,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
+            | SubjectVerbActionAst::AssignNoCombatDamage { source: target, .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
@@ -2644,6 +3710,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         if let Some(targets_only_object) = filter.targets_only_object.as_mut() {
             replace_in_filter(targets_only_object, replacement, clause)?;
         }
+        if let Some(attached_to) = filter.attached_to_object.as_mut() {
+            replace_in_filter(attached_to, replacement, clause)?;
+        }
         for nested in &mut filter.any_of {
             replace_in_filter(nested, replacement, clause)?;
         }
@@ -2674,6 +3743,11 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
     ) -> Result<(), CardTextError> {
         if value_contains_unbound_x(value) {
             *value = replace_unbound_x_with_value(value.clone(), replacement, clause)?;
+        } else if value.unhinted() == replacement.unhinted()
+            && replacement.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && !value.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        {
+            *value = replacement.clone();
         }
         Ok(())
     }
@@ -2684,6 +3758,11 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         clause: &str,
     ) -> Result<(), CardTextError> {
         match component {
+            crate::costs::Cost::Mana(mana) if mana.has_x() => {
+                *component = crate::costs::Cost::dynamic_mana(
+                    ironsmith_core::DynamicManaCost::from_x(mana.clone(), replacement.clone()),
+                );
+            }
             crate::costs::Cost::DynamicMana(dynamic) => {
                 if dynamic.base.has_x() && dynamic.x_value.is_none() {
                     dynamic.x_value = Some(replacement.clone());
@@ -2730,6 +3809,40 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
     }
 
     match effect {
+        EffectAst::UnlessPays { effects, cost, .. } => {
+            let consequence_references_it =
+                crate::runtime_backend::compile_support::effects_reference_it_tag(effects);
+            replace_values_in_total_cost(cost, replacement, clause)?;
+            replace_unbound_x_in_effects_anywhere(effects, replacement, clause)?;
+            if consequence_references_it {
+                super::rewrite_unless_cost_source_values_to_it_tag(effect);
+            }
+        }
+        EffectAst::ChooseObjects {
+            filter,
+            count,
+            count_value,
+            ..
+        }
+        | EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count,
+            count_value,
+            ..
+        }
+        | EffectAst::ChooseObjectsBottomOfLibrary {
+            filter,
+            count,
+            count_value,
+            ..
+        } => {
+            replace_in_filter(filter, replacement, clause)?;
+            if let Some(value) = count_value.as_mut() {
+                replace_value(value, replacement, clause)?;
+            } else if count.dynamic_x {
+                *count_value = Some(replacement.clone());
+            }
+        }
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::Draw { count: amount }
             | SubjectVerbActionAst::ExileTopOfLibrary { count: amount, .. }
@@ -2844,12 +3957,38 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                     replace_value(max_exposed, replacement, clause)?;
                 }
             }
+            SubjectVerbActionAst::ReturnToHand { target, .. }
+            | SubjectVerbActionAst::Destroy { target, .. }
+            | SubjectVerbActionAst::Exile { target, .. }
+            | SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::Untap { target } => {
+                replace_in_target(target, replacement, clause)?;
+            }
+            SubjectVerbActionAst::ReturnAllToHand { filter, .. }
+            | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
+            | SubjectVerbActionAst::DestroyAll { filter, .. }
+            | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
+            | SubjectVerbActionAst::ExileAll { filter, .. } => {
+                replace_in_filter(filter, replacement, clause)?;
+            }
+            SubjectVerbActionAst::RevealCardsFromHand {
+                count,
+                count_value,
+                ..
+            } => {
+                if count.dynamic_x {
+                    if let Some(value) = count_value {
+                        replace_value(value, replacement, clause)?;
+                    } else {
+                        *count_value = Some(replacement.clone());
+                    }
+                }
+            }
             SubjectVerbActionAst::DealDamageEqualToPower { .. }
             | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::RevealTagged { .. }
             | SubjectVerbActionAst::PutOntoBattlefield { .. }
-            | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }
@@ -2862,6 +4001,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
             | SubjectVerbActionAst::ManifestTopCardOfLibrary
+            | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
             | SubjectVerbActionAst::Earthbend { .. }
@@ -2936,18 +4076,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PhaseInAll { .. }
             | SubjectVerbActionAst::Transform { .. }
             | SubjectVerbActionAst::Convert { .. }
-            | SubjectVerbActionAst::Tap { .. }
-            | SubjectVerbActionAst::Untap { .. }
-            | SubjectVerbActionAst::Destroy { .. }
-            | SubjectVerbActionAst::DestroyAll { .. }
-            | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
-            | SubjectVerbActionAst::Exile { .. }
-            | SubjectVerbActionAst::ExileAll { .. }
             | SubjectVerbActionAst::LookAtHand { .. }
             | SubjectVerbActionAst::Counter { .. }
-            | SubjectVerbActionAst::ReturnToHand { .. }
-            | SubjectVerbActionAst::ReturnAllToHand { .. }
-            | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
@@ -2956,9 +4086,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
             | SubjectVerbActionAst::RevealTop
-            | SubjectVerbActionAst::PutIntoHand { .. }
             | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
-            | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
             | SubjectVerbActionAst::PutSticker { .. }
@@ -2967,6 +4095,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ScaleXValue { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
+            | SubjectVerbActionAst::AssignNoCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
@@ -3016,6 +4145,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::TagMatchingObjects { .. }
             | SubjectVerbActionAst::PumpByLastEffect { .. }
             | SubjectVerbActionAst::AddCardTypes { .. }
+            | SubjectVerbActionAst::SetCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
             | SubjectVerbActionAst::SetCreatureSubtypes { .. }
@@ -3104,8 +4234,9 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     else {
         return Ok(());
     };
-    let Some(where_value) = parse_value_binding_clause(shape.binding_tokens)
-        .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+    let Some(where_value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(shape.binding_tokens)
+        .or_else(|| parse_value_binding_clause(shape.binding_tokens))
+        .map(|value| with_where_x_surface_hints(value, tokens))
     else {
         return Ok(());
     };
@@ -3567,6 +4698,7 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
+        | EffectAst::DelayedUntilNextMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
@@ -3849,11 +4981,15 @@ pub(crate) fn try_apply_token_granted_ability_followup(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CreateTokenWithMods {
-                    granted_abilities, ..
+                    granted_abilities,
+                    ability_presentation,
+                    ..
                 },
             ..
         }) => {
             granted_abilities.extend(abilities.iter().cloned());
+            *ability_presentation =
+                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence);
             Ok(true)
         }
         EffectAst::Conditional {

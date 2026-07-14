@@ -233,10 +233,7 @@ pub(super) fn matches_surface(words: &[&str], surface: TargetSurface) -> bool {
             ],
         ),
         TargetSurface::Spell => exact_one_of(words, &[&["spell"], &["spells"]]),
-        TargetSurface::TaggedObject => exact_one_of(
-            words,
-            &[&["that", "permanent"], &["that", "creature"], &["it"]],
-        ),
+        TargetSurface::TaggedObject => exact_one_of(words, &[&["the", "card"], &["it"]]),
         TargetSurface::TargetNoun => exact_one_of(words, &[&["target"], &["targets"]]),
         TargetSurface::ThatOpponent => permission_shapes::exact_words(words, &["that", "opponent"]),
         TargetSurface::ThatOrTheWord => exact_one_of(words, &[&["that"], &["the"]]),

@@ -87,6 +87,50 @@ impl GameState {
             self.update_replacement_effects();
             self.update_cant_effects();
         }
+
+        // Ascend on a permanent is a static ability, not a trigger. Its check
+        // happens only after continuous effects have been reapplied. Earning
+        // the blessing can itself turn on conditional continuous abilities,
+        // so refresh those effects once more when a designation is granted.
+        if self.grant_citys_blessings_from_permanent_ascend() {
+            self.update_static_ability_effects();
+            self.update_replacement_effects();
+            self.update_cant_effects();
+        }
+    }
+
+    fn grant_citys_blessings_from_permanent_ascend(&mut self) -> bool {
+        let ascend_controllers = self
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|&object_id| {
+                self.current_has_static_ability_id(
+                    object_id,
+                    crate::static_abilities::StaticAbilityId::Ascend,
+                )
+            })
+            .filter_map(|object_id| self.controller_of_id(object_id))
+            .collect::<HashSet<_>>();
+
+        let newly_blessed = ascend_controllers
+            .into_iter()
+            .filter(|&player| {
+                !self.has_citys_blessing(player)
+                    && self
+                        .battlefield
+                        .iter()
+                        .copied()
+                        .filter(|&object_id| self.controller_of_id(object_id) == Some(player))
+                        .count()
+                        >= 10
+            })
+            .collect::<Vec<_>>();
+
+        for player in &newly_blessed {
+            self.grant_citys_blessing(*player);
+        }
+        !newly_blessed.is_empty()
     }
 
     pub fn library_top_revision(&self, player: PlayerId) -> u64 {
@@ -118,6 +162,7 @@ impl GameState {
             .any(|permission| {
                 permission.allows(self, payer, source)
                     && permission.permission.any_color_mana_symbol.is_none()
+                    && permission.permission.mode.allows_any_color()
             })
     }
 
@@ -134,7 +179,7 @@ impl GameState {
             if let Some(symbol) = permission.permission.any_color_mana_symbol {
                 policy.add_symbol_as_any_color(symbol);
             } else {
-                policy.allow_any_color = true;
+                policy.allow_mode(permission.permission.mode);
             }
             policy.other_mana_only_as_colorless |=
                 permission.permission.other_mana_only_as_colorless;
@@ -549,6 +594,19 @@ impl GameState {
         self.with_active_battlefield_static_abilities(|source, controller, ability| {
             ability
                 .skips_upkeep_for_player(self, source, controller, player)
+                .then_some(true)
+        })
+        .unwrap_or(false)
+            && self.player(player).is_some()
+    }
+
+    /// Whether an active battlefield static ability makes this player skip
+    /// their draw step. Unlike one-shot skip effects, this is derived from the
+    /// source's current controller and ends as soon as the source leaves.
+    pub fn player_skips_draw_step(&self, player: PlayerId) -> bool {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            ability
+                .skips_draw_step_for_player(self, source, controller, player)
                 .then_some(true)
         })
         .unwrap_or(false)
@@ -1085,6 +1143,10 @@ impl GameState {
         let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
         let original_pool = self.player(payer).map(|player| player.mana_pool.clone());
+        let original_provenance = self
+            .player(payer)
+            .map(|player| player.mana_source_provenance.clone())
+            .unwrap_or_default();
         if let Some(symbol) = source
             .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason))
         {
@@ -1110,15 +1172,23 @@ impl GameState {
                 if spent > 0 && !player.mana_pool.remove(symbol, spent) {
                     return false;
                 }
+                player.trim_mana_source_provenance_to_pool();
             } else {
                 return false;
             }
             if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
                 if let Some(player) = self.player_mut(payer) {
                     player.mana_pool = original_pool;
+                    player.mana_source_provenance = original_provenance.clone();
                 }
                 return false;
             }
+            self.record_bulk_mana_sources_spent_to_cast(
+                payer,
+                source,
+                reason,
+                &original_provenance,
+            );
             return true;
         }
         let (paid, life_to_pay, payment_pool, spent_restricted) = {
@@ -1163,18 +1233,91 @@ impl GameState {
             return false;
         }
         if let Some(player) = self.player_mut(payer) {
+            let before_pool = player.mana_pool.clone();
+            let spent_restricted_units = spent_restricted
+                .iter()
+                .filter_map(|idx| player.restricted_mana.get(*idx).cloned())
+                .collect::<Vec<_>>();
+            for symbol in [
+                crate::mana::ManaSymbol::White,
+                crate::mana::ManaSymbol::Blue,
+                crate::mana::ManaSymbol::Black,
+                crate::mana::ManaSymbol::Red,
+                crate::mana::ManaSymbol::Green,
+                crate::mana::ManaSymbol::Colorless,
+            ] {
+                let total_spent = before_pool
+                    .amount(symbol)
+                    .saturating_sub(payment_pool.amount(symbol));
+                let restricted_spent = spent_restricted_units
+                    .iter()
+                    .filter(|unit| unit.symbol == symbol)
+                    .count() as u32;
+                for _ in 0..total_spent.saturating_sub(restricted_spent) {
+                    player.take_mana_source_provenance(symbol, false, None);
+                }
+            }
+            for unit in &spent_restricted_units {
+                player.take_mana_source_provenance(unit.symbol, true, Some(unit.source));
+            }
             player.mana_pool = payment_pool;
             for idx in spent_restricted.into_iter().rev() {
                 player.restricted_mana.remove(idx);
             }
+            player.trim_mana_source_provenance_to_pool();
         }
         if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
             if let (Some(original_pool), Some(player)) = (original_pool, self.player_mut(payer)) {
                 player.mana_pool = original_pool;
+                player.mana_source_provenance = original_provenance.clone();
             }
             return false;
         }
+        self.record_bulk_mana_sources_spent_to_cast(payer, source, reason, &original_provenance);
         true
+    }
+
+    fn record_bulk_mana_sources_spent_to_cast(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        before: &[crate::player::ManaSourceProvenance],
+    ) {
+        if reason != crate::costs::PaymentReason::CastSpell || before.is_empty() {
+            return;
+        }
+        let Some(spell_id) = source else {
+            return;
+        };
+        let mut remaining = self
+            .player(payer)
+            .map(|player| player.mana_source_provenance.clone())
+            .unwrap_or_default();
+        let spent = before
+            .iter()
+            .filter_map(|unit| {
+                if let Some(index) = remaining.iter().position(|candidate| candidate == unit) {
+                    remaining.remove(index);
+                    None
+                } else {
+                    unit.snapshot.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        if spent.is_empty() {
+            return;
+        }
+        let Some(spell) = self.object_mut(spell_id) else {
+            return;
+        };
+        spell
+            .cast_tagged_objects
+            .entry(crate::tag::TagKey::from(
+                ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG,
+            ))
+            .or_default()
+            .extend(spent);
     }
 
     fn chosen_color_activation_mana_restriction(
@@ -1608,12 +1751,16 @@ impl GameState {
 
     /// Returns true if the given player has the city's blessing designation.
     pub fn has_citys_blessing(&self, player: PlayerId) -> bool {
-        self.command_zone.iter().any(|&obj_id| {
-            self.object(obj_id).is_some_and(|obj| {
-                self.controller_of(obj) == player
-                    && obj.name.eq_ignore_ascii_case("City's Blessing")
-            })
-        })
+        self.citys_blessing.contains(&player)
+    }
+
+    /// Permanently grant a player the city's blessing designation.
+    pub fn grant_citys_blessing(&mut self, player: PlayerId) -> bool {
+        let granted = self.citys_blessing.insert(player);
+        if granted {
+            self.mark_continuous_state_dirty();
+        }
+        granted
     }
 
     /// Returns all object IDs in a given zone.

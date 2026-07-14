@@ -266,7 +266,7 @@ pub(crate) fn parse_reveal_source_exiled_permanents_sentence_lexed(
         CardType::Planeswalker,
         CardType::Battle,
     ];
-    let put_onto_battlefield = EffectAst::subject_verb_return_all_to_battlefield(
+    let put_onto_battlefield = EffectAst::subject_verb_put_all_onto_battlefield(
         permanents,
         false,
         false,
@@ -299,6 +299,24 @@ pub(crate) fn parse_effect_chain_lexed(
     }
 
     if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(tokens) {
+        let mut count_words = vec!["for", "each"];
+        count_words.extend(crate::runtime_backend::token_word_refs(shape.filter_tokens));
+        if let Some((count, used)) =
+            crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
+            && used == count_words.len()
+            && !matches!(count.unhinted(), Value::Count(_))
+        {
+            let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
+            if effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "for-each scalar sentence missing effect payload".to_string(),
+                ));
+            }
+            return Ok(vec![EffectAst::RepeatEffects {
+                count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                effects,
+            }]);
+        }
         let filter = parse_object_filter(shape.filter_tokens, false)?;
         let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
         if effects.is_empty() {
@@ -635,9 +653,44 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
         POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
         &POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
     )? {
+        let mut effects = effects;
+        append_missing_coordinated_return_discard_tail(tokens, &mut effects)?;
         return Ok(effects);
     }
     parse_effect_chain_inner_lexed(tokens)
+}
+
+pub(crate) fn append_missing_coordinated_return_discard_tail(
+    tokens: &[OwnedLexToken],
+    effects: &mut Vec<EffectAst>,
+) -> Result<(), CardTextError> {
+    if !matches!(
+        chain_grammar::coordinated_target_action_kind(tokens),
+        Some(chain_grammar::CoordinatedTargetActionKind::Return)
+    ) || effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Discard { .. } | SubjectVerbActionAst::DiscardHand,
+                ..
+            })
+        )
+    }) {
+        return Ok(());
+    }
+    if let Some(discard_tokens) = chain_grammar::trailing_then_discard_tokens(tokens) {
+        let mut discard_effects = parse_effect_chain_lexed(discard_tokens)?;
+        if discard_tokens
+            .first()
+            .is_some_and(|token| token.is_word("discard"))
+        {
+            for effect in &mut discard_effects {
+                bind_implicit_player_context(effect, PlayerAst::You);
+            }
+        }
+        effects.extend(discard_effects);
+    }
+    Ok(())
 }
 
 pub(crate) fn parse_effect_chain_inner_lexed(
@@ -660,6 +713,15 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         return Ok(effects);
     }
     if let Some(effects) = parse_return_it_then_loses_all_abilities_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(clauses) =
+        super::player_subject_sequences::split_quantified_opponent_then_controller_clauses(tokens)
+    {
+        let mut effects = Vec::new();
+        for clause in clauses {
+            effects.extend(parse_effect_chain_inner_lexed(clause)?);
+        }
         return Ok(effects);
     }
 
@@ -933,7 +995,276 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     collapse_token_copy_next_end_step_exile_followup_lexed(&mut effects, tokens);
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
+    append_missing_coordinated_return_discard_tail(tokens, &mut effects)?;
+    bind_adjacent_discard_count_draws(&mut effects);
+    bind_adjacent_implicit_draw_discard_subjects(&mut effects);
+    bind_adjacent_life_stat_pronouns(&mut effects, tokens);
+    if let Some(kind) = chain_grammar::coordinated_target_action_kind(tokens) {
+        wrap_leading_coordinated_target_actions(&mut effects, kind);
+    }
+    if chain_grammar::coordinated_tap_then_next_untap(tokens)
+        && tap_then_next_untap_actions(&effects)
+    {
+        return Ok(vec![EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+        }]);
+    }
+    if chain_grammar::coordinated_source_damage_then_gain(tokens)
+        && source_damage_then_gain_ability_actions(&effects)
+    {
+        return Ok(vec![EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+        }]);
+    }
+    if let Some(leading_duration) =
+        chain_grammar::coordinated_target_stat_modifier_leading_duration(tokens)
+        && effects.len() >= 2
+        && effects.iter().all(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Pump { .. },
+                    ..
+                })
+            )
+        })
+    {
+        return Ok(vec![EffectAst::Coordinated {
+            effects,
+            leading_duration,
+        }]);
+    }
     Ok(effects)
+}
+
+fn tap_then_next_untap_actions(effects: &[EffectAst]) -> bool {
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Tap { .. },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Cant {
+                    restriction: crate::effect::Restriction::Untap(_),
+                    duration: Until::ControllersNextUntapStep,
+                    condition: None,
+                },
+            ..
+        }),
+    ] = effects
+    else {
+        return false;
+    };
+    true
+}
+
+fn coordinated_target_action_matches(
+    effect: &EffectAst,
+    kind: chain_grammar::CoordinatedTargetActionKind,
+) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+        return false;
+    };
+    matches!(
+        (kind, action),
+        (
+            chain_grammar::CoordinatedTargetActionKind::Destroy,
+            SubjectVerbActionAst::Destroy { .. }
+        ) | (
+            chain_grammar::CoordinatedTargetActionKind::Exile,
+            SubjectVerbActionAst::Exile { .. }
+        ) | (
+            chain_grammar::CoordinatedTargetActionKind::Return,
+            SubjectVerbActionAst::ReturnToHand { .. }
+        )
+    )
+}
+
+fn wrap_leading_coordinated_target_actions(
+    effects: &mut Vec<EffectAst>,
+    kind: chain_grammar::CoordinatedTargetActionKind,
+) {
+    let coordinated_len = effects
+        .iter()
+        .take_while(|effect| coordinated_target_action_matches(effect, kind))
+        .count();
+    if coordinated_len < 2 {
+        return;
+    }
+    let remainder = effects.split_off(coordinated_len);
+    let coordinated = std::mem::take(effects);
+    effects.push(EffectAst::Coordinated {
+        effects: coordinated,
+        leading_duration: false,
+    });
+    effects.extend(remainder);
+}
+
+fn target_ast_is_source(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Source(_) => true,
+        TargetAst::Object(filter, _, _) => filter.source,
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_ast_is_source(inner)
+        }
+        _ => false,
+    }
+}
+
+fn source_damage_then_gain_ability_actions(effects: &[EffectAst]) -> bool {
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. },
+            ..
+        }),
+    ] = effects
+    else {
+        return false;
+    };
+    target_ast_is_source(source) && target_ast_is_source(target)
+}
+
+fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
+    fn is_discard(effect: &EffectAst) -> bool {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Discard { .. },
+                ..
+            })
+        )
+    }
+
+    fn bind_draw(effect: &mut EffectAst) {
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) = effect
+        else {
+            return;
+        };
+        *count = match count.unhinted() {
+            Value::EventValue(crate::effect::EventValueSpec::Amount) => {
+                Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::Count,
+                }
+            }
+            Value::EventValueOffset(crate::effect::EventValueSpec::Amount, offset) => {
+                Value::PendingEffectMetricOffset {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::Count,
+                    offset: *offset,
+                }
+            }
+            _ => return,
+        };
+    }
+
+    for index in 0..effects.len().saturating_sub(1) {
+        if is_discard(&effects[index]) {
+            bind_draw(&mut effects[index + 1]);
+        }
+    }
+}
+
+fn bind_adjacent_implicit_draw_discard_subjects(effects: &mut [EffectAst]) {
+    for index in 0..effects.len().saturating_sub(1) {
+        let draw_is_implicit = matches!(
+            &effects[index],
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action: SubjectVerbActionAst::Draw { .. },
+            }) if subject.player == PlayerAst::Implicit
+        );
+        if !draw_is_implicit {
+            continue;
+        }
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::Discard { .. },
+        }) = &mut effects[index + 1]
+            && subject.player == PlayerAst::Implicit
+        {
+            subject.player = PlayerAst::You;
+        }
+    }
+}
+
+fn bind_adjacent_life_stat_pronouns(effects: &mut [EffectAst], tokens: &[OwnedLexToken]) {
+    let words = token_word_refs(tokens);
+    if !words.windows(2).any(|pair| {
+        pair[0].eq_ignore_ascii_case("its")
+            && matches!(pair[1].to_ascii_lowercase().as_str(), "power" | "toughness")
+    }) {
+        return;
+    }
+
+    fn tagged_stat_reference(value: &Value) -> Option<crate::target::ChooseSpec> {
+        let spec = match value.unhinted() {
+            Value::PowerOf(spec) | Value::ToughnessOf(spec) => spec.as_ref(),
+            _ => return None,
+        };
+        matches!(spec.unhinted(), crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+            .then(|| spec.clone())
+    }
+
+    fn life_amount(effect: &EffectAst) -> Option<&Value> {
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+            return None;
+        };
+        match action {
+            SubjectVerbActionAst::GainLife { amount }
+            | SubjectVerbActionAst::LoseLife { amount } => Some(amount),
+            _ => None,
+        }
+    }
+
+    fn retarget_source_stat(value: &mut Value, antecedent: &crate::target::ChooseSpec) {
+        match value {
+            Value::SurfaceHinted { value, .. } => retarget_source_stat(value, antecedent),
+            Value::SourcePower => {
+                *value = Value::PowerOf(Box::new(antecedent.clone()));
+            }
+            Value::SourceToughness => {
+                *value = Value::ToughnessOf(Box::new(antecedent.clone()));
+            }
+            Value::PowerOf(spec)
+                if matches!(spec.unhinted(), crate::target::ChooseSpec::Source) =>
+            {
+                *spec = Box::new(antecedent.clone());
+            }
+            Value::ToughnessOf(spec)
+                if matches!(spec.unhinted(), crate::target::ChooseSpec::Source) =>
+            {
+                *spec = Box::new(antecedent.clone());
+            }
+            _ => {}
+        }
+    }
+
+    for index in 0..effects.len().saturating_sub(1) {
+        let Some(antecedent) = life_amount(&effects[index]).and_then(tagged_stat_reference) else {
+            continue;
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = &mut effects[index + 1]
+        else {
+            continue;
+        };
+        let amount = match action {
+            SubjectVerbActionAst::GainLife { amount }
+            | SubjectVerbActionAst::LoseLife { amount } => amount,
+            _ => continue,
+        };
+        retarget_source_stat(amount, &antecedent);
+    }
 }
 
 fn bind_source_exiled_effect(effect: EffectAst, bind: bool) -> EffectAst {
@@ -1063,6 +1394,7 @@ fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Option<Until> 
                 | SubjectVerbActionAst::SetBasePower { duration, .. }
                 | SubjectVerbActionAst::BecomeBasePtCreature { duration, .. }
                 | SubjectVerbActionAst::AddCardTypes { duration, .. }
+                | SubjectVerbActionAst::SetCardTypes { duration, .. }
                 | SubjectVerbActionAst::RemoveCardTypes { duration, .. }
                 | SubjectVerbActionAst::AddSubtypes { duration, .. }
                 | SubjectVerbActionAst::AddColors { duration, .. }
@@ -1121,6 +1453,10 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
                     ..
                 }
                 | SubjectVerbActionAst::AddCardTypes {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::SetCardTypes {
                     duration: effect_duration,
                     ..
                 }
@@ -1342,6 +1678,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::ItMatches(_)
+            | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_)
             | PredicateAst::PlayerControlsMoreThanYou { .. }
             | PredicateAst::PlayerControls { .. }
@@ -1840,7 +2177,21 @@ fn expand_gain_lose_followup_segment_lexed(
 
     let previous_verb_idx = find_verb_lexed(previous)?.1;
     let mut expanded = Vec::new();
-    expanded.extend(previous.iter().take(previous_verb_idx).cloned());
+    let previous_subject =
+        strip_leading_gain_duration_prefix(trim_lexed_commas(&previous[..previous_verb_idx]));
+    let previous_subject_words = TokenWordView::new(previous_subject).word_refs();
+    if matches!(
+        previous_subject_words.as_slice(),
+        ["target", "player"] | ["target", "opponent"]
+    ) {
+        // The subject of a bare gain/lose follow-up is the already chosen target,
+        // not a second target. Preserve that provenance explicitly while retaining
+        // the synthetic subject this early parser path needs.
+        expanded.push(synthetic_lexed_word("that"));
+        expanded.push(synthetic_lexed_word("player"));
+    } else {
+        expanded.extend(previous.iter().take(previous_verb_idx).cloned());
+    }
     expanded.extend(segment.iter().cloned());
     Some(expanded)
 }
@@ -1865,6 +2216,7 @@ pub(crate) fn player_ast_from_filter_for_carry(filter: &PlayerFilter) -> Option<
                 Some(PlayerAst::Target)
             }
         }
+        PlayerFilter::AliasedTarget(_) => Some(PlayerAst::That),
         _ => None,
     }
 }
@@ -2098,7 +2450,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
-                | SubjectVerbActionAst::PutIntoHand { .. }
+                | SubjectVerbActionAst::MoveToZone { .. }
                 | SubjectVerbActionAst::AdditionalLandPlays { .. }
                 | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
                 | SubjectVerbActionAst::Sacrifice { .. }
@@ -2176,7 +2528,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
-                | SubjectVerbActionAst::PutIntoHand { .. }
+                | SubjectVerbActionAst::MoveToZone { .. }
                 | SubjectVerbActionAst::AdditionalLandPlays { .. }
                 | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
                 | SubjectVerbActionAst::Sacrifice { .. }
@@ -2262,6 +2614,14 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     clause_tokens: &[OwnedLexToken],
 ) {
     let clause_head = chain_grammar::parse_carry_clause_head_tokens(clause_tokens);
+    let explicitly_conjugated_player_action = clause_tokens.first().is_some_and(|token| {
+        token.is_word("draws") || token.is_word("scries") || token.is_word("surveils")
+    });
+    if clause_head == chain_grammar::CarryClauseHead::Choose
+        && normalize_imperative_choose_player(effect)
+    {
+        return;
+    }
     if clause_head == chain_grammar::CarryClauseHead::Create
         && normalize_imperative_create_player(effect)
     {
@@ -2279,6 +2639,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     action: SubjectVerbActionAst::Draw { .. },
                 })
             ) && clause_head == chain_grammar::CarryClauseHead::Draw)
+                && !explicitly_conjugated_player_action
                 || (matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2292,7 +2653,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                 ) && matches!(
                     clause_head,
                     chain_grammar::CarryClauseHead::Scry | chain_grammar::CarryClauseHead::Surveil
-                ))
+                ) && !explicitly_conjugated_player_action)
         }
         CarryContext::ForEachPlayer
         | CarryContext::ForEachTargetPlayers(_)
@@ -2316,12 +2677,31 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                         | chain_grammar::CarryClauseHead::Scry
                         | chain_grammar::CarryClauseHead::Surveil
                 )
+                && !explicitly_conjugated_player_action
         }
     };
     if should_skip {
         return;
     }
     maybe_apply_carried_player(effect, carried_context);
+}
+
+fn normalize_imperative_choose_player(effect: &mut EffectAst) -> bool {
+    let player = match effect {
+        EffectAst::ChooseObjects { player, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { player, .. }
+        | EffectAst::ChooseObjectsAcrossZones { player, .. } => player,
+        _ => return false,
+    };
+
+    if matches!(
+        player,
+        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent | PlayerAst::That
+    ) {
+        *player = PlayerAst::You;
+        return true;
+    }
+    false
 }
 
 fn normalize_imperative_create_player(effect: &mut EffectAst) -> bool {

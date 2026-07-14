@@ -3,9 +3,9 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
 
-use crate::{ObjectFilter, PlayerFilter};
+use crate::{ObjectFilter, PlayerFilter, TagKey, TaggedObjectConstraint, TaggedOpbjectRelation};
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 use super::super::{filters, leaf, primitives};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -17,6 +17,9 @@ pub(crate) enum AnthemSubjectGrammarMatch {
 pub(crate) fn parse_exact_anthem_subject_grammar(
     tokens: &[OwnedLexToken],
 ) -> Option<AnthemSubjectGrammarMatch> {
+    if let Some(filter) = parse_attachment_state_qualified_subject(trim_lexed_commas(tokens)) {
+        return Some(AnthemSubjectGrammarMatch::Filter(filter));
+    }
     primitives::parse_all(
         trim_lexed_commas(tokens),
         alt((
@@ -31,6 +34,36 @@ pub(crate) fn parse_exact_anthem_subject_grammar(
         "anthem subject",
     )
     .ok()
+}
+
+fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let tag = if words.ends_with(&["that", "is", "enchanted"])
+        || words.ends_with(&["that", "are", "enchanted"])
+    {
+        "enchanted"
+    } else if words.ends_with(&["that", "is", "equipped"])
+        || words.ends_with(&["that", "are", "equipped"])
+    {
+        "equipped"
+    } else {
+        return None;
+    };
+
+    let base_word_count = words.len().checked_sub(3)?;
+    let base_token_end = view.token_index_after_words(base_word_count)?;
+    let base_tokens = trim_lexed_commas(tokens.get(..base_token_end)?);
+    if base_tokens.is_empty() {
+        return None;
+    }
+    let mut filter =
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false).ok()?;
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(tag),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    Some(filter)
 }
 
 fn parse_distributive_filter_subject(

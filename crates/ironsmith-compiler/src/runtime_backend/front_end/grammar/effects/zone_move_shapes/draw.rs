@@ -32,6 +32,7 @@ pub(crate) enum DrawHeadCountShape<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DrawHeadShape<'a> {
     pub(crate) count: DrawHeadCountShape<'a>,
+    pub(crate) additional: bool,
     pub(crate) tail_tokens: &'a [OwnedLexToken],
     pub(crate) parsed_offset: Option<DrawCardCountOffset>,
 }
@@ -276,16 +277,19 @@ pub(crate) fn parse_draw_head_shape(
     };
 
     let rest = trimmed(tokens.get(used..).unwrap_or_default());
-    let tail_tokens = if embedded_card {
-        rest
+    let (additional, tail_tokens) = if embedded_card {
+        (false, rest)
     } else {
+        let additional =
+            primitives::parse_prefix(rest, primitives::kw("additional").void()).is_some();
         let (_, tail) =
             primitives::parse_prefix(rest, (opt(primitives::kw("additional")), card_noun).void())
                 .ok_or(DrawHeadShapeError::MissingCardKeyword)?;
-        trimmed(tail)
+        (additional, trimmed(tail))
     };
     Ok(DrawHeadShape {
         count,
+        additional,
         tail_tokens,
         parsed_offset,
     })
@@ -463,6 +467,38 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
         )
             .void()
     })?;
+
+    // Keep the object restriction carried by filtered mill-result phrases such
+    // as "for each creature card put into their graveyard this way". Other
+    // prior-action counts (notably "destroyed this way") deliberately retain
+    // the effect-metric path below, which counts the producer's actual outcome.
+    let words = primitives::TokenWordView::new(tokens).to_word_refs();
+    let put_into_graveyard =
+        words.windows(2).any(|window| window == ["put", "into"]) && words.contains(&"graveyard");
+    let mut for_each_words = vec!["for", "each"];
+    for_each_words.extend(words.iter().copied());
+    if put_into_graveyard
+        && let Some((Value::Count(mut filter), used)) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )
+        && used == for_each_words.len()
+    {
+        filter.zone = Some(Zone::Graveyard);
+        if words
+            .windows(2)
+            .any(|window| window == ["their", "graveyard"])
+        {
+            filter.owner = Some(PlayerFilter::IteratedPlayer);
+        } else if words
+            .windows(2)
+            .any(|window| window == ["your", "graveyard"])
+        {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        return Some(Value::Count(filter));
+    }
+
     let metric = Value::PendingEffectMetric {
         source: ironsmith_core::EffectMetricSource::Outcome,
         metric: ironsmith_core::EffectMetric::Count,
@@ -496,7 +532,10 @@ pub(crate) fn parse_draw_counter_reference_shape(tokens: &[OwnedLexToken]) -> Op
     let (counter_idx, (), after_counter) = primitives::find_prefix(tokens, || {
         alt((primitives::kw("counter"), primitives::kw("counters"))).void()
     })?;
-    if counter_idx == 0 {
+    // A counter-reference count starts with its counter descriptor. A later
+    // counter noun belongs to an object filter such as "creature you control
+    // with a +1/+1 counter on it" and must fall through to that parser.
+    if counter_idx == 0 || counter_idx > 2 {
         return None;
     }
     let descriptor_tokens = trimmed(&tokens[..=counter_idx]);
@@ -655,11 +694,52 @@ mod tests {
     }
 
     #[test]
+    fn preserves_filtered_prior_action_counts() {
+        for (text, expected_filter) in [
+            (
+                "creature card put into their graveyard this way",
+                crate::target::ObjectFilter::creature()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::IteratedPlayer),
+            ),
+            (
+                "land card put into their graveyard this way",
+                crate::target::ObjectFilter::land()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::IteratedPlayer),
+            ),
+        ] {
+            let parsed = parse_draw_this_way_metric_shape(&tokens(text));
+            let expected = Value::Count(
+                expected_filter
+                    .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+            );
+            assert_eq!(parsed, Some(expected), "{text}");
+        }
+    }
+
+    #[test]
     fn parses_article_draw_head() {
         let draw_tokens = tokens("a card.");
         let head = parse_draw_head_shape(&draw_tokens).expect("article draw head");
         assert_eq!(head.count, DrawHeadCountShape::Resolved(Value::Fixed(1)));
+        assert!(!head.additional);
         assert!(head.tail_tokens.is_empty());
+
+        let additional = parse_draw_head_shape(&tokens("an additional card."))
+            .expect("additional article draw head");
+        assert_eq!(
+            additional.count,
+            DrawHeadCountShape::Resolved(Value::Fixed(1))
+        );
+        assert!(additional.additional);
+        assert!(additional.tail_tokens.is_empty());
+
+        let two = parse_draw_head_shape(&tokens("two additional cards."))
+            .expect("additional counted draw head");
+        assert_eq!(two.count, DrawHeadCountShape::Resolved(Value::Fixed(2)));
+        assert!(two.additional);
+        assert!(two.tail_tokens.is_empty());
     }
 
     #[test]

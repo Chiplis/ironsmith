@@ -5,20 +5,37 @@ use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{TriggerEvent, describe_player_filter_possessive};
+pub use ironsmith_core::trigger_model::EndStepSurface;
 
 /// Trigger that fires at the beginning of a player's end step.
 ///
 /// Used by cards like Conjurer's Closet, Obzedat, and many others.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct BeginningOfEndStepTrigger {
     /// Which player's end step triggers this ability.
     pub player: PlayerFilter,
+    /// Oracle wording for Any-player end-step triggers.
+    pub surface: EndStepSurface,
+}
+
+impl std::fmt::Debug for BeginningOfEndStepTrigger {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = formatter.debug_struct("BeginningOfEndStepTrigger");
+        debug.field("player", &self.player);
+        if self.surface != EndStepSurface::Each {
+            debug.field("surface", &self.surface);
+        }
+        debug.finish()
+    }
 }
 
 impl BeginningOfEndStepTrigger {
     /// Create a new end step trigger for the specified player.
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            surface: EndStepSurface::Each,
+        }
     }
 
     /// Create an end step trigger for your end step.
@@ -29,6 +46,15 @@ impl BeginningOfEndStepTrigger {
     /// Create an end step trigger for each end step.
     pub fn each_end_step() -> Self {
         Self::new(PlayerFilter::Any)
+    }
+
+    /// Create the legacy definite surface "the end step" while retaining the
+    /// same Any-player runtime semantics as `each_end_step`.
+    pub fn the_end_step() -> Self {
+        Self {
+            player: PlayerFilter::Any,
+            surface: EndStepSurface::Definite,
+        }
     }
 }
 
@@ -46,6 +72,9 @@ impl TriggerMatcher for BeginningOfEndStepTrigger {
     fn display(&self) -> String {
         match &self.player {
             PlayerFilter::You => "At the beginning of your end step".to_string(),
+            PlayerFilter::Any if self.surface == EndStepSurface::Definite => {
+                "At the beginning of the end step".to_string()
+            }
             PlayerFilter::Any => "At the beginning of each player's end step".to_string(),
             PlayerFilter::Opponent => "At the beginning of each opponent's end step".to_string(),
             PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
@@ -166,5 +195,24 @@ mod tests {
     fn test_display() {
         let trigger = BeginningOfEndStepTrigger::your_end_step();
         assert!(trigger.display().contains("end step"));
+    }
+
+    #[test]
+    fn definite_surface_keeps_any_end_step_matching_semantics() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let trigger = BeginningOfEndStepTrigger::the_end_step();
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        for active_player in [alice, bob] {
+            let event = TriggerEvent::new_with_provenance(
+                BeginningOfEndStepEvent::new(active_player),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert!(trigger.matches(&event, &ctx));
+        }
+        assert_eq!(trigger.display(), "At the beginning of the end step");
     }
 }

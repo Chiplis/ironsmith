@@ -3,7 +3,7 @@
 use crate::ability::AbilityKind;
 use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::{EffectMode, EffectOutcome, ExecutionFact};
-use crate::effects::helpers::resolve_value;
+use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
 use crate::game_state::GameState;
 use crate::game_state::TargetAssignment;
@@ -146,6 +146,12 @@ pub(crate) fn run_choose_mode(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    let chooser = effect
+        .chooser
+        .as_ref()
+        .map(|filter| resolve_player_filter(game, filter, ctx))
+        .transpose()?
+        .unwrap_or(ctx.controller);
     let mut max_modes = resolve_value(game, &effect.choose_count, ctx)?.max(0) as usize;
     let mut min_modes = resolve_value(game, &effect.min_choose_count, ctx)?.max(0) as usize;
     if ctx.optional_costs_paid.was_entwined() {
@@ -183,7 +189,9 @@ pub(crate) fn run_choose_mode(
 
     // Per MTG rule 601.2b, modes are chosen during casting (before targets).
     // Check if modes were pre-chosen during the casting process.
-    let chosen_indices: Vec<usize> = if let Some(ref pre_chosen) = ctx.chosen_modes {
+    let chosen_indices: Vec<usize> = if effect.chooser.is_none()
+        && let Some(ref pre_chosen) = ctx.chosen_modes
+    {
         pre_chosen.clone()
     } else if effect.random {
         let mut randomized_modes: Vec<usize> = (0..effect.modes.len())
@@ -244,7 +252,7 @@ pub(crate) fn run_choose_mode(
         make_decision(
             game,
             &mut ctx.decision_maker,
-            ctx.controller,
+            chooser,
             Some(ctx.source),
             spec,
         )

@@ -260,7 +260,27 @@ pub(crate) fn parse_subtype_list_enters_trigger_filter_lexed(
     filter.subtypes = subtypes;
     filter.controller = controller;
     filter.other = other;
+    if tokens.iter().any(|token| token.is_word("and/or")) {
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
     Some(filter)
+}
+
+#[test]
+fn subtype_list_enter_trigger_preserves_and_or_surface() {
+    let tokens =
+        crate::runtime_backend::lexer::lex_line("Rabbits, Bats, Birds, and/or Mice you control", 0)
+            .expect("lex subtype-list trigger subject");
+    let filter = parse_subtype_list_enters_trigger_filter_lexed(&tokens, true)
+        .expect("parse subtype-list trigger subject");
+
+    assert_eq!(filter.subtypes.len(), 4);
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert!(filter.other);
+    assert_eq!(
+        filter.union_connective(),
+        crate::filter::ObjectFilterUnionConnective::AndOr
+    );
 }
 
 fn parse_source_or_another_trigger_subject_filter_lexed(
@@ -469,8 +489,8 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
     Ok(Some(filter))
 }
 
-pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
-    trigger_subject_grammar::parse_draw_turn_surface_facts(words).exact_draws_this_turn
+pub(crate) fn parse_draw_numbers_each_turn(words: &[&str]) -> Vec<u32> {
+    trigger_subject_grammar::parse_draw_turn_surface_facts(words).draw_numbers_this_turn
 }
 
 pub(crate) fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool {
@@ -612,7 +632,12 @@ pub(crate) fn parse_spell_activity_trigger(
     }
 
     if let Some(cast) = cast_idx {
-        let mut filter_tokens = tokens.get(cast + 1..).unwrap_or_default();
+        let suffix_tokens = tokens.get(cast + 1..).unwrap_or_default();
+        let suffix_envelope =
+            crate::runtime_backend::grammar::trigger_subjects::parse_spell_filter_envelope(
+                suffix_tokens,
+            );
+        let mut filter_tokens = &suffix_tokens[..suffix_envelope.end];
         if filter_tokens.is_empty() {
             let prefix_tokens =
                 trigger_subject_grammar::trim_trailing_spell_auxiliary_tokens(&tokens[..cast]);
@@ -979,20 +1004,83 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<O
 pub(crate) fn append_token_reminder_to_last_create_effect(
     effects: &mut Vec<EffectAst>,
     tokens: &[OwnedLexToken],
-) -> bool {
+) -> Result<bool, CardTextError> {
     if tokens.is_empty() {
-        return false;
+        return Ok(false);
     }
     let reminder =
         crate::runtime_backend::grammar::token_definitions::parse_token_reminder_facts_tokens(
             tokens,
         );
     for effect in effects.iter_mut().rev() {
+        if append_token_granted_ability_to_effect(Some(effect), tokens)? {
+            return Ok(true);
+        }
         if append_token_reminder_to_effect(Some(effect), &reminder) {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
+}
+
+fn append_token_granted_ability_to_effect(
+    effect: Option<&mut EffectAst>,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    let Some(effect) = effect else {
+        return Ok(false);
+    };
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => {
+            let crate::runtime_backend::ast::SubjectVerbActionAst::CreateTokenWithMods {
+                definition,
+                granted_abilities,
+                ..
+            } = &mut subject_verb.action
+            else {
+                return Ok(false);
+            };
+            let Some(ability_tokens) = crate::runtime_backend::grammar::effects::dispatch_entry_shapes::parse_token_granted_ability_tokens(tokens) else {
+                return Ok(false);
+            };
+            let Ok(parsed) = crate::runtime_backend::sentences::effect_sentences::parse_granted_abilities_for_token_definition(
+                definition,
+                ability_tokens,
+            ) else {
+                // Older token-reminder shapes below still cover several
+                // specialized rules. An unsupported generic nested ability
+                // must leave those fallbacks available.
+                return Ok(false);
+            };
+            if parsed.is_empty() {
+                return Ok(false);
+            }
+            for ability in parsed {
+                if !granted_abilities.contains(&ability) {
+                    granted_abilities.push(ability);
+                }
+            }
+            Ok(true)
+        }
+        _ => {
+            let mut applied = false;
+            let mut error = None;
+            for_each_nested_effects_mut(effect, false, |nested| {
+                if applied || error.is_some() {
+                    return;
+                }
+                match append_token_granted_ability_to_effect(nested.last_mut(), tokens) {
+                    Ok(value) => applied = value,
+                    Err(value) => error = Some(value),
+                }
+            });
+            if let Some(error) = error {
+                Err(error)
+            } else {
+                Ok(applied)
+            }
+        }
+    }
 }
 
 pub(crate) fn append_token_reminder_to_effect(
@@ -1135,6 +1223,30 @@ mod typed_trigger_subject_migration_tests {
                 from_not_hand: false,
             }
         ));
+    }
+
+    #[test]
+    fn passive_spell_cast_during_turn_keeps_its_preverb_filter() {
+        let tokens = lex_line("an instant or sorcery spell is cast during your turn", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            caster,
+            during_turn,
+            ..
+        } = trigger
+        else {
+            panic!("expected a filtered passive cast trigger, got {trigger:?}");
+        };
+        assert_eq!(caster, PlayerFilter::Any);
+        assert_eq!(during_turn, Some(PlayerFilter::You));
+        assert_eq!(
+            filter.card_types,
+            vec![
+                crate::types::CardType::Instant,
+                crate::types::CardType::Sorcery
+            ]
+        );
     }
 
     #[test]

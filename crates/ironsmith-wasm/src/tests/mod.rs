@@ -70,6 +70,7 @@ fn seed_filler_cards(
         .collect()
 }
 
+mod opening_hand_pregame;
 mod shard_00;
 mod shard_01;
 mod shard_02;

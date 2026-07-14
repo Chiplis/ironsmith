@@ -120,6 +120,9 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
             let (kind, value) = match line.value {
                 crate::runtime_backend::model::MetadataLine::ManaCost(value) => ("ManaCost", value),
                 crate::runtime_backend::model::MetadataLine::TypeLine(value) => ("TypeLine", value),
+                crate::runtime_backend::model::MetadataLine::FirstPrintedSet(value) => {
+                    ("FirstPrintedSet", value)
+                }
                 crate::runtime_backend::model::MetadataLine::PowerToughness(value) => {
                     ("PowerToughness", value)
                 }

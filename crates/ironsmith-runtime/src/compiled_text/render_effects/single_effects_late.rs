@@ -172,6 +172,69 @@ pub(super) fn describe_villainous_choice(
     }
 }
 
+fn discard_count_covers_entire_hand(discard: &crate::effects::DiscardEffect) -> bool {
+    if discard.any_number || discard.random {
+        return false;
+    }
+    if discard
+        .count
+        .has_surface_hint(ironsmith_core::ValueSurfaceHint::AllCardsInHand)
+    {
+        return true;
+    }
+
+    match (&discard.count, discard.card_filter.as_ref()) {
+        (Value::CardsInHand(owner), None) => owner == &discard.player,
+        (Value::Count(count_filter), Some(card_filter)) if count_filter == card_filter => {
+            if count_filter.zone != Some(Zone::Hand)
+                || count_filter.owner.as_ref() != Some(&discard.player)
+            {
+                return false;
+            }
+
+            let mut unconstrained = count_filter.clone();
+            unconstrained.zone = None;
+            unconstrained.owner = None;
+            unconstrained == ObjectFilter::default()
+        }
+        _ => false,
+    }
+}
+
+fn effect_is_single_draw_instruction(effect: &Effect) -> bool {
+    let effect = structural_unwrap_render_wrappers(effect);
+    if effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() else {
+        return false;
+    };
+    let [inner] = may.effects.as_slice() else {
+        return false;
+    };
+    effect_is_single_draw_instruction(inner)
+}
+
+fn describe_next_turn_upkeep_delayed_instruction(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+    delayed_text: &str,
+) -> String {
+    let effects = schedule.effects.flattened_default_effects();
+    if let [effect] = effects
+        && effect_is_single_draw_instruction(effect)
+    {
+        let draw_text = delayed_text
+            .strip_prefix("you draw ")
+            .map(|remainder| format!("Draw {remainder}"))
+            .unwrap_or_else(|| capitalize_first(delayed_text));
+        return format!("{draw_text} at the beginning of the next turn's upkeep");
+    }
+    format!("At the beginning of the next turn's upkeep, {delayed_text}")
+}
+
 pub(crate) fn describe_effect_impl(effect: &Effect) -> String {
     include!("effect_impl/early.rs");
     include!("effect_impl/late.rs")
@@ -472,10 +535,12 @@ pub(super) fn describe_mana_usage_spell_filter_target_with_options(
         return Some(special);
     }
 
-    let mut described = describe_simple_mana_usage_spell_filter(filter)
-        .unwrap_or_else(|| describe_cast_limit_spell_filter(filter));
+    let mut described = describe_cast_limit_spell_filter(filter);
     if described.is_empty() {
         return None;
+    }
+    if pluralize_origin_spell {
+        return Some(pluralize_cast_spell_description(&described));
     }
     if described == "spell" {
         return Some("a spell".to_string());
@@ -591,59 +656,6 @@ pub(super) fn describe_special_mana_usage_spell_filter_target(
     }
 
     None
-}
-
-pub(super) fn describe_simple_mana_usage_spell_filter(filter: &ObjectFilter) -> Option<String> {
-    let mut remainder = filter.clone();
-    remainder.card_types.clear();
-    remainder.excluded_card_types.clear();
-    remainder.subtypes.clear();
-    remainder.supertypes.clear();
-    remainder.colors = None;
-    remainder.colorless = false;
-    remainder.multicolored = false;
-    if remainder != ObjectFilter::default() {
-        return None;
-    }
-
-    let mut descriptors = Vec::new();
-    descriptors.extend(
-        filter
-            .supertypes
-            .iter()
-            .map(|supertype| supertype.to_string()),
-    );
-    if filter.colorless {
-        descriptors.push("colorless".to_string());
-    }
-    if filter.multicolored {
-        descriptors.push("multicolored".to_string());
-    }
-    if let Some(colors) = filter.colors {
-        for color in crate::color::Color::ALL {
-            if colors.contains(color) {
-                descriptors.push(color.name().to_string());
-            }
-        }
-    }
-    descriptors.extend(
-        filter
-            .excluded_card_types
-            .iter()
-            .map(|card_type| format!("non{}", card_type.name())),
-    );
-    descriptors.extend(
-        filter
-            .card_types
-            .iter()
-            .map(|card_type| card_type.name().to_string()),
-    );
-    descriptors.extend(filter.subtypes.iter().map(|subtype| subtype.to_string()));
-
-    if descriptors.is_empty() {
-        return Some("spell".to_string());
-    }
-    Some(format!("{} spell", join_with_or(&descriptors)))
 }
 
 pub(super) fn describe_mana_usage_spell_target(
@@ -869,6 +881,11 @@ pub(super) fn describe_structured_ward_cost(cost: &crate::cost::TotalCost) -> St
 }
 
 pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(hideaway) = describe_structural_hideaway_keyword(triggered)
+    {
+        return Some(hideaway);
+    }
     if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(craft) = describe_structural_craft_keyword(ability, activated)
     {
@@ -1655,7 +1672,7 @@ pub(super) fn describe_structural_outlast_keyword(
     Some(format!("Outlast {cost_text}"))
 }
 
-pub(super) fn describe_structural_crew_keyword(
+pub(crate) fn describe_structural_crew_keyword(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
     if !matches!(activated.timing, ActivationTiming::AnyTime) || !activated.choices.is_empty() {
@@ -2564,6 +2581,36 @@ pub(super) fn trigger_is_state_based(trigger: &crate::triggers::Trigger) -> bool
         .is_some()
 }
 
+pub(super) fn retain_state_trigger_residual_condition(
+    trigger: &crate::triggers::Trigger,
+    condition: Option<Condition>,
+) -> Option<Condition> {
+    if !trigger_is_state_based(trigger) {
+        return condition;
+    }
+
+    let condition = condition?;
+    let trigger_surface = trigger.display().to_ascii_lowercase();
+    let mut conjuncts = Vec::new();
+    flatten_condition_and_expr(&condition, &mut conjuncts);
+
+    let mut found_embedded_state = false;
+    let residual = conjuncts
+        .into_iter()
+        .filter(|conjunct| {
+            let described = describe_condition(conjunct).to_ascii_lowercase();
+            let embedded = !described.trim().is_empty()
+                && trigger_surface.contains(described.trim().trim_end_matches('.'));
+            found_embedded_state |= embedded;
+            !embedded
+        })
+        .collect::<Vec<_>>();
+
+    found_embedded_state
+        .then(|| fold_condition_exprs(residual))
+        .flatten()
+}
+
 pub(super) fn trigger_is_this_blocks_or_becomes_blocked(
     trigger: &crate::triggers::Trigger,
 ) -> bool {
@@ -3213,7 +3260,7 @@ pub(super) fn describe_structural_embalm_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    if !matches!(create.target, ChooseSpec::Source)
+    if !matches!(create.target.unhinted(), ChooseSpec::Source)
         || create.count != Value::Fixed(1)
         || create.controller != PlayerFilter::You
         || create.set_colors != Some(crate::color::ColorSet::WHITE)
@@ -3250,7 +3297,7 @@ pub(super) fn describe_structural_eternalize_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    if !matches!(create.target, ChooseSpec::Source)
+    if !matches!(create.target.unhinted(), ChooseSpec::Source)
         || create.count != Value::Fixed(1)
         || create.controller != PlayerFilter::You
         || create.set_colors != Some(crate::color::ColorSet::BLACK)
@@ -3360,11 +3407,14 @@ pub(crate) fn is_cycling_cost_word(word: &str) -> bool {
 pub(crate) fn choices_are_simple_targets(choices: &[ChooseSpec]) -> bool {
     fn is_simple_target(choice: &ChooseSpec) -> bool {
         match choice {
+            ChooseSpec::SurfaceHinted { spec, .. } => is_simple_target(spec),
             ChooseSpec::Target(_)
             | ChooseSpec::AnyTarget
             | ChooseSpec::AnyOtherTarget
             | ChooseSpec::PlayerOrPlaneswalker(_) => true,
-            ChooseSpec::WithCount(inner, _) => is_simple_target(inner),
+            ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+                is_simple_target(inner)
+            }
             _ => false,
         }
     }
@@ -3462,6 +3512,11 @@ pub(super) fn remove_presentation_label_chosen_option(
                 Some(condition.clone())
             }
         }
+        crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::Speed(crate::target::PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(4),
+        } if presentation_label_matches_chosen_option(triggered, "Max speed") => None,
         crate::ConditionExpr::And(left, right) => match (
             remove_presentation_label_chosen_option(left, triggered),
             remove_presentation_label_chosen_option(right, triggered),
@@ -3492,4 +3547,38 @@ pub(super) fn presentation_label_matches_chosen_option(
             let label = label.split(['—', '-']).next().unwrap_or(label).trim();
             label.eq_ignore_ascii_case(option)
         })
+}
+
+#[cfg(test)]
+mod next_turn_draw_surface_tests {
+    use super::*;
+
+    fn next_turn_upkeep(effect: Effect) -> Effect {
+        Effect::new(
+            crate::effects::ScheduleDelayedTriggerEffect::new(
+                crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::Any),
+                vec![effect],
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            )
+            .starting_next_turn(),
+        )
+    }
+
+    #[test]
+    fn single_draw_instruction_places_next_upkeep_timing_last() {
+        assert_eq!(
+            describe_effect(&next_turn_upkeep(Effect::draw(1))),
+            "Draw a card at the beginning of the next turn's upkeep"
+        );
+    }
+
+    #[test]
+    fn other_delayed_instructions_keep_the_timing_prefix() {
+        assert_eq!(
+            describe_effect(&next_turn_upkeep(Effect::gain_life(1))),
+            "At the beginning of the next turn's upkeep, you gain 1 life"
+        );
+    }
 }

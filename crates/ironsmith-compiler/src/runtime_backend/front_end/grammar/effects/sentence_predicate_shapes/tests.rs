@@ -38,6 +38,25 @@ fn parses_typed_where_x_shapes() {
 }
 
 #[test]
+fn distinguishes_source_pronoun_damage_from_later_targets() {
+    let tokens = lex_line(
+        "It deals X damage divided as you choose among up to X target creatures, where X is its power.",
+        0,
+    )
+    .unwrap();
+    let sentence = parse_where_x_sentence_tokens(&tokens).unwrap();
+    assert!(sentence.stripped_references_target);
+    assert!(starts_with_source_deals_x_tokens(sentence.stripped_tokens));
+    assert_eq!(
+        parse_where_x_value_shape_tokens(sentence.where_tokens, false),
+        Some(WhereXValueShape::ReferenceMetric {
+            reference: WhereXReferenceShape::Source,
+            metric: WhereXMetricShape::Power,
+        })
+    );
+}
+
+#[test]
 fn parses_sacrificed_possessive_card_type_without_retaining_apostrophe() {
     let tokens = lex_line("where X is the sacrificed enchantment's mana value.", 0).unwrap();
     assert_eq!(

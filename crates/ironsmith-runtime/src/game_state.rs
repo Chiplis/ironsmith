@@ -301,6 +301,11 @@ struct ExileTracking {
     imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
     /// Cards exiled by a specific source object ID.
     exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Battlefield object identities put there by an effect of a specific
+    /// source. Object IDs intentionally preserve zone-change identity: if the
+    /// card later returns independently, it is no longer "the creature put
+    /// onto the battlefield with" that source.
+    battlefield_put_with_source: HashMap<ObjectId, HashSet<ObjectId>>,
     /// Return zones for cards exiled by a source-leaves duration effect.
     exiled_with_source_return_zones: HashMap<ObjectId, HashMap<ObjectId, Zone>>,
     /// Sources whose linked exiled cards return when the source leaves.
@@ -454,6 +459,10 @@ pub struct TurnStore {
     pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
+    /// Objects that assign no combat damage for the rest of the current turn.
+    pub no_combat_damage_this_turn: HashSet<ObjectId>,
+    /// Objects that assign no combat damage for the rest of the current combat.
+    pub no_combat_damage_this_combat: HashSet<ObjectId>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -2607,6 +2616,8 @@ pub struct GameState {
     pub monarch: Option<PlayerId>,
     /// Current initiative designation holder, if any.
     pub initiative: Option<PlayerId>,
+    /// Players who have earned the city's blessing designation this game.
+    citys_blessing: HashSet<PlayerId>,
     battlefield_flags: Arc<BattlefieldFlags>,
 
     combat_transients: Arc<CombatTransientState>,
@@ -2727,6 +2738,7 @@ impl GameState {
             is_night: false,
             monarch: None,
             initiative: None,
+            citys_blessing: HashSet::new(),
             battlefield_flags: Arc::new(BattlefieldFlags::default()),
             combat_transients: Arc::new(CombatTransientState::default()),
             auxiliary_tracking: Arc::new(AuxiliaryTrackingState::default()),
@@ -3169,6 +3181,10 @@ impl GameState {
             || Self::player_filter_option_is_turn_context_sensitive(
                 filter.attached_to_player.as_ref(),
             )
+            || filter
+                .attached_to_object
+                .as_deref()
+                .is_some_and(Self::object_filter_is_turn_context_sensitive)
             || Self::player_filter_option_is_turn_context_sensitive(
                 filter.entered_battlefield_controller.as_ref(),
             )
@@ -4003,6 +4019,10 @@ impl GameState {
         if self.effect_store.restriction_effects.len() != before {
             self.update_cant_effects();
         }
+    }
+
+    pub fn cleanup_combat_damage_assignment_suppressions_end_of_combat(&mut self) {
+        self.turn_store.no_combat_damage_this_combat.clear();
     }
 
     pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {

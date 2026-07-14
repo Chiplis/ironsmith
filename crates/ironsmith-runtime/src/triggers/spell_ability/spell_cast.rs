@@ -18,6 +18,7 @@ pub struct SpellCastTrigger {
     pub min_spells_this_turn: Option<u32>,
     pub exact_spells_this_turn: Option<u32>,
     pub from_not_hand: bool,
+    pub first_spell_of_game: bool,
 }
 
 impl SpellCastTrigger {
@@ -29,6 +30,7 @@ impl SpellCastTrigger {
             min_spells_this_turn: None,
             exact_spells_this_turn: None,
             from_not_hand: false,
+            first_spell_of_game: false,
         }
     }
 
@@ -47,7 +49,13 @@ impl SpellCastTrigger {
             min_spells_this_turn,
             exact_spells_this_turn,
             from_not_hand,
+            first_spell_of_game: false,
         }
+    }
+
+    pub fn with_first_spell_of_game(mut self, first_spell_of_game: bool) -> Self {
+        self.first_spell_of_game = first_spell_of_game;
+        self
     }
 
     pub fn you_cast_any() -> Self {
@@ -105,6 +113,14 @@ impl TriggerMatcher for SpellCastTrigger {
                 return false;
             }
         }
+        if self.first_spell_of_game
+            && ctx
+                .game
+                .player(e.caster)
+                .is_none_or(|player| player.spells_cast_this_game != 1)
+        {
+            return false;
+        }
         if self.from_not_hand && e.from_zone == Zone::Hand {
             return false;
         }
@@ -153,6 +169,65 @@ impl TriggerMatcher for SpellCastTrigger {
         Some(vec![EventKind::SpellCast])
     }
 
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        let spell_cast = event.downcast::<SpellCastEvent>()?;
+        let filter = self.filter.as_ref()?;
+        let stack_entry = ctx
+            .game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == spell_cast.spell)?;
+
+        let (player_filter, object_filter) =
+            if filter.targets_only_player.is_some() || filter.targets_only_object.is_some() {
+                (
+                    filter.targets_only_player.as_ref(),
+                    filter.targets_only_object.as_deref(),
+                )
+            } else {
+                (
+                    filter.targets_player.as_ref(),
+                    filter.targets_object.as_deref(),
+                )
+            };
+
+        // A bare target-count restriction (for example, "a spell with two
+        // targets") binds the event value to every distinct target. A
+        // targeting relation binds it only to the players or objects described
+        // by that relation, so unrelated targets of the same spell do not
+        // inflate "that many".
+        if player_filter.is_none() && object_filter.is_none() {
+            return filter.target_count.is_some().then(|| {
+                stack_entry
+                    .targets
+                    .iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len() as i32
+            });
+        }
+
+        Some(
+            stack_entry
+                .targets
+                .iter()
+                .copied()
+                .filter(|target| match target {
+                    crate::game_state::Target::Player(player) => player_filter
+                        .is_some_and(|filter| filter.matches_player(*player, &ctx.filter_ctx)),
+                    crate::game_state::Target::Object(object_id) => {
+                        object_filter.is_some_and(|filter| {
+                            ctx.game.object(*object_id).is_some_and(|object| {
+                                filter.matches(object, &ctx.filter_ctx, ctx.game)
+                            })
+                        })
+                    }
+                })
+                .collect::<std::collections::HashSet<_>>()
+                .len() as i32,
+        )
+    }
+
     fn display(&self) -> String {
         let caster_text = match &self.caster {
             PlayerFilter::You => "you cast",
@@ -171,7 +246,18 @@ impl TriggerMatcher for SpellCastTrigger {
             .unwrap_or_else(|| "a spell".to_string());
         let mut suffix = String::new();
         let mut suppress_turn_suffix = false;
-        if let Some(exact_spells) = self.exact_spells_this_turn {
+        if self.first_spell_of_game && (spell_text == "a spell" || spell_text == "spell") {
+            spell_text = match &self.caster {
+                PlayerFilter::You => "your first spell of the game".to_string(),
+                PlayerFilter::Any | PlayerFilter::Active | PlayerFilter::Opponent => {
+                    "their first spell of the game".to_string()
+                }
+                PlayerFilter::Specific(_) => "that player's first spell of the game".to_string(),
+                _ => "their first spell of the game".to_string(),
+            };
+        } else if self.first_spell_of_game {
+            suffix.push_str(" if it's that player's first spell of the game");
+        } else if let Some(exact_spells) = self.exact_spells_this_turn {
             let ordinal =
                 ironsmith_core::ordinal_word(exact_spells).unwrap_or_else(|| "nth".to_string());
             let exact_spell_turn_suffix = match self.during_turn {
@@ -322,6 +408,10 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         let mut base_filter = filter.clone();
         let targets_player = base_filter.targets_player.take();
         let targets_object = base_filter.targets_object.take();
+        let one_or_more_targets = base_filter
+            .target_count
+            .is_some_and(|count| count.min == 1 && count.max.is_none());
+        base_filter.target_count = None;
 
         let mut base_text = describe_spell_filter(&base_filter);
         if base_text == "spell" {
@@ -332,7 +422,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
 
         let mut target_parts = Vec::new();
         if let Some(player_filter) = targets_player {
-            target_parts.push(match player_filter {
+            let player_text = match player_filter {
                 PlayerFilter::You => "you".to_string(),
                 PlayerFilter::NotYou => "a player other than you".to_string(),
                 PlayerFilter::Opponent => "an opponent".to_string(),
@@ -378,11 +468,17 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                     PlayerFilter::Any => "a player".to_string(),
                     _ => "target player".to_string(),
                 },
+                PlayerFilter::AliasedTarget(_) => "that player".to_string(),
                 PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
                 PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),
                 PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
                     "that player".to_string()
                 }
+            };
+            target_parts.push(if one_or_more_targets {
+                pluralize_target_description(&player_text)
+            } else {
+                player_text
             });
         }
         if let Some(object_filter) = targets_object {
@@ -392,7 +488,11 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
             } else if object_desc == "that source" {
                 object_desc = "that creature".to_string();
             }
-            target_parts.push(object_desc);
+            target_parts.push(if one_or_more_targets {
+                pluralize_target_description(&object_desc)
+            } else {
+                object_desc
+            });
         }
 
         if !target_parts.is_empty() {
@@ -401,7 +501,12 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
             } else {
                 target_parts[0].clone()
             };
-            return format!("{base_text} that targets {targets}");
+            let count_prefix = if one_or_more_targets {
+                "one or more "
+            } else {
+                ""
+            };
+            return format!("{base_text} that targets {count_prefix}{targets}");
         }
         return base_text;
     }
@@ -491,6 +596,48 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     }
 }
 
+fn pluralize_target_description(description: &str) -> String {
+    let description = description
+        .strip_prefix("a ")
+        .or_else(|| description.strip_prefix("an "))
+        .unwrap_or(description);
+    if description.contains(" or ") {
+        return description
+            .split(" or ")
+            .map(pluralize_target_description)
+            .collect::<Vec<_>>()
+            .join(" or ");
+    }
+    for suffix in [
+        " you control",
+        " an opponent controls",
+        " they control",
+        " you own",
+        " an opponent owns",
+        " they own",
+    ] {
+        if let Some(head) = description.strip_suffix(suffix) {
+            return format!("{}{suffix}", pluralize_target_description(head));
+        }
+    }
+    let Some((head, noun)) = description.rsplit_once(' ') else {
+        return pluralize_target_word(description);
+    };
+    format!("{head} {}", pluralize_target_word(noun))
+}
+
+fn pluralize_target_word(word: &str) -> String {
+    if word.ends_with('s') {
+        word.to_string()
+    } else if let Some(stem) = word.strip_suffix('y') {
+        format!("{stem}ies")
+    } else if word.ends_with("ch") || word.ends_with("sh") || word.ends_with('x') {
+        format!("{word}es")
+    } else {
+        format!("{word}s")
+    }
+}
+
 fn ordered_color_names(colors: ColorSet) -> Vec<&'static str> {
     const CONVENTIONAL_PAIRS: [(Color, Color); 10] = [
         (Color::White, Color::Blue),
@@ -536,7 +683,7 @@ mod tests {
     use crate::ids::CardId;
     use crate::ids::{ObjectId, PlayerId};
     use crate::target::ObjectFilter;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     #[test]
@@ -560,6 +707,55 @@ mod tests {
     fn test_display() {
         let trigger = SpellCastTrigger::you_cast_any();
         assert!(trigger.display().contains("you cast"));
+    }
+
+    #[test]
+    fn first_spell_of_game_is_tracked_per_player_across_turns() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        let source_id = ObjectId::from_raw(1);
+        let trigger =
+            SpellCastTrigger::new(None, PlayerFilter::Opponent).with_first_spell_of_game(true);
+
+        let first_bob_cast = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(ObjectId::from_raw(2), bob, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&first_bob_cast);
+        assert!(trigger.matches(
+            &first_bob_cast,
+            &TriggerContext::for_source(source_id, alice, &game),
+        ));
+
+        game.turn_store.turn_history.clear_for_new_turn();
+        let second_bob_cast = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(ObjectId::from_raw(3), bob, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&second_bob_cast);
+        assert!(!trigger.matches(
+            &second_bob_cast,
+            &TriggerContext::for_source(source_id, alice, &game),
+        ));
+
+        let first_cara_cast = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(ObjectId::from_raw(4), cara, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&first_cara_cast);
+        assert!(trigger.matches(
+            &first_cara_cast,
+            &TriggerContext::for_source(source_id, alice, &game),
+        ));
+        assert_eq!(
+            trigger.display(),
+            "Whenever an opponent casts their first spell of the game"
+        );
     }
 
     #[test]
@@ -733,6 +929,68 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever you cast a spell that targets this creature"
+        );
+    }
+
+    #[test]
+    fn event_value_counts_distinct_targets_matching_the_trigger_relation() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = CardBuilder::new(CardId::new(), "Arcee")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Vehicle])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        let spell = CardBuilder::new(CardId::new(), "Multi-target Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        let creature = CardBuilder::new(CardId::new(), "Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let own_creature = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        let opposing_creature = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+        let vehicle = CardBuilder::new(CardId::new(), "Vehicle")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Vehicle])
+            .build();
+        let own_vehicle = game.create_object_from_card(&vehicle, alice, Zone::Battlefield);
+        game.push_to_stack(
+            crate::game_state::StackEntry::new(spell_id, alice).with_targets(vec![
+                crate::game_state::Target::Object(own_creature),
+                crate::game_state::Target::Object(own_creature),
+                crate::game_state::Target::Object(own_vehicle),
+                crate::game_state::Target::Object(opposing_creature),
+                crate::game_state::Target::Player(bob),
+            ]),
+        );
+
+        let mut target_filter = ObjectFilter::default();
+        target_filter.card_types = vec![CardType::Creature];
+        target_filter.subtypes = vec![Subtype::Vehicle];
+        target_filter.type_or_subtype_union = true;
+        target_filter.controller = Some(PlayerFilter::You);
+        let trigger = SpellCastTrigger::new(
+            Some(
+                ObjectFilter::spell()
+                    .targeting_object(target_filter)
+                    .with_target_count(crate::effect::ChoiceCount::at_least(1)),
+            ),
+            PlayerFilter::You,
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(trigger.event_value_amount(&event, &ctx), Some(2));
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast a spell that targets one or more creatures or Vehicles you control"
         );
     }
 

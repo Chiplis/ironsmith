@@ -189,6 +189,19 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
             filter.was_dealt_damage_this_turn = true;
             Ok(EffectAst::subject_verb_destroy_all(filter))
         }
+        shapes::DestroyAllShape::DealtDamageToPlayerThisTurn {
+            filter_tokens,
+            player_tokens,
+        } => {
+            let TargetAst::Player(player, _) = parse_target_phrase(player_tokens)? else {
+                return Err(CardTextError::ParseError(
+                    "combat-history destroy-all recipient must be a player".to_string(),
+                ));
+            };
+            let mut filter = parse_destroy_all_filter(filter_tokens)?;
+            filter.dealt_damage_to_player_this_turn = Some(player);
+            Ok(EffectAst::subject_verb_destroy_all(filter))
+        }
         shapes::DestroyAllShape::AttachedTo {
             filter_tokens,
             target_tokens,

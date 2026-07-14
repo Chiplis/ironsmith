@@ -1168,6 +1168,12 @@ pub(super) fn rewrite_grammar_exact_static_line_probes_match_simple_keyword_stat
             crate::static_abilities::StaticAbilityId::PlayersSkipUpkeep,
         ),
         (
+            "Skip your draw step.",
+            super::super::grammar::abilities::is_skip_your_draw_step_line_lexed as Probe,
+            super::super::keyword_static::parse_skip_your_draw_step_static_line as Parser,
+            crate::static_abilities::StaticAbilityId::PlayerSkipsDrawStep,
+        ),
+        (
             "All permanents are colorless.",
             super::super::grammar::abilities::is_all_permanents_colorless_line_lexed as Probe,
             super::super::keyword_static::parse_all_permanents_colorless_line as Parser,
@@ -2961,7 +2967,11 @@ pub(super) fn rewrite_effect_entrypoint_parses_devotion_library_threshold_sequen
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("Devotion"), "{debug}");
-    assert!(debug.contains("RearrangeLookedCardsInLibrary"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
     assert!(debug.contains("ValueComparison"), "{debug}");
     assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
     assert!(debug.contains("WinGame"), "{debug}");
@@ -3491,4 +3501,58 @@ pub(super) fn rewrite_lexed_conditional_parser_routes_comma_clause_through_struc
         }
         other => panic!("expected conditional comma if clause, got {other:?}"),
     }
+}
+
+#[test]
+pub(super) fn activated_cost_objects_seed_typed_resolution_references() {
+    let tapped = CardDefinitionBuilder::new(CardId::new(), "Gateway Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Tap two untapped creatures you control: You may put a creature card from your hand that shares a creature type with each creature tapped this way onto the battlefield.",
+        )
+        .expect("tap-cost relation should parse");
+    let tapped_debug = format!("{tapped:#?}");
+    assert!(tapped_debug.contains("tap_cost_0"), "{tapped_debug}");
+    assert!(
+        tapped_debug.contains("SharesSubtypeWithEachTagged"),
+        "{tapped_debug}"
+    );
+
+    let returned = CardDefinitionBuilder::new(CardId::new(), "Sage Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}, Return a land you control to its owner's hand: Draw a card. Then discard a card unless that land had a nonbasic land type.",
+        )
+        .expect("return-cost LKI condition should parse");
+    let returned_debug = format!("{returned:#?}");
+    assert!(returned_debug.contains("return_cost_0"), "{returned_debug}");
+    assert!(
+        returned_debug.contains("TaggedObjectMatchedLastKnown"),
+        "{returned_debug}"
+    );
+    assert!(
+        returned_debug.contains("has_nonbasic_land_type: true"),
+        "{returned_debug}"
+    );
+
+    let self_cost = CardDefinitionBuilder::new(CardId::new(), "Self Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{2}, {T}, Sacrifice this creature: You gain life equal to its power.")
+        .expect("self-sacrifice LKI value should parse");
+    let self_debug = format!("{self_cost:#?}");
+    assert!(self_debug.contains("PowerOf"), "{self_debug}");
+    assert!(!self_debug.contains("zone: Some(Hand)"), "{self_debug}");
+
+    let discarded = CardDefinitionBuilder::new(CardId::new(), "Discard Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{1}{B}, Discard a creature card: This creature gets +X/+X until end of turn, where X is the discarded card's mana value.",
+        )
+        .expect("discard-cost mana value should parse");
+    let discarded_debug = format!("{discarded:#?}");
+    assert!(
+        discarded_debug.contains("discarded_cost"),
+        "{discarded_debug}"
+    );
+    assert!(discarded_debug.contains("ManaValueOf"), "{discarded_debug}");
 }

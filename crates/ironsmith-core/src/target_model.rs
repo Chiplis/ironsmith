@@ -7,6 +7,30 @@ pub enum SourceReferenceSurface {
     ThisPermanentType(String),
 }
 
+/// Oracle-facing noun used when an effect refers back to an object that was
+/// sacrificed earlier in the same cost or resolution sequence.
+///
+/// This is presentation metadata only. Object identity is still carried by a
+/// tagged snapshot so runtime characteristic and controller lookups use LKI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SacrificedObjectKind {
+    Creature,
+    Artifact,
+    Enchantment,
+    Permanent,
+}
+
+impl SacrificedObjectKind {
+    pub const fn noun(self) -> &'static str {
+        match self {
+            Self::Creature => "creature",
+            Self::Artifact => "artifact",
+            Self::Enchantment => "enchantment",
+            Self::Permanent => "permanent",
+        }
+    }
+}
+
 impl SourceReferenceSurface {
     pub fn display_text(&self) -> String {
         match self {
@@ -20,6 +44,7 @@ impl SourceReferenceSurface {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChooseSpecSurfaceHint {
     SourceReference(SourceReferenceSurface),
+    SacrificedObject(SacrificedObjectKind),
 }
 
 /// Specifies what can be chosen or targeted by an effect.
@@ -91,6 +116,14 @@ impl ChooseSpec {
     pub fn source_reference_surface(&self) -> Option<&SourceReferenceSurface> {
         self.surface_hints().iter().find_map(|hint| match hint {
             ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
+            ChooseSpecSurfaceHint::SacrificedObject(_) => None,
+        })
+    }
+
+    pub fn sacrificed_object_kind(&self) -> Option<SacrificedObjectKind> {
+        self.surface_hints().iter().find_map(|hint| match hint {
+            ChooseSpecSurfaceHint::SacrificedObject(kind) => Some(*kind),
+            ChooseSpecSurfaceHint::SourceReference(_) => None,
         })
     }
 

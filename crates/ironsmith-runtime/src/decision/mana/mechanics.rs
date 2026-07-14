@@ -87,6 +87,7 @@ pub fn calculate_convoke_creatures_to_tap(
         1,
         &[],
         &CastingMethod::Normal,
+        None,
     );
 
     let has_delve_ability = has_delve(spell);
@@ -218,6 +219,7 @@ pub fn calculate_improvise_artifacts_to_tap(
         1,
         &[],
         &CastingMethod::Normal,
+        None,
     );
 
     let has_delve_ability = has_delve(spell);

@@ -839,6 +839,10 @@ impl TurnRunner {
         if let Some(pending) = self.pending_draw_reveal.take() {
             return self.finish_pending_draw_reveal_choices(game, pending);
         }
+        if game.player_skips_draw_step(active_player) {
+            game.turn.priority_player = Some(active_player);
+            return RunnerProgress::Complete(Vec::new());
+        }
         if game.turn_store.skip_next_draw_step.remove(&active_player) {
             game.turn.priority_player = Some(active_player);
             return RunnerProgress::Complete(Vec::new());
@@ -1199,6 +1203,7 @@ fn check_first_strike(game: &GameState, combat: &CombatState) -> bool {
 fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -> TurnState {
     if matches!(game.turn.phase, Phase::Combat) {
         game.cleanup_restrictions_end_of_combat();
+        game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
     }
 
     let next_phase = if !game.turn_store.additional_phases.is_empty() {

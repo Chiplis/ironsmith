@@ -130,6 +130,46 @@ fn format_discard_card_type_phrase(card_types: &[CardType]) -> String {
     format!("{} or {} card", parts.join(", "), last)
 }
 
+fn collect_selected_object_tags(filter: &ObjectFilter, tags: &mut Vec<TagKey>) {
+    for constraint in &filter.tagged_constraints {
+        if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && !tags.contains(&constraint.tag)
+        {
+            tags.push(constraint.tag.clone());
+        }
+    }
+    for branch in &filter.any_of {
+        collect_selected_object_tags(branch, tags);
+    }
+}
+
+fn selected_object_tags(filter: &ObjectFilter) -> Vec<TagKey> {
+    let mut tags = Vec::new();
+    collect_selected_object_tags(filter, &mut tags);
+    tags.sort();
+    tags
+}
+
+fn count_filter(value: &Value) -> Option<&ObjectFilter> {
+    match value {
+        Value::SurfaceHinted { value, .. } => count_filter(value),
+        Value::Count(filter) => Some(filter),
+        _ => None,
+    }
+}
+
+fn tracks_same_selected_objects(count: &Value, card_filter: Option<&ObjectFilter>) -> bool {
+    let Some(count_filter) = count_filter(count) else {
+        return false;
+    };
+    let Some(card_filter) = card_filter else {
+        return false;
+    };
+    let count_tags = selected_object_tags(count_filter);
+    let card_tags = selected_object_tags(card_filter);
+    !count_tags.is_empty() && count_tags == card_tags
+}
+
 impl EffectExecutor for DiscardEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -181,7 +221,17 @@ impl EffectExecutor for DiscardEffect {
             })
             .collect();
 
-        let cards_to_discard = if !explicit_cards.is_empty() {
+        let cards_to_discard = if !self.random
+            && !self.any_number
+            && required == hand_cards.len()
+            && tracks_same_selected_objects(&self.count, self.card_filter.as_ref())
+        {
+            // "Discard those cards" consumes the prior tagged selection. It
+            // is not a second opportunity to choose from the affected hand,
+            // and unrelated object targets in the execution context must not
+            // replace the selected set.
+            hand_cards.clone()
+        } else if !explicit_cards.is_empty() {
             normalize_object_selection(explicit_cards, &hand_cards, required)
         } else if self.discards_source_as_cost() && hand_cards.contains(&ctx.source) {
             vec![ctx.source]
@@ -189,7 +239,11 @@ impl EffectExecutor for DiscardEffect {
             game.shuffle_slice(&mut hand_cards);
             hand_cards.into_iter().take(required).collect::<Vec<_>>()
         } else if self.any_number {
-            let min_required = if resolved_count > 0 { required } else { 0 };
+            // A positive count paired with `any_number` is an "up to N"
+            // choice. A zero count retains the unbounded "any number" shape.
+            // Both are optional choices, so neither requires the player to
+            // select the maximum number of eligible cards.
+            let min_required = 0;
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 "Choose any number of cards to discard".to_string(),
@@ -438,6 +492,23 @@ mod tests {
         let card = make_spell_card(id.0 as u32, name);
         let obj = Object::from_card(id, &card, owner, Zone::Hand);
         game.add_object(obj); // add_object automatically updates player.hand for Zone::Hand
+        id
+    }
+
+    fn add_card_to_hand_with_mana_value(
+        game: &mut GameState,
+        name: &str,
+        owner: PlayerId,
+        mana_value: u8,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                mana_value,
+            )]]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.add_object(Object::from_card(id, &card, owner, Zone::Hand));
         id
     }
 
@@ -696,5 +767,233 @@ mod tests {
             Some(3),
             "discarding the source card as part of an X cost should preserve the chosen X on the new object"
         );
+    }
+
+    fn tagged_hand_filter(tag: &str) -> ObjectFilter {
+        ObjectFilter::tagged(TagKey::from(tag)).in_zone(Zone::Hand)
+    }
+
+    fn tag_hand_cards(ctx: &mut ExecutionContext, game: &GameState, tag: &str, cards: &[ObjectId]) {
+        let snapshots = cards
+            .iter()
+            .filter_map(|card| game.object(*card))
+            .map(|object| ObjectSnapshot::from_object(object, game))
+            .collect();
+        ctx.tag_objects(tag, snapshots);
+    }
+
+    #[test]
+    fn tagged_selected_hand_discard_ignores_untagged_cards_and_unrelated_targets() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let untagged_first = add_card_to_hand(&mut game, "Untouched First", alice);
+        let selected_one = add_card_to_hand(&mut game, "Selected One", alice);
+        let untagged_last = add_card_to_hand(&mut game, "Untouched Last", alice);
+        let selected_two = add_card_to_hand(&mut game, "Selected Two", alice);
+
+        let selected_filter = tagged_hand_filter("selected_hand");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        tag_hand_cards(
+            &mut ctx,
+            &game,
+            "selected_hand",
+            &[selected_one, selected_two],
+        );
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(untagged_first)];
+
+        let effect = DiscardEffect::new_with_filter(
+            Value::Count(selected_filter.clone()),
+            PlayerFilter::You,
+            false,
+            Some(selected_filter),
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        let hand = &game.player(alice).unwrap().hand;
+        assert!(hand.contains(&untagged_first));
+        assert!(hand.contains(&untagged_last));
+        assert!(!hand.contains(&selected_one));
+        assert!(!hand.contains(&selected_two));
+    }
+
+    #[test]
+    fn tagged_up_to_x_subset_discards_only_the_cards_actually_selected() {
+        struct SelectOne;
+
+        impl crate::decision::DecisionMaker for SelectOne {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                ctx.candidates
+                    .iter()
+                    .find(|candidate| candidate.legal)
+                    .map(|candidate| vec![candidate.id])
+                    .unwrap_or_default()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let selected = add_card_to_hand(&mut game, "Chosen For Up To X", alice);
+        let not_selected_one = add_card_to_hand(&mut game, "Not Chosen One", alice);
+        let not_selected_two = add_card_to_hand(&mut game, "Not Chosen Two", alice);
+
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::You),
+            crate::effect::ChoiceCount::up_to_dynamic_x(),
+            PlayerFilter::You,
+            "up_to_x_selection",
+        )
+        .in_zone(Zone::Hand);
+        let mut decision_maker = SelectOne;
+        let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker).with_x(3);
+        let choice_outcome = choose.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(
+            choice_outcome.value,
+            crate::effect::OutcomeValue::Objects(vec![selected])
+        );
+
+        let selected_filter = tagged_hand_filter("up_to_x_selection");
+        let effect = DiscardEffect::new_with_filter(
+            Value::Count(selected_filter.clone()),
+            PlayerFilter::You,
+            false,
+            Some(selected_filter),
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        let hand = &game.player(alice).unwrap().hand;
+        assert!(!hand.contains(&selected));
+        assert!(hand.contains(&not_selected_one));
+        assert!(hand.contains(&not_selected_two));
+    }
+
+    #[test]
+    fn two_distinct_filtered_selections_accumulated_under_one_tag_both_discard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let low_nonland = add_card_to_hand(&mut game, "Low Nonland", alice);
+        let high_value = add_card_to_hand(&mut game, "High Value", alice);
+        let filter_miss = add_card_to_hand(&mut game, "Filter Miss", alice);
+
+        let selected_filter = tagged_hand_filter("two_filtered_choices");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        tag_hand_cards(&mut ctx, &game, "two_filtered_choices", &[low_nonland]);
+        tag_hand_cards(&mut ctx, &game, "two_filtered_choices", &[high_value]);
+        let effect = DiscardEffect::new_with_filter(
+            Value::Count(selected_filter.clone()),
+            PlayerFilter::You,
+            false,
+            Some(selected_filter),
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        let hand = &game.player(alice).unwrap().hand;
+        assert!(!hand.contains(&low_nonland));
+        assert!(!hand.contains(&high_value));
+        assert!(hand.contains(&filter_miss));
+    }
+
+    #[test]
+    fn distinct_mana_value_choices_accumulate_then_discard_only_their_selected_cards() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let low_selected = add_card_to_hand_with_mana_value(&mut game, "Low Selected", alice, 2);
+        let low_unselected =
+            add_card_to_hand_with_mana_value(&mut game, "Low Unselected", alice, 3);
+        let high_selected = add_card_to_hand_with_mana_value(&mut game, "High Selected", alice, 5);
+        let high_unselected =
+            add_card_to_hand_with_mana_value(&mut game, "High Unselected", alice, 6);
+
+        let tag = TagKey::from("two_mana_value_choices");
+        let low_filter = ObjectFilter::nonland()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You)
+            .with_mana_value(crate::filter::Comparison::LessThanOrEqual(3));
+        let high_filter = ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You)
+            .with_mana_value(crate::filter::Comparison::GreaterThanOrEqual(4));
+        let low_choice = crate::effects::ChooseObjectsEffect::new(
+            low_filter,
+            crate::effect::ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            tag.clone(),
+        )
+        .in_zone(Zone::Hand);
+        let high_choice = crate::effects::ChooseObjectsEffect::new(
+            high_filter,
+            crate::effect::ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            tag.clone(),
+        )
+        .in_zone(Zone::Hand);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        low_choice.execute(&mut game, &mut ctx).unwrap();
+        high_choice.execute(&mut game, &mut ctx).unwrap();
+
+        let tagged = ctx
+            .tagged_objects
+            .get(&tag)
+            .expect("both filtered choices should populate the shared tag");
+        let tagged_ids = tagged
+            .iter()
+            .map(|snapshot| snapshot.object_id)
+            .collect::<Vec<_>>();
+        assert_eq!(tagged_ids, vec![low_selected, high_selected]);
+
+        let selected_filter = tagged_hand_filter(tag.as_str());
+        let discard = DiscardEffect::new_with_filter(
+            Value::Count(selected_filter.clone()),
+            PlayerFilter::You,
+            false,
+            Some(selected_filter),
+        );
+        let result = discard.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        let hand = &game.player(alice).unwrap().hand;
+        assert!(!hand.contains(&low_selected));
+        assert!(!hand.contains(&high_selected));
+        assert!(hand.contains(&low_unselected));
+        assert!(hand.contains(&high_unselected));
+    }
+
+    #[test]
+    fn ordinary_numeric_and_random_discards_are_not_treated_as_preselected() {
+        let tagged = tagged_hand_filter("not_a_preselection_count");
+        assert!(!tracks_same_selected_objects(
+            &Value::Fixed(1),
+            Some(&tagged)
+        ));
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let explicit = add_card_to_hand(&mut game, "Explicit Numeric Choice", alice);
+        let other = add_card_to_hand(&mut game, "Other Card", alice);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(explicit)];
+        let numeric = DiscardEffect::you(1);
+        numeric.execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.player(alice).unwrap().hand.contains(&explicit));
+        assert!(game.player(alice).unwrap().hand.contains(&other));
+
+        let random = DiscardEffect::you_random(1);
+        assert!(random.random);
+        assert!(!tracks_same_selected_objects(
+            &random.count,
+            random.card_filter.as_ref()
+        ));
     }
 }

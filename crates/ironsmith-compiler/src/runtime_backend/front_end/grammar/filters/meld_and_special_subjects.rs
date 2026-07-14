@@ -687,6 +687,11 @@ mod tests {
         assert_eq!(filter.subtypes, vec![Subtype::Vehicle]);
         assert!(filter.type_or_subtype_union);
         assert!(filter.distinct_powers);
+        assert_eq!(
+            filter.union_connective(),
+            crate::filter::ObjectFilterUnionConnective::AndOr
+        );
+        assert!(filter.description().contains("and/or"));
     }
 
     #[test]
@@ -720,6 +725,77 @@ mod tests {
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
         }));
+    }
+
+    #[test]
+    fn parse_object_filter_keeps_intrinsic_attachment_to_source_relation() {
+        let tokens = lex_line("Aura attached to this creature", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Aura]);
+        let attached_to = filter
+            .attached_to_object
+            .as_deref()
+            .expect("typed attachment target filter");
+        assert!(attached_to.source);
+        assert_eq!(attached_to.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            attached_to.source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this creature".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_keeps_intrinsic_attachment_to_controlled_creature_relation() {
+        let tokens = lex_line(
+            "Aura you control that's attached to a creature you control",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Aura]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        let attached_to = filter
+            .attached_to_object
+            .as_deref()
+            .expect("typed attachment target filter");
+        assert_eq!(attached_to.card_types, vec![CardType::Creature]);
+        assert_eq!(attached_to.controller, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn parse_object_filter_keeps_attachment_subject_distinct_from_permanent_host() {
+        let tokens = lex_line("Auras attached to permanents you control", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Aura]);
+        let attached_to = filter
+            .attached_to_object
+            .as_deref()
+            .expect("typed permanent attachment host");
+        assert_eq!(attached_to.zone, Some(Zone::Battlefield));
+        assert_eq!(attached_to.controller, Some(PlayerFilter::You));
+        assert_eq!(
+            filter.description(),
+            "Aura attached to a permanent you control"
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_routes_that_player_attachment_to_player_relation() {
+        let tokens = lex_line("curses attached to that player", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Curse]);
+        assert!(filter.attached_to_object.is_none());
+        assert_eq!(
+            filter.attached_to_player,
+            Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)))
+        );
+        assert_eq!(filter.description(), "Curse attached to that player");
     }
 
     #[test]
@@ -769,6 +845,29 @@ mod tests {
                     tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
                     relation: TaggedOpbjectRelation::IsTaggedObject,
                 }
+        }));
+    }
+
+    #[test]
+    fn parse_same_name_as_source_exiled_card_uses_exiled_card_as_antecedent() {
+        let tokens = lex_line(
+            "Vampire spell with the same name as a card exiled with this",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            *constraint
+                == TaggedObjectConstraint {
+                    tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                }
+        }));
+        assert!(!filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
     }
 
@@ -869,6 +968,27 @@ mod tests {
         assert_eq!(filter.zone, Some(Zone::Stack));
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert!(filter.shares_creature_type_with_source);
+    }
+
+    #[test]
+    fn parse_object_filter_preserves_battlefield_identity_link_to_source() {
+        let tokens =
+            lex_line("creature put onto the battlefield with this enchantment", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.put_onto_battlefield_with_source);
+        assert_eq!(
+            filter.put_onto_battlefield_with_source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this enchantment".to_string()
+            ))
+        );
+        assert_eq!(
+            filter.description(),
+            "a creature put onto the battlefield with this enchantment"
+        );
     }
 
     #[test]

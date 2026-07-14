@@ -4,6 +4,7 @@ use winnow::prelude::*;
 
 use crate::cards::builders::LibraryBottomOrderAst;
 use crate::effect::ChoiceCount;
+use crate::object::CounterType;
 use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::runtime_backend::grammar::{leaf, primitives};
 
@@ -28,6 +29,8 @@ pub(crate) struct LookedMoveActionShape {
     pub(crate) count: ChoiceCount,
     pub(crate) filter: Range<usize>,
     pub(crate) destination: LookedMoveDestinationShape,
+    pub(crate) all_matching: bool,
+    pub(crate) entry_counter: Option<(u32, CounterType)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +44,13 @@ pub(crate) struct LookedHandActionShape {
 pub(crate) struct LookedTopActionShape {
     pub(crate) count: ChoiceCount,
     pub(crate) filter: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LookedTopAndRemainderActionShape {
+    pub(crate) count: ChoiceCount,
+    pub(crate) filter: Range<usize>,
+    pub(crate) remainder_order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +75,13 @@ pub(crate) struct AnyNumberRevealedChoiceShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RevealOneGainManaValueShape {
     pub(crate) view: Range<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LookedRevealSelectionShape {
+    pub(crate) count: ChoiceCount,
+    pub(crate) filter: Range<usize>,
+    pub(crate) remainder_order: LibraryBottomOrderAst,
 }
 
 const FROM_AMONG: &[&[&str]] = &[
@@ -111,11 +128,35 @@ fn counted_filter_range(
     }
 }
 
+fn parse_battlefield_entry_counter(tail: &[OwnedLexToken]) -> Option<(u32, CounterType)> {
+    let (_, (), after_with) = primitives::find_prefix(tail, || primitives::kw("with").void())?;
+    let (on_idx, (), after_on) =
+        primitives::find_prefix(after_with, || primitives::phrase(&["on", "it"]).void())?;
+    if after_on.iter().any(|token| token.as_word().is_some()) {
+        return None;
+    }
+    let descriptor =
+        super::super::zone_counter_shapes::parse_counter_descriptor_shape(&after_with[..on_idx])?;
+    Some((descriptor.count, descriptor.counter_type))
+}
+
 pub(crate) fn parse_looked_move_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedMoveActionShape> {
     let (head, tail) = split_from_among(tokens)?;
-    let (count, filter) = counted_filter_range(tokens, head);
+    let all_matching = tokens
+        .get(head.clone())?
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| word == "all");
+    let (count, filter) = if all_matching {
+        (
+            ChoiceCount::any_number(),
+            head.start.saturating_add(1)..head.end,
+        )
+    } else {
+        counted_filter_range(tokens, head)
+    };
     if filter.is_empty() {
         return None;
     }
@@ -138,6 +179,8 @@ pub(crate) fn parse_looked_move_action_shape(
         count,
         filter,
         destination,
+        all_matching,
+        entry_counter: parse_battlefield_entry_counter(tail),
     })
 }
 
@@ -157,6 +200,10 @@ const REVEAL_TO_TOP: &[&[&str]] = &[
     &["put", "it", "on", "top"],
     &["and", "put", "that", "card", "on", "top"],
     &["put", "that", "card", "on", "top"],
+    &["and", "put", "them", "on", "top"],
+    &["put", "them", "on", "top"],
+    &["and", "put", "those", "cards", "on", "top"],
+    &["put", "those", "cards", "on", "top"],
 ];
 
 pub(crate) fn parse_looked_hand_action_shape(
@@ -194,6 +241,35 @@ pub(crate) fn parse_looked_top_action_shape(
     Some(LookedTopActionShape { count, filter })
 }
 
+/// Parses the single-sentence follow-up used after an optional look, such as
+/// "reveal up to one land card from among them, then put that card on top ...
+/// and the rest on the bottom ...". The selected subset and the remainder
+/// stay tied to the same looked-at collection.
+pub(crate) fn parse_looked_top_and_remainder_action_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedTopAndRemainderActionShape> {
+    let (head, tail) = split_from_among(tokens)?;
+    let (count, filter) = counted_filter_range(tokens, head);
+    let top_tail = primitives::parse_prefix(tail, |input: &mut LexStream<'_>| {
+        sequence_phrase(&["then"]).parse_next(input)
+    })
+    .map(|(_, rest)| rest)
+    .unwrap_or(tail);
+    if filter.is_empty()
+        || !starts_sequence(top_tail, REVEAL_TO_TOP)
+        || !contains_sequence_word(top_tail, "rest")
+        || !contains_sequence_word(top_tail, "bottom")
+        || !contains_sequence_word(top_tail, "library")
+    {
+        return None;
+    }
+    Some(LookedTopAndRemainderActionShape {
+        count,
+        filter,
+        remainder_order: parse_consult_remainder_order_tokens(top_tail)?,
+    })
+}
+
 pub(crate) fn parse_looked_cast_action_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCastActionShape> {
@@ -210,6 +286,52 @@ pub(crate) fn parse_looked_cast_action_shape(
         mentions_spell,
         mana_value_limit,
     })
+}
+
+/// Parses a reveal selection whose source and remainder both refer to the
+/// preceding looked-at collection, for example "up to two creature and/or
+/// land cards from among them, then put the rest on the bottom ...".
+pub(crate) fn parse_looked_reveal_selection_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedRevealSelectionShape> {
+    let (head, tail) = split_from_among(tokens)?;
+    let (count, filter) = counted_filter_range(tokens, head);
+    if filter.is_empty()
+        || !contains_sequence_phrase(tail, &[&["put", "the", "rest"], &["put", "rest"]])
+    {
+        return None;
+    }
+    Some(LookedRevealSelectionShape {
+        count,
+        filter,
+        remainder_order: parse_consult_remainder_order_tokens(tail)?,
+    })
+}
+
+pub(crate) fn is_revealed_land_creature_split_shape(tokens: &[OwnedLexToken]) -> bool {
+    starts_sequence(tokens, &[&["put"]])
+        && contains_sequence_phrase(
+            tokens,
+            &[&[
+                "all",
+                "land",
+                "cards",
+                "revealed",
+                "this",
+                "way",
+                "onto",
+                "the",
+                "battlefield",
+                "tapped",
+            ]],
+        )
+        && contains_sequence_phrase(
+            tokens,
+            &[&[
+                "put", "all", "creature", "cards", "revealed", "this", "way", "into", "your",
+                "hand",
+            ]],
+        )
 }
 
 fn parse_mana_value_limit(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -235,6 +357,21 @@ pub(crate) fn parse_looked_remainder_shape(
     })
     .map(|(_, tail)| tail)
     .unwrap_or(tokens);
+    // Multi-sentence looked-card procedures commonly restate the library
+    // owner before the final disposition ("That player puts the rest ..."
+    // or "They put the rest ..."). The enclosing sequence parser already
+    // carries the original player structurally, so this grammar only needs to
+    // remove the anaphoric actor before recognizing the remainder action.
+    let tail = match tail {
+        [first, second, rest @ ..]
+            if first.parser_text() == "that"
+                && matches!(second.parser_text(), "player" | "opponent") =>
+        {
+            rest
+        }
+        [first, rest @ ..] if first.parser_text() == "they" => rest,
+        _ => tail,
+    };
     if !starts_sequence(tail, &[&["put"], &["puts"]]) || !contains_sequence_word(tail, "rest") {
         return None;
     }
@@ -348,5 +485,23 @@ mod tests {
             parse_reveal_one_gain_mana_value_shape(sentences[0], sentences[1], sentences[2])
                 .is_some()
         );
+    }
+
+    #[test]
+    fn parses_all_matching_looked_cards_as_mandatory_full_set() {
+        let tokens = lex_line(
+            "all land cards from among them onto the battlefield tapped and the rest on the bottom of your library in a random order",
+            0,
+        )
+        .unwrap();
+        let shape = parse_looked_move_action_shape(&tokens).expect("all-matching move shape");
+
+        assert!(shape.all_matching);
+        assert_eq!(shape.count, ChoiceCount::any_number());
+        assert_eq!(tokens[shape.filter.start].as_word(), Some("land"));
+        assert!(matches!(
+            shape.destination,
+            LookedMoveDestinationShape::Battlefield { tapped: true, .. }
+        ));
     }
 }

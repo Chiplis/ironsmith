@@ -1,5 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, LineAst, PlayerAst, PredicateAst, TargetAst, TriggerSpec,
+    CardTextError, EffectAst, LineAst, PlayerAst, PredicateAst, StaticAbilityAst, TargetAst,
+    TriggerSpec,
 };
 
 use super::activation_and_restrictions::{
@@ -18,9 +19,12 @@ use super::grammar::keyword_dispatch::{
 };
 use super::grammar::splice_keyword_lines::parse_splice_keyword_line_tokens;
 use super::ir::RewriteKeywordLine;
-use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
+use super::keyword_static::{
+    parse_if_this_spell_costs_less_to_cast_line_lexed, parse_static_ability_ast_line_lexed,
+};
 use super::lexer::{
-    OwnedLexToken, TokenKind, token_slice_at_is, token_slice_first_is, trim_lexed_commas,
+    OwnedLexToken, TokenKind, TokenWordView, split_lexed_sentences, token_slice_at_is,
+    token_slice_first_is, trim_lexed_commas,
 };
 use super::preprocess::PreprocessedLine;
 use super::semantic_line_parsing::{
@@ -341,11 +345,63 @@ macro_rules! ability_parser {
 
 alternative_method_parser!(parse_bestow, parse_bestow_line_lexed);
 alternative_method_parser!(parse_escape, parse_escape_line_lexed);
-alternative_method_parser!(parse_flashback, parse_flashback_line_lexed);
 alternative_method_parser!(parse_harmonize, parse_harmonize_line_lexed);
 alternative_method_parser!(parse_retrace, parse_retrace_line_lexed);
 alternative_method_parser!(parse_madness, parse_madness_line_lexed);
 alternative_method_parser!(parse_warp, parse_warp_line_lexed);
+
+pub(super) fn parse_flashback(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+    _full_tokens: &[OwnedLexToken],
+) -> KeywordParseResult {
+    let sentences = split_lexed_sentences(tokens);
+    let Some(flashback_tokens) = sentences.first().copied() else {
+        return Ok(None);
+    };
+    let Some(method) = parse_flashback_line_lexed(flashback_tokens)? else {
+        return Ok(None);
+    };
+
+    if sentences.len() == 1 {
+        return Ok(ast(LineAst::AlternativeCastingMethod(method.into())));
+    }
+    if sentences.len() != 2 {
+        return Ok(None);
+    }
+
+    let reduction_tokens = sentences[1];
+    let reduction_words = TokenWordView::new(reduction_tokens).word_refs();
+    if !reduction_words.starts_with(&["this", "spell", "costs"])
+        || !reduction_words
+            .windows(4)
+            .any(|window| window == ["to", "cast", "this", "way"])
+    {
+        return Ok(None);
+    }
+
+    let Some(mut abilities) = parse_static_ability_ast_line_lexed(reduction_tokens)? else {
+        return Ok(None);
+    };
+    if abilities.len() != 1 {
+        return Ok(None);
+    }
+    let StaticAbilityAst::Static(mut ability) = abilities.pop().expect("checked one ability")
+    else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(reduction) =
+        &mut ability.payload
+    else {
+        return Ok(None);
+    };
+    reduction.alternative_cast = Some(crate::filter::AlternativeCastKind::Flashback);
+
+    Ok(ast(LineAst::Multiple(vec![
+        LineAst::AlternativeCastingMethod(method.into()),
+        LineAst::StaticAbility(StaticAbilityAst::Static(ability)),
+    ])))
+}
 
 optional_cost_parser!(parse_bargain, parse_bargain_line_lexed);
 optional_cost_parser!(parse_buyback, parse_buyback_line_lexed);

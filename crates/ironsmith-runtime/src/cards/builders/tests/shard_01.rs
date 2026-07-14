@@ -434,6 +434,35 @@ pub(super) fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+pub(super) fn top_library_static_permissions_render_their_full_spell_domains() {
+    for (card_name, expected_permission) in [
+        (
+            "Korlessa, Scale Singer",
+            "You may cast Dragon spells from the top of your library",
+        ),
+        (
+            "Mystic Forge",
+            "You may cast artifact spells or colorless spells from the top of your library",
+        ),
+        (
+            "Eladamri, Korvecdal",
+            "You may cast creature spells from the top of your library",
+        ),
+        (
+            "Traveling Chocobo",
+            "You may play lands and cast Bird spells from the top of your library",
+        ),
+    ] {
+        let def = parse_oracle_card_definition(card_name);
+        let rendered = unprocessed_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains(expected_permission),
+            "{card_name} should render {expected_permission:?}, got {rendered}"
+        );
+    }
+}
+
+#[test]
 pub(super) fn king_darien_xlviii_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("King Darien XLVIII");
     let rendered = unprocessed_compiled_lines(&def).join("\n");
@@ -800,6 +829,84 @@ pub(super) fn stoic_sphinx_strict_parser_and_compiled_text_regression() {
         rendered
             .contains("This creature has hexproof as long as you haven't cast a spell this turn."),
         "Stoic Sphinx compiled text should preserve the haven't-cast-a-spell static clause, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn targeted_theft_cards_keep_control_untap_and_haste_sentence_boundaries() {
+    let cases = [
+        ("Bloody Betrayal", "It gains haste until end of turn."),
+        ("Bond of Passion", "It gains haste until end of turn."),
+        ("Caught Red-Handed", "It gains haste until end of turn."),
+        (
+            "Involuntary Employment",
+            "It gains haste until end of turn.",
+        ),
+        ("Portent of Betrayal", "It gains haste until end of turn."),
+        ("Traitorous Greed", "It gains haste until end of turn."),
+        ("Furnace Reins", "Until end of turn, it gains haste and"),
+        ("Lose Calm", "It gains haste and menace until end of turn."),
+        (
+            "Shackles of Treachery",
+            "Until end of turn, it gains haste and",
+        ),
+    ];
+
+    for (name, haste_fragment) in cases {
+        let rendered = canonical_compiled_lines(&parse_oracle_card_definition(name)).join("\n");
+        assert!(
+            rendered.contains(
+                "Gain control of target creature until end of turn. Untap that creature."
+            ),
+            "{name} should keep the targeted control and untap instructions as separate sentences, got {rendered}"
+        );
+        assert!(
+            rendered.contains(haste_fragment),
+            "{name} should retain its haste grant after the untap instruction, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("until end of turn, untap that creature"),
+            "{name} should not merge the control and untap instructions, got {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn additional_draw_cards_preserve_the_oracle_modifier_in_compiled_text() {
+    let cases = [
+        (
+            "ED-E, Lonesome Eyebot",
+            "draw an additional card for each quest counter on ed-e",
+        ),
+        ("Font of Mythos", "draws two additional cards"),
+        ("Grafted Skullcap", "draw an additional card"),
+        ("Heightened Awareness", "draw an additional card"),
+        ("Howling Mine", "draws an additional card"),
+        ("Kami of the Crescent Moon", "draws an additional card"),
+        ("Lord Skitter's Blessing", "draw an additional card"),
+        ("Lord Windgrace", "draw an additional card"),
+        ("Monastery Siege", "draw an additional card"),
+        ("Righteous Authority", "draws an additional card"),
+        ("Sylvan Library", "draw two additional cards"),
+        ("Well of Ideas", "draws an additional card"),
+    ];
+
+    for (name, expected) in cases {
+        let rendered = canonical_compiled_lines(&parse_oracle_card_definition(name))
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(
+            rendered.contains(expected),
+            "{name} should preserve its additional-draw surface, got {rendered}"
+        );
+    }
+
+    let well = canonical_compiled_lines(&parse_oracle_card_definition("Well of Ideas"))
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        well.contains("draw two additional cards"),
+        "Well of Ideas should preserve both additional-draw counts, got {well}"
     );
 }
 

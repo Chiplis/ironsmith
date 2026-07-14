@@ -153,10 +153,22 @@ def candidate_priority(card: dict) -> tuple:
     )
 
 
+def first_printing_priority(card: dict) -> tuple:
+    """Sort eligible paper printings from earliest to latest, deterministically."""
+    return (
+        str(card.get("released_at") or "9999-12-31"),
+        0 if str(card.get("lang") or "").strip().lower() == "en" else 1,
+        str(card.get("set") or ""),
+        str(card.get("collector_number") or ""),
+        str(card.get("id") or ""),
+    )
+
+
 def write_filtered_cards(source: Path, destination: Path) -> tuple[int, int]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     total = 0
     selected: dict[tuple[str, str], dict] = {}
+    earliest_printings: dict[tuple[str, str], dict] = {}
 
     for card in iter_json_array(source):
         total += 1
@@ -164,19 +176,33 @@ def write_filtered_cards(source: Path, destination: Path) -> tuple[int, int]:
             continue
 
         identity = card_identity_key(card)
+        earliest = earliest_printings.get(identity)
+        if earliest is None or first_printing_priority(card) < first_printing_priority(
+            earliest
+        ):
+            earliest_printings[identity] = card
         current = selected.get(identity)
         if current is None or candidate_priority(card) > candidate_priority(current):
             selected[identity] = card
 
-    kept_cards = sorted(
-        selected.values(),
+    kept_cards = []
+    for identity, card in selected.items():
+        canonical_card = dict(card)
+        first_printed_set_name = str(
+            earliest_printings.get(identity, {}).get("set_name") or ""
+        ).strip()
+        if first_printed_set_name:
+            canonical_card["first_printed_set_name"] = first_printed_set_name
+        kept_cards.append(canonical_card)
+
+    kept_cards.sort(
         key=lambda card: (
             str(card.get("name") or "").casefold(),
             str(card.get("released_at") or ""),
             str(card.get("set") or ""),
             str(card.get("collector_number") or ""),
             str(card.get("id") or ""),
-        ),
+        )
     )
 
     with destination.open("w", encoding="utf-8") as out:

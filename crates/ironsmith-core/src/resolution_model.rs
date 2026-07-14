@@ -1,4 +1,4 @@
-use crate::Condition;
+use crate::{Condition, PresentationLabel};
 
 #[derive(Clone, PartialEq)]
 pub struct ResolutionProgram<E> {
@@ -16,6 +16,8 @@ pub struct ResolutionSegment<E> {
 pub struct SelfReplacementBranch<E> {
     pub condition: Condition,
     pub replacement_effects: Vec<E>,
+    pub presentation_label: Option<PresentationLabel>,
+    pub condition_after_replacement: bool,
 }
 
 impl<E> Default for ResolutionProgram<E> {
@@ -191,6 +193,8 @@ impl<E> SelfReplacementBranch<E> {
         Ok(SelfReplacementBranch {
             condition: self.condition,
             replacement_effects,
+            presentation_label: self.presentation_label,
+            condition_after_replacement: self.condition_after_replacement,
         })
     }
 }
@@ -215,7 +219,17 @@ impl<E> SelfReplacementBranch<E> {
         Self {
             condition,
             replacement_effects,
+            presentation_label: None,
+            condition_after_replacement: false,
         }
+    }
+
+    pub fn with_presentation_label(
+        mut self,
+        presentation_label: Option<PresentationLabel>,
+    ) -> Self {
+        self.presentation_label = presentation_label;
+        self
     }
 }
 

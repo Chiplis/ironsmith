@@ -218,13 +218,29 @@ pub(super) fn calculate_with_layers(
 
     // Track which abilities have been removed (for dependency detection)
     let mut abilities_removed = false;
+    let ability_counters = ability_counter_timestamps(object, ctx.effects);
+    let mut next_ability_counter = 0;
 
     for layer in layers {
         let layer_effects = match effects_by_layer.get(&layer) {
             Some(effects) => effects,
             None => {
+                if layer == Layer::Copy {
+                    apply_face_down_layer(object, &mut chars);
+                    calc_guard.update(&chars);
+                }
                 if layer == Layer::Type {
                     apply_reconfigure_attached_type_rule(object, &mut chars);
+                    calc_guard.update(&chars);
+                }
+                if layer == Layer::Ability {
+                    apply_ability_counters_through(
+                        object,
+                        &mut chars,
+                        &ability_counters,
+                        &mut next_ability_counter,
+                        None,
+                    );
                     calc_guard.update(&chars);
                 }
                 continue;
@@ -290,6 +306,16 @@ pub(super) fn calculate_with_layers(
 
         // Apply effects in dependency order
         for effect in sorted_effects {
+            if layer == Layer::Ability {
+                apply_ability_counters_through(
+                    object,
+                    &mut chars,
+                    &ability_counters,
+                    &mut next_ability_counter,
+                    Some(effect.timestamp),
+                );
+                calc_guard.update(&chars);
+            }
             let effect_active = if needs_source_tracking {
                 continuous_effect_group_started(effect, &started_groups)
                     || effect_source_is_active(effect, &source_state)
@@ -322,46 +348,25 @@ pub(super) fn calculate_with_layers(
             match &effect.modification {
                 // Layer 1: Copy
                 Modification::CopyOf {
-                    target_id,
+                    copiable_values,
                     preserve_source_abilities,
                     name_override,
                     name_override_surface,
                     add_supertypes,
+                    ..
                 } => {
                     // Per MTG rule 707.2, copying copies the copiable values:
                     // name, mana cost, color indicator, card type, subtype, supertype,
                     // rules text, power, toughness, and loyalty.
                     // It does NOT copy counters, damage, or other non-copiable state.
-                    if let Some(target) = ctx.objects.get(target_id) {
-                        let preserved_abilities =
-                            preserve_source_abilities.then(|| chars.abilities.clone());
-                        chars.name = target.name.clone();
-                        chars.compiled_card_text = target.compiled_card_text.clone();
-                        // Copy base characteristics from the target
-                        chars.power = target.base_power.as_ref().map(|p| p.base_value());
-                        chars.toughness = target.base_toughness.as_ref().map(|t| t.base_value());
-                        chars.card_types = target.card_types.clone();
-                        chars.subtypes = target.subtypes.clone();
-                        chars.supertypes = target.supertypes.clone();
-                        chars.colors = target.colors();
-                        chars.abilities = target.abilities.clone().into();
-                        if let Some(preserved_abilities) = preserved_abilities {
-                            for ability in preserved_abilities {
-                                if !chars.abilities.contains(&ability) {
-                                    chars.abilities.push(ability);
-                                }
-                            }
-                        }
-                        apply_copy_effect_exceptions(
-                            &mut chars,
-                            name_override,
-                            name_override_surface,
-                            add_supertypes,
-                        );
-                        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
-                        add_abilities_from_counters(object, &mut chars);
-                        // Note: controller is NOT copied - that's determined by who cast the Clone
-                    }
+                    copy_characteristics_from_copiable_values(
+                        copiable_values,
+                        &mut chars,
+                        *preserve_source_abilities,
+                        name_override,
+                        name_override_surface,
+                        add_supertypes,
+                    );
                 }
 
                 // Layer 2: Control
@@ -375,7 +380,6 @@ pub(super) fn calculate_with_layers(
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
                     chars.abilities = overlay.abilities.clone().into();
                     chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
-                    add_abilities_from_counters(object, &mut chars);
                 }
                 Modification::SetName(name) => {
                     chars.name = name.clone().into();
@@ -393,7 +397,11 @@ pub(super) fn calculate_with_layers(
                     chars.card_types.retain(|t| !types.contains(t));
                 }
                 Modification::SetCardTypes(types) => {
-                    chars.card_types = types.clone().into();
+                    replace_card_types_and_prune_subtypes(
+                        &mut chars.card_types,
+                        &mut chars.subtypes,
+                        types,
+                    );
                 }
                 Modification::AddSubtypes(types) => {
                     for t in types {
@@ -421,22 +429,7 @@ pub(super) fn calculate_with_layers(
                     // land subtypes (Plains, Island, Swamp, Mountain, Forest, Urza's, etc.)
                     // Non-land subtypes (Saga, Aura, creature types) are preserved.
 
-                    // Keep non-land subtypes
-                    let mut new_subtypes: Vec<Subtype> = chars
-                        .subtypes
-                        .iter()
-                        .filter(|st| !st.is_land_subtype())
-                        .cloned()
-                        .collect();
-
-                    // Add the new subtypes (typically just Mountain for Blood Moon)
-                    for subtype in types {
-                        if !new_subtypes.contains(subtype) {
-                            new_subtypes.push(*subtype);
-                        }
-                    }
-
-                    chars.subtypes = new_subtypes.into();
+                    replace_subtypes_in_family(&mut chars.subtypes, types, SubtypeFamily::Land);
                 }
                 Modification::SetAuraAttachmentFilter(filter) => {
                     chars.aura_attach_filter = Some(filter.clone());
@@ -682,8 +675,20 @@ pub(super) fn calculate_with_layers(
             calc_guard.update(&chars);
         }
 
-        if layer == Layer::Type {
+        if layer == Layer::Copy {
+            apply_face_down_layer(object, &mut chars);
+            calc_guard.update(&chars);
+        } else if layer == Layer::Type {
             apply_reconfigure_attached_type_rule(object, &mut chars);
+            calc_guard.update(&chars);
+        } else if layer == Layer::Ability {
+            apply_ability_counters_through(
+                object,
+                &mut chars,
+                &ability_counters,
+                &mut next_ability_counter,
+                None,
+            );
             calc_guard.update(&chars);
         }
     }
@@ -822,7 +827,7 @@ pub(super) fn apply_layer_7_effects(
 
     // Get counter timestamp for proper 7c ordering
     // Counters get a timestamp when the object enters the battlefield or when new counters are added
-    let counter_timestamp = ctx.effects.get_counter_timestamp(object.id);
+    let counter_timestamp = ctx.effects.get_latest_counter_timestamp(object.id);
 
     // Track whether we've applied counter modifications (for 7c ordering)
     let mut counters_applied = false;
@@ -1445,6 +1450,10 @@ pub(super) fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::TurnHistoryCount(query) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            crate::turn_history::resolve_turn_history_count(ctx.game, query, &filter_ctx, None)
+        }
         Value::CreaturesDiedThisTurn => ctx
             .game
             .turn_store
@@ -1516,11 +1525,66 @@ pub(super) fn resolve_value_with_context(
             .map(|cost| cost.mana_value() as i32)
             .unwrap_or(0),
 
+        Value::ManaSymbolsInManaCostOf { spec, color } => {
+            let symbol = crate::mana::ManaSymbol::from_color(*color);
+            object_for_value_spec(spec, ctx, source)
+                .and_then(|object| object.mana_cost.as_ref())
+                .map(|cost| {
+                    cost.pips()
+                        .iter()
+                        .filter(|pip| pip.contains(&symbol))
+                        .count() as i32
+                })
+                .unwrap_or(0)
+        }
+
         Value::CountersOnSource(counter_type) => ctx
             .objects
             .get(&source)
             .map(|o| o.counters.get(counter_type).copied().unwrap_or(0) as i32)
             .unwrap_or(0),
+
+        Value::CountersOn(spec, counter_type) => {
+            let counter_total = |object: &Object| match counter_type {
+                Some(counter_type) => {
+                    object.counters.get(counter_type).copied().unwrap_or(0) as i32
+                }
+                None => object.counters.values().map(|count| *count as i32).sum(),
+            };
+
+            if let ChooseSpec::All(filter) = spec.unhinted() {
+                let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+                let mut total = 0;
+                for_each_filter_candidate(ctx, filter, |object| {
+                    let matches = ctx
+                        .effects
+                        .calculate_characteristics(
+                            object.id,
+                            ctx.objects,
+                            ctx.battlefield,
+                            ctx.game,
+                        )
+                        .is_some_and(|chars| {
+                            filter_matches_with_characteristics(
+                                filter,
+                                object,
+                                &chars,
+                                ctx.game,
+                                filter_ctx.you.unwrap_or(object.owner),
+                                filter_ctx.source.unwrap_or(ctx.current_object),
+                            )
+                        });
+                    if matches {
+                        total += counter_total(object);
+                    }
+                });
+                total
+            } else {
+                object_for_value_spec(spec, ctx, source)
+                    .map(counter_total)
+                    .unwrap_or(0)
+            }
+        }
 
         Value::MaxCardsInHand(player_filter) => match player_filter {
             crate::target::PlayerFilter::You => ctx
@@ -1643,6 +1707,16 @@ pub(super) fn resolve_value_with_context(
                 .map(|player| player.mana_pool.total() as i32)
                 .sum()
         }
+        Value::PartySize(player_filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            ctx.game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .map(|player| crate::party::party_size(ctx.game, player.id))
+                .sum()
+        }
         Value::GreatestToughness(filter) => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut max_toughness = 0i32;
@@ -1660,7 +1734,6 @@ pub(super) fn resolve_value_with_context(
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::PlayersWhoControlMoreThanYou(_)
-        | Value::PartySize(_)
         | Value::TotalPower(_)
         | Value::TotalToughness(_)
         | Value::TotalManaValue(_)
@@ -1668,8 +1741,9 @@ pub(super) fn resolve_value_with_context(
         | Value::GreatestManaValue(_)
         | Value::Devotion { .. }
         | Value::ManaSpentToCastThisSpell
+        | Value::ManaFromSourceSpentToCastThisSpell { .. }
+        | Value::ManaSpentToCastTriggeringObject
         | Value::ColorsOfManaSpentToCastThisSpell
-        | Value::CountersOn(_, _)
         | Value::LifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
@@ -1753,13 +1827,14 @@ pub(super) fn build_layer_baseline(
 
     let mut baseline = HashMap::with_capacity(objects.len());
     for &id in objects.keys() {
-        if let Some(chars) = calculate_characteristics_with_effects_simple(
+        if let Some(chars) = calculate_characteristics_with_effects_simple_internal(
             id,
             objects,
             &filtered,
             battlefield,
             commanders,
             game,
+            layer > Layer::Ability,
         ) {
             baseline.insert(id, chars);
         }
@@ -1803,13 +1878,14 @@ pub(super) fn build_object_baseline_for_ids(
         if !objects.contains_key(&id) {
             continue;
         }
-        if let Some(chars) = calculate_characteristics_with_effects_simple(
+        if let Some(chars) = calculate_characteristics_with_effects_simple_internal(
             id,
             objects,
             &filtered,
             battlefield,
             commanders,
             game,
+            layer > Layer::Ability,
         ) {
             baseline.insert(id, chars);
         }
@@ -1965,66 +2041,125 @@ pub(super) fn advance_layer_batch_source_state(
 ///
 /// Per MTG rules, counters like "deathtouch counter" grant the ability to the permanent.
 /// This is different from +1/+1 counters which modify P/T directly.
-pub(super) fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteristics) {
+fn add_ability_from_counter(
+    object: &Object,
+    counter_type: CounterType,
+    chars: &mut CalculatedCharacteristics,
+) {
     use crate::static_abilities::StaticAbilityId;
 
-    for (&counter_type, &count) in &object.counters {
-        if count == 0 {
-            continue;
+    if object.counters.get(&counter_type).copied().unwrap_or(0) == 0 {
+        return;
+    }
+
+    if counter_type == CounterType::Decayed {
+        if !chars
+            .static_abilities
+            .iter()
+            .any(|a| a.id() == StaticAbilityId::CantBlock)
+        {
+            push_static_ability_once(chars, StaticAbility::cant_block());
+        }
+        chars.abilities.push(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks(),
+            crate::resolution::ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
+                crate::effects::ScheduleDelayedTriggerEffect::new(
+                    crate::triggers::Trigger::end_of_combat(),
+                    vec![crate::effect::Effect::sacrifice_source()],
+                    true,
+                    Vec::new(),
+                    crate::target::PlayerFilter::You,
+                ),
+            )]),
+        ));
+        return;
+    }
+
+    // Check if this counter grants an ability
+    if let Some(ability_id) = counter_type.granted_ability() {
+        // Check if we already have this ability (avoid duplicates)
+        let already_has = chars.static_abilities.iter().any(|a| a.id() == ability_id);
+        if already_has {
+            return;
         }
 
-        if counter_type == CounterType::Decayed {
-            if !chars
-                .static_abilities
-                .iter()
-                .any(|a| a.id() == StaticAbilityId::CantBlock)
-            {
-                push_static_ability_once(chars, StaticAbility::cant_block());
-            }
-            chars.abilities.push(crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_attacks(),
-                crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
-                        crate::triggers::Trigger::end_of_combat(),
-                        vec![crate::effect::Effect::sacrifice_source()],
-                        true,
-                        Vec::new(),
-                        crate::target::PlayerFilter::You,
-                    )),
-                ]),
-            ));
-            continue;
+        // Add the appropriate static ability based on the counter type
+        let ability: Option<StaticAbility> = match ability_id {
+            StaticAbilityId::Deathtouch => Some(StaticAbility::deathtouch()),
+            StaticAbilityId::Flying => Some(StaticAbility::flying()),
+            StaticAbilityId::FirstStrike => Some(StaticAbility::first_strike()),
+            StaticAbilityId::DoubleStrike => Some(StaticAbility::double_strike()),
+            StaticAbilityId::Hexproof => Some(StaticAbility::hexproof()),
+            StaticAbilityId::Indestructible => Some(StaticAbility::indestructible()),
+            StaticAbilityId::Lifelink => Some(StaticAbility::lifelink()),
+            StaticAbilityId::Menace => Some(StaticAbility::menace()),
+            StaticAbilityId::Reach => Some(StaticAbility::reach()),
+            StaticAbilityId::Trample => Some(StaticAbility::trample()),
+            StaticAbilityId::Vigilance => Some(StaticAbility::vigilance()),
+            StaticAbilityId::Haste => Some(StaticAbility::haste()),
+            _ => None,
+        };
+
+        if let Some(sa) = ability {
+            push_static_ability_once(chars, sa);
         }
+    }
+}
 
-        // Check if this counter grants an ability
-        if let Some(ability_id) = counter_type.granted_ability() {
-            // Check if we already have this ability (avoid duplicates)
-            let already_has = chars.static_abilities.iter().any(|a| a.id() == ability_id);
-            if already_has {
-                continue;
-            }
+#[cfg(test)]
+pub(super) fn add_abilities_from_counters(
+    object: &Object,
+    chars: &mut CalculatedCharacteristics,
+) {
+    for &counter_type in object.counters.keys() {
+        add_ability_from_counter(object, counter_type, chars);
+    }
+}
 
-            // Add the appropriate static ability based on the counter type
-            let ability: Option<StaticAbility> = match ability_id {
-                StaticAbilityId::Deathtouch => Some(StaticAbility::deathtouch()),
-                StaticAbilityId::Flying => Some(StaticAbility::flying()),
-                StaticAbilityId::FirstStrike => Some(StaticAbility::first_strike()),
-                StaticAbilityId::DoubleStrike => Some(StaticAbility::double_strike()),
-                StaticAbilityId::Hexproof => Some(StaticAbility::hexproof()),
-                StaticAbilityId::Indestructible => Some(StaticAbility::indestructible()),
-                StaticAbilityId::Lifelink => Some(StaticAbility::lifelink()),
-                StaticAbilityId::Menace => Some(StaticAbility::menace()),
-                StaticAbilityId::Reach => Some(StaticAbility::reach()),
-                StaticAbilityId::Trample => Some(StaticAbility::trample()),
-                StaticAbilityId::Vigilance => Some(StaticAbility::vigilance()),
-                StaticAbilityId::Haste => Some(StaticAbility::haste()),
-                _ => None,
-            };
+pub(super) fn ability_counter_timestamps(
+    object: &Object,
+    manager: &ContinuousEffectManager,
+) -> Vec<(u64, CounterType)> {
+    let mut counters: Vec<_> = object
+        .counters
+        .iter()
+        .filter_map(|(&counter_type, &count)| {
+            (count > 0
+                && (counter_type == CounterType::Decayed
+                    || counter_type.granted_ability().is_some()))
+            .then(|| {
+                (
+                    manager
+                        .get_counter_timestamp(object.id, counter_type)
+                        .unwrap_or(0),
+                    counter_type,
+                )
+            })
+        })
+        .collect();
+    counters.sort_by(|(left_timestamp, left_counter), (right_timestamp, right_counter)| {
+        left_timestamp.cmp(right_timestamp).then_with(|| {
+            left_counter
+                .description()
+                .cmp(&right_counter.description())
+        })
+    });
+    counters
+}
 
-            if let Some(sa) = ability {
-                push_static_ability_once(chars, sa);
-            }
+pub(super) fn apply_ability_counters_through(
+    object: &Object,
+    chars: &mut CalculatedCharacteristics,
+    counters: &[(u64, CounterType)],
+    next_counter: &mut usize,
+    through_timestamp: Option<u64>,
+) {
+    while let Some(&(timestamp, counter_type)) = counters.get(*next_counter) {
+        if through_timestamp.is_some_and(|through| timestamp > through) {
+            break;
         }
+        add_ability_from_counter(object, counter_type, chars);
+        *next_counter += 1;
     }
 }
 

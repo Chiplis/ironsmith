@@ -28,9 +28,10 @@ pub(crate) struct SpellActivitySurfaceFacts {
     pub(crate) from_not_hand: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DrawTurnSurfaceFacts {
     pub(crate) exact_draws_this_turn: Option<u32>,
+    pub(crate) draw_numbers_this_turn: Vec<u32>,
     pub(crate) except_first_in_draw_step: bool,
 }
 
@@ -88,13 +89,19 @@ pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivit
 
 pub(crate) fn parse_draw_turn_surface_facts(words: &[&str]) -> DrawTurnSurfaceFacts {
     let except_first_in_draw_step = draw_except_first_surface(words);
-    let exact_draws_this_turn = if except_first_in_draw_step {
-        Some(2)
+    let draw_numbers_this_turn = if except_first_in_draw_step {
+        Vec::new()
     } else {
-        exact_draw_count_surface(words)
+        draw_number_set_surface(words)
+    };
+    let exact_draws_this_turn = match draw_numbers_this_turn.as_slice() {
+        [card_number] => Some(*card_number),
+        _ if except_first_in_draw_step => Some(2),
+        _ => None,
     };
     DrawTurnSurfaceFacts {
         exact_draws_this_turn,
+        draw_numbers_this_turn,
         except_first_in_draw_step,
     }
 }
@@ -198,27 +205,29 @@ fn exact_spell_count_surface(words: &[&str]) -> Option<u32> {
     None
 }
 
-fn exact_draw_count_surface(words: &[&str]) -> Option<u32> {
-    for (ordinal, count) in ordinal_counts(2) {
-        let patterns: &[&[&str]] = &[
-            &[ordinal, "card", "each", "turn"],
-            &[ordinal, "cards", "each", "turn"],
-            &["your", ordinal, "card", "each", "turn"],
-            &["your", ordinal, "cards", "each", "turn"],
-            &["their", ordinal, "card", "each", "turn"],
-            &["their", ordinal, "cards", "each", "turn"],
-            &[ordinal, "card", "this", "turn"],
-            &[ordinal, "cards", "this", "turn"],
-            &["your", ordinal, "card", "this", "turn"],
-            &["your", ordinal, "cards", "this", "turn"],
-            &["their", ordinal, "card", "this", "turn"],
-            &["their", ordinal, "cards", "this", "turn"],
-        ];
-        if any_sequence_present(words, patterns) {
-            return Some(count);
-        }
+fn draw_number_set_surface(words: &[&str]) -> Vec<u32> {
+    let Some(card_idx) = words.iter().enumerate().find_map(|(idx, word)| {
+        (matches!(*word, "card" | "cards")
+            && matches!(words.get(idx + 1..idx + 3), Some(["each" | "this", "turn"])))
+        .then_some(idx)
+    }) else {
+        return Vec::new();
+    };
+    let ordinal_phrase = &words[..card_idx];
+    if ordinal_phrase.iter().any(|word| {
+        ironsmith_core::parse_ordinal_word(word).is_none()
+            && !matches!(*word, "your" | "their" | "the" | "a" | "or" | "and")
+    }) {
+        return Vec::new();
     }
-    None
+    let mut card_numbers = ordinal_phrase
+        .iter()
+        .filter_map(|word| ironsmith_core::parse_ordinal_word(word))
+        .filter(|number| *number > 0)
+        .collect::<Vec<_>>();
+    card_numbers.sort_unstable();
+    card_numbers.dedup();
+    card_numbers
 }
 
 fn first_spell_turn_surface(words: &[&str]) -> bool {
@@ -407,6 +416,16 @@ mod tests {
         ]);
         assert!(facts.except_first_in_draw_step);
         assert_eq!(facts.exact_draws_this_turn, Some(2));
+        assert!(facts.draw_numbers_this_turn.is_empty());
+    }
+
+    #[test]
+    fn typed_draw_facts_preserve_numbered_draw_sets() {
+        let facts = parse_draw_turn_surface_facts(&[
+            "your", "first", "or", "second", "card", "each", "turn",
+        ]);
+        assert_eq!(facts.exact_draws_this_turn, None);
+        assert_eq!(facts.draw_numbers_this_turn, vec![1, 2]);
     }
 
     #[test]

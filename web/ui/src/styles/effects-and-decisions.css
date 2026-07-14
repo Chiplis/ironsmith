@@ -1722,9 +1722,10 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   border-radius: 0;
 }
 
-.hand-reveal-shell[data-open="false"] .game-card.hand-card {
-  height: 46px;
-  min-height: 46px;
+.hand-reveal-shell[data-open="false"] .game-card.hand-card:not(.inspected) {
+  height: 46px !important;
+  min-height: 46px !important;
+  max-height: 46px !important;
 }
 
 .hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected {
@@ -1742,10 +1743,9 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface {
-  top: auto !important;
-  bottom: 0 !important;
-  height: 100px !important;
-  min-height: 100px !important;
+  inset: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
 }
 
 .hand-reveal-shell[data-open="false"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface > img {
@@ -1849,15 +1849,15 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   z-index: 50 !important;
 }
 
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered .game-card-surface,
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface {
+.hand-reveal-shell[data-open="true"] .game-card.hand-card.hovered .game-card-surface,
+.hand-reveal-shell[data-open="true"] .game-card.hand-card.inspected .game-card-surface {
   inset: 0 !important;
   height: 100% !important;
   min-height: 100% !important;
 }
 
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.hovered .game-card-surface > img,
-.hand-reveal-shell[data-open="true"] .hand-zone-surface-mobile-fan .game-card.hand-card.inspected .game-card-surface > img {
+.hand-reveal-shell[data-open="true"] .game-card.hand-card.hovered .game-card-surface > img,
+.hand-reveal-shell[data-open="true"] .game-card.hand-card.inspected .game-card-surface > img {
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;
@@ -3430,4 +3430,3 @@ body {
     background-size: 180px 30px;
   }
 }
-

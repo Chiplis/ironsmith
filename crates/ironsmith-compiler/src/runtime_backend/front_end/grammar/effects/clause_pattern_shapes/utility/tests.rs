@@ -36,6 +36,48 @@ fn parses_utility_clause_shapes() {
     let copy_shape = parse_copy_clause_shape_tokens(&copy).unwrap();
     assert_eq!(copy_shape.tail.retarget_split, Some(2));
     assert!(copy_shape.tail.retarget_may);
+    assert!(!copy_shape.tail.retarget_single_target);
+
+    let singular_copy = lex_line(
+        "copy this spell and may choose a new target for that copy",
+        0,
+    )
+    .unwrap();
+    let singular_shape = parse_copy_clause_shape_tokens(&singular_copy).unwrap();
+    assert!(singular_shape.tail.retarget_single_target);
+}
+
+#[test]
+fn double_counter_holder_distinguishes_singular_source_from_filter_wide_sets() {
+    for (text, expected_surface) in [
+        (
+            "Double the number of +1/+1 counters on this creature",
+            "this creature",
+        ),
+        (
+            "Double the number of growth counters on this enchantment",
+            "this enchantment",
+        ),
+        ("Double the number of +1/+1 counters on it", "it"),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let holder = parse_double_counters_tokens(&tokens).unwrap().holder;
+        let DoubleCounterHolderShape::Source { surface, .. } = &holder else {
+            panic!("expected singular source holder for {text}, got {holder:?}");
+        };
+        assert_eq!(surface.display_text(), expected_surface);
+    }
+
+    for text in [
+        "Double the number of +1/+1 counters on each creature you control",
+        "Double the number of charge counters on all artifacts you control",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(matches!(
+            parse_double_counters_tokens(&tokens).unwrap().holder,
+            DoubleCounterHolderShape::Filter(_)
+        ));
+    }
 }
 
 #[test]

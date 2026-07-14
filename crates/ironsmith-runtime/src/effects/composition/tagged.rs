@@ -4,7 +4,9 @@
 //! that can be referenced by subsequent effects in the same spell/ability.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{
+    CostExecutableEffect, CostValidationError, EffectExecutor, TargetReusePolicy,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{DamageEvent, DamageTarget};
 use crate::game_state::GameState;
@@ -131,6 +133,14 @@ impl EffectExecutor for TaggedEffect {
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         // Delegate to inner effect
         self.effect.0.get_target_count()
+    }
+
+    fn target_reuse_policy(&self) -> TargetReusePolicy {
+        if self.effect.0.get_target_spec().is_some() {
+            TargetReusePolicy::AlwaysDeclareNew
+        } else {
+            self.effect.0.target_reuse_policy()
+        }
     }
 }
 

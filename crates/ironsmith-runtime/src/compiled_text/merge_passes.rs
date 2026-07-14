@@ -199,7 +199,15 @@ pub(super) fn subject_is_plural(subject: &str) -> bool {
 pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, &str)> {
     let mut best: Option<(usize, &str)> = None;
     for verb in [
-        " gets ", " get ", " has ", " have ", " gains ", " gain ", " is ", " are ",
+        " gets ",
+        " get ",
+        " has ",
+        " have ",
+        " gains ",
+        " gain ",
+        " is ",
+        " are ",
+        " can't be ",
     ] {
         if let Some(idx) = line.find(verb)
             && best.is_none_or(|(best_idx, _)| idx < best_idx)
@@ -637,6 +645,7 @@ pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) ->
     let is_get = |verb: &str| matches!(verb, "gets" | "get");
     let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
     let is_state = |verb: &str| matches!(verb, "is" | "are");
+    let is_cant_be = |verb: &str| verb == "can't be";
 
     (is_get(left_verb) && is_trait(right_verb))
         || (is_trait(left_verb) && is_get(right_verb))
@@ -646,6 +655,8 @@ pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) ->
         || ((left_verb == "gets" && right_verb == "is")
             || (left_verb == "is" && right_verb == "gets"))
         || (is_state(left_verb) && is_state(right_verb))
+        || (is_cant_be(left_verb) && (is_get(right_verb) || is_trait(right_verb)))
+        || (is_cant_be(right_verb) && (is_get(left_verb) || is_trait(left_verb)))
 }
 
 fn format_conditioned_subject_predicate_merge(
@@ -678,6 +689,23 @@ fn format_conditioned_subject_predicate_merge(
     };
     let is_get = |verb: &str| matches!(verb, "gets" | "get");
     let is_trait = |verb: &str| matches!(verb, "has" | "have" | "gains" | "gain");
+    let is_cant_be_blocked = |verb: &str, predicate: &str| {
+        verb == "can't be" && predicate.eq_ignore_ascii_case("blocked")
+    };
+    if is_cant_be_blocked(right_verb, right_predicate) {
+        return format!(
+            "{ability_word}As long as {condition}, {} {} {} and can't be blocked",
+            lowercase_first(&left.subject),
+            left.verb,
+            left_predicate,
+        );
+    }
+    if is_cant_be_blocked(&left.verb, left_predicate) {
+        return format!(
+            "{ability_word}As long as {condition}, {} {right_verb} {right_predicate} and can't be blocked",
+            lowercase_first(&left.subject),
+        );
+    }
     if is_get(&left.verb) && is_trait(right_verb) {
         return format!(
             "{ability_word}As long as {condition}, {} {} {} and {} {}",

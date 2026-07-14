@@ -1,6 +1,7 @@
 use super::super::*;
 
 use crate::cards::builders::KeywordAction;
+use crate::effect::Until;
 use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
@@ -263,9 +264,16 @@ pub(crate) fn parse_shared_ability_gain_shape(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProtectionChoiceChooserShape {
+    You,
+    TargetController,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProtectionChoiceShape {
     pub(crate) includes_colorless: bool,
     pub(crate) includes_artifacts: bool,
+    pub(crate) chooser: ProtectionChoiceChooserShape,
 }
 
 pub(crate) fn parse_protection_choice_shape(
@@ -276,11 +284,14 @@ pub(crate) fn parse_protection_choice_shape(
         primitives::phrase(&["artifacts", "or", "from"]).value((false, true)),
         winnow::combinator::empty.value((false, false)),
     ));
-    let choice = primitives::any_phrase(&[
-        &["the", "color", "of", "your", "choice"],
-        &["the", "color", "of", "its", "controller's", "choice"],
-        &["the", "color", "of", "its", "controllers", "choice"],
-    ]);
+    let choice = alt((
+        primitives::phrase(&["the", "color", "of", "your", "choice"])
+            .value(ProtectionChoiceChooserShape::You),
+        primitives::phrase(&["the", "color", "of", "its", "controller's", "choice"])
+            .value(ProtectionChoiceChooserShape::TargetController),
+        primitives::phrase(&["the", "color", "of", "its", "controllers", "choice"])
+            .value(ProtectionChoiceChooserShape::TargetController),
+    ));
     primitives::parse_all(
         tokens,
         (
@@ -290,12 +301,15 @@ pub(crate) fn parse_protection_choice_shape(
             primitives::phrase(&["until", "end", "of", "turn"]),
             primitives::sentence_end(),
         )
-            .map(|(_, (includes_colorless, includes_artifacts), _, _, _)| {
-                ProtectionChoiceShape {
-                    includes_colorless,
-                    includes_artifacts,
-                }
-            }),
+            .map(
+                |(_, (includes_colorless, includes_artifacts), chooser, _, _)| {
+                    ProtectionChoiceShape {
+                        includes_colorless,
+                        includes_artifacts,
+                        chooser,
+                    }
+                },
+            ),
         "protection choice shape",
     )
     .ok()
@@ -308,9 +322,12 @@ pub(crate) enum AssignDamageSourceShape<'a> {
     Target(&'a [OwnedLexToken]),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum AssignsNoCombatDamageShape<'a> {
-    Supported(AssignDamageSourceShape<'a>),
+    Supported {
+        source: AssignDamageSourceShape<'a>,
+        duration: Until,
+    },
     Unsupported,
 }
 
@@ -325,20 +342,22 @@ pub(crate) fn parse_assigns_no_combat_damage_shape(
     {
         return None;
     }
-    let supported_tail = exact(
+    let duration = primitives::parse_all(
         tail_tokens,
         (
             primitives::phrase(&["no", "combat", "damage"]),
-            opt(primitives::any_phrase(&[
-                &["this", "turn"],
-                &["this", "combat"],
-            ])),
+            opt(alt((
+                primitives::phrase(&["this", "turn"]).value(Until::EndOfTurn),
+                primitives::phrase(&["this", "combat"]).value(Until::EndOfCombat),
+            ))),
+            primitives::sentence_end(),
         )
-            .void(),
+            .map(|(_, duration, _)| duration.unwrap_or(Until::EndOfTurn)),
+        "assigns-no-combat-damage duration",
     );
-    if !supported_tail {
+    let Ok(duration) = duration else {
         return Some(AssignsNoCombatDamageShape::Unsupported);
-    }
+    };
     let subject_tokens = trim_lexed_commas(subject_tokens);
     let source = if subject_tokens.is_empty()
         || exact(
@@ -351,7 +370,7 @@ pub(crate) fn parse_assigns_no_combat_damage_shape(
     } else {
         AssignDamageSourceShape::Target(subject_tokens)
     };
-    Some(AssignsNoCombatDamageShape::Supported(source))
+    Some(AssignsNoCombatDamageShape::Supported { source, duration })
 }
 
 pub(crate) fn strip_optional_you_choice_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -370,7 +389,12 @@ pub(crate) fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<Choo
         tokens,
         alt((primitives::kw("choose"), primitives::kw("chooses"))),
     )?;
-    primitives::parse_prefix(tail, primitives::kw("target"))?;
+    // A target count is part of the target phrase, so `target` is not always
+    // immediately adjacent to `choose` ("choose up to one target ...",
+    // "choose any number of target ...").  Reuse the shared target-indicator
+    // grammar instead of letting those forms fall through to resolution-time
+    // object choice.
+    super::super::super::activation_restrictions::parse_target_indicator_tokens(tail)?;
     Some(ChooseTargetShape {
         target_tokens: trim_lexed_commas(tail),
     })

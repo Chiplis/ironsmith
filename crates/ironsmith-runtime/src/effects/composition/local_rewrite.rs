@@ -36,8 +36,10 @@ fn resolve_zone_replacements(
                     replacement.to_zone,
                 ),
                 crate::effects::replacement::zone_replacement_action(
+                    object_id,
                     replacement.to_zone,
                     replacement.replacement_zone,
+                    replacement.library_placement,
                     replacement.optional,
                     replacement.choice_description.clone(),
                     replacement.counters.clone(),

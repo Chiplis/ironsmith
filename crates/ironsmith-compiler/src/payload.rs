@@ -497,10 +497,20 @@ impl KeywordAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IfResultPredicate {
     Did,
+    /// The preceding clash was won by the controller of the resolving spell
+    /// or ability. Clash effects return `1` for a win and `0` otherwise, but
+    /// this distinct AST surface keeps "if you win" from being flattened into
+    /// the generic "if you do" result predicate before lowering.
+    WonClash,
+    /// The optional antecedent was accepted, regardless of whether its
+    /// resulting action changed the game state. This is the semantic used by
+    /// explicit "for each player who does" clauses.
+    AcceptedChoice,
     DidNot,
     SearchedLibrary,
     DiesThisWay,
     ExcessDamageDealt,
+    DealtDamageToPlayer,
     AffectedObjectMatchesCardType {
         card_type: crate::types::CardType,
         negated: bool,

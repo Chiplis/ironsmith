@@ -51,6 +51,16 @@ pub(super) fn normalize_looked_card_filter_description(
     {
         card_desc = format!("{prefix} card");
     }
+    if let Some(crate::filter::Comparison::LessThanOrEqualExpr(maximum)) = &filter.mana_value
+        && value_prefers_where_x(maximum)
+    {
+        let basis = describe_value(maximum);
+        let needle = format!("mana value {basis}");
+        if card_desc.contains(&needle) {
+            card_desc = card_desc.replacen(&needle, "mana value X", 1);
+            card_desc.push_str(&format!(", where X is {basis}"));
+        }
+    }
     card_desc
 }
 
@@ -296,7 +306,8 @@ pub(crate) fn describe_look_at_top_then_put_onto_battlefield_and_into_hand_rest_
     .to_string();
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand_owner = describe_possessive_player_filter(&hand_choose.chooser);
-    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
     let opener = if reveal_top.is_some() || look_at_top.reveal {
         "Reveal"
     } else {
@@ -322,7 +333,7 @@ pub(crate) fn describe_look_at_top_then_put_onto_battlefield_and_into_hand_rest_
     };
 
     Some(format!(
-        "{opener} the top {count_text} {noun} of {owner} library. {may_prefix} put up to one {land} from among them onto the battlefield{tapped_suffix} and up to one {hand} from among them into {hand_owner} hand. Put the rest on the bottom of {owner} library{order_text}"
+        "{opener} the top {count_text} {noun} of {owner} library{where_clause}. {may_prefix} put up to one {land} from among them onto the battlefield{tapped_suffix} and up to one {hand} from among them into {hand_owner} hand. Put the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -397,10 +408,16 @@ pub(crate) fn describe_look_at_top_then_may_put_battlefield_else_hand_rest_botto
     let hand_choice = describe_choose_filter_from_looked_cards(look_at_top, hand_choose)?;
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand = describe_possessive_player_filter(&hand_choose.chooser);
-    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let chosen_reference = if where_clause.is_empty() {
+        "them"
+    } else {
+        "those cards"
+    };
     let tapped_suffix = if tapped { " tapped" } else { "" };
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library. You may put {battlefield_choice} from among them onto the battlefield{tapped_suffix}. If you don't, put {hand_choice} from among them into {hand} hand. Put the rest on the bottom of {owner} library"
+        "Look at the top {count_text} {noun} of {owner} library{where_clause}. You may put {battlefield_choice} from among {chosen_reference} onto the battlefield{tapped_suffix}. If you don't, put {hand_choice} from among {chosen_reference} into {hand} hand. Put the rest on the bottom of {owner} library"
     ))
 }
 
@@ -429,7 +446,8 @@ pub(crate) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
     let chosen = describe_choose_filter_from_looked_cards(look_at_top, choose)?;
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand = describe_possessive_player_filter(&choose.chooser);
-    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
     let may_prefix = if choose.chooser == PlayerFilter::You {
         "You may".to_string()
     } else {
@@ -448,7 +466,7 @@ pub(crate) fn describe_look_at_top_then_reveal_put_into_hand_rest_bottom(
     };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
+        "Look at the top {count_text} {noun} of {owner} library{where_clause}. {may_prefix} reveal {chosen} from among them and put it into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -1025,7 +1043,13 @@ pub(crate) fn describe_look_at_top_then_put_one_hand_other_bottom(
     if owner != "your" || hand != "your" {
         return None;
     }
-    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let chosen_reference = if where_clause.is_empty() {
+        "them"
+    } else {
+        "those cards"
+    };
     // A two-card look leaves a single remainder card ("the other", no order
     // phrase); larger looks follow the oracle's "the rest ... in any order".
     let (remainder, order_text) = if look_at_top.count == Value::Fixed(2) {
@@ -1039,7 +1063,7 @@ pub(crate) fn describe_look_at_top_then_put_one_hand_other_bottom(
     };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of your library. Put one of them into your hand and {remainder} on the bottom of your library{order_text}"
+        "Look at the top {count_text} {noun} of your library{where_clause}. Put one of {chosen_reference} into your hand and {remainder} on the bottom of your library{order_text}"
     ))
 }
 
@@ -1146,13 +1170,15 @@ pub(crate) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
     });
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let hand = describe_possessive_player_filter(&choose.chooser);
-    let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
     let opener = if reveal_top.is_some() || look_at_top.reveal {
         "Reveal"
     } else {
         "Look at"
     };
-    let look_sentence = describe_look_top_cards_sentence(opener, &count_text, noun, &owner);
+    let mut look_sentence = describe_look_top_cards_sentence(opener, &count_text, noun, &owner);
+    look_sentence.push_str(&where_clause);
     let exact_count = match (choose.count.min, choose.count.max) {
         (n, Some(max)) if n == max && n > 0 => Some(n),
         _ => None,
@@ -1224,13 +1250,286 @@ pub(crate) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
     ))
 }
 
+fn choose_is_exact_looked_library_pool(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> bool {
+    choose.zone == Some(Zone::Library)
+        && choose.filter.zone == Some(Zone::Library)
+        && choose.additional_zones.is_empty()
+        && !choose.is_search
+        && !choose.top_only
+        && !choose.bottom_only
+        && object_filter_has_tag(&choose.filter, &look_at_top.tag)
+}
+
+fn looked_set_sentence(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_top: bool,
+) -> String {
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let opener = if reveal_top || look_at_top.reveal {
+        "Reveal"
+    } else {
+        "Look at"
+    };
+    let mut sentence = if count_text == "that many" || count_text.starts_with("twice ") {
+        format!("{opener} {count_text} {noun} from the top of {owner} library")
+    } else {
+        format!("{opener} the top {count_text} {noun} of {owner} library")
+    };
+    sentence.push_str(&where_clause);
+    sentence
+}
+
+fn selected_group_move_to_zone<'a>(
+    effect: &'a Effect,
+    selected_tag: &str,
+) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    let unwrapped = unwrap_tag_wrapped_effect(effect);
+    if let Some(move_to_zone) = unwrapped.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == selected_tag
+        )
+        .then_some(move_to_zone);
+    }
+
+    // `MoveTaggedGroupToZone` lowers to a ForEachTagged over the selected
+    // collection.  Accept that runtime-equivalent shape as well as the older
+    // direct tagged move so the renderer follows the typed AST instead of
+    // leaking the lowering loop into rules text.
+    let for_each = unwrapped.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if for_each.tag.as_str() != selected_tag || for_each.effects.len() != 1 {
+        return None;
+    }
+    let move_to_zone = unwrap_tag_wrapped_effect(&for_each.effects[0])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    match move_to_zone.target.base() {
+        ChooseSpec::Iterated => Some(move_to_zone),
+        ChooseSpec::Tagged(tag) if tag.as_str() == selected_tag => Some(move_to_zone),
+        _ => None,
+    }
+}
+
+pub(crate) fn describe_looked_one_hand_then_matching_to_zone_rest_graveyard(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_top: Option<&crate::effects::RevealTaggedEffect>,
+    hand_choose: &crate::effects::ChooseObjectsEffect,
+    hand_move_effect: &Effect,
+    matching_choose: &crate::effects::ChooseObjectsEffect,
+    matching_move_effect: &Effect,
+    rest: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if reveal_top.is_some_and(|reveal| reveal.tag != look_at_top.tag)
+        || !choose_is_exact_looked_library_pool(look_at_top, hand_choose)
+        || !choose_is_exact_looked_library_pool(look_at_top, matching_choose)
+        || hand_choose.count != ChoiceCount::up_to(1)
+        || !matching_choose.count.is_any_number()
+        || hand_choose.chooser != matching_choose.chooser
+    {
+        return None;
+    }
+
+    let keep_tag = tag_all_wrapper_tag_for_effect(hand_move_effect)?;
+    if tag_all_wrapper_tag_for_effect(matching_move_effect) != Some(keep_tag)
+        || !for_each_moves_unselected_to_zone(
+            rest,
+            look_at_top.tag.as_str(),
+            keep_tag,
+            Zone::Graveyard,
+        )
+    {
+        return None;
+    }
+    let hand_move = selected_group_move_to_zone(hand_move_effect, hand_choose.tag.as_str())?;
+    if hand_move.zone != Zone::Hand
+        || hand_move.to_top
+        || hand_move.enters_face_down
+        || hand_move.transfer_exiled_with_source_links
+    {
+        return None;
+    }
+    let matching_move =
+        selected_group_move_to_zone(matching_move_effect, matching_choose.tag.as_str())?;
+    if matching_move.to_top
+        || matching_move.enters_face_down
+        || matching_move.transfer_exiled_with_source_links
+        || !matches!(
+            matching_move.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &matching_choose.tag
+        )
+        || !matches!(matching_move.zone, Zone::Hand | Zone::Battlefield)
+    {
+        return None;
+    }
+
+    let mut hand_base = hand_choose.filter.clone();
+    hand_base.zone = None;
+    hand_base.tagged_constraints.retain(|constraint| {
+        !(constraint.tag == look_at_top.tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            ))
+    });
+    if hand_base != ObjectFilter::default() {
+        return None;
+    }
+
+    let hand_exclusions = matching_choose
+        .filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.tag == hand_choose.tag
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                )
+        })
+        .count();
+    if hand_exclusions != 1 {
+        return None;
+    }
+    let mut display_choose = matching_choose.clone();
+    display_choose
+        .filter
+        .tagged_constraints
+        .retain(|constraint| {
+            !(constraint.tag == hand_choose.tag
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                ))
+        });
+    let matching = describe_any_number_filter_from_looked_cards(look_at_top, &display_choose)?;
+
+    let look_sentence = looked_set_sentence(look_at_top, reveal_top.is_some());
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let hand = describe_possessive_player_filter(&hand_choose.chooser);
+    let may_actor = if hand_choose.chooser == PlayerFilter::You {
+        "You may".to_string()
+    } else {
+        format!(
+            "{} may",
+            capitalize_first(&describe_player_filter(&hand_choose.chooser))
+        )
+    };
+    let matching_actor = if matching_choose.chooser == PlayerFilter::You {
+        "put".to_string()
+    } else {
+        let player = describe_player_filter(&matching_choose.chooser);
+        format!("{player} {}", player_verb(&player, "put", "puts"))
+    };
+    let destination = match matching_move.zone {
+        Zone::Hand => format!("into {hand} hand"),
+        Zone::Battlefield => {
+            let tapped = if matching_move.enters_tapped {
+                " tapped"
+            } else {
+                ""
+            };
+            format!("onto the battlefield{tapped}")
+        }
+        _ => return None,
+    };
+
+    Some(format!(
+        "{look_sentence}. {may_actor} put one of them into {hand} hand. Then {matching_actor} any number of {matching} from among them {destination} and the rest into {owner} graveyard"
+    ))
+}
+
+pub(crate) fn describe_looked_reveal_selection_rest_bottom_land_creature_split(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    reveal: &crate::effects::RevealTaggedEffect,
+    remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+    distribute: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    if look_at_top.reveal
+        || !choose_is_exact_looked_library_pool(look_at_top, choose)
+        || reveal.tag != choose.tag
+        || remainder.tag != look_at_top.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != look_at_top.player
+        || distribute.tag != choose.tag
+        || distribute.effects.len() != 1
+        || !looked_filter_is_creature_land_union(&choose.filter)
+    {
+        return None;
+    }
+    let conditional = distribute.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.if_true.len() != 1 || conditional.if_false.len() != 1 {
+        return None;
+    }
+    let land_filter = match &conditional.condition {
+        crate::effect::Condition::TaggedObjectMatches(tag, filter)
+            if tag.as_str() == "__it__" || tag == &choose.tag =>
+        {
+            filter
+        }
+        crate::effect::Condition::PlayerTaggedObjectMatches { tag, filter, .. }
+            if tag.as_str() == "__it__" || tag == &choose.tag =>
+        {
+            filter
+        }
+        _ => return None,
+    };
+    let mut expected_land = ObjectFilter::default();
+    expected_land.card_types.push(CardType::Land);
+    if land_filter != &expected_land {
+        return None;
+    }
+    let land_move = conditional.if_true[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let creature_move =
+        conditional.if_false[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if land_move.zone != Zone::Battlefield
+        || !land_move.enters_tapped
+        || land_move.to_top
+        || land_move.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || !matches!(land_move.target.base(), ChooseSpec::Iterated)
+        || creature_move.zone != Zone::Hand
+        || creature_move.to_top
+        || !matches!(creature_move.target.base(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let selected = describe_counted_choose_filter_from_looked_cards(look_at_top, choose)?;
+    let actor = if choose.chooser == PlayerFilter::You {
+        "You may".to_string()
+    } else {
+        format!(
+            "{} may",
+            capitalize_first(&describe_player_filter(&choose.chooser))
+        )
+    };
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let hand = describe_possessive_player_filter(&choose.chooser);
+    let order = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    Some(format!(
+        "{}. {actor} reveal {selected} from among them, then put the rest on the bottom of {owner} library{order}. Put all land cards revealed this way onto the battlefield tapped and put all creature cards revealed this way into {hand} hand",
+        looked_set_sentence(look_at_top, false)
+    ))
+}
+
 pub(super) fn describe_look_at_top_then_put_matching_to_zone_rest_hand(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_tagged: Option<&crate::effects::RevealTaggedEffect>,
     choose: &crate::effects::ChooseObjectsEffect,
     move_chosen: &crate::effects::ForEachTaggedEffect,
     rest: &crate::effects::ForEachTaggedEffect,
 ) -> Option<String> {
-    if choose_primary_zone(choose) != Some(Zone::Library) || choose.is_search {
+    if reveal_tagged.is_some_and(|reveal| reveal.tag != look_at_top.tag)
+        || !object_filter_has_tag(&choose.filter, &look_at_top.tag)
+        || choose.is_search
+    {
         return None;
     }
     let rest_zone = if for_each_moves_unselected_to_zone(
@@ -1267,7 +1566,7 @@ pub(super) fn describe_look_at_top_then_put_matching_to_zone_rest_hand(
     let hand = describe_possessive_player_filter(&choose.chooser);
     let (count_text, noun, count_where_clause) =
         describe_top_count_noun_and_where_clause(&look_at_top.count);
-    let opener = if look_at_top.reveal {
+    let opener = if look_at_top.reveal || reveal_tagged.is_some() {
         "Reveal"
     } else {
         "Look at"
@@ -1562,6 +1861,80 @@ pub(crate) fn describe_look_at_top_then_reveal_put_matching_into_hand_rest_botto
     ))
 }
 
+pub(crate) fn describe_look_at_top_then_reveal_put_all_matching_onto_battlefield_rest_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_tagged: &crate::effects::RevealTaggedEffect,
+    tag_matching: &crate::effects::TagMatchingObjectsEffect,
+    move_matching: &crate::effects::ForEachTaggedEffect,
+    remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+) -> Option<String> {
+    if look_at_top.reveal
+        || reveal_tagged.tag != look_at_top.tag
+        || tag_matching.tag != move_matching.tag
+        || tag_matching.zone != Some(Zone::Library)
+        || !tag_matching.additional_zones.is_empty()
+        || remainder.tag != look_at_top.tag
+        || remainder.keep_tagged.as_ref() != Some(&tag_matching.tag)
+        || remainder.player != look_at_top.player
+        || move_matching.effects.len() != 1
+    {
+        return None;
+    }
+
+    let move_to_zone =
+        move_matching.effects[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.enters_face_down
+        || move_to_zone.transfer_exiled_with_source_links
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let looked_constraints = tag_matching
+        .filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.tag == look_at_top.tag
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                )
+        })
+        .count();
+    if looked_constraints != 1 {
+        return None;
+    }
+
+    let mut matching_filter = tag_matching.filter.clone();
+    matching_filter.zone = None;
+    matching_filter.tagged_constraints.retain(|constraint| {
+        !(constraint.tag == look_at_top.tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            ))
+    });
+    let matching = pluralize_noun_phrase(&describe_search_selection_with_cards(
+        &matching_filter.description(),
+    ));
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, count_where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let battlefield_suffix = describe_battlefield_entry_state_for_looked_move(move_to_zone);
+    let order_text = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+
+    Some(format!(
+        "Reveal the top {count_text} {noun} of {owner} library{count_where_clause}. Put all {matching} from among them onto the battlefield{battlefield_suffix} and the rest on the bottom of {owner} library{order_text}"
+    ))
+}
+
 pub(crate) fn describe_look_at_top_then_reveal_put_matching_onto_battlefield_rest_graveyard(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
     reveal_tagged: &crate::effects::RevealTaggedEffect,
@@ -1619,16 +1992,16 @@ pub(crate) fn describe_look_count_and_noun(count: &Value) -> (String, &'static s
 
 pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     look_at_top: &crate::effects::LookAtTopCardsEffect,
+    reveal_tagged: Option<&crate::effects::RevealTaggedEffect>,
     choose: &crate::effects::ChooseObjectsEffect,
     move_effect: &Effect,
     remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
 ) -> Option<String> {
-    if look_at_top.reveal
+    if reveal_tagged.is_some_and(|reveal| reveal.tag != look_at_top.tag)
         || look_at_top.player != PlayerFilter::You
         || choose.chooser != PlayerFilter::You
         || choose.is_search
         || choose.count.is_any_number()
-        || choose_primary_zone(choose) != Some(Zone::Library)
         || !choose_references_tag(choose, &look_at_top.tag)
         || remainder.tag != look_at_top.tag
         || remainder.keep_tagged.as_ref() != Some(&choose.tag)
@@ -1640,7 +2013,7 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     let Some((_, for_each)) = for_each_tagged_for_compaction(move_effect) else {
         return None;
     };
-    if for_each.tag != choose.tag || for_each.effects.len() != 1 {
+    if for_each.tag != choose.tag || for_each.effects.is_empty() {
         return None;
     }
     let move_to_zone = unwrap_basic_tag_wrappers(&for_each.effects[0])
@@ -1650,15 +2023,34 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     {
         return None;
     }
+    let entry_counter_suffix = match &for_each.effects[1..] {
+        [] => String::new(),
+        [counter_effect] => {
+            let put = unwrap_basic_tag_wrappers(counter_effect)
+                .downcast_ref::<crate::effects::PutCountersEffect>()?;
+            if put.target_count.is_some()
+                || put.distributed
+                || !matches!(put.target.base(), ChooseSpec::Iterated)
+            {
+                return None;
+            }
+            format!(
+                " with {} on it",
+                describe_put_counter_phrase(&put.amount, put.counter_type)
+            )
+        }
+        _ => return None,
+    };
 
-    let (count_text, noun, singular_count) = describe_look_count_and_noun(&look_at_top.count);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let singular_count = look_at_top.count == Value::Fixed(1);
     if singular_count {
         return None;
     }
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let mut selection = describe_looked_battlefield_selection(choose)?;
-    let put_prefix = if move_to_zone.enters_attacking
-        && choose.count.min == 0
+    let put_prefix = if choose.count.min == 0
         && choose.count.max == Some(1)
         && let Some(rest) = selection.strip_prefix("up to one ")
     {
@@ -1667,14 +2059,22 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     } else {
         "Put"
     };
-    let battlefield_suffix = describe_battlefield_entry_state_for_looked_move(move_to_zone);
+    let battlefield_suffix = format!(
+        "{}{entry_counter_suffix}",
+        describe_battlefield_entry_state_for_looked_move(move_to_zone)
+    );
+    let opener = if look_at_top.reveal || reveal_tagged.is_some() {
+        "Reveal"
+    } else {
+        "Look at"
+    };
     let order_text = match remainder.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
     };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of {owner} library. {put_prefix} {selection} from among them onto the battlefield{battlefield_suffix}. Put the rest on the bottom of {owner} library{order_text}"
+        "{opener} the top {count_text} {noun} of {owner} library{where_clause}. {put_prefix} {selection} from among them onto the battlefield{battlefield_suffix}. Put the rest on the bottom of {owner} library{order_text}"
     ))
 }
 
@@ -1729,28 +2129,35 @@ pub(super) fn describe_looked_battlefield_selection(
     }
 
     let plural = pluralize_noun_phrase(&card_desc);
+    let aggregate_suffix = describe_choice_aggregate_constraint_suffix(choose);
     if choose.count.is_any_number() {
-        return Some(format!("any number of {plural}"));
+        return Some(format!("any number of {plural}{aggregate_suffix}"));
     }
     if choose.count.is_up_to_dynamic_x() {
-        return Some(format!("up to X {plural}"));
+        return Some(format!("up to X {plural}{aggregate_suffix}"));
     }
     if choose.count.is_dynamic_x() {
-        return Some(format!("X {plural}"));
+        return Some(format!("X {plural}{aggregate_suffix}"));
     }
 
     match (choose.count.min, choose.count.max) {
-        (0, Some(1)) => Some(format!("up to one {card_desc}")),
-        (1, Some(1)) => Some(with_indefinite_article(&card_desc)),
+        (0, Some(1)) => Some(format!("up to one {card_desc}{aggregate_suffix}")),
+        (1, Some(1)) => Some(format!(
+            "{}{aggregate_suffix}",
+            with_indefinite_article(&card_desc)
+        )),
         (0, Some(max)) => {
             let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
-            Some(format!("up to {max_text} {plural}"))
+            Some(format!("up to {max_text} {plural}{aggregate_suffix}"))
         }
         (min, Some(max)) if min == max => {
             let count_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
-            Some(format!("{count_text} {plural}"))
+            Some(format!("{count_text} {plural}{aggregate_suffix}"))
         }
-        _ => Some(format!("{} {plural}", describe_choice_count(&choose.count))),
+        _ => Some(format!(
+            "{} {plural}{aggregate_suffix}",
+            describe_choice_count(&choose.count)
+        )),
     }
 }
 
@@ -1851,10 +2258,19 @@ pub(crate) fn describe_draw_then_discard(
     if draw.player != discard.player {
         return None;
     }
+    let draw_count = if draw.count.has_surface_hint(ValueSurfaceHint::ForEach) {
+        describe_create_for_each_count(&draw.count)
+            .map(|basis| format!("a card for each {basis}"))
+            .unwrap_or_else(|| describe_card_count(&draw.count))
+    } else {
+        describe_where_x_basis(&draw.count)
+            .map(|basis| format!("X cards, where X is {basis}"))
+            .unwrap_or_else(|| describe_card_count(&draw.count))
+    };
     if draw.player == PlayerFilter::You {
         let mut text = format!(
             "Draw {}, then discard {}",
-            describe_card_count(&draw.count),
+            draw_count,
             describe_discard_count(&discard.count, discard.card_filter.as_ref())
         );
         if discard.random {
@@ -1866,7 +2282,7 @@ pub(crate) fn describe_draw_then_discard(
     let mut text = format!(
         "{player} {} {}, then {} {}",
         player_verb(&player, "draw", "draws"),
-        describe_card_count(&draw.count),
+        draw_count,
         player_verb(&player, "discard", "discards"),
         describe_discard_count(&discard.count, discard.card_filter.as_ref())
     );
@@ -1918,6 +2334,27 @@ pub(crate) fn describe_shared_draw(
     Some(format!(
         "you and {partner} each draw {}",
         describe_card_count(&first.count)
+    ))
+}
+
+pub(crate) fn describe_fixed_draw_then_equal_to_draw(
+    first: &crate::effects::DrawCardsEffect,
+    second: &crate::effects::DrawCardsEffect,
+) -> Option<String> {
+    if first.player != second.player
+        || !matches!(first.count.unhinted(), Value::Fixed(amount) if *amount > 0)
+        || !second.count.has_surface_hint(ValueSurfaceHint::EqualTo)
+    {
+        return None;
+    }
+
+    let player = describe_player_filter(&first.player);
+    Some(format!(
+        "{player} {} {}, then {} {}",
+        player_verb(&player, "draw", "draws"),
+        describe_card_count(&first.count),
+        player_verb(&player, "draw", "draws"),
+        describe_card_count(&second.count),
     ))
 }
 
@@ -2300,6 +2737,7 @@ pub(super) fn describe_choose_filter_from_tagged_cards(
         .unwrap_or(filter_text.as_str())
         .trim()
         .to_string();
+    card_desc = normalize_looked_card_filter_description(&base_filter, &card_desc);
     card_desc = strip_leading_article(&card_desc).to_string();
     if let Some(rest) = card_desc.strip_prefix("card ") {
         card_desc = format!("{rest} card");
@@ -2326,23 +2764,144 @@ pub(super) fn describe_tagged_mill_clause(mill: &crate::effects::MillEffect) -> 
     }
 }
 
-pub(crate) fn describe_tagged_mill_then_put_milled_card_into_hand(
-    tagged_mill: &crate::effects::TaggedEffect,
+fn describe_put_milled_cards_clause(
+    source_tag: &str,
     mill: &crate::effects::MillEffect,
-    choose: &crate::effects::ChooseObjectsEffect,
-    move_to_hand: &crate::effects::ForEachTaggedEffect,
+    choices: &[&crate::effects::ChooseObjectsEffect],
+    move_chosen: &crate::effects::ForEachTaggedEffect,
 ) -> Option<String> {
-    if choose.chooser != mill.player
-        || !for_each_moves_tag_to_hand(move_to_hand, choose.tag.as_str())
+    let first = *choices.first()?;
+    if choices.iter().any(|choose| {
+        choose.chooser != mill.player
+            || choose.tag != first.tag
+            || choose.count.min > 1
+            || choose.count.max != Some(1)
+            || choose.count.dynamic_x
+            || choose.count.random
+    }) {
+        return None;
+    }
+
+    let destination = if for_each_moves_tag_to_hand(move_chosen, first.tag.as_str()) {
+        format!(
+            "into {} hand",
+            describe_possessive_player_filter(&first.chooser)
+        )
+    } else {
+        let (zone, tapped) = for_each_moves_tag_to_public_zone(move_chosen, first.tag.as_str())?;
+        if zone != Zone::Battlefield {
+            return None;
+        }
+        if tapped {
+            "onto the battlefield tapped".to_string()
+        } else {
+            "onto the battlefield".to_string()
+        }
+    };
+
+    let chosen = choices
+        .iter()
+        .map(|choose| {
+            let mut normalized = (*choose).clone();
+            normalized.filter.tagged_constraints.retain(|constraint| {
+                !(constraint.tag == first.tag
+                    && matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                    ))
+            });
+            describe_choose_filter_from_tagged_cards(&normalized, source_tag)
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let chosen = if chosen.len() == 1 {
+        chosen.into_iter().next()?
+    } else {
+        chosen.join(" and/or ")
+    };
+    let may = choices.iter().all(|choose| choose.count.min == 0);
+    Some(format!(
+        "You{} put {chosen} from among them {destination}",
+        if may { " may" } else { "" }
+    ))
+}
+
+pub(crate) fn describe_mill_then_put_milled_cards(
+    source_tag: &str,
+    mill: &crate::effects::MillEffect,
+    choices: &[&crate::effects::ChooseObjectsEffect],
+    move_chosen: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    let put_clause = describe_put_milled_cards_clause(source_tag, mill, choices, move_chosen)?;
+    let mill_clause = describe_tagged_mill_clause(mill);
+    Some(format!("{mill_clause}. {put_clause}"))
+}
+
+pub(crate) fn mill_with_collection_tag(
+    effect: &Effect,
+) -> Option<(&crate::TagKey, &crate::effects::MillEffect)> {
+    fn mill_beneath_transparent_tags(effect: &Effect) -> Option<&crate::effects::MillEffect> {
+        if let Some(mill) = effect.downcast_ref::<crate::effects::MillEffect>() {
+            return Some(mill);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return mill_beneath_transparent_tags(&tagged.effect);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return mill_beneath_transparent_tags(&tag_all.effect);
+        }
+        None
+    }
+
+    // Sentence provenance may add a transparent tag outside the parser's
+    // ordinary `milled_N` wrapper. Choices reference that outer collection, so
+    // preserve its tag while looking recursively for the typed mill producer.
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some((&tagged.tag, mill_beneath_transparent_tags(&tagged.effect)?));
+    }
+    let tag_all = effect.downcast_ref::<crate::effects::TagAllEffect>()?;
+    Some((
+        &tag_all.tag,
+        mill_beneath_transparent_tags(&tag_all.effect)?,
+    ))
+}
+
+pub(crate) fn describe_may_tagged_mill_then_if_do_put_milled_cards(
+    with_id: &crate::effects::WithIdEffect,
+    if_effect: &crate::effects::IfEffect,
+) -> Option<String> {
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
     {
         return None;
     }
-    let chosen = describe_choose_filter_from_tagged_cards(choose, tagged_mill.tag.as_str())?;
-    let mill_clause = describe_tagged_mill_clause(mill);
-    let hand = describe_possessive_player_filter(&choose.chooser);
-    let may = if choose.count.min == 0 { " may" } else { "" };
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| *decider != PlayerFilter::You)
+    {
+        return None;
+    }
+    let [milled_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let (source_tag, mill) = mill_with_collection_tag(milled_effect)?;
+    if mill.player != PlayerFilter::You {
+        return None;
+    }
+    let (move_effect, choice_effects) = if_effect.then.split_last()?;
+    let move_chosen = move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let choices = choice_effects
+        .iter()
+        .map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .collect::<Option<Vec<_>>>()?;
+    let put_clause =
+        describe_put_milled_cards_clause(source_tag.as_str(), mill, &choices, move_chosen)?;
     Some(format!(
-        "{mill_clause}. You{may} put {chosen} from among the cards milled this way into {hand} hand"
+        "You may {}. If you do, {}",
+        lowercase_first(&describe_tagged_mill_clause(mill)),
+        lowercase_first(&put_clause)
     ))
 }
 
@@ -2452,28 +3011,7 @@ pub(super) fn describe_optional_payment_cost(
 pub(super) fn describe_may_have_target_block_source(
     may: &crate::effects::MayEffect,
 ) -> Option<String> {
-    if !matches!(may.decider.as_ref(), None | Some(PlayerFilter::You)) || may.effects.len() != 2 {
-        return None;
-    }
-    let (tag, target_only) = tagged_target_only_effect(&may.effects[0])?;
-    let cant =
-        unwrap_basic_tag_wrappers(&may.effects[1]).downcast_ref::<crate::effects::CantEffect>()?;
-    if cant.duration != Until::EndOfTurn {
-        return None;
-    }
-    let crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } =
-        &cant.restriction
-    else {
-        return None;
-    };
-    if !filter_is_exactly_tagged(blockers, tag) || !attacker.source {
-        return None;
-    }
-
-    Some(format!(
-        "You may have {} block this creature this turn if able",
-        describe_choose_spec(&target_only.target)
-    ))
+    describe_may_have_tagged_forced_block(may)
 }
 
 pub(crate) fn describe_tagged_mill_then_payment_if_you_do_put_milled_card_into_hand(

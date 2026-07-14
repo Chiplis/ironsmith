@@ -1,7 +1,38 @@
 use super::*;
 
+pub(super) fn describe_filter_union_list(
+    mut parts: Vec<String>,
+    connective: ObjectFilterUnionConnective,
+    serial_or: bool,
+) -> String {
+    match parts.as_slice() {
+        [] => return String::new(),
+        [single] => return single.clone(),
+        [first, second] => {
+            let joiner = match connective {
+                ObjectFilterUnionConnective::Or => "or",
+                ObjectFilterUnionConnective::AndOr => "and/or",
+            };
+            return format!("{first} {joiner} {second}");
+        }
+        _ => {}
+    }
+    if connective == ObjectFilterUnionConnective::Or && !serial_or {
+        return parts.join(" or ");
+    }
+    let last = parts.pop().expect("union list has at least three parts");
+    let joiner = match connective {
+        ObjectFilterUnionConnective::Or => "or",
+        ObjectFilterUnionConnective::AndOr => "and/or",
+    };
+    format!("{}, {joiner} {last}", parts.join(", "))
+}
+
 #[allow(dead_code)]
-pub(super) fn describe_simple_any_of_keyword_clause(any_of: &[ObjectFilter]) -> Option<String> {
+pub(super) fn describe_simple_any_of_keyword_clause(
+    any_of: &[ObjectFilter],
+    connective: ObjectFilterUnionConnective,
+) -> Option<String> {
     if any_of.len() < 2 {
         return None;
     }
@@ -34,7 +65,7 @@ pub(super) fn describe_simple_any_of_keyword_clause(any_of: &[ObjectFilter]) -> 
         return None;
     }
 
-    Some(labels.join(" or "))
+    Some(describe_filter_union_list(labels, connective, false))
 }
 
 pub(super) fn plus_minus_counter_delta(
@@ -190,7 +221,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
         PlayerFilter::Attacking => "an attacking player's".to_string(),
-        PlayerFilter::DamagedPlayer => "the damaged player's".to_string(),
+        PlayerFilter::DamagedPlayer => "that player's".to_string(),
         PlayerFilter::EffectController => "the player who cast this spell's".to_string(),
         PlayerFilter::Specific(_) => "that player's".to_string(),
         PlayerFilter::MostLifeTied => "the chosen player's".to_string(),
@@ -223,6 +254,13 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
             };
             format!("{base}'s")
         }
+        PlayerFilter::AliasedTarget(_) => "that player's".to_string(),
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(_) | ObjectRef::Target) => {
+            "its controller's".to_string()
+        }
+        PlayerFilter::OwnerOf(ObjectRef::Tagged(_) | ObjectRef::Target) => {
+            "its owner's".to_string()
+        }
         PlayerFilter::ControllerOf(_) => "that object's controller's".to_string(),
         PlayerFilter::OwnerOf(_) => "that object's owner's".to_string(),
         PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -241,7 +279,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Active => "active player".to_string(),
         PlayerFilter::Defending => "defending player".to_string(),
         PlayerFilter::Attacking => "attacking player".to_string(),
-        PlayerFilter::DamagedPlayer => "damaged player".to_string(),
+        PlayerFilter::DamagedPlayer => "that player".to_string(),
         PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Specific(_) => "player".to_string(),
         PlayerFilter::MostLifeTied => "player with the most life or tied for most life".to_string(),
@@ -292,6 +330,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(excluded)
         ),
         PlayerFilter::Target(inner) => format!("target {}", describe_player_filter(inner)),
+        PlayerFilter::AliasedTarget(_) => "that player".to_string(),
         PlayerFilter::ControllerOf(_) => "controller".to_string(),
         PlayerFilter::OwnerOf(_) => "owner".to_string(),
         PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -306,25 +345,26 @@ pub(super) fn describe_card_type_word(card_type: CardType) -> &'static str {
 }
 
 #[allow(dead_code)]
-pub(super) fn describe_card_type_list(card_types: &[CardType]) -> String {
-    match card_types {
-        [] => String::new(),
-        [single] => single.name().to_string(),
-        [first, second] => format!("{} or {}", first.name(), second.name()),
-        _ => {
-            let mut names = card_types
-                .iter()
-                .map(|card_type| card_type.name())
-                .collect::<Vec<_>>();
-            let last = names.pop().expect("card type list is non-empty");
-            format!("{}, or {}", names.join(", "), last)
-        }
-    }
+pub(super) fn describe_card_type_list(
+    card_types: &[CardType],
+    connective: ObjectFilterUnionConnective,
+) -> String {
+    describe_filter_union_list(
+        card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string())
+            .collect(),
+        connective,
+        true,
+    )
 }
 
 #[allow(dead_code)]
-pub(super) fn describe_card_type_source_phrase(card_types: &[CardType]) -> String {
-    let types = describe_card_type_list(card_types);
+pub(super) fn describe_card_type_source_phrase(
+    card_types: &[CardType],
+    connective: ObjectFilterUnionConnective,
+) -> String {
+    let types = describe_card_type_list(card_types, connective);
     if types.is_empty() {
         return "a source".to_string();
     }
@@ -832,13 +872,21 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
         }
         Comparison::LessThanExpr(value) => format!("less than {}", describe_value_expr(value)),
         Comparison::LessThanOrEqualExpr(value) => {
-            format!("{} or less", describe_value_expr(value))
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison) {
+                format!("less than or equal to {}", describe_value_expr(value))
+            } else {
+                format!("{} or less", describe_value_expr(value))
+            }
         }
         Comparison::GreaterThanExpr(value) => {
             format!("greater than {}", describe_value_expr(value))
         }
         Comparison::GreaterThanOrEqualExpr(value) => {
-            format!("{} or greater", describe_value_expr(value))
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison) {
+                format!("greater than or equal to {}", describe_value_expr(value))
+            } else {
+                format!("{} or greater", describe_value_expr(value))
+            }
         }
     }
 }

@@ -43,6 +43,51 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
 }
 
 #[test]
+fn attached_pt_and_all_ability_loss_preserves_both_characteristic_effects() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature gets -5/-0 and loses all abilities.",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_attached_gets_and_cant_block_line(&tokens)
+        .unwrap()
+        .expect("compound attached characteristic line should parse");
+    assert_eq!(abilities.len(), 2, "{abilities:#?}");
+
+    let debug = format!("{abilities:#?}");
+    assert!(debug.contains("Anthem"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+    assert_eq!(debug.matches("TagKey(\"enchanted\")").count(), 2, "{debug}");
+
+    let routed = parse_static_ability_ast_line_lexed(&tokens)
+        .unwrap()
+        .expect("static rule dispatch should retain the narrow attached compound");
+    let routed_debug = format!("{routed:#?}");
+    assert_eq!(routed.len(), 2, "{routed_debug}");
+    assert!(routed_debug.contains("Anthem"), "{routed_debug}");
+    assert!(
+        routed_debug.contains("RemoveAllAbilities"),
+        "{routed_debug}"
+    );
+
+    let standalone = crate::runtime_backend::lexer::lex_line(
+        "Creatures your opponents control lose all abilities.",
+        0,
+    )
+    .unwrap();
+    let standalone = parse_static_ability_ast_line_lexed(&standalone)
+        .unwrap()
+        .expect("broad standalone ability loss should still route");
+    let standalone_debug = format!("{standalone:#?}");
+    assert_eq!(standalone.len(), 1, "{standalone_debug}");
+    assert!(
+        standalone_debug.contains("RemoveAllAbilities"),
+        "{standalone_debug}"
+    );
+    assert!(!standalone_debug.contains("Anthem"), "{standalone_debug}");
+}
+
+#[test]
 fn typed_attached_transform_and_prevention_shapes_lower() {
     let tokens = crate::runtime_backend::lexer::lex_line(
         "Enchanted creature is a blue Frog with base power and toughness 3/3 in addition to its other types.",
@@ -65,6 +110,34 @@ fn typed_attached_transform_and_prevention_shapes_lower() {
             .unwrap()
             .is_some()
     );
+}
+
+#[test]
+fn attached_land_type_setting_replaces_the_land_subtype_family() {
+    let lush = crate::runtime_backend::lexer::lex_line(
+        "Enchanted land is a Mountain, Forest, and Plains.",
+        0,
+    )
+    .unwrap();
+    let lush = parse_attached_type_transform_line(&lush)
+        .unwrap()
+        .expect("land subtype setting should parse");
+    let lush_debug = format!("{lush:#?}");
+    assert!(lush_debug.contains("SetLandSubtypes"), "{lush_debug}");
+    assert!(!lush_debug.contains("AddSubtypes"), "{lush_debug}");
+
+    let song = crate::runtime_backend::lexer::lex_line(
+        "Enchanted permanent is a colorless Forest land.",
+        0,
+    )
+    .unwrap();
+    let song = parse_attached_type_transform_line(&song)
+        .unwrap()
+        .expect("card-type and land-subtype setting should parse");
+    let song_debug = format!("{song:#?}");
+    assert!(song_debug.contains("SetCardTypes"), "{song_debug}");
+    assert!(song_debug.contains("SetLandSubtypes"), "{song_debug}");
+    assert!(!song_debug.contains("AddSubtypes"), "{song_debug}");
 }
 
 #[test]

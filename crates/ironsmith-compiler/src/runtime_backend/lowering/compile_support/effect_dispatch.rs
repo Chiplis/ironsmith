@@ -22,6 +22,66 @@ struct EffectCompileHandlerDef {
     run: EffectCompileHandler,
 }
 
+fn coordinated_introduced_target(effect: &Effect) -> Option<(TagKey, ChooseSpec)> {
+    if let Some(with_id) = effect.as_with_id() {
+        return coordinated_introduced_target(&with_id.effect);
+    }
+
+    let tagged = effect.as_tagged()?;
+    let spec = tagged.effect.target_spec()?;
+    spec.is_target().then(|| (tagged.tag.clone(), spec.clone()))
+}
+
+fn preserve_independent_coordinated_targets(
+    mut effects: Vec<Effect>,
+    choices: Vec<ChooseSpec>,
+) -> (Vec<Effect>, Vec<ChooseSpec>) {
+    let mut introduced = Vec::<(TagKey, ChooseSpec)>::new();
+    for effect in &effects {
+        let Some((tag, spec)) = coordinated_introduced_target(effect) else {
+            continue;
+        };
+        if !introduced.iter().any(|(seen, _)| seen == &tag) {
+            introduced.push((tag, spec));
+        }
+    }
+
+    let has_repeated_spec = introduced
+        .iter()
+        .enumerate()
+        .any(|(idx, (_, spec))| introduced[idx + 1..].iter().any(|(_, later)| later == spec));
+    if !has_repeated_spec {
+        return (effects, choices);
+    }
+
+    // `compile_effects` normally collapses equal choices and compensates by
+    // inserting an untagged TargetOnly prelude. In a coordinated clause, two
+    // distinctly tagged effects with equal-looking specs introduce two target
+    // slots instead. Keep those occurrences and discard only that synthetic
+    // prelude; explicit target-only clauses are tagged by the same annotation
+    // pass and therefore remain wrapped.
+    effects.retain(|effect| {
+        effect.as_target_only().is_none_or(|target_only| {
+            introduced
+                .iter()
+                .filter(|(_, spec)| spec == &target_only.target)
+                .count()
+                < 2
+        })
+    });
+
+    let mut preserved = introduced
+        .iter()
+        .map(|(_, spec)| spec.clone())
+        .collect::<Vec<_>>();
+    for choice in choices {
+        if !introduced.iter().any(|(_, spec)| spec == &choice) {
+            push_choice(&mut preserved, choice);
+        }
+    }
+    (effects, preserved)
+}
+
 fn describe_value_for_mode(value: &Value) -> String {
     match value {
         Value::Fixed(amount) => amount.to_string(),
@@ -39,6 +99,14 @@ fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Val
         }
         Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
             Value::ToughnessOf(Box::new(source.clone()))
+        }
+        Value::ManaSymbolsInManaCostOf { spec, color }
+            if matches!(spec.base(), ChooseSpec::Source) =>
+        {
+            Value::ManaSymbolsInManaCostOf {
+                spec: Box::new(source.clone()),
+                color: *color,
+            }
         }
         Value::Add(left, right) => Value::Add(
             Box::new(bind_source_value_to_damage_source(left, source)),
@@ -83,6 +151,10 @@ fn bind_explicit_that_card_token_stat_reference(
     match value {
         Value::PowerOf(spec) => Value::PowerOf(Box::new(bind_spec(spec))),
         Value::ToughnessOf(spec) => Value::ToughnessOf(Box::new(bind_spec(spec))),
+        Value::ManaSymbolsInManaCostOf { spec, color } => Value::ManaSymbolsInManaCostOf {
+            spec: Box::new(bind_spec(spec)),
+            color: *color,
+        },
         Value::Add(left, right) => Value::Add(
             Box::new(bind_explicit_that_card_token_stat_reference(left, ctx)),
             Box::new(bind_explicit_that_card_token_stat_reference(right, ctx)),
@@ -109,6 +181,14 @@ fn bind_iterated_value_to_choose_spec(value: &Value, spec: &ChooseSpec) -> Value
         }
         Value::ManaValueOf(inner) if matches!(inner.base(), ChooseSpec::Iterated) => {
             Value::ManaValueOf(Box::new(spec.clone()))
+        }
+        Value::ManaSymbolsInManaCostOf { spec: inner, color }
+            if matches!(inner.base(), ChooseSpec::Iterated) =>
+        {
+            Value::ManaSymbolsInManaCostOf {
+                spec: Box::new(spec.clone()),
+                color: *color,
+            }
         }
         Value::Add(left, right) => Value::Add(
             Box::new(bind_iterated_value_to_choose_spec(left, spec)),
@@ -156,9 +236,12 @@ fn choose_spec_owned_by_iterated_player(spec: &ChooseSpec) -> bool {
 
 fn reserved_or_next_object_tag(ctx: &mut EffectLoweringContext, prefix: &str) -> String {
     let prefix_with_sep = format!("{prefix}_");
-    ctx.last_object_tag
-        .clone()
-        .filter(|tag| tag.starts_with(&prefix_with_sep))
+    ctx.take_reserved_object_result_tag(prefix)
+        .or_else(|| {
+            ctx.last_object_tag
+                .clone()
+                .filter(|tag| tag.starts_with(&prefix_with_sep))
+        })
         .unwrap_or_else(|| ctx.next_tag(prefix))
 }
 
@@ -314,6 +397,33 @@ fn compile_effect_inner(
     }
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
+    }
+    if let EffectAst::Coordinated {
+        effects,
+        leading_duration,
+    } = effect
+    {
+        // Multiple explicit target phrases in a coordinated clause introduce
+        // independent target slots. Force target tagging while annotating
+        // those children so equal-looking phrases remain distinguishable.
+        // Without this production-path setting, the lowerer deduplicates two
+        // identical specs (for example Blue Dragon's two separate "up to one
+        // other target creature" clauses) before the preservation pass below
+        // can see their distinct tags.
+        let saved_force_auto_tag_object_targets = ctx.force_auto_tag_object_targets;
+        let saved_auto_tag_object_targets = ctx.auto_tag_object_targets;
+        ctx.force_auto_tag_object_targets = true;
+        let compiled = compile_effects(effects, ctx);
+        ctx.force_auto_tag_object_targets = saved_force_auto_tag_object_targets;
+        ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
+        let (effects, choices) = compiled?;
+        let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
+        let sequence = if *leading_duration {
+            crate::effects::SequenceEffect::coordinated_with_leading_duration(effects)
+        } else {
+            crate::effects::SequenceEffect::coordinated(effects)
+        };
+        return Ok((vec![Effect::new(sequence)], choices));
     }
     if let EffectAst::ChooseOneOf { modes } = effect {
         use crate::effect::EffectMode;
@@ -742,6 +852,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
         _ => {}
     }
@@ -792,6 +903,9 @@ fn collect_object_filter_player_target_choices(
     if let Some(targets) = filter.targets_only_object.as_deref() {
         collect_object_filter_player_target_choices(targets, choices);
     }
+    if let Some(attached_to) = filter.attached_to_object.as_deref() {
+        collect_object_filter_player_target_choices(attached_to, choices);
+    }
     for option in &filter.any_of {
         collect_object_filter_player_target_choices(option, choices);
     }
@@ -821,6 +935,7 @@ fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
+        | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then(|| (**spec).clone())
         }
@@ -895,6 +1010,12 @@ fn replace_iterated_player_with_target_player_in_object_filter(filter: &mut Obje
     if let Some(controller) = &mut filter.controller {
         replace_iterated_player_with_target_player(controller);
     }
+    if let Some(attached_to_player) = &mut filter.attached_to_player {
+        replace_iterated_player_with_target_player(attached_to_player);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+        replace_iterated_player_with_target_player_in_object_filter(attached_to);
+    }
     for nested in &mut filter.any_of {
         replace_iterated_player_with_target_player_in_object_filter(nested);
     }
@@ -905,7 +1026,9 @@ fn replace_iterated_player_with_target_player(filter: &mut PlayerFilter) {
         PlayerFilter::IteratedPlayer => {
             *filter = PlayerFilter::target_player();
         }
-        PlayerFilter::Target(inner) => replace_iterated_player_with_target_player(inner),
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
+            replace_iterated_player_with_target_player(inner)
+        }
         _ => {}
     }
 }

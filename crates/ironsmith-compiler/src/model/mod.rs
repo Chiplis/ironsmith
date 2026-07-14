@@ -12,8 +12,9 @@ pub use ir::{
 };
 pub use parse_types::{
     ClashOpponentAst, ControlDurationAst, DamageBySpec, ExchangeValueAst, ExchangeValueKindAst,
-    ExtraTurnAnchorAst, LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst,
-    ObjectRefAst, PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    ExtraTurnAnchorAst, FutureZoneReplacementCausePolicyAst, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
     RedirectNextTimeDamageDestinationAst, RetargetModeAst, ReturnControllerAst,
     SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };

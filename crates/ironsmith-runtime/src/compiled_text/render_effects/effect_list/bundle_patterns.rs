@@ -82,6 +82,14 @@
 
 
 
+    if let Some(compact) = describe_filtered_future_exile_delayed_return_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_mass_creature_change_graveyard_exile_future_replacement_bundle(&filtered)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_exile_split_pile_opponent_choice_bundle(&filtered) {
         return compact;
     }
@@ -98,7 +106,22 @@
     {
         return compact;
     }
+    if let Some(compact) = describe_filtered_mill_then_draw_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_choose_tap_conditional_freeze_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_countered_spell_exile_replacement_bundle(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_damage_and_die_replacement_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_compound_damage_regeneration_exile_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_tagged_die_exile_replacement_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_exile_target_search_same_name_exile_shuffle_bundle(&filtered) {
@@ -161,6 +184,9 @@
         return compact;
     }
     if let Some(compact) = describe_source_pump_unblockable_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_target_pump_unblockable_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_tap_freeze_bundle(&filtered) {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::runtime_backend::front_end::lexer::lex_line;
+use crate::runtime_backend::front_end::lexer::{lex_line, render_token_slice};
 
 #[test]
 fn parses_sacrifice_choice_shapes() {
@@ -20,7 +20,25 @@ fn parses_sacrifice_choice_shapes() {
 #[test]
 fn parses_exile_counter_and_destroy_attached_shapes() {
     let tokens = lex_line("exile Arc Blade with three time counters on it", 0).unwrap();
-    assert!(parse_exile_source_counter_shape(&tokens).is_some());
+    let shape = parse_exile_source_counter_shape(&tokens).expect("named source counter shape");
+    assert!(shape.source_reference);
+
+    let tokens = lex_line(
+        "exile target nonland card from your graveyard with two time counters on it",
+        0,
+    )
+    .unwrap();
+    let shape = parse_exile_source_counter_shape(&tokens).expect("target-card counter shape");
+    assert!(!shape.source_reference);
+    assert_eq!(
+        render_token_slice(shape.target_tokens),
+        "target nonland card from your graveyard"
+    );
+
+    let tokens = lex_line("exile that card with three time counters on it", 0).unwrap();
+    let shape = parse_exile_source_counter_shape(&tokens).expect("tagged-card counter shape");
+    assert!(!shape.source_reference);
+    assert_eq!(render_token_slice(shape.target_tokens), "that card");
 
     let tokens = lex_line("destroy all Auras that were attached to target creature", 0).unwrap();
     let shape = parse_destroy_attached_shape(&tokens).expect("attached shape");

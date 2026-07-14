@@ -147,6 +147,9 @@ pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
 }
 
 pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+    if let Some(condition) = parse_repeated_or_if_activation_condition(tokens) {
+        return Some(condition);
+    }
     if let Some(condition) = parse_activate_count_each_turn_condition(tokens) {
         return Some(condition);
     }
@@ -175,11 +178,15 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     if let Some(condition) = parse_controlled_creature_power_condition(tokens) {
         return Some(condition);
     }
+    if let Some(condition) = parse_source_entered_this_turn_condition(tokens) {
+        return Some(condition);
+    }
     let control_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
     if let Some(control_condition) =
         parse_control_condition(control_tokens, ControlConditionOptions::default())
     {
         let count = control_condition.at_least_count()?;
+        let player = control_condition.player_filter?;
         let mut filter = control_condition.filter;
         // Activation-condition ASTs historically represented adjacent type
         // words in the union field. Keep that established shape while the
@@ -188,13 +195,64 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         if filter.card_types.is_empty() && !filter.all_card_types.is_empty() {
             filter.card_types = std::mem::take(&mut filter.all_card_types);
         }
+        if count == 1
+            && player == PlayerFilter::You
+            && filter.card_types.contains(&crate::types::CardType::Land)
+            && filter.supertypes.contains(&crate::types::Supertype::Basic)
+        {
+            return Some(ConditionExpr::YouControl(filter));
+        }
         return Some(ConditionExpr::PlayerHasAtLeast {
-            player: control_condition.player_filter?,
+            player,
             filter,
             count,
         });
     }
     parse_land_subtype_control_condition(control_tokens)
+}
+
+fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let split = phrase_offset_words(&words, &["or", "if"])?;
+    if split == 0 || split + 2 >= words.len() {
+        return None;
+    }
+
+    let left_tokens = token_slice_for_words(tokens, &view, 0, split)?;
+    let right_tokens = token_slice_for_words(tokens, &view, split + 2, words.len())?;
+    let left = parse_activation_condition_lexed(left_tokens)?;
+
+    let mut prefixed_right = vec![
+        OwnedLexToken::synthetic_word("activate"),
+        OwnedLexToken::synthetic_word("only"),
+        OwnedLexToken::synthetic_word("if"),
+    ];
+    prefixed_right.extend_from_slice(right_tokens);
+    let right = parse_activation_condition_lexed(&prefixed_right)?;
+
+    Some(ConditionExpr::Or(Box::new(left), Box::new(right)))
+}
+
+fn parse_source_entered_this_turn_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+    let condition_tokens = parse_activate_only_if_tail_tokens(tokens)?;
+    let words = TokenWordView::new(condition_tokens).word_refs();
+    let source_end = if words.ends_with(&["entered", "this", "turn"]) {
+        words.len().checked_sub(3)?
+    } else if words.ends_with(&["entered", "the", "battlefield", "this", "turn"]) {
+        words.len().checked_sub(5)?
+    } else {
+        return None;
+    };
+    let source_words = words.get(..source_end)?;
+    let filter = if matches_exact_word_slice(source_words, &["it"]) {
+        ObjectFilter::source()
+    } else {
+        ObjectFilter::source_with_surface(leaf::parse_leaf_this_source_reference_words(
+            source_words,
+        )?)
+    };
+    Some(ConditionExpr::ObjectEnteredBattlefieldThisTurn(filter))
 }
 
 fn parse_activate_only_timing_marker(tokens: &[OwnedLexToken]) -> Option<ActivateOnlyTimingMarker> {
@@ -444,15 +502,19 @@ fn parse_activate_only_count_per_turn_condition(tokens: &[OwnedLexToken]) -> Opt
 fn parse_activate_only_if_you_control_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
+    let condition = parse_activate_only_if_tail_tokens(tokens)?;
+    parse_control_relation_tail_clause(condition, activate_only_you_control_options())?;
+    Some(condition)
+}
+
+fn parse_activate_only_if_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
     let mut input: primitives::WordSliceInput<'_> = &words;
     parse_phrase_words(&mut input, &["activate", "only", "if"]).ok()?;
     let start = words.len().checked_sub(input.len())?;
     (start < words.len()).then_some(())?;
-    let condition = token_slice_for_words(tokens, &view, start, words.len())?;
-    parse_control_relation_tail_clause(condition, activate_only_you_control_options())?;
-    Some(condition)
+    token_slice_for_words(tokens, &view, start, words.len())
 }
 
 fn parse_land_subtype_control_condition(control_tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
@@ -585,5 +647,57 @@ mod tests {
             parse_activation_condition_lexed(&lex("Activate only twice each turn.")),
             Some(ConditionExpr::MaxActivationsPerTurn(2))
         );
+    }
+
+    #[test]
+    fn activation_condition_composes_repeated_or_if_with_typed_source_and_basic_land() {
+        let parsed = parse_activation_condition_lexed(&lex(
+            "Activate only if this land entered this turn or if you control a basic land.",
+        ))
+        .expect("repeated or-if activation condition should parse");
+
+        let ConditionExpr::Or(left, right) = parsed else {
+            panic!("expected a typed disjunction");
+        };
+        let ConditionExpr::ObjectEnteredBattlefieldThisTurn(source_filter) = left.as_ref() else {
+            panic!("expected source-entered-this-turn left branch, got {left:?}");
+        };
+        assert!(source_filter.source);
+        assert_eq!(
+            source_filter.source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this land".to_string()
+            ))
+        );
+
+        let ConditionExpr::YouControl(basic_land_filter) = right.as_ref() else {
+            panic!("expected basic-land control right branch, got {right:?}");
+        };
+        assert!(
+            basic_land_filter
+                .card_types
+                .contains(&crate::types::CardType::Land)
+        );
+        assert!(
+            basic_land_filter
+                .supertypes
+                .contains(&crate::types::Supertype::Basic)
+        );
+    }
+
+    #[test]
+    fn activation_condition_or_if_composition_reuses_existing_branch_parsers() {
+        let parsed = parse_activation_condition_lexed(&lex(
+            "Activate only if you control an artifact or if you control a creature.",
+        ))
+        .expect("generic repeated or-if control branches should parse");
+
+        assert!(matches!(parsed, ConditionExpr::Or(_, _)));
+        assert!(matches!(
+            parse_activation_condition_lexed(&lex(
+                "Activate only if you control a Plains or a Swamp."
+            )),
+            Some(ConditionExpr::PlayerHasAtLeast { .. }) | Some(ConditionExpr::Or(_, _))
+        ));
     }
 }

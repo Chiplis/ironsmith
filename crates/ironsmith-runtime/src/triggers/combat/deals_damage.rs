@@ -128,6 +128,23 @@ impl TriggerMatcher for DealsDamageTrigger {
 }
 
 pub(super) fn generic_source_description(filter: &ObjectFilter) -> String {
+    let uses_default_permanent_noun = filter.zone.is_none()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && !filter.token
+        && !filter.nontoken
+        && filter.stack_kind.is_none();
+    if uses_default_permanent_noun {
+        let description = filter.description();
+        if description.contains("permanent") {
+            let source = description.replacen("permanent", "source", 1);
+            if source == "source" {
+                return "a source".to_string();
+            }
+            return source;
+        }
+    }
     let mut remaining = filter.clone();
     let controller = remaining.controller.take();
     if remaining != ObjectFilter::default() {

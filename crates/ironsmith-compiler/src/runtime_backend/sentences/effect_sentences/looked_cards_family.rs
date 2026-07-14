@@ -8,8 +8,63 @@ use crate::runtime_backend::grammar::effects::looked_card_shapes;
 pub(crate) fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
-    let shape = looked_card_shapes::parse_top_cards_view_shape(tokens)?;
-    Some((PlayerAst::You, shape.count, shape.revealed))
+    let tokens = trim_lexed_commas(tokens);
+    let explicit_subject = match tokens {
+        [first, second, ..]
+            if first.parser_text() == "target" && second.parser_text() == "opponent" =>
+        {
+            Some((PlayerAst::TargetOpponent, 2))
+        }
+        [first, second, ..]
+            if first.parser_text() == "target" && second.parser_text() == "player" =>
+        {
+            Some((PlayerAst::Target, 2))
+        }
+        [first, second, ..]
+            if first.parser_text() == "that" && second.parser_text() == "player" =>
+        {
+            Some((PlayerAst::That, 2))
+        }
+        [first, second, ..]
+            if first.parser_text() == "an" && second.parser_text() == "opponent" =>
+        {
+            Some((PlayerAst::Opponent, 2))
+        }
+        [first, ..] if first.parser_text() == "they" => Some((PlayerAst::That, 1)),
+        [first, ..] if first.parser_text() == "you" => Some((PlayerAst::You, 1)),
+        _ => None,
+    };
+
+    // The generic view-shape grammar intentionally tolerates surrounding
+    // words, so trying it first can silently consume an explicit subject and
+    // default the library owner to You.  Preserve explicit player subjects
+    // before falling back to the ordinary imperative form.
+    let Some((player, subject_len)) = explicit_subject else {
+        let shape = looked_card_shapes::parse_top_cards_view_shape(tokens)?;
+        return Some((PlayerAst::You, shape.count, shape.revealed));
+    };
+
+    let mut action = tokens.get(subject_len..)?.to_vec();
+    let first_action = action.first_mut()?;
+    let first_action_word = first_action.parser_text().to_string();
+    match first_action_word.as_str() {
+        "reveals" => {
+            first_action.replace_word("reveal");
+        }
+        "looks" => {
+            first_action.replace_word("look");
+        }
+        "reveal" | "look" => {}
+        _ => return None,
+    }
+    for token in &mut action {
+        if token.parser_text() == "their" {
+            token.replace_word("your");
+        }
+    }
+
+    let shape = looked_card_shapes::parse_top_cards_view_shape(&action)?;
+    Some((player, shape.count, shape.revealed))
 }
 
 pub(crate) fn parse_looked_card_choice_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

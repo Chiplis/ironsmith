@@ -15,7 +15,7 @@ pub(super) fn compile_subject_verb_early(
             true,
             true,
             true,
-            false,
+            true,
             Effect::draw,
             Effect::target_draws,
         ),
@@ -378,13 +378,42 @@ pub(super) fn compile_subject_verb_early(
             Vec::new(),
         )),
         SubjectVerbActionAst::OpenAttraction => Ok((vec![Effect::open_attraction()], Vec::new())),
-        SubjectVerbActionAst::ManifestTopCardOfLibrary => {
-            compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                Effect::manifest_top_card_of_library(subject.into_player_filter())
-            })
+        SubjectVerbActionAst::ManifestTopCardOfLibrary
+        | SubjectVerbActionAst::CloakTopCardOfLibrary => {
+            let cloak = matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::CloakTopCardOfLibrary
+            );
+            let (mut effects, choices) =
+                compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
+                    let player = subject.into_player_filter();
+                    if cloak {
+                        Effect::cloak_top_card_of_library(player)
+                    } else {
+                        Effect::manifest_top_card_of_library(player)
+                    }
+                })?;
+            if ctx.auto_tag_object_targets {
+                let tag =
+                    reserved_or_next_object_tag(ctx, if cloak { "cloaked" } else { "manifested" });
+                let manifest = effects.pop().ok_or_else(|| {
+                    CardTextError::InvariantViolation(
+                        "manifest-top lowering produced no effect to tag".to_string(),
+                    )
+                })?;
+                effects.push(manifest.tag(tag.clone()));
+                ctx.last_object_tag = Some(tag);
+            }
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::ManifestCardFromHand => {
-            Ok((vec![Effect::manifest_card_from_hand()], Vec::new()))
+            let mut effect = Effect::manifest_card_from_hand();
+            if ctx.auto_tag_object_targets {
+                let tag = reserved_or_next_object_tag(ctx, "manifested");
+                effect = effect.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::ManifestDread => Ok((vec![Effect::manifest_dread()], Vec::new())),
         SubjectVerbActionAst::Earthbend { counters } => {
@@ -725,6 +754,7 @@ pub(super) fn compile_subject_verb_early(
             land_filter,
             allow_colorless,
             same_type,
+            mana_type_source,
         } => {
             let (amount, player_filter, choices) =
                 resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
@@ -738,6 +768,7 @@ pub(super) fn compile_subject_verb_early(
                         land_filter.clone(),
                         *allow_colorless,
                         *same_type,
+                        *mana_type_source,
                     )
                 },
                 |filter| {
@@ -747,6 +778,7 @@ pub(super) fn compile_subject_verb_early(
                         land_filter.clone(),
                         *allow_colorless,
                         *same_type,
+                        *mana_type_source,
                     )
                 },
             )
@@ -899,6 +931,7 @@ pub(super) fn compile_subject_verb_early(
             from_zone,
             to_zone,
             replacement_zone,
+            library_placement,
             duration,
             optional,
             choice_description,
@@ -910,6 +943,12 @@ pub(super) fn compile_subject_verb_early(
                 crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
                     crate::effects::ReplacementApplyMode::OneShot
                 }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
+                    crate::effects::ReplacementApplyMode::Resolution
+                }
             };
             let mut replacement = crate::effects::RegisterZoneReplacementEffect::new(
                 spec,
@@ -919,6 +958,9 @@ pub(super) fn compile_subject_verb_early(
                 mode,
             )
             .with_counters(counters.clone());
+            if let Some(placement) = library_placement {
+                replacement = replacement.with_library_placement(*placement);
+            }
             if *optional {
                 replacement.optional = true;
                 replacement.choice_description = choice_description.clone();
@@ -932,23 +974,39 @@ pub(super) fn compile_subject_verb_early(
             to_zone,
             replacement_zone,
             duration,
+            cause_policy,
+            link_exiled_to_source,
         } => {
             let mode = match duration {
                 crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
                     crate::effects::ReplacementApplyMode::OneShot
                 }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
+                    crate::effects::ReplacementApplyMode::Resolution
+                }
             };
-            let effect = Effect::new(
-                crate::effects::RegisterFutureZoneReplacementEffect::new(
-                    filter.clone(),
-                    *from_zone,
-                    *to_zone,
-                    *replacement_zone,
-                    mode,
-                )
-                .with_cause_filter(crate::events::cause::CauseFilter::effect_like())
-                .requiring_cause_source_match(),
+            let mut replacement = crate::effects::RegisterFutureZoneReplacementEffect::new(
+                filter.clone(),
+                *from_zone,
+                *to_zone,
+                *replacement_zone,
+                mode,
             );
+            if matches!(
+                cause_policy,
+                crate::cards::builders::FutureZoneReplacementCausePolicyAst::ChangedObjectIsCause
+            ) {
+                replacement = replacement
+                    .with_cause_filter(crate::events::cause::CauseFilter::effect_like())
+                    .requiring_cause_source_match();
+            }
+            if *link_exiled_to_source {
+                replacement = replacement.linking_exiled_to_source();
+            }
+            let effect = Effect::new(replacement);
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::RegisterDrawReplacement {
@@ -966,6 +1024,12 @@ pub(super) fn compile_subject_verb_early(
             let mode = match duration {
                 crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
                     crate::effects::ReplacementApplyMode::OneShot
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
+                    crate::effects::ReplacementApplyMode::Resolution
                 }
             };
             let effect = Effect::new(crate::effects::RegisterDrawReplacementEffect::new(
@@ -992,15 +1056,26 @@ pub(super) fn compile_subject_verb_early(
             from_zone,
             to_zone,
             replacement_zone,
-            duration: _,
+            duration,
         } => {
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
+                    crate::effects::ReplacementApplyMode::Resolution
+                }
+            };
             let effect = Effect::new(
                 crate::effects::RegisterDamagedBySourceZoneReplacementEffect::new(
                     filter.clone(),
                     *from_zone,
                     *to_zone,
                     *replacement_zone,
-                    crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+                    mode,
                 ),
             );
             Ok((vec![effect], Vec::new()))
@@ -1009,6 +1084,12 @@ pub(super) fn compile_subject_verb_early(
             let mode = match duration {
                 crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
+                    crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
+                    crate::effects::ReplacementApplyMode::Resolution
                 }
             };
             let effect = Effect::new(
@@ -1264,19 +1345,6 @@ pub(super) fn compile_subject_verb_early(
                 choices,
             ))
         }
-        SubjectVerbActionAst::PutIntoHand { object } => {
-            let ObjectRefAst::Tagged(tag) = object;
-            let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-            Ok((
-                vec![Effect::move_to_zone(
-                    ChooseSpec::Tagged(tag),
-                    Zone::Hand,
-                    false,
-                )],
-                subject.into_choices(),
-            ))
-        }
         SubjectVerbActionAst::MayMoveToZone { target, zone } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1313,20 +1381,6 @@ pub(super) fn compile_subject_verb_early(
                     }
                 }
             })
-        }
-        SubjectVerbActionAst::RearrangeLookedCardsInLibrary { tag, count } => {
-            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-            let player_filter = subject.clone_player_filter();
-            let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-            ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
-            Ok((
-                vec![Effect::rearrange_looked_cards_in_library(
-                    resolved_tag,
-                    player_filter,
-                    *count,
-                )],
-                subject.into_choices(),
-            ))
         }
         SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
             let effective_tag = if tag.as_str() == IT_TAG {
@@ -1370,6 +1424,19 @@ pub(super) fn compile_subject_verb_early(
                     )],
                     Vec::new(),
                 ))
+            } else if matches!(player, PlayerAst::That)
+                && !ctx.iterated_player
+                && ctx
+                    .last_player_filter
+                    .as_ref()
+                    .is_some_and(|filter| !is_you_player_filter(filter))
+            {
+                Ok((
+                    vec![Effect::shuffle_library_player(as_followup_player_alias(
+                        ctx.last_player_filter.clone().expect("checked above"),
+                    ))],
+                    Vec::new(),
+                ))
             } else if matches!(player, PlayerAst::That) && !ctx.iterated_player {
                 Ok((
                     vec![Effect::shuffle_library_player(PlayerFilter::target_player())],
@@ -1381,15 +1448,28 @@ pub(super) fn compile_subject_verb_early(
                 })
             }
         }
-        SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target } => {
-            let (spec, mut choices) =
+        SubjectVerbActionAst::ShuffleObjectsIntoLibrary {
+            target,
+            all,
+            owner_library_destination,
+        } => {
+            let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *all && let ChooseSpec::Object(filter) = spec {
+                spec = ChooseSpec::All(filter);
+            }
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             for choice in subject.into_choices() {
                 push_choice(&mut choices, choice);
             }
-            let mut effect =
-                Effect::shuffle_objects_into_library(spec.clone(), subject.into_player_filter());
+            let mut shuffle = crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+                spec.clone(),
+                subject.into_player_filter(),
+            );
+            if *owner_library_destination {
+                shuffle = shuffle.with_owner_library_destination();
+            }
+            let mut effect = Effect::new(shuffle);
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             effect = Effect::with_id(id.0, effect);
@@ -1402,11 +1482,17 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::GrantProtectionChoice {
             target,
+            chooser,
             allow_colorless,
             allow_artifacts,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let chooser = if matches!(chooser, PlayerAst::ItsController) {
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+            } else {
+                resolve_non_target_player_filter(*chooser, &current_reference_env(ctx))?
+            };
             let mut modes = Vec::new();
             if *allow_colorless {
                 let ability = StaticAbility::protection(crate::ability::ProtectionFrom::Colorless);
@@ -1457,14 +1543,25 @@ pub(super) fn compile_subject_verb_early(
                     )],
                 });
             }
-            let effect =
-                tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "protected");
+            let effect = tag_object_target_effect(
+                Effect::new(
+                    crate::effects::ChooseModeEffect::choose_one(modes).with_chooser(chooser),
+                ),
+                &spec,
+                ctx,
+                "protected",
+            );
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::PreventAllCombatDamage { duration } => Ok((
             vec![Effect::prevent_all_combat_damage(duration.clone())],
             Vec::new(),
         )),
+        SubjectVerbActionAst::AssignNoCombatDamage { source, duration } => {
+            compile_effect_for_target(source, ctx, |spec| {
+                Effect::assign_no_combat_damage(spec, duration.clone())
+            })
+        }
         SubjectVerbActionAst::PreventAllCombatDamageFromSource { duration, source } => {
             compile_effect_for_target(source, ctx, |spec| {
                 Effect::prevent_all_combat_damage_from(spec, duration.clone())

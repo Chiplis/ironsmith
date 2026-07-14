@@ -206,6 +206,7 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
         }
         if leaving_combat {
             game.cleanup_restrictions_end_of_combat();
+            game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
         }
         game.turn.phase = next;
         if matches!(next, Phase::Combat) {
@@ -217,6 +218,7 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
     } else {
         if leaving_combat {
             game.cleanup_restrictions_end_of_combat();
+            game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
         }
         // End of turn - advance to next player
         game.next_turn();
@@ -536,6 +538,10 @@ pub fn execute_draw_step_with(
     let active_player = game.turn.active_player;
     let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
         game.draw_step_context_for_player(active_player);
+    if game.player_skips_draw_step(active_player) {
+        game.turn.priority_player = Some(active_player);
+        return Vec::new();
+    }
     if game.turn_store.skip_next_draw_step.remove(&active_player) {
         game.turn.priority_player = Some(active_player);
         return Vec::new();
@@ -737,6 +743,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
         && let Some(player) = game.player_mut(active_player)
     {
         player.mana_pool.empty();
+        player.clear_mana_source_provenance();
     }
 
     game.cleanup_damage_and_regeneration_end_of_turn();
@@ -822,7 +829,7 @@ mod tests {
     use crate::ids::{CardId, ObjectId};
     use crate::object::Object;
     use crate::static_abilities::StaticAbility;
-    use crate::target::ObjectFilter;
+    use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -1170,6 +1177,48 @@ mod tests {
         );
         assert!(game.objects_in_zone(Zone::Command).is_empty());
         assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+    }
+
+    #[test]
+    fn active_skip_draw_static_rule_tracks_controller_and_source_zone() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_artifact(
+            &mut game,
+            "Draw-Step Lock",
+            alice,
+            vec![StaticAbility::player_skips_draw_step(PlayerFilter::You)],
+        );
+        let alice_card = CardBuilder::new(CardId::from_raw(9100), "Alice Draw")
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&alice_card, alice, Zone::Library);
+        game.turn.turn_number = 2;
+        game.turn.active_player = alice;
+
+        let mut dm = AlwaysNoDecisionMaker;
+        assert!(execute_draw_step_with(&mut game, &mut dm).is_empty());
+        assert!(game.player(alice).expect("Alice exists").hand.is_empty());
+
+        game.set_current_controller(source, bob);
+        assert!(!game.player_skips_draw_step(alice));
+        assert!(game.player_skips_draw_step(bob));
+        assert_eq!(execute_draw_step_with(&mut game, &mut dm).len(), 1);
+        assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 1);
+
+        let bob_card = CardBuilder::new(CardId::from_raw(9101), "Bob Draw")
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&bob_card, bob, Zone::Library);
+        game.turn.active_player = bob;
+        assert!(execute_draw_step_with(&mut game, &mut dm).is_empty());
+        assert!(game.player(bob).expect("Bob exists").hand.is_empty());
+
+        game.move_object_by_effect(source, Zone::Graveyard);
+        assert!(!game.player_skips_draw_step(bob));
+        assert_eq!(execute_draw_step_with(&mut game, &mut dm).len(), 1);
+        assert_eq!(game.player(bob).expect("Bob exists").hand.len(), 1);
     }
 
     #[test]

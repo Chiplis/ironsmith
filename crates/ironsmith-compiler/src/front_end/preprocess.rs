@@ -30,6 +30,9 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
         [type_word, line_word] if type_word == "type" && line_word == "line" => {
             Some(MetadataKind::TypeLine)
         }
+        [first, printed, set] if first == "first" && printed == "printed" && set == "set" => {
+            Some(MetadataKind::FirstPrintedSet)
+        }
         [pt] if pt == "power/toughness" => Some(MetadataKind::PowerToughness),
         [power, toughness] if power == "power" && toughness == "toughness" => {
             Some(MetadataKind::PowerToughness)
@@ -43,6 +46,7 @@ pub fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextE
     let metadata = match kind {
         Some(MetadataKind::ManaCost) => MetadataLine::ManaCost(value),
         Some(MetadataKind::TypeLine) => MetadataLine::TypeLine(value),
+        Some(MetadataKind::FirstPrintedSet) => MetadataLine::FirstPrintedSet(value),
         Some(MetadataKind::PowerToughness) => MetadataLine::PowerToughness(value),
         Some(MetadataKind::Loyalty) => MetadataLine::Loyalty(value),
         Some(MetadataKind::Defense) => MetadataLine::Defense(value),
@@ -85,6 +89,7 @@ pub fn normalize_trimmed_line(line: &str) -> Option<NormalizedLine> {
 enum MetadataKind {
     ManaCost,
     TypeLine,
+    FirstPrintedSet,
     PowerToughness,
     Loyalty,
     Defense,
@@ -143,6 +148,10 @@ mod tests {
         assert!(matches!(
             parse_metadata_line("Type Line: Legendary Creature — Human"),
             Ok(Some(MetadataLine::TypeLine(value))) if value == "Legendary Creature — Human"
+        ));
+        assert!(matches!(
+            parse_metadata_line("First printed set: Antiquities"),
+            Ok(Some(MetadataLine::FirstPrintedSet(value))) if value == "Antiquities"
         ));
         assert!(matches!(
             parse_metadata_line("Power/Toughness: */*"),

@@ -15,8 +15,8 @@ use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness};
 use crate::color::ColorSet;
 use crate::cost::{OptionalCost, OptionalCostKind, TotalCost};
 use crate::effect::{
-    ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, EmblemDescription,
-    EventValueSpec, Until, Value,
+    ChoiceCount, Condition, Effect, EffectId, EffectMode, EffectPredicate, EventValueSpec, Until,
+    Value,
 };
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
@@ -1058,6 +1058,8 @@ pub(crate) struct SearchLibrarySlotAst {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ZoneReplacementDurationAst {
     OneShot,
+    UntilEndOfTurn,
+    Persistent,
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -3266,20 +3268,6 @@ impl CardDefinitionBuilder {
     /// Ascend means "If you control ten or more permanents, you get the city's blessing
     /// for the rest of the game."
     pub fn ascend(self) -> Self {
-        let controls_ten = Condition::PlayerHasAtLeast {
-            player: PlayerFilter::You,
-            filter: ObjectFilter::permanent().you_control(),
-            count: 10,
-        };
-        let not_blessed = Condition::Not(Box::new(Condition::PlayerHasCitysBlessing {
-            player: PlayerFilter::You,
-        }));
-        let bless_condition = Condition::And(Box::new(controls_ten), Box::new(not_blessed));
-        let get_blessing = Effect::create_emblem(EmblemDescription::new(
-            "City's Blessing",
-            "You have the city's blessing for the rest of the game.",
-        ));
-
         let is_nonpermanent_spell = self
             .card_builder
             .card_types_ref()
@@ -3288,24 +3276,12 @@ impl CardDefinitionBuilder {
         if is_nonpermanent_spell {
             let mut out = self;
             let mut effects = out.spell_effect.take().unwrap_or_default();
-            effects.insert(
-                0,
-                Effect::conditional_only(bless_condition, vec![get_blessing]),
-            );
+            effects.insert(0, Effect::new(crate::effects::AscendEffect::new()));
             out.spell_effect = Some(effects);
             return out;
         }
 
-        self.with_ability(Ability {
-            kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::enters_battlefield(ObjectFilter::permanent().you_control(), None),
-                effects: crate::resolution::ResolutionProgram::from_effects(vec![get_blessing]),
-                choices: vec![],
-                intervening_if: Some(bless_condition),
-                presentation_label: None,
-            }),
-            functional_zones: vec![Zone::Battlefield],
-        })
+        self.with_ability(Ability::static_ability(StaticAbility::ascend()))
     }
 
     /// Add daybound.
@@ -4253,6 +4229,7 @@ impl CardDefinitionBuilder {
                     intervening_if: Some(Condition::SourceHasCounterAtLeast {
                         counter_type: CounterType::Time,
                         count: 1,
+                        surface: crate::effect::SourceCounterThresholdSurface::SourceHas,
                     }),
                     presentation_label: None,
                 }),

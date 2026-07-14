@@ -2,11 +2,11 @@ use ironsmith_core::EffectMetricSource;
 
 use crate::effect::Value;
 use crate::object::CounterType;
+use crate::runtime_backend::grammar::filters::parse_counter_type_words;
 use crate::runtime_backend::grammar::permission_shapes;
 use crate::runtime_backend::object_filters::parse_object_filter_words;
 use crate::runtime_backend::util::{
-    is_article, parse_counter_type_word, source_reference_surface_for_words,
-    this_source_surface_for_words,
+    is_article, source_reference_surface_for_words, this_source_surface_for_words,
 };
 use crate::target::{ChooseSpec, PlayerFilter, SourceReferenceSurface};
 
@@ -134,9 +134,10 @@ pub(crate) fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value>
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
-        AggregateValueMetric::Counters => {
-            Some(Value::CountersOn(Box::new(ChooseSpec::All(filter)), None))
-        }
+        AggregateValueMetric::Counters => Some(
+            Value::CountersOn(Box::new(ChooseSpec::All(filter)), None)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong),
+        ),
     }
 }
 

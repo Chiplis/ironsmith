@@ -1,7 +1,8 @@
+use crate::filter::ObjectFilterUnionConnective;
 use crate::{ObjectFilter, PlayerFilter, Zone};
 
 use super::super::super::lexer::OwnedLexToken;
-use super::super::primitives::split_lexed_slices_on_and;
+use super::super::primitives::split_lexed_slices_on_list_conjunction;
 use super::parse_simple_object_filter_lexed;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,7 +47,7 @@ pub(super) fn parse_domain_union_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
-    let segments = split_lexed_slices_on_and(tokens);
+    let segments = split_lexed_slices_on_list_conjunction(tokens);
     if segments.len() < 2 {
         return None;
     }
@@ -74,10 +75,14 @@ pub(super) fn parse_domain_union_object_filter_lexed(
         return None;
     }
 
-    Some(ObjectFilter {
+    let mut union = ObjectFilter {
         any_of: branches,
         ..ObjectFilter::default()
-    })
+    };
+    if tokens.iter().any(|token| token.is_word("and/or")) {
+        union.set_union_connective(ObjectFilterUnionConnective::AndOr);
+    }
+    Some(union)
 }
 
 #[cfg(test)]
@@ -121,6 +126,24 @@ mod tests {
         assert!(!filter.any_of[1].other);
         assert_eq!(filter.any_of[1].zone, Some(Zone::Graveyard));
         assert_eq!(filter.any_of[1].owner, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn parses_and_or_scoped_domains_as_one_semantic_union() {
+        let tokens = lex_line(
+            "creatures you control and/or creature cards in your graveyard",
+            0,
+        )
+        .unwrap();
+        let filter = parse_domain_union_object_filter_lexed(&tokens, false).unwrap();
+
+        assert_eq!(filter.any_of.len(), 2);
+        assert_eq!(
+            filter.union_connective(),
+            ObjectFilterUnionConnective::AndOr
+        );
+        assert_eq!(filter.any_of[0].zone, Some(Zone::Battlefield));
+        assert_eq!(filter.any_of[1].zone, Some(Zone::Graveyard));
     }
 
     #[test]

@@ -19,9 +19,72 @@ fn test_anthem() {
 }
 
 #[test]
+fn anthem_scales_per_affected_objects_controller_hand() {
+    let count = AnthemCountExpression::MatchingFilter(ObjectFilter {
+        zone: Some(Zone::Hand),
+        owner: Some(PlayerFilter::ControllerOf(ObjectRef::Target)),
+        ..Default::default()
+    });
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(1, count.clone()),
+        AnthemValue::scaled(1, count),
+    );
+
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +1/+1 for each card in its controller's hand"
+    );
+}
+
+#[test]
+fn source_only_conditions_use_same_source_pronouns() {
+    assert_eq!(
+        Anthem::for_source(1, 0)
+            .with_condition(crate::ConditionExpr::SourceIsAttacking)
+            .display(),
+        "this creature gets +1/+0 as long as it's attacking"
+    );
+
+    assert_eq!(
+        GrantAbility::source(StaticAbility::first_strike())
+            .with_condition(crate::ConditionExpr::SourceIsEquipped)
+            .display(),
+        "this creature has first strike as long as it's equipped"
+    );
+}
+
+#[test]
+fn non_source_grants_keep_explicit_condition_source() {
+    assert_eq!(
+        GrantAbility::new(
+            ObjectFilter::creature().you_control(),
+            StaticAbility::flying()
+        )
+        .with_condition(crate::ConditionExpr::SourceIsEnchanted)
+        .display(),
+        "as long as this creature is enchanted, creatures you control have flying"
+    );
+}
+
+#[test]
 fn test_remove_supertypes_display_mentions_scope_and_supertype() {
     let remove = RemoveSupertypesForFilter::new(ObjectFilter::land(), vec![Supertype::Snow]);
     assert_eq!(remove.display(), "All lands are no longer snow");
+}
+
+#[test]
+fn test_single_global_land_subtype_addition_uses_each_land_surface() {
+    let swamp = AddSubtypesForFilter::new(ObjectFilter::land(), vec![Subtype::Swamp]);
+    assert_eq!(
+        swamp.display(),
+        "Each land is a Swamp in addition to its other land types"
+    );
+
+    let forest = AddSubtypesForFilter::new(ObjectFilter::land(), vec![Subtype::Forest]);
+    assert_eq!(
+        forest.display(),
+        "Each land is a Forest in addition to its other land types"
+    );
 }
 
 #[test]
@@ -91,6 +154,18 @@ fn describe_static_condition_displays_opponent_life_threshold() {
             right: Value::Fixed(10),
         }),
         "as long as an opponent has 10 or less life"
+    );
+}
+
+#[test]
+fn describe_static_condition_displays_player_counter_threshold() {
+    assert_eq!(
+        describe_static_condition(&crate::ConditionExpr::ValueComparison {
+            left: Value::PlayerCounters(PlayerFilter::Opponent, CounterType::Poison),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(3),
+        }),
+        "as long as an opponent has three or more poison counters"
     );
 }
 
@@ -186,6 +261,35 @@ fn test_attached_anthem_uses_attached_target() {
         effects[0].applies_to,
         EffectTarget::AttachedTo(id) if id == source
     ));
+}
+
+#[test]
+fn attached_anthem_describes_positive_and_negative_attachment_state_conditions() {
+    let mut filter = ObjectFilter::creature();
+    filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: crate::tag::TagKey::from("enchanted"),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let pirate = ObjectFilter::default().with_subtype(Subtype::Pirate);
+
+    assert_eq!(
+        Anthem::new(filter.clone(), 0, 2)
+            .with_condition(crate::ConditionExpr::AttachedToSourceMatches(
+                pirate.clone()
+            ))
+            .display(),
+        "enchanted creature gets +0/+2 as long as enchanted creature is a pirate"
+    );
+    assert_eq!(
+        Anthem::new(filter, -2, 0)
+            .with_condition(crate::ConditionExpr::Not(Box::new(
+                crate::ConditionExpr::AttachedToSourceMatches(pirate)
+            )))
+            .display(),
+        "enchanted creature gets -2/-0 as long as enchanted creature isn't a pirate"
+    );
 }
 
 #[test]
@@ -494,6 +598,73 @@ fn test_conditional_anthem_is_active_only_when_condition_matches() {
 }
 
 #[test]
+fn exact_one_matching_filter_displays_that_creature() {
+    let filter = ObjectFilter::creature().you_control();
+    let condition = crate::ConditionExpr::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(filter.clone()),
+        comparison: Comparison::Equal(1),
+        display: Some("you control exactly one creature".to_string()),
+    };
+
+    assert_eq!(
+        Anthem::new(filter.clone(), 3, 1)
+            .with_condition(condition.clone())
+            .display(),
+        "that creature gets +3/+1 as long as you control exactly one creature"
+    );
+    assert_eq!(
+        GrantAbility::new(filter, StaticAbility::lifelink())
+            .with_condition(condition)
+            .display(),
+        "as long as you control exactly one creature, that creature has lifelink"
+    );
+}
+
+#[test]
+fn homicidal_seclusion_affects_only_the_unique_controlled_creature() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let filter = ObjectFilter::creature().you_control();
+    let condition = crate::ConditionExpr::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(filter.clone()),
+        comparison: Comparison::Equal(1),
+        display: Some("you control exactly one creature".to_string()),
+    };
+    let source = CardDefinitionBuilder::new(CardId::new(), "Homicidal Seclusion")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            Anthem::new(filter.clone(), 3, 1).with_condition(condition.clone()),
+        )))
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            GrantAbility::new(filter, StaticAbility::lifelink()).with_condition(condition),
+        )))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let creature = CardBuilder::new(CardId::new(), "Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let alice_creature = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let bob_creature = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+
+    assert_eq!(game.calculated_power(alice_creature), Some(5));
+    assert_eq!(game.calculated_toughness(alice_creature), Some(3));
+    assert!(game.current_has_static_ability_id(alice_creature, StaticAbilityId::Lifelink));
+    assert_eq!(game.calculated_power(bob_creature), Some(2));
+    assert_eq!(game.calculated_toughness(bob_creature), Some(2));
+    assert!(!game.current_has_static_ability_id(bob_creature, StaticAbilityId::Lifelink));
+
+    let second_alice_creature = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    for creature_id in [alice_creature, second_alice_creature] {
+        assert_eq!(game.calculated_power(creature_id), Some(2));
+        assert_eq!(game.calculated_toughness(creature_id), Some(2));
+        assert!(!game.current_has_static_ability_id(creature_id, StaticAbilityId::Lifelink));
+    }
+}
+
+#[test]
 fn test_domain_count_expression_counts_distinct_basic_land_types() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -626,6 +797,37 @@ fn test_grant_ability() {
     assert_eq!(grant.id(), StaticAbilityId::GrantAbility);
     assert!(grant.grants_abilities());
     assert_eq!(grant.display(), "creatures you control have flying");
+}
+
+#[test]
+fn quantified_grant_preserves_each_and_direct_restriction_surface() {
+    let grant = GrantAbility::new(
+        ObjectFilter::creature().you_control(),
+        StaticAbility::cant_be_blocked_by_more_than(1),
+    )
+    .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+
+    assert_eq!(
+        grant.display(),
+        "Each creature you control can't be blocked by more than 1 creature"
+    );
+}
+
+#[test]
+fn verb_phrase_grants_conjugate_without_has_or_have() {
+    let creatures_you_control = ObjectFilter::creature().you_control();
+    assert_eq!(
+        GrantAbility::new(creatures_you_control.clone(), StaticAbility::must_attack(),).display(),
+        "creatures you control attack each combat if able"
+    );
+    assert_eq!(
+        GrantAbility::new(creatures_you_control, StaticAbility::must_block()).display(),
+        "creatures you control block each combat if able"
+    );
+    assert_eq!(
+        GrantAbility::source(StaticAbility::must_attack()).display(),
+        "this creature attacks each combat if able"
+    );
 }
 
 #[test]
@@ -1097,4 +1299,49 @@ fn bruenor_anthem_display_shows_for_each_equipment_attached_to_it() {
         display.to_ascii_lowercase().contains("+2/+0"),
         "expected display to show +2/+0 modifier, got {display}"
     );
+}
+
+#[test]
+fn party_scaled_anthem_display_uses_for_each_party_surface() {
+    let party = Value::PartySize(PlayerFilter::You)
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+    let anthem =
+        Anthem::for_source(0, 0).with_values(AnthemValue::Dynamic(party), AnthemValue::Fixed(0));
+
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +1/+0 for each creature in your party"
+    );
+}
+
+#[test]
+fn dynamic_party_anthem_uses_rules_legal_maximum_party_size() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let party = Value::PartySize(PlayerFilter::You)
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+    let anthem =
+        Anthem::for_source(0, 0).with_values(AnthemValue::Dynamic(party), AnthemValue::Fixed(0));
+    let source = CardDefinitionBuilder::new(CardId::new(), "Party Leader")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .with_ability(crate::ability::Ability::static_ability(StaticAbility::new(
+            anthem,
+        )))
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    for (name, subtypes) in [
+        ("Flexible Member", vec![Subtype::Cleric, Subtype::Rogue]),
+        ("Cleric Member", vec![Subtype::Cleric]),
+    ] {
+        let member = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(subtypes)
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        game.create_object_from_card(&member, alice, Zone::Battlefield);
+    }
+
+    assert_eq!(game.calculated_power(source_id), Some(3));
 }

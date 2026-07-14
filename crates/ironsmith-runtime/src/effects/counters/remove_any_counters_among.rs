@@ -102,13 +102,18 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
         } else {
             "any number of".to_string()
         };
+        let from = if effect.filter.source {
+            "from"
+        } else {
+            "from among"
+        };
         return match effect.counter_type {
             Some(counter_type) => format!(
-                "Remove {amount_text} {} counters from among {}",
+                "Remove {amount_text} {} counters {from} {}",
                 counter_type.description(),
                 target_phrase_plural
             ),
-            None => format!("Remove {amount_text} counters from among {target_phrase_plural}"),
+            None => format!("Remove {amount_text} counters {from} {target_phrase_plural}"),
         };
     }
     match (effect.count, effect.counter_type) {

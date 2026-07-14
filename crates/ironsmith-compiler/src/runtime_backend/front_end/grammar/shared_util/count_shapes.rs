@@ -25,6 +25,12 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
+    let history_end = value_boundary(&words[idx..]) + idx;
+    let history_tokens = synthetic_word_tokens(&words[..history_end]);
+    if let Some(value) = super::value_semantics::parse_turn_history_count_value(&history_tokens) {
+        return Some((value, history_end));
+    }
+
     let mut counter_descriptor_start = idx;
     if words
         .get(counter_descriptor_start)
@@ -35,6 +41,7 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     }
     if let Some(counter_idx) = first_counter_word(&words[counter_descriptor_start..])
         .map(|relative_idx| counter_descriptor_start + relative_idx)
+        .filter(|counter_idx| counter_idx.saturating_sub(counter_descriptor_start) <= 2)
     {
         let parsed_counter_type = if counter_idx > counter_descriptor_start {
             parse_counter_type_words(&words[counter_descriptor_start..=counter_idx])
@@ -64,7 +71,14 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                         ),
                         None => Value::CountersOnSource(counter_type),
                     },
-                    None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                    None => Value::CountersOn(
+                        Box::new(
+                            this_source_surface_for_words(reference)
+                                .map(source_choose_spec_for_surface)
+                                .unwrap_or(ChooseSpec::Source),
+                        ),
+                        None,
+                    ),
                 };
                 return Some((value, reference_end));
             }
@@ -82,6 +96,12 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 );
                 return Some((value, reference_end));
             }
+            if let Ok(filter) = parse_object_filter_words(reference, false) {
+                return Some((
+                    Value::CountersOn(Box::new(ChooseSpec::All(filter)), parsed_counter_type),
+                    reference_end,
+                ));
+            }
         }
     }
 
@@ -96,8 +116,27 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         permission_shapes::find_words(&words[idx..filter_end], &["this", "way"])
     {
         let this_way_start = idx + relative_this_way;
+        let this_way_subject = &words[idx..this_way_start];
+        if matches!(this_way_subject, ["card", "drawn"] | ["cards", "drawn"]) {
+            return Some((
+                Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::Count,
+                }
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDrawnThisWay),
+                filter_end,
+            ));
+        }
+        let has_explicit_card_noun = this_way_subject
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"));
         for candidate_end in (idx + 1..this_way_start).rev() {
-            if let Ok(filter) = parse_object_filter_words(&words[idx..candidate_end], head.other) {
+            if let Ok(mut filter) =
+                parse_object_filter_words(&words[idx..candidate_end], head.other)
+            {
+                if has_explicit_card_noun {
+                    filter.set_explicit_card_noun(true);
+                }
                 return Some((
                     Value::Count(
                         filter.match_tagged(
@@ -112,6 +151,9 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     }
 
     let count_words = &words[idx..filter_end];
+    if let Some(player) = value_helper_shapes::parse_party_size_player(count_words) {
+        return Some((Value::PartySize(player), filter_end));
+    }
     if exact_one_of(
         count_words,
         &[
@@ -151,7 +193,9 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     if is_kick_count(count_words) {
         return Some((Value::KickCount, filter_end));
     }
-    if let Some(counter_idx) = first_counter_word(count_words) {
+    if let Some(counter_idx) =
+        first_counter_word(count_words).filter(|counter_idx| *counter_idx <= 2)
+    {
         let counter_tokens = synthetic_word_tokens(count_words);
         if let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) {
             if count_words
@@ -192,6 +236,12 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                             Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
                             Some(counter_type),
                         ),
+                        filter_end,
+                    ));
+                }
+                if let Ok(filter) = parse_object_filter_words(reference, false) {
+                    return Some((
+                        Value::CountersOn(Box::new(ChooseSpec::All(filter)), Some(counter_type)),
                         filter_end,
                     ));
                 }
@@ -294,13 +344,23 @@ fn is_kick_count(words: &[&str]) -> bool {
         return false;
     }
     let source_words = &rest[..rest.len() - 2];
-    exact_one_of(source_words, &[&["this"], &["this", "spell"], &["it"]])
-        || source_reference_surface_for_words(source_words).is_some()
+    exact_one_of(
+        source_words,
+        &[
+            &["this"],
+            &["this", "spell"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "card"],
+            &["it"],
+        ],
+    ) || source_reference_surface_for_words(source_words).is_some()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ironsmith_core::ValueSurfaceHint;
 
     #[test]
     fn parses_for_each_draw_and_kick_counts() {
@@ -316,5 +376,51 @@ mod tests {
             ]),
             Some((Value::KickCount, 7))
         );
+        assert_eq!(
+            parse_for_each_count_value_words(&[
+                "for", "each", "time", "this", "creature", "was", "kicked"
+            ]),
+            Some((Value::KickCount, 7))
+        );
+
+        let (drawn_this_way, used) =
+            parse_for_each_count_value_words(&["for", "each", "card", "drawn", "this", "way"])
+                .expect("drawn-this-way count");
+        assert_eq!(used, 6);
+        assert!(drawn_this_way.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay));
+        assert!(matches!(
+            drawn_this_way.unhinted(),
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_for_each_creature_in_your_party_as_party_size() {
+        assert_eq!(
+            parse_for_each_count_value_words(&["for", "each", "creature", "in", "your", "party"]),
+            Some((Value::PartySize(PlayerFilter::You), 6))
+        );
+    }
+
+    #[test]
+    fn preserves_explicit_card_noun_in_this_way_counts() {
+        let (value, used) = parse_for_each_count_value_words(&[
+            "for",
+            "each",
+            "nonland",
+            "card",
+            "discarded",
+            "this",
+            "way",
+        ])
+        .expect("nonland cards discarded this way count");
+        assert_eq!(used, 7);
+        let Value::Count(filter) = value else {
+            panic!("expected tagged object count");
+        };
+        assert!(filter.has_explicit_card_noun());
     }
 }

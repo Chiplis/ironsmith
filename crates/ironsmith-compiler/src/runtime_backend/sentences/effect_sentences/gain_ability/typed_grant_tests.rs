@@ -13,19 +13,28 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
         .expect("additional pump plus ability grant should parse")
         .expect("additional pump plus ability grant should produce effects");
 
-    let pump = effects.iter().find_map(|effect| match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::PumpAll {
-                    filter,
-                    power,
-                    toughness,
-                    duration,
-                },
-            ..
-        }) => Some((filter, power, toughness, duration)),
-        _ => None,
-    });
+    fn find_pump(effect: &EffectAst) -> Option<(&ObjectFilter, &Value, &Value, &Until)> {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PumpAll {
+                        filter,
+                        power,
+                        toughness,
+                        duration,
+                        ..
+                    },
+                ..
+            }) => Some((filter, power, toughness, duration)),
+            EffectAst::Sequence { effects }
+            | EffectAst::Coordinated {
+                effects,
+                leading_duration: _,
+            } => effects.iter().find_map(find_pump),
+            _ => None,
+        }
+    }
+    let pump = effects.iter().find_map(find_pump);
     let (pump_filter, power, toughness, pump_duration) =
         pump.expect("semantic AST should contain the additional +1/+1 pump");
     assert_eq!(pump_filter.controller, Some(PlayerFilter::You));
@@ -37,19 +46,27 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
     assert_eq!((power, toughness), (&Value::Fixed(1), &Value::Fixed(1)));
     assert_eq!(pump_duration, &Until::EndOfTurn);
 
-    let grant = effects.iter().find_map(|effect| match effect {
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::GrantAbilitiesAll {
-                    filter,
-                    abilities,
-                    duration,
-                    ..
-                },
-            ..
-        }) => Some((filter, abilities, duration)),
-        _ => None,
-    });
+    fn find_grant(effect: &EffectAst) -> Option<(&ObjectFilter, &Vec<GrantedAbilityAst>, &Until)> {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesAll {
+                        filter,
+                        abilities,
+                        duration,
+                        ..
+                    },
+                ..
+            }) => Some((filter, abilities, duration)),
+            EffectAst::Sequence { effects }
+            | EffectAst::Coordinated {
+                effects,
+                leading_duration: _,
+            } => effects.iter().find_map(find_grant),
+            _ => None,
+        }
+    }
+    let grant = effects.iter().find_map(find_grant);
     let (grant_filter, abilities, grant_duration) =
         grant.expect("semantic AST should contain the vigilance grant");
     assert_eq!(grant_filter.controller, Some(PlayerFilter::You));

@@ -107,7 +107,15 @@ pub(super) fn apply_trait_replacement(
             added_subtypes,
             added_abilities,
         } => {
-            let resolved_count = resolve_value_for_etb(count, game, effect.source);
+            let value_source = if etb_value_uses_entering_object(count) {
+                crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event.inner())
+                    .filter(|zone_change| zone_change.to == Zone::Battlefield)
+                    .and_then(|zone_change| zone_change.objects.first().copied())
+                    .unwrap_or(effect.source)
+            } else {
+                effect.source
+            };
+            let resolved_count = resolve_value_for_etb(count, game, value_source);
             let modified = apply_trait_enter_with_counters(
                 &event,
                 *counter_type,
@@ -1021,6 +1029,21 @@ fn resolve_value_for_etb(
     source: crate::ids::ObjectId,
 ) -> u32 {
     resolve_value_for_replacement(count, game, source)
+}
+
+fn etb_value_uses_entering_object(value: &crate::effect::Value) -> bool {
+    match value.unhinted() {
+        crate::effect::Value::ManaSpentToCastThisSpell
+        | crate::effect::Value::ManaFromSourceSpentToCastThisSpell { .. }
+        | crate::effect::Value::ColorsOfManaSpentToCastThisSpell => true,
+        crate::effect::Value::Add(left, right) | crate::effect::Value::Min(left, right) => {
+            etb_value_uses_entering_object(left) || etb_value_uses_entering_object(right)
+        }
+        crate::effect::Value::Scaled(inner, _)
+        | crate::effect::Value::DividedRoundedDown(inner, _)
+        | crate::effect::Value::HalfRoundedDown(inner) => etb_value_uses_entering_object(inner),
+        _ => false,
+    }
 }
 
 pub(super) fn resolve_value_for_etb_for_choice(

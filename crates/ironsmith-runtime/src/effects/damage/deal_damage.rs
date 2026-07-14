@@ -130,7 +130,9 @@ pub(crate) fn apply_processed_damage_outcome_opts(
         }
         let mut outcome = EffectOutcome::count(assignment.amount as i32);
         if excess_damage > 0 {
-            outcome = outcome.with_execution_fact(ExecutionFact::ExcessDamageDealt);
+            outcome = outcome
+                .with_execution_fact(ExecutionFact::ExcessDamageDealt)
+                .with_execution_fact(ExecutionFact::ExcessDamage(excess_damage));
         }
         if assignment.amount > 0 {
             let mut damage_event = DamageEvent::with_cause(
@@ -697,6 +699,33 @@ mod tests {
         assert_eq!(memory.len(), 1);
         assert_eq!(memory[0].controller, bob);
         assert_eq!(memory[0].toughness, Some(2));
+    }
+
+    #[test]
+    fn damage_to_object_records_numeric_excess_damage() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(&mut game, "Overkiller", 5, 5, alice, vec![]);
+        let target = create_creature(&mut game, "Small Target", 2, 2, bob, vec![]);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(target)]);
+
+        let outcome = DealDamageEffect::new(5, ChooseSpec::AnyTarget)
+            .execute(&mut game, &mut ctx)
+            .expect("damage should resolve");
+
+        assert!(
+            outcome
+                .execution_facts()
+                .contains(&ExecutionFact::ExcessDamageDealt)
+        );
+        assert!(
+            outcome
+                .execution_facts()
+                .contains(&ExecutionFact::ExcessDamage(3))
+        );
     }
 
     #[test]

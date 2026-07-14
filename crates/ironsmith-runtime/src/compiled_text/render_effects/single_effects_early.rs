@@ -1,5 +1,72 @@
 use super::*;
 
+pub(crate) fn describe_same_actor_draw_then_gain(
+    first: &Effect,
+    second: &Effect,
+) -> Option<String> {
+    let draw =
+        unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let gain =
+        unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::GainLifeEffect>()?;
+
+    let actor = choose_spec_player_filter(&gain.player)?;
+    if !player_filters_refer_to_same_player(&draw.player, &actor)
+        || draw.count.unhinted() != gain.amount.unhinted()
+    {
+        return None;
+    }
+
+    let draw_basis = describe_where_x_basis(&draw.count)?;
+    let gain_basis = describe_where_x_basis(&gain.amount)?;
+    if draw_basis != gain_basis {
+        return None;
+    }
+
+    let subject = describe_player_filter(&actor);
+    Some(format!(
+        "{subject} {} X cards and {} X life, where X is {draw_basis}",
+        player_verb(&subject, "draw", "draws"),
+        player_verb(&subject, "gain", "gains"),
+    ))
+}
+
+pub(crate) fn describe_same_actor_gain_then_draw(
+    first: &Effect,
+    second: &Effect,
+) -> Option<String> {
+    let gain = unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::GainLifeEffect>()?;
+    let draw =
+        unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::DrawCardsEffect>()?;
+
+    let actor = choose_spec_player_filter(&gain.player)?;
+    if !player_filters_refer_to_same_player(&actor, &draw.player) {
+        return None;
+    }
+
+    let gain_basis = describe_where_x_basis(&gain.amount);
+    let draw_basis = describe_where_x_basis(&draw.count);
+    let (life, cards, suffix) = match (gain_basis, draw_basis) {
+        (None, None) => (
+            describe_life_amount_phrase(&gain.amount),
+            describe_card_count(&draw.count),
+            String::new(),
+        ),
+        (Some(gain_basis), Some(draw_basis)) if gain_basis == draw_basis => (
+            "X life".to_string(),
+            "X cards".to_string(),
+            format!(", where X is {gain_basis}"),
+        ),
+        _ => return None,
+    };
+
+    let subject = describe_player_filter(&actor);
+    Some(format!(
+        "{subject} {} {life} and {} {cards}{suffix}",
+        player_verb(&subject, "gain", "gains"),
+        player_verb(&subject, "draw", "draws"),
+    ))
+}
+
 pub(crate) fn describe_gain_life_then_scry(
     gain: &crate::effects::GainLifeEffect,
     scry: &crate::effects::ScryEffect,
@@ -7,7 +74,7 @@ pub(crate) fn describe_gain_life_then_scry(
     let crate::target::ChooseSpec::Player(gain_player) = gain.player.base() else {
         return None;
     };
-    if gain_player != &scry.player {
+    if !player_filters_refer_to_same_player(gain_player, &scry.player) {
         return None;
     }
     if !matches!(gain.amount, Value::Fixed(_) | Value::X) {
@@ -37,13 +104,16 @@ pub(crate) fn describe_scry_then_draw(
     scry: &crate::effects::ScryEffect,
     draw: &crate::effects::DrawCardsEffect,
 ) -> Option<String> {
-    if scry.player != draw.player {
+    if !player_filters_refer_to_same_player(&scry.player, &draw.player) {
         return None;
     }
+    let scry_count = describe_where_x_basis(&scry.count)
+        .map(|basis| format!("X, where X is {basis}"))
+        .unwrap_or_else(|| describe_value(&scry.count));
     if scry.player == PlayerFilter::You {
         return Some(format!(
             "Scry {}, then draw {}",
-            describe_value(&scry.count),
+            scry_count,
             describe_card_count(&draw.count)
         ));
     }
@@ -52,9 +122,60 @@ pub(crate) fn describe_scry_then_draw(
     Some(format!(
         "{player} {} {}, then {} {}",
         player_verb(&player, "scry", "scries"),
-        describe_value(&scry.count),
+        scry_count,
         player_verb(&player, "draw", "draws"),
         describe_card_count(&draw.count)
+    ))
+}
+
+pub(crate) fn describe_draw_for_each_turn_history(
+    draw: &crate::effects::DrawCardsEffect,
+) -> Option<String> {
+    let basis = describe_turn_history_for_each_basis(&draw.count)?;
+    let player = describe_player_filter(&draw.player);
+    Some(format!(
+        "{player} {} a card for each {basis}",
+        player_verb(&player, "draw", "draws")
+    ))
+}
+
+/// Keep a shared dynamic amount intact when a quantified player and each
+/// permanent they control receive the same damage. The older generic bundle
+/// surface rendered only the amount head and silently discarded its `where X`
+/// clause.
+pub(crate) fn describe_for_players_history_damage_and_controlled_damage(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let [player_effect, controlled_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let player_damage = player_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !matches!(
+        player_damage.target,
+        ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+    ) {
+        return None;
+    }
+
+    let for_each = controlled_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let [object_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let object_effect = unwrap_basic_tag_wrappers(object_effect);
+    let object_damage = object_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if object_damage.amount != player_damage.amount
+        || !matches!(object_damage.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let (amount, where_x) = describe_damage_amount_clause(&player_damage.amount);
+    let where_x = where_x?;
+    let objects = describe_each_controlled_by_iterated(&for_each.filter)?;
+    let player_filter = describe_for_each_player_filter(&for_players.filter);
+    let each_player = strip_leading_article(&player_filter);
+    Some(format!(
+        "Deal {amount} to each {each_player} and {objects}, where X is {where_x}"
     ))
 }
 
@@ -62,11 +183,20 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
     if value_prefers_equal_to(value) && !value_prefers_where_x(value) {
         return None;
     }
+    if let Some(surface) = describe_explicit_where_x_surface(value) {
+        return Some(surface.to_string());
+    }
     match value.unhinted() {
-        Value::Count(filter) => Some(format!(
-            "the number of {}",
-            pluralize_noun_phrase(&describe_for_each_count_filter(filter))
-        )),
+        Value::Count(filter) => {
+            let mut subject = pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+            if filter.zone == Some(Zone::Battlefield)
+                && filter.controller.is_none()
+                && !subject.contains("battlefield")
+            {
+                subject.push_str(" on the battlefield");
+            }
+            Some(format!("the number of {subject}"))
+        }
         Value::BasicLandTypesAmong(filter) => Some(format!(
             "the number of {}",
             describe_basic_land_types_among(filter)
@@ -81,6 +211,10 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         Value::DistinctPowers(filter) => Some(format!(
             "the number of different powers among {}",
             describe_for_each_count_filter(filter)
+        )),
+        Value::GreatestCount(filter) => Some(format!(
+            "the greatest number of {}",
+            pluralize_noun_phrase(&describe_for_each_count_filter(filter))
         )),
         Value::TotalPower(filter) => Some(format!(
             "the total power of {}",
@@ -113,7 +247,8 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         Value::Devotion { .. } | Value::DevotionToChosenColor(_) => Some(describe_value(value)),
         _ => {
             let rendered = describe_value(value);
-            if rendered.starts_with("the number of ")
+            if value_prefers_where_x(value)
+                || rendered.starts_with("the number of ")
                 || rendered.starts_with("the greatest power ")
                 || rendered.starts_with("the greatest toughness ")
                 || rendered.starts_with("the greatest mana value ")
@@ -124,6 +259,53 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
                 None
             }
         }
+    }
+}
+
+pub(super) fn describe_shared_spells_cast_modal_x_basis(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose_mode.modes.len() < 2 {
+        return None;
+    }
+
+    let mut shared_value: Option<&Value> = None;
+    for mode in &choose_mode.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let effect = unwrap_basic_tag_wrappers(effect);
+        let value = if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
+            &scry.count
+        } else if let Some(deal) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+            &deal.amount
+        } else if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
+            &gain.amount
+        } else {
+            return None;
+        };
+        let value = value.unhinted();
+        if !matches!(
+            value,
+            Value::SpellsCastThisTurn(_)
+                | Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::SpellsCast { .. })
+        ) {
+            return None;
+        }
+        if let Some(existing) = shared_value {
+            if existing != value {
+                return None;
+            }
+        } else {
+            shared_value = Some(value);
+        }
+    }
+
+    match shared_value? {
+        Value::SpellsCastThisTurn(PlayerFilter::You) => {
+            Some("the number of spells you've cast this turn".to_string())
+        }
+        value => describe_where_x_basis(value),
     }
 }
 
@@ -208,6 +390,69 @@ pub(crate) fn describe_lose_life_then_gain_life(
     ))
 }
 
+pub(super) fn is_clash_win_predicate(predicate: &EffectPredicate) -> bool {
+    matches!(
+        predicate,
+        EffectPredicate::Value(Comparison::GreaterThan(0))
+    )
+}
+
+/// Render a result-controlled clash loop from its structured repeat effect.
+/// The loop predicate is the count returned by `ClashEffect`: one when the
+/// resolving effect's controller wins and zero otherwise.
+pub(super) fn describe_clash_repeat_process(
+    repeat: &crate::effects::RepeatProcessEffect,
+) -> Option<String> {
+    if !is_clash_win_predicate(&repeat.predicate) {
+        return None;
+    }
+
+    let (clash_index, clash) = repeat
+        .effects
+        .iter()
+        .enumerate()
+        .find_map(|(index, effect)| {
+            let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            (with_id.id == repeat.condition)
+                .then(|| {
+                    with_id
+                        .effect
+                        .downcast_ref::<crate::effects::ClashEffect>()
+                        .map(|clash| (index, clash))
+                })
+                .flatten()
+        })?;
+    if clash_index + 1 != repeat.effects.len() {
+        return None;
+    }
+
+    let clash_text = match clash.opponent_mode {
+        crate::effects::ClashOpponentMode::AnyOpponent => "Clash with an opponent",
+        crate::effects::ClashOpponentMode::TargetOpponent => "Clash with target opponent",
+        crate::effects::ClashOpponentMode::DefendingPlayer => "Clash with defending player",
+    };
+    let mut setup = describe_effect_list(&repeat.effects[..clash_index]);
+    setup = setup.trim().trim_end_matches('.').to_string();
+    if setup.is_empty() {
+        return Some(format!("{clash_text}. If you win, repeat this process"));
+    }
+
+    if setup.starts_with("Lose ")
+        && repeat.effects.first().is_some_and(|effect| {
+            unwrap_basic_tag_wrappers(effect)
+                .downcast_ref::<crate::effects::LoseLifeEffect>()
+                .is_some_and(|lose| lose.player == ChooseSpec::Player(PlayerFilter::You))
+        })
+    {
+        setup = format!("You {}", lowercase_first(&setup));
+    }
+
+    Some(format!(
+        "{setup}, then {}. If you win, repeat this process",
+        lowercase_first(clash_text)
+    ))
+}
+
 pub(super) fn describe_with_id_if_clause(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
@@ -219,11 +464,30 @@ pub(super) fn describe_with_id_if_clause(
         return Some(compact);
     }
 
-    let then_text = describe_conditional_branch_effect_list(&if_effect.then)
+    let setup_is_coin_flip = with_id
+        .effect
+        .downcast_ref::<crate::effects::FlipCoinEffect>()
+        .is_some();
+    let then_text = setup_is_coin_flip
+        .then(|| describe_coin_flip_outcome_branch(&if_effect.then))
+        .flatten()
+        .or_else(|| describe_conditional_branch_effect_list(&if_effect.then))
         .unwrap_or_else(|| describe_effect_list(&if_effect.then));
     let else_text = describe_effect_list(&if_effect.else_);
 
     let condition = if with_id
+        .effect
+        .downcast_ref::<crate::effects::ClashEffect>()
+        .is_some()
+    {
+        if is_clash_win_predicate(&if_effect.predicate) {
+            "If you win".to_string()
+        } else if matches!(if_effect.predicate, EffectPredicate::DidNotHappen) {
+            "Otherwise".to_string()
+        } else {
+            format!("If {}", describe_effect_predicate(&if_effect.predicate))
+        }
+    } else if with_id
         .effect
         .downcast_ref::<crate::effects::ForPlayersEffect>()
         .and_then(|for_players| for_players.effects.first())
@@ -240,6 +504,15 @@ pub(super) fn describe_with_id_if_clause(
         && matches!(if_effect.predicate, EffectPredicate::Happened)
     {
         "If you do".to_string()
+    } else if matches!(if_effect.predicate, EffectPredicate::DealtDamageToPlayer) {
+        "If a player is dealt damage this way".to_string()
+    } else if with_id
+        .effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .is_some_and(|discard| discard.player == PlayerFilter::DamagedPlayer)
+        && matches!(if_effect.predicate, EffectPredicate::Happened)
+    {
+        "If the player does".to_string()
     } else if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         if let Some(condition) = describe_may_have_source_deal_damage_condition(may, if_effect) {
             condition
@@ -346,11 +619,7 @@ pub(super) fn describe_with_id_if_clause(
         } else {
             format!("If {}", describe_effect_predicate(&if_effect.predicate))
         }
-    } else if with_id
-        .effect
-        .downcast_ref::<crate::effects::FlipCoinEffect>()
-        .is_some()
-    {
+    } else if setup_is_coin_flip {
         match if_effect.predicate {
             EffectPredicate::Happened => "If you win the flip".to_string(),
             EffectPredicate::DidNotHappen => "If you lose the flip".to_string(),
@@ -468,6 +737,163 @@ pub(super) fn damage_effect_view(effect: &Effect) -> Option<&crate::effects::Dea
             .downcast_ref::<crate::effects::DealDamageEffect>();
     }
     effect.downcast_ref::<crate::effects::DealDamageEffect>()
+}
+
+pub(super) fn damage_with_source_view(
+    effect: &Effect,
+) -> Option<(Option<&ChooseSpec>, &crate::effects::DealDamageEffect)> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return damage_with_source_view(&with_id.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return damage_with_source_view(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return damage_with_source_view(&tag_all.effect);
+    }
+    if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        let damage = with_source
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()?;
+        return Some((Some(&with_source.source), damage));
+    }
+    effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .map(|damage| (None, damage))
+}
+
+pub(super) fn compatible_damage_sources<'a>(
+    outer: Option<&'a ChooseSpec>,
+    inner: Option<&'a ChooseSpec>,
+) -> Option<Option<&'a ChooseSpec>> {
+    match (outer, inner) {
+        (None, None) => Some(None),
+        (Some(source), None) | (None, Some(source)) => Some(Some(source)),
+        (Some(outer), Some(inner)) if outer.unhinted() == inner.unhinted() => Some(Some(outer)),
+        _ => None,
+    }
+}
+
+pub(super) fn describe_damage_fanout_filter(filter: &ObjectFilter) -> Option<String> {
+    if !matches!(filter.zone, None | Some(Zone::Battlefield))
+        || describe_tagged_this_way_action(filter).is_some()
+    {
+        return None;
+    }
+
+    // Creature/permanent damage instructions conventionally quantify the
+    // battlefield implicitly ("each creature"), while the generic filter
+    // renderer must retain explicit provenance for zone-sensitive actions.
+    // Remove the zone only in this tightly scoped damage surface.
+    let mut display_filter = filter.clone();
+    display_filter.zone = None;
+    let rendered = describe_for_each_count_filter(&display_filter);
+    let rendered = conjoin_quantified_card_types(rendered, &display_filter.card_types);
+    (!rendered.trim().is_empty()).then_some(rendered)
+}
+
+fn conjoin_quantified_card_types(mut rendered: String, card_types: &[CardType]) -> String {
+    if card_types.len() < 2 {
+        return rendered;
+    }
+
+    let names = card_types
+        .iter()
+        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+        .collect::<Vec<_>>();
+    let conjunction = join_with_and(&names);
+    let disjunction = join_with_or(&names);
+    if rendered.contains(&disjunction) {
+        return rendered.replacen(&disjunction, &conjunction, 1);
+    }
+
+    // Count surfaces pluralize the first type in a compound card noun
+    // ("instants or sorcery cards"). A quantified union instead uses the
+    // singular type adjectives: "instant and sorcery cards".
+    let mut plural_first_names = names.clone();
+    plural_first_names[0] = pluralize_noun_phrase(&plural_first_names[0]);
+    let plural_first_disjunction = join_with_or(&plural_first_names);
+    if rendered.contains(&plural_first_disjunction) {
+        rendered = rendered.replacen(&plural_first_disjunction, &conjunction, 1);
+    }
+    rendered
+}
+
+fn damage_count_filter(value: &Value) -> Option<&ObjectFilter> {
+    match value.unhinted() {
+        Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter) => {
+            Some(filter)
+        }
+        Value::Scaled(inner, _) => damage_count_filter(inner),
+        _ => None,
+    }
+}
+
+fn describe_damage_source_subject(source: &ChooseSpec) -> String {
+    let has_explicit_surface = source.source_reference_surface().is_some();
+    let mut subject = describe_choose_spec(source);
+    if subject == "this source" {
+        subject = "this creature".to_string();
+    } else if subject == "it" && !has_explicit_surface {
+        subject = "that creature".to_string();
+    } else if subject.eq_ignore_ascii_case("target creature") {
+        subject = "that creature".to_string();
+    }
+    subject
+}
+
+/// Render the structural bulk-damage shape produced by `DealDamageEach` and
+/// by power-damage whose target is an unselected object set. This intentionally
+/// runs before the generic per-object loop surface: the loop is an execution
+/// detail, while oracle text uses "each ..." and states the source/amount once.
+pub(super) fn describe_for_each_iterated_damage(
+    for_each: &crate::effects::ForEachObject,
+    outer_source: Option<&ChooseSpec>,
+) -> Option<String> {
+    let [inner_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let (inner_source, damage) = damage_with_source_view(inner_effect)?;
+    let source = compatible_damage_sources(outer_source, inner_source)?;
+    if damage.unpreventable || !matches!(damage.target.base(), ChooseSpec::Iterated) {
+        return None;
+    }
+
+    let filter = describe_damage_fanout_filter(&for_each.filter)?;
+    if source.is_some_and(|source| matches!(source.base(), ChooseSpec::Iterated)) {
+        let stat = match damage.amount.unhinted() {
+            Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Iterated) => "power",
+            Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Iterated) => "toughness",
+            Value::SourcePower => "power",
+            Value::SourceToughness => "toughness",
+            _ => return None,
+        };
+        return Some(format!(
+            "Each {filter} deals damage to itself equal to its {stat}"
+        ));
+    }
+
+    let (mut amount, mut where_x) = describe_damage_amount_clause(&damage.amount);
+    if let Some(count_filter) = damage_count_filter(&damage.amount) {
+        amount = conjoin_quantified_card_types(amount, &count_filter.card_types);
+        where_x =
+            where_x.map(|basis| conjoin_quantified_card_types(basis, &count_filter.card_types));
+    }
+    let mut rendered = if let Some(source) = source {
+        let subject = describe_damage_source_subject(source);
+        let verb = if choose_spec_is_plural(source) {
+            "deal"
+        } else {
+            "deals"
+        };
+        format!("{subject} {verb} {amount} to each {filter}")
+    } else {
+        format!("Deal {amount} to each {filter}")
+    };
+    if let Some(where_x) = where_x {
+        rendered.push_str(&format!(", where X is {where_x}"));
+    }
+    Some(rendered)
 }
 
 pub(super) fn strip_redundant_where_x_suffix_after_setup(
@@ -602,8 +1028,132 @@ pub(super) fn describe_conditional_branch_effect_list(effects: &[Effect]) -> Opt
     describe_lose_life_then_create_shared_dynamic_branch(effects)
         .or_else(|| describe_destroy_no_regeneration_this_way_branch(effects))
         .or_else(|| describe_conditional_dynamic_token_branch(effects))
+        .or_else(|| describe_copy_then_choose_new_targets_branch(effects))
+        .or_else(|| describe_remove_from_combat_then_tap_branch(effects))
+        .or_else(|| describe_gain_control_then_may_retarget_branch(effects))
         .or_else(|| describe_compact_choose_mode_branch(effects))
         .or_else(|| describe_source_labeled_choose_mode_branch(effects))
+}
+
+fn describe_coin_flip_outcome_branch(effects: &[Effect]) -> Option<String> {
+    describe_conditional_branch_effect_list(effects)
+        .or_else(|| describe_triggering_spell_return_branch(effects))
+        .or_else(|| describe_tagged_counter_spell_branch(effects))
+}
+
+fn wrapped_with_id(effect: &Effect) -> Option<&crate::effects::WithIdEffect> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return Some(with_id);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return wrapped_with_id(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return wrapped_with_id(&tag_all.effect);
+    }
+    None
+}
+
+fn describe_copy_then_choose_new_targets_branch(effects: &[Effect]) -> Option<String> {
+    let [copy_effect, retarget_effect] = effects else {
+        return None;
+    };
+    let copy_with_id = wrapped_with_id(copy_effect)?;
+    let copy = copy_with_id
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    let retarget = unwrap_basic_tag_wrappers(retarget_effect)
+        .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
+    if copy.count != Value::Fixed(1)
+        || !copy.removed_supertypes.is_empty()
+        || retarget.from_effect != copy_with_id.id
+        || !retarget.may
+        || !matches!(retarget.chooser, None | Some(PlayerFilter::You))
+    {
+        return None;
+    }
+
+    let copied_spell = describe_stack_object_copy_target(&copy.target);
+    Some(format!(
+        "Copy {copied_spell}, and you may choose new targets for the copy"
+    ))
+}
+
+fn describe_remove_from_combat_then_tap_branch(effects: &[Effect]) -> Option<String> {
+    let [remove_effect, tap_effect] = effects else {
+        return None;
+    };
+    let remove = unwrap_basic_tag_wrappers(remove_effect)
+        .downcast_ref::<crate::effects::RemoveFromCombatEffect>()?;
+    let tap = unwrap_basic_tag_wrappers(tap_effect).downcast_ref::<crate::effects::TapEffect>()?;
+    if remove.spec.unhinted() != tap.target.unhinted() {
+        return None;
+    }
+
+    Some(format!(
+        "Remove {} from combat and tap it",
+        describe_choose_spec(&remove.spec)
+    ))
+}
+
+fn describe_gain_control_then_may_retarget_branch(effects: &[Effect]) -> Option<String> {
+    let [control_effect, may_effect] = effects else {
+        return None;
+    };
+    let control = unwrap_basic_tag_wrappers(control_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !is_gain_control_effect(control) || control.until != Until::Forever {
+        return None;
+    }
+    let controlled = control.target_spec.as_ref()?;
+
+    let may = unwrap_basic_tag_wrappers(may_effect).downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
+        return None;
+    }
+    let [retarget_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let retarget = unwrap_basic_tag_wrappers(retarget_effect)
+        .downcast_ref::<crate::effects::RetargetStackObjectEffect>()?;
+    if retarget.chooser != PlayerFilter::You
+        || !matches!(retarget.mode, crate::effects::RetargetMode::All)
+        || retarget.require_change
+        || retarget.new_target_restriction.is_some()
+        || controlled.unhinted() != retarget.target.unhinted()
+    {
+        return None;
+    }
+
+    Some("You gain control of that spell and may choose new targets for it".to_string())
+}
+
+fn describe_triggering_spell_return_branch(effects: &[Effect]) -> Option<String> {
+    let [effect] = effects else {
+        return None;
+    };
+    let returned =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    if returned.destination_player_surface.is_some()
+        || returned.exiled_with_source_surface.is_some()
+        || !matches!(returned.spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+    {
+        return None;
+    }
+
+    Some("Return that spell to its owner's hand".to_string())
+}
+
+fn describe_tagged_counter_spell_branch(effects: &[Effect]) -> Option<String> {
+    let [effect] = effects else {
+        return None;
+    };
+    let counter =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::CounterEffect>()?;
+    if !matches!(counter.target.base(), ChooseSpec::Tagged(_)) {
+        return None;
+    }
+    Some("Counter that spell".to_string())
 }
 
 pub(super) fn describe_lose_life_then_create_shared_dynamic_branch(
@@ -862,6 +1412,15 @@ pub(super) fn describe_declined_may_mill_then_damage(
 pub(super) fn describe_pay_mana_cost(pay_mana: &crate::effects::PayManaEffect) -> String {
     let cost = pay_mana.cost.to_oracle();
     match pay_mana.x_value.as_ref() {
+        Some(value)
+            if cost == "{X}"
+                && value.has_surface_hint(ValueSurfaceHint::ForEach)
+                && crate::compiled_text::describe_counter_for_each_basis(value).is_some() =>
+        {
+            let (multiplier, basis) = crate::compiled_text::describe_counter_for_each_basis(value)
+                .expect("counter for-each basis checked in match guard");
+            format!("{{{multiplier}}} for each {basis}")
+        }
         Some(value) => format!("{cost}, where X is {}", describe_value(value)),
         None => cost,
     }
@@ -1492,11 +2051,16 @@ pub(crate) fn describe_search_choose_for_each(
     if searched_library && implied_filter.zone == Some(Zone::Library) {
         implied_filter.zone = None;
     }
-    // NOTE: do not set implied_filter.zone to Library here for multi-zone
-    // searches — that would leak "in library" into the description. Instead,
-    // we post-process the noun from "permanent" to "card" below.
+    // Keep the library context available while choosing the noun, then remove
+    // only its redundant location clause. Explicit permanent-card filters stay
+    // on the older typed path so their subtype ordering remains unchanged.
     let implied_filter_text = if implied_filter == ObjectFilter::default() {
         "card".to_string()
+    } else if searched_library
+        && choose.filter.zone == Some(Zone::Library)
+        && !filter_explicitly_selects_permanent_cards(&choose.filter)
+    {
+        describe_nonbattlefield_card_filter_without_zone(&implied_filter, Zone::Library)
     } else {
         let desc = implied_filter.description();
         // For multi-zone searches the zone is None, so the base noun defaults
@@ -1539,7 +2103,7 @@ pub(crate) fn describe_search_choose_for_each(
                 format!("{count_text} cards")
             }
         } else {
-            format!("{count_text} {filter_text}")
+            format!("{count_text} {}", pluralize_noun_phrase(&filter_text))
         }
     };
     let selection_text = if is_same_name_search(&choose.filter)
@@ -1701,19 +2265,26 @@ pub(crate) fn describe_search_choose_for_each(
                 )
             } else {
                 format!(
-                    "Search {search_origin} for {}{}, exile {}",
+                    "Search {search_origin} for {}{} and exile {}",
                     selection_text, reveal_clause, pronoun,
                 )
             };
         }
         SearchDestination::LibraryTop => {
+            let move_reference = if choose.count.max == Some(1)
+                && choose.filter.has_explicit_card_noun()
+            {
+                "the card"
+            } else {
+                pronoun
+            };
             text = if shuffle.is_some() && shuffle_before_move {
                 format!(
                     "Search {search_origin} for {}{}, then {} and put {} on top of {} library",
                     selection_text,
                     reveal_clause,
                     shuffle_clause,
-                    pronoun,
+                    move_reference,
                     describe_possessive_player_filter(search_owner_filter)
                 )
             } else {
@@ -1721,7 +2292,7 @@ pub(crate) fn describe_search_choose_for_each(
                     "Search {search_origin} for {}{}, put {} on top of {} library",
                     selection_text,
                     reveal_clause,
-                    pronoun,
+                    move_reference,
                     describe_possessive_player_filter(search_owner_filter)
                 )
             };
@@ -1753,9 +2324,10 @@ pub(crate) fn describe_search_choose_for_each(
                 text.push_str(". ");
                 text.push_str(&conditional_shuffle_clause);
             }
+        } else if describe_player_filter(search_owner_filter) == "you" {
+            text.push_str(", then shuffle");
         } else {
-            text.push_str(", then ");
-            text.push_str(&shuffle_clause);
+            text.push_str(". Then that player shuffles");
         }
     }
     Some(text)
@@ -1887,7 +2459,7 @@ pub(super) fn describe_search_choose_then_move(
         _ => return None,
     };
     if let Some(shuffle) = shuffle {
-        if shuffle.player != *search_owner_filter {
+        if !same_search_player_filter(&shuffle.player, search_owner_filter) {
             return None;
         }
         text.push_str(", then ");
@@ -1969,7 +2541,7 @@ pub(super) fn describe_search_choose_then_exile(
         "Search {search_origin} for {filter_text}{reveal_clause}, exile {pronoun}{face_down_suffix}"
     );
     if let Some(shuffle) = shuffle {
-        if shuffle.player != *search_owner_filter {
+        if !same_search_player_filter(&shuffle.player, search_owner_filter) {
             return None;
         }
         text.push_str(", then ");
@@ -2047,7 +2619,7 @@ pub(super) fn describe_search_choose_then_return_to_hand(
         describe_possessive_player_filter(search_owner_filter)
     );
     if let Some(shuffle) = shuffle {
-        if shuffle.player != *search_owner_filter {
+        if !same_search_player_filter(&shuffle.player, search_owner_filter) {
             return None;
         }
         text.push_str(", then ");
@@ -2321,6 +2893,85 @@ pub(crate) fn describe_search_choose_then_exile_and_cast(
 
     Some(format!(
         "{search_clause}. Exile that card, then shuffle. {cast_clause}"
+    ))
+}
+
+/// Render a library search whose chosen card is cast directly before the
+/// searched library is shuffled. Keeping this as one structural bundle lets
+/// the shuffle refer back to the searched player instead of repeating the
+/// original target expression.
+pub(crate) fn describe_search_choose_then_cast_then_shuffle(
+    choose: &crate::effects::ChooseObjectsEffect,
+    cast_effect: &Effect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+) -> Option<String> {
+    fn unwrap_effect(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_effect(tagged.effect.as_ref());
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return unwrap_effect(with_id.effect.as_ref());
+        }
+        effect
+    }
+
+    fn extract_cast_tagged(effect: &Effect) -> Option<&crate::effects::CastTaggedEffect> {
+        let effect = unwrap_effect(effect);
+        if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {
+            return Some(cast_tagged);
+        }
+        let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
+        let [cast_effect] = may.effects.as_slice() else {
+            return None;
+        };
+        unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()
+    }
+
+    if !choose.is_search
+        || choose.count.max != Some(1)
+        || choose_search_zones(choose) != Some(vec![Zone::Library])
+    {
+        return None;
+    }
+
+    let search_owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+    if !same_search_player_filter(&shuffle.player, search_owner) {
+        return None;
+    }
+
+    let cast_tagged = extract_cast_tagged(cast_effect)?;
+    if cast_tagged.tag != choose.tag
+        || cast_tagged.player != PlayerFilter::You
+        || cast_tagged.as_copy
+        || cast_tagged.cost_reduction.is_some()
+    {
+        return None;
+    }
+
+    let search_origin = describe_search_origin_zones(choose)?;
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.owner = None;
+    filter.controller = None;
+    let selection = describe_search_selection_with_cards(&filter.description());
+    let action = if cast_tagged.allow_land {
+        "play"
+    } else {
+        "cast"
+    };
+    let payment = if cast_tagged.without_paying_mana_cost {
+        " without paying its mana cost"
+    } else {
+        ""
+    };
+    let shuffle_clause = if describe_player_filter(search_owner) == "you" {
+        "Then shuffle"
+    } else {
+        "Then that player shuffles"
+    };
+
+    Some(format!(
+        "Search {search_origin} for {selection}. You may {action} that card{payment}. {shuffle_clause}"
     ))
 }
 

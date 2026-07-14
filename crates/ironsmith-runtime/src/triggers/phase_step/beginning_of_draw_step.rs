@@ -1,6 +1,7 @@
 //! "At the beginning of [player]'s draw step" trigger.
 
 use crate::events::EventKind;
+use crate::filter::PlayerFilterExt as _;
 use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -42,6 +43,11 @@ impl TriggerMatcher for BeginningOfDrawStepTrigger {
         match &self.player {
             PlayerFilter::You => "At the beginning of your draw step".to_string(),
             PlayerFilter::Any => "At the beginning of each player's draw step".to_string(),
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+                if tag.as_str() == "enchanted" =>
+            {
+                "At the beginning of the draw step of enchanted creature's controller".to_string()
+            }
             _ => format!(
                 "At the beginning of {} draw step",
                 describe_player_filter_possessive(&self.player)
@@ -51,13 +57,7 @@ impl TriggerMatcher for BeginningOfDrawStepTrigger {
 }
 
 fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerContext) -> bool {
-    match filter {
-        PlayerFilter::You => player == ctx.controller,
-        PlayerFilter::Opponent => player != ctx.controller,
-        PlayerFilter::Any => true,
-        PlayerFilter::Specific(id) => player == *id,
-        _ => true,
-    }
+    filter.matches_player(player, &ctx.filter_ctx)
 }
 
 #[cfg(test)]
@@ -85,6 +85,18 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn enchanted_creature_controller_draw_step_has_oracle_surface() {
+        let trigger = BeginningOfDrawStepTrigger::new(PlayerFilter::ControllerOf(
+            crate::target::ObjectRef::Tagged(crate::tag::TagKey::from("enchanted")),
+        ));
+
+        assert_eq!(
+            trigger.display(),
+            "At the beginning of the draw step of enchanted creature's controller"
+        );
     }
 
     #[test]

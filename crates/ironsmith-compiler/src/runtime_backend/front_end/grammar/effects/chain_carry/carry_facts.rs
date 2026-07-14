@@ -29,6 +29,7 @@ pub(crate) enum CarryableSubjectShape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CarryClauseHead {
+    Choose,
     Create,
     Draw,
     Scry,
@@ -62,8 +63,8 @@ pub(crate) fn parse_carry_duration_prefix_tokens(
     let parsed = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)?;
     let duration = match parsed.duration {
         leaf::LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
-        leaf::LeafDurationPhrase::UntilYourNextTurn
-        | leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextTurn,
+        leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
+        leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
         leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
         _ => return None,
     };
@@ -98,6 +99,7 @@ pub(crate) fn parse_carry_clause_head_tokens(tokens: &[OwnedLexToken]) -> CarryC
         (
             repeat::<_, _, (), _, _>(0.., alt((semantic_kw("then"), semantic_kw("and")))),
             alt((
+                semantic_kw("choose").value(CarryClauseHead::Choose),
                 semantic_kw("create").value(CarryClauseHead::Create),
                 semantic_kw("draw").value(CarryClauseHead::Draw),
                 semantic_kw("scry").value(CarryClauseHead::Scry),

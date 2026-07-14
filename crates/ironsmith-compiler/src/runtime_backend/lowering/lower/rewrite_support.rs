@@ -64,6 +64,10 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             .as_deref()
             .is_some_and(|targets| filter_references_tag(targets, tag))
         || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(|attached_to| filter_references_tag(attached_to, tag))
+        || filter
             .any_of
             .iter()
             .any(|branch| filter_references_tag(branch, tag))
@@ -88,6 +92,9 @@ fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey
     }
     if let Some(targets) = filter.targets_only_object.as_deref_mut() {
         replaced |= replace_filter_tag(targets, old_tag, new_tag);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+        replaced |= replace_filter_tag(attached_to, old_tag, new_tag);
     }
     for branch in &mut filter.any_of {
         replaced |= replace_filter_tag(branch, old_tag, new_tag);

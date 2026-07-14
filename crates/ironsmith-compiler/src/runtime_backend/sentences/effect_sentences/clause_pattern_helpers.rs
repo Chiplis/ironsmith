@@ -15,7 +15,9 @@ use super::super::grammar::effects::clause_pattern_shapes as clause_shapes;
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
-use super::super::lexer::{LexedClause, token_slice_last_is};
+use super::super::lexer::{
+    LexedClause, token_slice_first_is, token_slice_last_is, trim_lexed_commas,
+};
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     parse_subject, parse_target_phrase, parse_value, span_from_tokens, trim_commas,
@@ -85,10 +87,15 @@ pub(crate) fn parse_double_counters_clause(
                 TargetAst::Player(PlayerFilter::You, span_from_tokens(tokens)),
             )
         }
-        clause_shapes::DoubleCounterHolderShape::Source(holder_tokens) => {
+        clause_shapes::DoubleCounterHolderShape::Source {
+            tokens: holder_tokens,
+            surface,
+        } => {
+            let span = span_from_tokens(holder_tokens);
+            crate::runtime_backend::util::record_source_reference_surface(span, surface);
             EffectAst::subject_verb_double_counters_on_target(
                 shape.counter_type,
-                TargetAst::Source(span_from_tokens(holder_tokens)),
+                TargetAst::Source(span),
             )
         }
         clause_shapes::DoubleCounterHolderShape::Target(holder_tokens) => {
@@ -218,6 +225,21 @@ pub(crate) fn parse_copy_spell_clause(
     let copy_idx = copy_shape.copy_word;
     let tail = &tokens[copy_idx + 1..];
     let split_idx = copy_shape.tail.retarget_split;
+    if let Some(then_idx) = copy_shape.tail.then_split {
+        let then_token_idx = copy_idx + 1 + then_idx;
+        let first_clause = trim_lexed_commas(&tokens[..then_token_idx]);
+        let second_clause = trim_lexed_commas(&tokens[then_token_idx + 1..]);
+        let Some(first) = parse_copy_spell_clause(first_clause)? else {
+            return Ok(None);
+        };
+        let Some(second) = parse_copy_spell_clause(second_clause)? else {
+            return Ok(None);
+        };
+        return Ok(Some(EffectAst::Coordinated {
+            effects: vec![first, second],
+            leading_duration: false,
+        }));
+    }
     if copy_shape.simple_reference {
         let trailing_if = split_trailing_if_clause_lexed(tokens);
         let copy_clause_tokens = trailing_if
@@ -288,6 +310,7 @@ pub(crate) fn parse_copy_spell_clause(
             count,
             PlayerAst::Implicit,
             copy_clause_split_idx.is_some(),
+            copy_clause_tail_shape.retarget_single_target,
             removed_supertypes(&copy_clause_shape),
         );
         if let Some(trailing_if) = trailing_if {
@@ -367,6 +390,7 @@ pub(crate) fn parse_copy_spell_clause(
     };
 
     let mut may_choose_new_targets = false;
+    let mut choose_new_target_singular = false;
     if let Some(idx) = split_idx {
         let Some(retarget) = clause_shapes::parse_copy_retarget_shape_tokens(&tail[idx + 1..])
         else {
@@ -382,15 +406,21 @@ pub(crate) fn parse_copy_spell_clause(
             )));
         }
         may_choose_new_targets = retarget.may_choose;
+        choose_new_target_singular = retarget.single_target;
     }
 
-    Ok(Some(EffectAst::subject_verb_copy_spell(
-        target,
-        count,
-        player,
-        may_choose_new_targets,
-        removed_supertypes(&copy_shape),
-    )))
+    let copy_all_matches = token_slice_first_is(copy_target_clause.tokens(), "all");
+    Ok(Some(
+        EffectAst::subject_verb_copy_spell(
+            target,
+            count,
+            player,
+            may_choose_new_targets,
+            choose_new_target_singular,
+            removed_supertypes(&copy_shape),
+        )
+        .with_copy_all_matches(copy_all_matches),
+    ))
 }
 
 fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Value>) {
@@ -401,6 +431,44 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
         );
     }
     (tokens, None)
+}
+
+#[cfg(test)]
+mod copy_all_tests {
+    use super::*;
+
+    #[test]
+    fn parses_coordinated_copy_all_stack_sets_without_collapsing_them() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy all spells you control, then copy all other activated and triggered abilities you control.",
+            0,
+        )
+        .expect("copy-all sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("copy-all sentence should parse")
+            .expect("copy-all parser should match");
+        let EffectAst::Coordinated { effects, .. } = parsed else {
+            panic!("expected a coordinated copy pair, got {parsed:#?}");
+        };
+        assert_eq!(effects.len(), 2, "{effects:#?}");
+        for effect in effects {
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CopySpell {
+                        all_matches,
+                        target: TargetAst::Object(filter, ..),
+                        ..
+                    },
+                ..
+            }) = effect
+            else {
+                panic!("expected a typed copy-all action, got {effect:#?}");
+            };
+            assert!(all_matches, "set quantifier must survive parsing");
+            assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
+            assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+        }
+    }
 }
 
 pub(crate) fn parse_counter_target_phrase(
@@ -1040,6 +1108,15 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 }
             };
             EffectAst::subject_verb_manifest_top_card(player)
+        }
+        clause_shapes::KeywordMechanicShape::CloakTop { player } => {
+            let player = match player {
+                clause_shapes::ManifestPlayerShape::You => PlayerAst::You,
+                clause_shapes::ManifestPlayerShape::ThatPlayerOrTargetController => {
+                    PlayerAst::ThatPlayerOrTargetController
+                }
+            };
+            EffectAst::subject_verb_cloak_top_card(player)
         }
         clause_shapes::KeywordMechanicShape::ManifestFromHand => {
             EffectAst::subject_verb_manifest_from_hand(PlayerAst::You)

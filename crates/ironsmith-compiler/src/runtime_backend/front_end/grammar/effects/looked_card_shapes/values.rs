@@ -8,7 +8,7 @@ use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, parse_where_x_greatest_commander_mana_value,
 };
 use crate::runtime_backend::util::parse_number_or_x_value_lexed;
-use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
+use ironsmith_core::{EffectMetric, EffectMetricSource, EventValueSpec, ValueSurfaceHint};
 
 use super::super::super::{permission_shapes, primitives};
 
@@ -48,6 +48,20 @@ fn card_of_your_library(input: &mut LexStream<'_>) -> WResult<()> {
     .parse_next(input)
 }
 
+fn that_many_cards_from_top_head(input: &mut LexStream<'_>) -> WResult<bool> {
+    alt((
+        primitives::phrase(&[
+            "look", "at", "that", "many", "cards", "from", "the", "top", "of", "your", "library",
+        ])
+        .value(false),
+        primitives::phrase(&[
+            "reveal", "that", "many", "cards", "from", "the", "top", "of", "your", "library",
+        ])
+        .value(true),
+    ))
+    .parse_next(input)
+}
+
 fn prior_effect_count_head(input: &mut LexStream<'_>) -> WResult<()> {
     opt(primitives::kw("the")).parse_next(input)?;
     primitives::phrase(&["number", "of"])
@@ -77,7 +91,7 @@ fn parse_prior_effect_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     })
 }
 
-fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+pub(crate) fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     if let Some(value) = parse_prior_effect_count_value(tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::WhereXIs));
     }
@@ -101,6 +115,15 @@ fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
 
 pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<TopCardsViewShape> {
     let tokens = trim_lexed_commas(tokens);
+    if let Some((revealed, remainder)) =
+        primitives::parse_prefix(tokens, that_many_cards_from_top_head)
+        && trim_lexed_commas(remainder).is_empty()
+    {
+        return Some(TopCardsViewShape {
+            revealed,
+            count: Value::EventValue(EventValueSpec::Amount),
+        });
+    }
     let (revealed, count_tokens) = primitives::parse_prefix(tokens, top_cards_view_head)?;
     let (count, used) = parse_number_or_x_value_lexed(count_tokens)?;
     let library_tokens = trim_lexed_commas(count_tokens.get(used..)?);
@@ -140,5 +163,10 @@ mod tests {
         let shape = parse_top_cards_view_shape(&tokens).unwrap();
         assert!(shape.revealed);
         assert!(shape.count.has_surface_hint(ValueSurfaceHint::WhereXIs));
+
+        let tokens = lex_line("Look at that many cards from the top of your library", 0).unwrap();
+        let shape = parse_top_cards_view_shape(&tokens).unwrap();
+        assert!(!shape.revealed);
+        assert_eq!(shape.count, Value::EventValue(EventValueSpec::Amount));
     }
 }

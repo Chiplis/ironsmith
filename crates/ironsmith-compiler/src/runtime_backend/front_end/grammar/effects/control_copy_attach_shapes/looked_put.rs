@@ -1,6 +1,7 @@
 use winnow::combinator::{alt, opt};
 use winnow::prelude::*;
 
+use crate::cards::builders::LibraryBottomOrderAst;
 use crate::effect::ChoiceCount;
 use crate::runtime_backend::front_end::grammar::{leaf, permission_shapes, primitives};
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
@@ -23,6 +24,13 @@ pub(crate) enum FromAmongDestinationShape {
 pub(crate) struct TaggedPutShape {
     pub(crate) count: Option<ChoiceCount>,
     pub(crate) rest_destination: Option<RestDestinationShape>,
+    pub(crate) bottom_order: Option<LibraryBottomOrderAst>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TaggedTopPutShape {
+    pub(crate) count: ChoiceCount,
+    pub(crate) bottom_order: LibraryBottomOrderAst,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -36,6 +44,10 @@ pub(crate) struct FromAmongPutShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RevealedRemainderShape {
     pub(crate) random_order: bool,
+    /// `true` for "the rest of the revealed cards", where the most recently
+    /// selected card must be excluded. `false` for the whole revealed
+    /// collection.
+    pub(crate) exclude_current_reference: bool,
 }
 
 fn rest_head(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -113,11 +125,15 @@ pub(crate) fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<T
     Some(TaggedPutShape {
         count,
         rest_destination: parse_rest_destination(tokens),
+        bottom_order: super::super::sequence_pairs::parse_bottom_order(tokens),
     })
 }
 
-pub(crate) fn parse_tagged_on_top_library_shape(tokens: &[OwnedLexToken]) -> Option<ChoiceCount> {
-    if parse_rest_destination(tokens) != Some(RestDestinationShape::BottomOfLibrary) {
+pub(crate) fn parse_tagged_on_top_library_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<TaggedTopPutShape> {
+    let rest = rest_head(tokens)?;
+    if !primitives::contains_word(rest, "bottom") {
         return None;
     }
     let body = strip_optional_put(tokens);
@@ -137,7 +153,10 @@ pub(crate) fn parse_tagged_on_top_library_shape(tokens: &[OwnedLexToken]) -> Opt
     {
         return None;
     }
-    Some(count)
+    Some(TaggedTopPutShape {
+        count,
+        bottom_order: super::super::sequence_pairs::parse_bottom_order(tokens)?,
+    })
 }
 
 pub(crate) fn parse_from_among_them_shape(
@@ -217,15 +236,24 @@ pub(crate) fn parse_all_exiled_into_hand_filter(
 pub(crate) fn parse_revealed_remainder_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<RevealedRemainderShape> {
-    for word in [
+    let is_remainder = [
         "rest", "cards", "revealed", "this", "way", "bottom", "library",
-    ] {
-        if !primitives::contains_word(tokens, word) {
-            return None;
-        }
+    ]
+    .into_iter()
+    .all(|word| primitives::contains_word(tokens, word));
+    let is_full_collection =
+        (permission_shapes::prefix_tokens(tokens, &["the", "revealed", "cards"])
+            || permission_shapes::prefix_tokens(tokens, &["all", "revealed", "cards"])
+            || permission_shapes::prefix_tokens(tokens, &["all", "the", "revealed", "cards"]))
+            && primitives::contains_word(tokens, "bottom")
+            && primitives::contains_word(tokens, "library")
+            && !primitives::contains_word(tokens, "rest");
+    if !is_remainder && !is_full_collection {
+        return None;
     }
     Some(RevealedRemainderShape {
         random_order: primitives::contains_word(tokens, "random"),
+        exclude_current_reference: is_remainder,
     })
 }
 
@@ -255,6 +283,38 @@ mod tests {
         );
         assert!(shape.count.is_some());
 
+        let any_order = lex_line(
+            "put two of them into your hand and the rest on the bottom of your library in any order",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_tagged_into_hand_shape(&any_order)
+                .unwrap()
+                .bottom_order,
+            Some(LibraryBottomOrderAst::ChooserChooses)
+        );
+        let random_order = lex_line(
+            "put two of them into your hand and the rest on the bottom of your library in a random order",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_tagged_into_hand_shape(&random_order)
+                .unwrap()
+                .bottom_order,
+            Some(LibraryBottomOrderAst::Random)
+        );
+
+        let top_and_bottom = lex_line(
+            "put up to one of them on top of your library and the rest on the bottom in a random order",
+            0,
+        )
+        .unwrap();
+        let shape = parse_tagged_on_top_library_shape(&top_and_bottom).unwrap();
+        assert_eq!(shape.count, ChoiceCount::up_to(1));
+        assert_eq!(shape.bottom_order, LibraryBottomOrderAst::Random);
+
         let among = lex_line(
             "up to one creature card from among them onto the battlefield and the rest into your hand",
             0,
@@ -266,5 +326,18 @@ mod tests {
         assert!(is_reorder_tagged_cards(
             &lex_line("put them back in any order", 0).unwrap()
         ));
+    }
+
+    #[test]
+    fn parses_whole_revealed_collection_for_library_bottom_cleanup() {
+        let tokens = lex_line(
+            "the revealed cards on the bottom of your library in any order",
+            0,
+        )
+        .unwrap();
+        let shape = parse_revealed_remainder_shape(&tokens).expect("revealed collection");
+
+        assert!(!shape.exclude_current_reference);
+        assert!(!shape.random_order);
     }
 }

@@ -85,6 +85,12 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 bind_typed_where_x_references(if_true, binding.clone());
                 bind_typed_where_x_references(if_false, binding.clone());
             }
+            EffectAst::TrailingUnless { predicate, effects } => {
+                if let Some(replacement) = binding.as_ref() {
+                    replace_bound_x_in_predicate(predicate, replacement);
+                }
+                bind_typed_where_x_references(effects, binding.clone());
+            }
             EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
                 for mode in modes {
                     bind_typed_where_x_references(&mut mode.effects, binding.clone());
@@ -116,6 +122,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
     }
+    bind_counted_set_followups(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
     }
@@ -131,6 +138,53 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     effects.retain(|effect| !is_noop_effect(effect));
 }
 
+fn count_filter(value: &Value) -> Option<&crate::filter::ObjectFilter> {
+    match value {
+        Value::Count(filter) => Some(filter),
+        Value::SurfaceHinted { value, .. } => count_filter(value),
+        _ => None,
+    }
+}
+
+/// Bind a demonstrative plural grant to the set counted by the immediately
+/// preceding draw. For example, in "Draw a card for each creature ... Those
+/// creatures gain indestructible," the grant applies to the counted creatures,
+/// not to the source spell represented by the parser's unresolved `it` target.
+fn bind_counted_set_followups(effects: &mut [EffectAst]) {
+    for index in 1..effects.len() {
+        let (before, after) = effects.split_at_mut(index);
+        let EffectAst::SubjectVerb(draw) = &before[index - 1] else {
+            continue;
+        };
+        let SubjectVerbActionAst::Draw { count } = &draw.action else {
+            continue;
+        };
+        let Some(filter) = count_filter(count).cloned() else {
+            continue;
+        };
+
+        let EffectAst::SubjectVerb(grant) = &mut after[0] else {
+            continue;
+        };
+        let SubjectVerbActionAst::GrantAbilitiesToTarget {
+            target,
+            set_quantifier_surface: Some(ironsmith_core::SetQuantifierSurface::Each),
+            ..
+        } = &mut grant.action
+        else {
+            continue;
+        };
+        let unresolved_set_reference = match target {
+            TargetAst::Source(_) => true,
+            TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
+            _ => false,
+        };
+        if unresolved_set_reference {
+            *target = TargetAst::Object(filter, None, None);
+        }
+    }
+}
+
 fn normalize_nested_effects(effect: &mut EffectAst) {
     match effect {
         EffectAst::Conditional {
@@ -142,7 +196,8 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_effects_vec(if_true);
             normalize_effects_vec(if_false);
         }
-        EffectAst::UnlessPays { effects, .. }
+        EffectAst::TrailingUnless { effects, .. }
+        | EffectAst::UnlessPays { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::AnyPlayerMay { effects }
@@ -170,6 +225,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
+        | EffectAst::DelayedUntilNextMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
@@ -228,6 +284,9 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         return None;
     };
     effects.pop();
+    if effects.is_empty() {
+        body.pop();
+    }
 
     Some(vec![EffectAst::RepeatProcess {
         effects: body,
@@ -365,7 +424,9 @@ fn is_noop_effect(effect: &EffectAst) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::cards::builders::IfResultPredicate;
-    use crate::cards::builders::{EffectAst, PlayerAst, PredicateAst, TagKey};
+    use crate::cards::builders::{
+        EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, TagKey, TargetAst,
+    };
     use crate::effect::{Until, Value};
     use crate::filter::{ObjectFilter, PlayerFilter};
     use ironsmith_core::ValueSurfaceHint;
@@ -414,6 +475,47 @@ mod tests {
                 action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn normalize_binds_demonstrative_grant_to_draw_counted_set() {
+        let counted = ObjectFilter::creature().you_control();
+        let draw = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw {
+                count: Value::Count(counted.clone()),
+            },
+        );
+        let mut grant = EffectAst::subject_verb_grant_abilities_to_target(
+            TargetAst::Source(None),
+            Vec::new(),
+            Until::EndOfTurn,
+        );
+        let EffectAst::SubjectVerb(grant_subject) = &mut grant else {
+            panic!("expected targeted grant");
+        };
+        let SubjectVerbActionAst::GrantAbilitiesToTarget {
+            set_quantifier_surface,
+            ..
+        } = &mut grant_subject.action
+        else {
+            panic!("expected targeted grant action");
+        };
+        *set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::Each);
+
+        let normalized = normalize_effects_ast(&[draw, grant]);
+        assert!(matches!(
+            &normalized[1],
+            EffectAst::SubjectVerb(subject)
+                if matches!(
+                    &subject.action,
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        target: TargetAst::Object(filter, _, _),
+                        ..
+                    } if filter == &counted
+                )
         ));
     }
 
@@ -484,6 +586,27 @@ mod tests {
                 continue_predicate: IfResultPredicate::Did,
                 ..
             }]
+        ));
+    }
+
+    #[test]
+    fn normalize_removes_empty_clash_result_marker_from_repeat_body() {
+        let effects = vec![
+            EffectAst::subject_verb_clash(crate::cards::builders::ClashOpponentAst::Opponent),
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::WonClash,
+                effects: vec![EffectAst::RepeatThisProcess],
+            },
+        ];
+
+        let normalized = normalize_effects_ast(&effects);
+        assert!(matches!(
+            normalized.as_slice(),
+            [EffectAst::RepeatProcess {
+                effects,
+                continue_effect_index: 0,
+                continue_predicate: IfResultPredicate::WonClash,
+            }] if effects.len() == 1
         ));
     }
 

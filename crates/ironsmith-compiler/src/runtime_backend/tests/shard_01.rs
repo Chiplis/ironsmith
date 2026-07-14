@@ -8,6 +8,34 @@ use super::shard_06::*;
 use super::*;
 
 #[test]
+pub(super) fn aetherflux_conduit_uses_triggering_spell_mana_spent_value() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Aetherflux Conduit")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever you cast a spell, you get an amount of {E} (energy counters) equal to the amount of mana spent to cast that spell.\n{T}, Pay fifty {E}: Draw seven cards. You may cast any number of spells from your hand without paying their mana costs.",
+        )
+        .expect("Aetherflux Conduit should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ManaSpentToCastTriggeringObject"), "{debug}");
+}
+
+#[test]
+pub(super) fn archaics_agony_binds_excess_damage_to_the_damage_effect() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Archaic's Agony")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Converge — Archaic's Agony deals X damage to target creature, where X is the number of colors of mana spent to cast this spell. Exile cards from the top of your library equal to the excess damage dealt to that creature this way. You may play those cards until the end of your next turn.",
+        )
+        .expect("Archaic's Agony should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("WithIdEffect"), "{debug}");
+    assert!(debug.contains("ExcessDamage"), "{debug}");
+    assert!(!debug.contains("PendingEffectMetric"), "{debug}");
+}
+
+#[test]
 pub(super) fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
     let tokens = lex_line("Attach up to one target Equipment to it.", 0)
         .expect("rewrite lexer should classify attach clause");
@@ -1203,7 +1231,7 @@ pub(super) fn rewrite_activation_helpers_cover_color_choice_mana_helpers() {
     assert!(matches!(
         super::super::activation_helpers::parse_land_could_produce_filter(&land_filter_tokens)
             .expect("land could produce tail should parse"),
-        Some(filter)
+        Some((filter, crate::effects::ManaTypeSource::MatchingLandsCouldProduce))
             if filter.card_types == vec![CardType::Land]
                 && filter.controller == Some(crate::target::PlayerFilter::Opponent)
     ));
@@ -1331,6 +1359,27 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_accepts_player_choice_ta
                 },
             }
         )
+    ));
+}
+
+#[test]
+pub(super) fn rewrite_activation_helpers_preserve_additional_any_combination_mana_amount() {
+    let tokens = lex_line("an additional two mana in any combination of colors", 0)
+        .expect("additional any-combination mana clause should lex");
+
+    assert!(matches!(
+        super::super::activation_helpers::parse_add_mana(&tokens, None)
+            .expect("additional any-combination mana clause should parse"),
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::AddManaAnyColor {
+                    amount: crate::effect::Value::Fixed(2),
+                    available_colors: Some(colors),
+                    distinct_colors: false,
+                },
+                ..
+            }
+        ) if colors == crate::color::Color::ALL.to_vec()
     ));
 }
 
@@ -2038,6 +2087,91 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_
 }
 
 #[test]
+pub(super) fn rewrite_lexed_top_library_permissions_preserve_cast_and_land_domains() {
+    fn parse_grant(line: &str) -> crate::grant::GrantSpec {
+        let tokens = lex_line(line, 0).expect("top-library permission should lex");
+        match super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens) {
+            Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+                player: crate::cards::builders::PlayerAst::You,
+                spec,
+                lifetime: super::super::PermissionLifetime::Static,
+            })) => spec,
+            parsed => panic!("expected a static top-library grant for {line:?}, got {parsed:?}"),
+        }
+    }
+
+    let dragon = parse_grant("You may cast Dragon spells from the top of your library.");
+    assert_eq!(dragon.zone, crate::zone::Zone::Library);
+    assert!(
+        dragon
+            .filter
+            .subtypes
+            .contains(&crate::types::Subtype::Dragon)
+    );
+    assert!(dragon.filter.excluded_card_types.contains(&CardType::Land));
+
+    let artifact_or_colorless = parse_grant(
+        "You may cast artifact spells and colorless spells from the top of your library.",
+    );
+    assert!(
+        artifact_or_colorless
+            .filter
+            .excluded_card_types
+            .contains(&CardType::Land),
+        "cast-only union must exclude lands at its root: {:#?}",
+        artifact_or_colorless.filter
+    );
+    assert!(
+        artifact_or_colorless
+            .filter
+            .any_of
+            .iter()
+            .any(|branch| branch.card_types == [CardType::Artifact])
+    );
+    assert!(
+        artifact_or_colorless
+            .filter
+            .any_of
+            .iter()
+            .any(|branch| branch.colorless)
+    );
+
+    let creature = parse_grant("You may cast creature spells from the top of your library.");
+    assert_eq!(creature.filter.card_types, [CardType::Creature]);
+    assert!(
+        creature
+            .filter
+            .excluded_card_types
+            .contains(&CardType::Land),
+        "cast-only creature permission must retain its spell-domain constraint"
+    );
+
+    let mixed =
+        parse_grant("You may play lands and cast Bird spells from the top of your library.");
+    let land_branch = mixed
+        .filter
+        .any_of
+        .iter()
+        .find(|branch| branch.card_types == [CardType::Land])
+        .expect("mixed permission should retain a land branch");
+    assert_eq!(land_branch.zone, None);
+    let bird_branch = mixed
+        .filter
+        .any_of
+        .iter()
+        .find(|branch| branch.subtypes.contains(&crate::types::Subtype::Bird))
+        .expect("mixed permission should retain its Bird-spell branch");
+    assert!(
+        bird_branch.excluded_card_types.contains(&CardType::Land),
+        "the cast branch of a mixed permission must remain nonland"
+    );
+
+    let unrestricted =
+        parse_grant("You may play lands and cast spells from the top of your library.");
+    assert_eq!(unrestricted.filter, crate::target::ObjectFilter::default());
+}
+
+#[test]
 pub(super) fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_grants() {
     let tokens = lex_line(
         "Until your next turn, you may cast sorcery spells as though they had flash",
@@ -2622,6 +2756,39 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_play
 }
 
 #[test]
+pub(super) fn rewrite_lexed_permission_helpers_distinguish_next_end_step_from_next_turn() {
+    let tokens = lex_line("Until your next end step, you may play that card", 0)
+        .expect("rewrite lexer should classify next-end-step permission clause");
+
+    assert!(matches!(
+        super::super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::super::PermissionClauseSpec::Tagged {
+            player: crate::cards::builders::PlayerAst::You,
+            allow_land: true,
+            as_copy: false,
+            without_paying_mana_cost: false,
+            lifetime: super::super::PermissionLifetime::UntilYourNextEndStep,
+            ..
+        }))
+    ));
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("next-end-step tagged play permission should parse as an effect");
+    assert!(effects.iter().any(|effect| matches!(
+        effect,
+        crate::cards::builders::EffectAst::SubjectVerb(subject_verb)
+            if matches!(
+                &subject_verb.action,
+                crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                    allow_land: true,
+                    until_next_end_step: true,
+                    ..
+                }
+            )
+    )));
+}
+
+#[test]
 pub(super) fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast() {
     let tokens = lex_line("Until the end of your next turn, you may cast that card", 0)
         .expect("rewrite lexer should classify until-next-turn cast permission clause");
@@ -2679,7 +2846,8 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_until_next_turn_tagged_cast
                     &subject_verb.action,
                     crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
                         allow_land: false,
-                        allow_any_color_for_cast: true,
+                        allow_any_color_for_cast:
+                            ironsmith_core::value_model::ManaSpendMode::AnyColor,
                         ..
                     }
                 )
@@ -3049,6 +3217,11 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
 
     assert_eq!(choose.filter.zone, None);
     assert_eq!(choose.filter.controller, None);
+    assert!(matches!(
+        choose.filter.owner.as_ref(),
+        Some(crate::PlayerFilter::AliasedTarget(inner))
+            if inner.as_ref() == &crate::PlayerFilter::Opponent
+    ));
     assert!(choose.filter.excluded_card_types.contains(&CardType::Land));
     assert!(matches!(
         (choose.zone, choose.additional_zones.as_slice()),
@@ -3069,6 +3242,97 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
         crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == crate::cards::builders::IT_TAG
     ));
 
+    Ok(())
+}
+
+#[test]
+pub(super) fn lonis_keeps_the_target_opponent_as_the_revealed_library_owner()
+-> Result<(), CardTextError> {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lonis, Cryptozoologist")
+        .mana_cost(super::super::util::parse_scryfall_mana_cost("{G}{U}").unwrap())
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever another nontoken creature you control enters, investigate.\n{T}, Sacrifice X Clues: Target opponent reveals the top X cards of their library. You may put a nonland permanent card with mana value X or less from among them onto the battlefield under your control. That player puts the rest on the bottom of their library in a random order.",
+        )?;
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Lonis should have an activated ability");
+    assert_eq!(
+        activated.choices,
+        vec![crate::target::ChooseSpec::target_opponent()],
+        "the leading target opponent must remain a real target choice: {activated:#?}"
+    );
+
+    let effects = &activated.effects.segments[0].default_effects;
+    let look = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>())
+        .expect("the activated ability should inspect the targeted opponent's library");
+    assert!(
+        matches!(&look.player, crate::PlayerFilter::Target(inner)
+            if inner.as_ref() == &crate::PlayerFilter::Opponent),
+        "the first library action must use the explicit target: {look:#?}"
+    );
+
+    let remainder = effects
+        .iter()
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+        })
+        .expect("the unchosen cards should return to their library");
+    assert!(
+        matches!(&remainder.player, crate::PlayerFilter::AliasedTarget(inner)
+            if inner.as_ref() == &crate::PlayerFilter::Opponent),
+        "the remainder must use the already-selected opponent, not create another target: {remainder:#?}"
+    );
+
+    Ok(())
+}
+
+#[test]
+pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), CardTextError> {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Blue Dragon")
+        .mana_cost(super::super::util::parse_scryfall_mana_cost("{5}{U}{U}").unwrap())
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nLightning Breath — When this creature enters, until your next turn, target creature an opponent controls gets -3/-0, up to one other target creature gets -2/-0, and up to one other target creature gets -1/-0.",
+        )?;
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Blue Dragon should have a triggered ability");
+    assert_eq!(
+        triggered.choices.len(),
+        3,
+        "each explicit target phrase must introduce a target slot: {triggered:#?}"
+    );
+    assert_eq!(
+        triggered.choices[1], triggered.choices[2],
+        "the two equal-looking optional target specs remain distinct occurrences"
+    );
+
+    let sequence = triggered.effects.flattened_default_effects()[0]
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("the coordinated P/T clauses should remain a sequence");
+    assert_eq!(sequence.effects.len(), 3, "no synthetic target prelude");
+    assert!(
+        sequence
+            .effects
+            .iter()
+            .all(|effect| effect.as_tagged().is_some()),
+        "each independently targeted child must carry its own tag: {sequence:#?}"
+    );
     Ok(())
 }
 

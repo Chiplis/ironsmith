@@ -111,6 +111,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
                 subject = "creatures".to_string();
             } else if let Some(rest) = subject.strip_prefix("creature ") {
                 subject = format!("creatures {rest}");
+            } else if subject.contains(" creature ") {
+                subject = subject.replacen(" creature ", " creatures ", 1);
             }
             let player = if matches!(self.player, PlayerFilter::Opponent) {
                 "one or more of your opponents".to_string()

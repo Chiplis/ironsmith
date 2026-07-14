@@ -270,8 +270,9 @@ fn destroy_all_split_uses_captured_verb_and_object_tail() {
         .expect("destroy-all split parser should match");
     let debug = format!("{effects:#?}");
 
-    assert_eq!(effects.len(), 2, "{debug}");
+    assert_eq!(effects.len(), 1, "{debug}");
     assert!(debug.contains("DestroyAll"), "{debug}");
+    assert!(debug.contains("any_of"), "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("Enchantment"), "{debug}");
 }

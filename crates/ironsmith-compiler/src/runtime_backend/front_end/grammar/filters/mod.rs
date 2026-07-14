@@ -24,7 +24,9 @@ use super::super::util::{
 };
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
-use crate::cards::builders::{CardTextError, IT_TAG, PlayerAst, PredicateAst, TagKey};
+use crate::cards::builders::{
+    CardTextError, IT_TAG, PlayerAst, PredicateAst, THIS_WAY_SACRIFICED_TAG, TagKey,
+};
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
 use crate::effects::VOTE_WINNERS_TAG;

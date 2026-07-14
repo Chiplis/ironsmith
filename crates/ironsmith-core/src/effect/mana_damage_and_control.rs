@@ -71,7 +71,7 @@ impl AddScaledManaEffect {
     pub fn new(mana: Vec<crate::mana::ManaSymbol>, amount: Value, player: PlayerFilter) -> Self {
         Self {
             mana,
-            amount: amount.into_unhinted(),
+            amount,
             player,
         }
     }
@@ -230,11 +230,28 @@ pub struct RemoveAnyCountersFromSourceEffect {
 pub struct DealDistributedDamageEffect {
     pub amount: Value,
     pub target: ChooseSpec,
+    pub source: ChooseSpec,
+    pub chooser: PlayerFilter,
 }
 
 impl DealDistributedDamageEffect {
     pub fn new(amount: Value, target: ChooseSpec) -> Self {
-        Self { amount, target }
+        Self {
+            amount,
+            target,
+            source: ChooseSpec::Source,
+            chooser: PlayerFilter::You,
+        }
+    }
+
+    pub fn with_source(mut self, source: ChooseSpec) -> Self {
+        self.source = source;
+        self
+    }
+
+    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.chooser = chooser;
+        self
     }
 }
 
@@ -573,6 +590,11 @@ pub struct GrantPlayTaggedEffect {
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
+    /// Semantic mana conversion used while casting the granted cards.
+    pub mana_spend_mode: crate::value_model::ManaSpendMode,
+    /// Compatibility flag for older render-pattern predicates. This is true
+    /// for both flexible modes; new code must inspect `mana_spend_mode` when
+    /// the distinction between color and type matters.
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
@@ -588,14 +610,16 @@ impl GrantPlayTaggedEffect {
         player: PlayerFilter,
         duration: GrantPlayTaggedDuration,
         allow_land: bool,
-        allow_any_color_for_cast: bool,
+        mana_spend_mode: impl Into<crate::value_model::ManaSpendMode>,
     ) -> Self {
+        let mana_spend_mode = mana_spend_mode.into();
         Self {
             tag,
             player,
             duration,
             allow_land,
-            allow_any_color_for_cast,
+            mana_spend_mode,
+            allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
             cast_pool_is_plural: false,
@@ -604,6 +628,12 @@ impl GrantPlayTaggedEffect {
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
         self.cast_pool_is_plural = plural;
+        self
+    }
+
+    pub fn with_mana_spend_mode(mut self, mode: crate::value_model::ManaSpendMode) -> Self {
+        self.mana_spend_mode = mode;
+        self.allow_any_color_for_cast = mode.allows_any_color();
         self
     }
 
@@ -618,12 +648,22 @@ impl GrantPlayTaggedEffect {
     }
 }
 
+/// Where a zone-change replacement puts an object when the replacement
+/// destination is its owner's library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ZoneReplacementLibraryPlacement {
+    Top,
+    Bottom,
+    TopOrBottom,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegisterZoneReplacementEffect {
     pub target: ChooseSpec,
     pub from_zone: Option<crate::zone::Zone>,
     pub to_zone: Option<crate::zone::Zone>,
     pub replacement_zone: crate::zone::Zone,
+    pub library_placement: Option<ZoneReplacementLibraryPlacement>,
     pub mode: ReplacementApplyMode,
     pub optional: bool,
     pub choice_description: Option<String>,
@@ -643,6 +683,7 @@ impl RegisterZoneReplacementEffect {
             from_zone,
             to_zone,
             replacement_zone,
+            library_placement: None,
             mode,
             optional: false,
             choice_description: None,
@@ -660,6 +701,11 @@ impl RegisterZoneReplacementEffect {
         self.counters = counters;
         self
     }
+
+    pub fn with_library_placement(mut self, placement: ZoneReplacementLibraryPlacement) -> Self {
+        self.library_placement = Some(placement);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -671,6 +717,7 @@ pub struct RegisterFutureZoneReplacementEffect {
     pub mode: ReplacementApplyMode,
     pub cause_filter: Option<crate::cause_model::CauseFilter>,
     pub require_cause_source_match: bool,
+    pub link_exiled_to_source: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -724,6 +771,7 @@ impl RegisterFutureZoneReplacementEffect {
             mode,
             cause_filter: None,
             require_cause_source_match: false,
+            link_exiled_to_source: false,
         }
     }
 
@@ -734,6 +782,11 @@ impl RegisterFutureZoneReplacementEffect {
 
     pub fn requiring_cause_source_match(mut self) -> Self {
         self.require_cause_source_match = true;
+        self
+    }
+
+    pub fn linking_exiled_to_source(mut self) -> Self {
+        self.link_exiled_to_source = true;
         self
     }
 }
@@ -1583,6 +1636,18 @@ impl ExchangeValuesEffect {
     }
 }
 
+/// Where an effect gets the set of mana types a player may choose from.
+///
+/// `MatchingLandsCouldProduce` is prospective. `TriggeringEventProduced`
+/// consumes the mana symbols captured by the event that caused the ability to
+/// trigger instead of recalculating the source's current capabilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ManaTypeSource {
+    #[default]
+    MatchingLandsCouldProduce,
+    TriggeringEventProduced,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddManaOfLandProducedTypesEffect {
     pub amount: Value,
@@ -1590,6 +1655,7 @@ pub struct AddManaOfLandProducedTypesEffect {
     pub land_filter: ObjectFilter,
     pub allow_colorless: bool,
     pub same_type: bool,
+    pub mana_type_source: ManaTypeSource,
 }
 
 impl AddManaOfLandProducedTypesEffect {
@@ -1606,6 +1672,24 @@ impl AddManaOfLandProducedTypesEffect {
             land_filter,
             allow_colorless,
             same_type,
+            mana_type_source: ManaTypeSource::MatchingLandsCouldProduce,
+        }
+    }
+
+    pub fn from_triggering_event(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        land_filter: ObjectFilter,
+        allow_colorless: bool,
+        same_type: bool,
+    ) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            land_filter,
+            allow_colorless,
+            same_type,
+            mana_type_source: ManaTypeSource::TriggeringEventProduced,
         }
     }
 }
@@ -2117,6 +2201,22 @@ pub enum CombatDamagePreventionTarget {
     From(ChooseSpec),
 }
 
+/// Makes the chosen object assign no combat damage for the specified duration.
+///
+/// This is an assignment rule, not prevention: no damage event is created, so
+/// effects that make damage unpreventable do not override it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignNoCombatDamageEffect {
+    pub source: ChooseSpec,
+    pub until: Until,
+}
+
+impl AssignNoCombatDamageEffect {
+    pub fn new(source: ChooseSpec, until: Until) -> Self {
+        Self { source, until }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllCombatDamageEffect {
     pub target: CombatDamagePreventionTarget,
@@ -2359,11 +2459,27 @@ impl<S, D> GrantBySpecEffect<S, D> {
 pub struct ShuffleObjectsIntoLibraryEffect {
     pub target: ChooseSpec,
     pub player: PlayerFilter,
+    /// The printed destination explicitly names the affected objects' owners'
+    /// libraries (for example, "into its owner's library").
+    ///
+    /// `player` still carries the executable owner relation. This flag keeps
+    /// the destination surface distinct from clauses whose grammatical subject
+    /// is the owner, such as "Its owner shuffles it into their library."
+    pub owner_library_destination: bool,
 }
 
 impl ShuffleObjectsIntoLibraryEffect {
     pub fn new(target: ChooseSpec, player: PlayerFilter) -> Self {
-        Self { target, player }
+        Self {
+            target,
+            player,
+            owner_library_destination: false,
+        }
+    }
+
+    pub fn with_owner_library_destination(mut self) -> Self {
+        self.owner_library_destination = true;
+        self
     }
 }
 
@@ -2701,11 +2817,32 @@ impl ReturnFromGraveyardToBattlefieldEffect {
 pub struct ReturnFromGraveyardToHandEffect {
     pub target: ChooseSpec,
     pub random: bool,
+    /// Contextual graveyard owner named by the oracle origin. Runtime movement
+    /// continues to use object ownership; this is presentation-only.
+    pub graveyard_player_surface: Option<PlayerFilter>,
+    /// Contextual player named by the oracle destination. Runtime movement
+    /// remains owner-based; this field is presentation-only.
+    pub destination_player_surface: Option<PlayerFilter>,
 }
 
 impl ReturnFromGraveyardToHandEffect {
     pub fn new(target: ChooseSpec, random: bool) -> Self {
-        Self { target, random }
+        Self {
+            target,
+            random,
+            graveyard_player_surface: None,
+            destination_player_surface: None,
+        }
+    }
+
+    pub fn with_graveyard_player_surface(mut self, player: PlayerFilter) -> Self {
+        self.graveyard_player_surface = Some(player);
+        self
+    }
+
+    pub fn with_destination_player_surface(mut self, player: PlayerFilter) -> Self {
+        self.destination_player_surface = Some(player);
+        self
     }
 
     pub fn any_card() -> Self {
@@ -3020,6 +3157,10 @@ pub struct ChooseNewTargetsEffect {
     pub from_effect: EffectId,
     pub may: bool,
     pub chooser: Option<PlayerFilter>,
+    /// Preserve oracle's singular "a new target" surface when the copied
+    /// spell has one target. Runtime legality still comes from the copied
+    /// stack object's target requirements.
+    pub single_target_surface: bool,
 }
 
 impl ChooseNewTargetsEffect {
@@ -3028,6 +3169,7 @@ impl ChooseNewTargetsEffect {
             from_effect,
             may,
             chooser: None,
+            single_target_surface: false,
         }
     }
 
@@ -3036,7 +3178,13 @@ impl ChooseNewTargetsEffect {
             from_effect,
             may,
             chooser: Some(chooser),
+            single_target_surface: false,
         }
+    }
+
+    pub fn with_single_target_surface(mut self) -> Self {
+        self.single_target_surface = true;
+        self
     }
 
     pub fn may(from_effect: EffectId) -> Self {
@@ -3238,14 +3386,46 @@ impl ChoosePlayerEffect {
     }
 }
 
+/// Printed relationship among the child effects of a sequence.
+///
+/// Both variants execute in order. `Coordinated` records that the children
+/// came from one Oracle clause joined by "and" (rather than from successive
+/// sentences), allowing typed renderers to preserve the shared verb/subject
+/// without guessing from adjacent runtime effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SequenceSurface {
+    #[default]
+    Sequential,
+    Coordinated,
+    CoordinatedLeadingDuration,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SequenceEffect<E> {
     pub effects: Vec<E>,
+    pub surface: SequenceSurface,
 }
 
 impl<E> SequenceEffect<E> {
     pub fn new(effects: Vec<E>) -> Self {
-        Self { effects }
+        Self {
+            effects,
+            surface: SequenceSurface::Sequential,
+        }
+    }
+
+    pub fn coordinated(effects: Vec<E>) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::Coordinated,
+        }
+    }
+
+    pub fn coordinated_with_leading_duration(effects: Vec<E>) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::CoordinatedLeadingDuration,
+        }
     }
 }
 

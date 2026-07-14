@@ -96,16 +96,18 @@ pub use front_end::{
     word_slice_strip_suffix_value, word_view_has_any_prefix, word_view_has_prefix,
 };
 pub use ids::{CardId, ObjectId, PlayerId, StableId};
-pub use ironsmith_core::Condition as ConditionExpr;
-pub use ironsmith_core::WorkspaceSplitMarker;
+pub use ironsmith_core::{
+    Condition as ConditionExpr, SourceCounterThresholdSurface, WorkspaceSplitMarker,
+};
 pub use model::{
     AdditionalCostChoiceOptionAst, AnnotatedEffect, AnnotatedEffectSequence, ClashOpponentAst,
     ControlDurationAst, DamageBySpec, ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst,
-    GiftTimingAst, LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst,
-    LineAst, LoweredEffects, ObjectRefAst, ParsedAbility, ParsedCardItem, ParsedCardItemKind,
-    ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalActivatedHeader,
-    ParsedModalAst, ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions,
-    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    FutureZoneReplacementCausePolicyAst, GiftTimingAst, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, LineAst, LoweredEffects, ObjectRefAst,
+    ParsedAbility, ParsedCardItem, ParsedCardItemKind, ParsedLevelAbilityAst,
+    ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalActivatedHeader, ParsedModalAst,
+    ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions, PlayerAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
     RedirectNextTimeDamageDestinationAst, RefState, ReferenceEnv, ReferenceExports, ReferenceFrame,
     ReferenceImports, RestrictionBucket, RetargetModeAst, ReturnControllerAst,
     RewriteActivatedLine, RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem,

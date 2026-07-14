@@ -4,9 +4,10 @@ use crate::cards::builders::{
 };
 use crate::runtime_backend::grammar::effects::misc_action_shapes::{
     self, BecomePlayerSurface, EndActionShape, FlipTargetSurface, SkipActionKind,
-    SwitchTargetSurface, UntapActionShape,
+    SwitchTargetSurface, UntapActionShape, parse_conjoined_untap_all_tokens,
 };
 use crate::runtime_backend::grammar::leaf::parse_leaf_mana_cost_prefix_tokens;
+use crate::runtime_backend::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value;
 use crate::runtime_backend::lexer::token_slice_at_is;
 
 const ENERGY_WORD: &str = "e";
@@ -390,8 +391,17 @@ pub(crate) fn parse_get(
     if energy_count > 0 {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
         let count = parse_add_mana_equal_amount_value(tokens)
+            .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
             .or(parse_equal_to_number_of_filter_value(tokens))
             .or(parse_dynamic_cost_modifier_value(tokens)?)
+            .or_else(|| {
+                let equal_idx = tokens.windows(2).position(|window| {
+                    window[0].as_word() == Some("equal") && window[1].as_word() == Some("to")
+                })?;
+                let tail = &tokens[equal_idx + 2..];
+                let (value, used) = parse_value(tail)?;
+                (used == tail.len()).then_some(value)
+            })
             .or_else(|| parse_value(tokens).map(|(value, _)| value))
             .unwrap_or(Value::Fixed(energy_count as i32));
         return Ok(EffectAst::subject_verb_energy_counters(player, count));
@@ -506,12 +516,26 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             "untap clause missing target".to_string(),
         ));
     }
+    if let Some(shape) = parse_conjoined_untap_all_tokens(tokens) {
+        let left = parse_object_filter(shape.left_filter_tokens, false)?;
+        let right = parse_object_filter(shape.right_filter_tokens, false)?;
+        return Ok(EffectAst::Coordinated {
+            effects: vec![
+                EffectAst::subject_verb_untap_all(left),
+                EffectAst::subject_verb_untap_all(right),
+            ],
+            leading_duration: false,
+        });
+    }
     match misc_action_shapes::parse_untap_action_tokens(tokens) {
         UntapActionShape::All { filter_tokens } => Ok(EffectAst::subject_verb_untap_all(
             parse_object_filter(filter_tokens, false)?,
         )),
-        UntapActionShape::Tagged => {
-            let mut filter = ObjectFilter::default();
+        UntapActionShape::Tagged { filter_tokens } => {
+            let mut filter = filter_tokens
+                .map(|tokens| parse_object_filter(tokens, false))
+                .transpose()?
+                .unwrap_or_default();
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: IT_TAG.into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -606,6 +630,34 @@ pub(crate) fn parse_pay(
                 ManaCost::from_pips(repeated.pip_groups),
             )],
         });
+    }
+
+    if let Some((for_each_idx, (), _)) =
+        grammar::find_prefix(tokens, || grammar::phrase(&["for", "each"]))
+        && let Some(parsed_cost) = parse_leaf_mana_cost_prefix_tokens(&tokens[..for_each_idx])
+        && parsed_cost.consumed == for_each_idx
+        && let [pip] = parsed_cost.cost.pips()
+        && let [crate::mana::ManaSymbol::Generic(multiplier)] = pip.as_slice()
+    {
+        let count_words = crate::runtime_backend::token_word_refs(&tokens[for_each_idx..]);
+        if let Some((count, used)) =
+            crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
+            && used == count_words.len()
+        {
+            let count = match *multiplier {
+                1 => count,
+                multiplier => Value::Scaled(Box::new(count), i32::from(multiplier)),
+            }
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+            return Ok(subject_verb_player_effect(
+                SubjectVerbRoleAst::AffectedPlayer,
+                player,
+                SubjectVerbActionAst::PayMana {
+                    cost: ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X]),
+                    x_value: Some(count),
+                },
+            ));
+        }
     }
 
     if clause_words.len() >= 4

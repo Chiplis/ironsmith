@@ -9,6 +9,17 @@ pub enum CountMode {
     OneOrMore,
 }
 
+/// Oracle surface for an end-step trigger whose runtime player filter is Any.
+///
+/// Both forms fire at every end step; this distinction only preserves whether
+/// the source says "the end step" or "each end step" for compiled text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EndStepSurface {
+    #[default]
+    Each,
+    Definite,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamagedBySource {
     ThisCreature,
@@ -257,6 +268,10 @@ pub enum TriggerKind {
         player: PlayerFilter,
         card_number: u32,
     },
+    PlayerDrawsNumberedCardsEachTurn {
+        player: PlayerFilter,
+        card_numbers: Vec<u32>,
+    },
     PlayerDiscardsCardCausedByController {
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
@@ -276,6 +291,7 @@ pub enum TriggerKind {
     PlayerSacrifices {
         player: PlayerFilter,
         filter: ObjectFilter,
+        one_or_more_surface: bool,
     },
     TokensCreated {
         player: PlayerFilter,
@@ -331,6 +347,7 @@ pub enum TriggerKind {
     EndOfCombat,
     BeginningOfEndStep {
         player: PlayerFilter,
+        surface: EndStepSurface,
     },
     BeginningOfPrecombatMainPhase {
         player: PlayerFilter,
@@ -993,6 +1010,24 @@ impl Trigger {
             },
         )
     }
+    pub fn player_draws_numbered_cards_each_turn(
+        player: PlayerFilter,
+        card_numbers: impl IntoIterator<Item = u32>,
+    ) -> Self {
+        let mut card_numbers = card_numbers
+            .into_iter()
+            .filter(|number| *number > 0)
+            .collect::<Vec<_>>();
+        card_numbers.sort_unstable();
+        card_numbers.dedup();
+        Self::typed(
+            "player_draws_numbered_cards_each_turn",
+            TriggerKind::PlayerDrawsNumberedCardsEachTurn {
+                player,
+                card_numbers,
+            },
+        )
+    }
     pub fn player_discards_card_caused_by_controller(
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
@@ -1044,9 +1079,20 @@ impl Trigger {
         )
     }
     pub fn player_sacrifices(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::player_sacrifices_with_surface(player, filter, false)
+    }
+    pub fn player_sacrifices_with_surface(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        one_or_more_surface: bool,
+    ) -> Self {
         Self::typed(
             "player_sacrifices",
-            TriggerKind::PlayerSacrifices { player, filter },
+            TriggerKind::PlayerSacrifices {
+                player,
+                filter,
+                one_or_more_surface,
+            },
         )
     }
     pub fn tokens_created(player: PlayerFilter, filter: ObjectFilter, one_or_more: bool) -> Self {
@@ -1214,7 +1260,19 @@ impl Trigger {
     pub fn beginning_of_end_step(player: PlayerFilter) -> Self {
         Self::typed(
             "beginning_of_end_step",
-            TriggerKind::BeginningOfEndStep { player },
+            TriggerKind::BeginningOfEndStep {
+                player,
+                surface: EndStepSurface::Each,
+            },
+        )
+    }
+    pub fn beginning_of_the_end_step() -> Self {
+        Self::typed(
+            "beginning_of_end_step",
+            TriggerKind::BeginningOfEndStep {
+                player: PlayerFilter::Any,
+                surface: EndStepSurface::Definite,
+            },
         )
     }
     pub fn beginning_of_precombat_main_phase(player: PlayerFilter) -> Self {

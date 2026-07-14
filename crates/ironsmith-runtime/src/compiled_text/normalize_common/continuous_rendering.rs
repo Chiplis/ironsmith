@@ -29,6 +29,7 @@ pub(crate) fn title_case_card_name_fragment(name: &str) -> String {
 pub(crate) fn party_size_multiplier(value: &Value) -> Option<(PlayerFilter, i32)> {
     match value {
         Value::PartySize(filter) => Some((filter.clone(), 1)),
+        Value::SurfaceHinted { value, .. } => party_size_multiplier(value),
         Value::Scaled(value, factor) => {
             let (filter, mult) = party_size_multiplier(value)?;
             Some((filter, mult * factor))
@@ -41,6 +42,38 @@ pub(crate) fn party_size_multiplier(value: &Value) -> Option<(PlayerFilter, i32)
             } else {
                 None
             }
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn describe_party_size_for_each_basis(value: &Value) -> Option<(i32, String)> {
+    let (filter, multiplier) = party_size_multiplier(value)?;
+    Some((
+        multiplier,
+        format!(
+            "creature in {} party",
+            describe_possessive_player_filter(&filter)
+        ),
+    ))
+}
+
+pub(crate) fn describe_counter_for_each_basis(value: &Value) -> Option<(i32, String)> {
+    match value {
+        Value::SurfaceHinted { value, .. } => describe_counter_for_each_basis(value),
+        Value::Scaled(value, multiplier) => {
+            let (inner_multiplier, basis) = describe_counter_for_each_basis(value)?;
+            Some((inner_multiplier * *multiplier, basis))
+        }
+        Value::CountersOnSource(_) | Value::CountersOn(_, _) => {
+            let described = describe_value(value);
+            let basis = described.strip_prefix("the number of ")?;
+            let basis = if let Some(rest) = basis.strip_prefix("counters ") {
+                format!("counter {rest}")
+            } else {
+                basis.replacen(" counters ", " counter ", 1)
+            };
+            Some((1, basis))
         }
         _ => None,
     }
@@ -115,12 +148,81 @@ pub(crate) fn describe_toughness_delta_with_power_context(
     }
 }
 
+fn is_exactly_one_choice(count: &ChoiceCount) -> bool {
+    count.min == 1 && count.max == Some(1) && !count.dynamic_x
+}
+
+fn canonical_target_payload(spec: &ChooseSpec) -> Option<&ChooseSpec> {
+    match spec.unhinted() {
+        ChooseSpec::Target(inner) => canonical_target_payload(inner),
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _)
+            if is_exactly_one_choice(count) =>
+        {
+            canonical_target_payload(inner)
+        }
+        ChooseSpec::WithCount(_, _) | ChooseSpec::WithCountValue(_, _, _) => None,
+        inner => Some(inner),
+    }
+}
+
+fn canonical_sole_target_inner(spec: &ChooseSpec) -> Option<&ChooseSpec> {
+    match spec.unhinted() {
+        ChooseSpec::Target(inner) => canonical_target_payload(inner),
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _)
+            if is_exactly_one_choice(count) && inner.is_target() =>
+        {
+            canonical_sole_target_inner(inner)
+        }
+        _ => None,
+    }
+}
+
+/// Render a characteristic as an anaphora only when the value carries the
+/// canonical unqualified object-target reference and the surrounding action
+/// has exactly one object target. A constrained value target remains explicit:
+/// it can denote a different target even when its filter resembles the action's
+/// target filter.
+pub(crate) fn describe_value_for_same_sole_target(
+    value: &Value,
+    enclosing_target: &ChooseSpec,
+) -> Option<String> {
+    if !matches!(
+        canonical_sole_target_inner(enclosing_target)?,
+        ChooseSpec::Object(_)
+    ) {
+        return None;
+    }
+
+    let (value_target, characteristic) = match value.unhinted() {
+        Value::PowerOf(spec) => (spec.as_ref(), "power"),
+        Value::ToughnessOf(spec) => (spec.as_ref(), "toughness"),
+        Value::ManaValueOf(spec) => (spec.as_ref(), "mana value"),
+        _ => return None,
+    };
+    let ChooseSpec::Object(filter) = canonical_sole_target_inner(value_target)? else {
+        return None;
+    };
+    if filter != &ObjectFilter::default() {
+        return None;
+    }
+
+    Some(format!("its {characteristic}"))
+}
+
+pub(crate) fn describe_value_with_enclosing_target(
+    value: &Value,
+    enclosing_target: Option<&ChooseSpec>,
+) -> String {
+    enclosing_target
+        .and_then(|target| describe_value_for_same_sole_target(value, target))
+        .unwrap_or_else(|| describe_value(value))
+}
+
 pub(crate) fn possessive_runtime_pt_target(target: &str) -> String {
-    let target = lowercase_first(target.trim());
+    let target = target.trim().to_string();
     match target.as_str() {
         "it" => "its".to_string(),
         "they" | "them" => "their".to_string(),
-        _ if target.ends_with('s') => format!("{target}'"),
         _ => format!("{target}'s"),
     }
 }
@@ -168,31 +270,48 @@ pub(crate) fn describe_dynamic_runtime_pt_scale_action(
         return None;
     }
 
-    let (power_subject, power_multiplier) =
-        dynamic_runtime_pt_axis_subject_multiplier(power, true)?;
-    let (toughness_subject, toughness_multiplier) =
-        dynamic_runtime_pt_axis_subject_multiplier(toughness, false)?;
-    if power_multiplier != toughness_multiplier
-        || !runtime_pt_subjects_match(&power_subject, &toughness_subject)
-        || !runtime_pt_subjects_match(&power_subject, target)
-    {
+    let power_scale = dynamic_runtime_pt_axis_subject_multiplier(power, true);
+    let toughness_scale = dynamic_runtime_pt_axis_subject_multiplier(toughness, false);
+    let (subject, multiplier, stat) = match (power_scale, toughness_scale) {
+        (Some((power_subject, power_multiplier)), None)
+            if matches!(toughness.unhinted(), Value::Fixed(0)) =>
+        {
+            (power_subject, power_multiplier, "power")
+        }
+        (None, Some((toughness_subject, toughness_multiplier)))
+            if matches!(power.unhinted(), Value::Fixed(0)) =>
+        {
+            (toughness_subject, toughness_multiplier, "toughness")
+        }
+        (
+            Some((power_subject, power_multiplier)),
+            Some((toughness_subject, toughness_multiplier)),
+        ) if power_multiplier == toughness_multiplier
+            && runtime_pt_subjects_match(&power_subject, &toughness_subject) =>
+        {
+            (power_subject, power_multiplier, "power and toughness")
+        }
+        _ => return None,
+    };
+    if !runtime_pt_subjects_match(&subject, target) {
         return None;
     }
 
-    let verb = match power_multiplier + 1 {
+    let verb = match multiplier + 1 {
         2 => "Double",
         3 => "Triple",
         _ => return None,
     };
     Some(format!(
-        "{verb} {} power and toughness {until_text}",
-        possessive_runtime_pt_target(target)
+        "{verb} {} {stat} {until_text}",
+        possessive_runtime_pt_target(target),
     ))
 }
 
 pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
     target: &str,
     plural_target: bool,
+    target_spec: Option<&ChooseSpec>,
     power: &Value,
     toughness: &Value,
     until: &Until,
@@ -215,8 +334,12 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
         return Some(text);
     }
 
-    let power_text = describe_value(power);
-    let toughness_text = describe_value(toughness);
+    let power_text = describe_explicit_where_x_surface(power)
+        .map(str::to_string)
+        .unwrap_or_else(|| describe_value_with_enclosing_target(power, target_spec));
+    let toughness_text = describe_explicit_where_x_surface(toughness)
+        .map(str::to_string)
+        .unwrap_or_else(|| describe_value_with_enclosing_target(toughness, target_spec));
     let gets = if plural_target { "get" } else { "gets" };
 
     let power_is_variable = !matches!(power, Value::Fixed(_));
@@ -229,12 +352,17 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
     if matches!((power, toughness), (Value::X, Value::X)) {
         return Some(format!("{target} {gets} +X/+X {until_text}"));
     }
+    if matches!((power, toughness), (Value::XTimes(-1), Value::XTimes(-1))) {
+        return Some(format!("{target} {gets} -X/-X {until_text}"));
+    }
     if let (Value::Scaled(power_inner, -1), Value::Scaled(toughness_inner, -1)) = (power, toughness)
         && power_inner == toughness_inner
     {
+        let basis = describe_explicit_where_x_surface(power_inner)
+            .map(str::to_string)
+            .unwrap_or_else(|| describe_value(power_inner));
         return Some(format!(
-            "{target} {gets} -X/-X {until_text}, where X is {}",
-            describe_value(power_inner)
+            "{target} {gets} -X/-X {until_text}, where X is {basis}"
         ));
     }
     if power_is_variable && toughness_is_variable && power_text == toughness_text {
@@ -355,7 +483,12 @@ pub(crate) fn choose_spec_dynamic_count_value_where_clause(spec: &ChooseSpec) ->
             choose_spec_dynamic_count_value_where_clause(spec)
         }
         ChooseSpec::WithCountValue(_, count, value) if count.is_dynamic_x() => {
-            Some(format!(", where X is {}", describe_value(value)))
+            let basis = if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult) {
+                "the result".to_string()
+            } else {
+                describe_value(value)
+            };
+            Some(format!(", where X is {basis}"))
         }
         _ => None,
     }
@@ -385,14 +518,26 @@ pub(crate) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
         let inner = describe_put_counter_phrase(value, counter_type);
         return format!("up to {inner}");
     }
-    match count {
+    if count.has_surface_hint(ValueSurfaceHint::EqualTo) {
+        let amount = count
+            .clone()
+            .without_surface_hint(ValueSurfaceHint::EqualTo);
+        return format!(
+            "a number of {counter_name} counters equal to {}",
+            describe_value(&amount)
+        );
+    }
+    match count.unhinted() {
         Value::Fixed(1) => with_indefinite_article(&format!("{counter_name} counter")),
         Value::Fixed(n) if *n > 1 => {
             let n = *n as usize;
             let amount = number_word(n as i32).unwrap_or_else(|| n.to_string());
             format!("{amount} {counter_name} counters")
         }
-        _ => format!("{} {counter_name} counters", describe_value(count)),
+        _ => format!(
+            "{} {counter_name} counters",
+            describe_effect_count_backref(count).unwrap_or_else(|| describe_value(count))
+        ),
     }
 }
 
@@ -413,18 +558,51 @@ pub(crate) fn describe_apply_continuous_target(
     {
         return (subject, true);
     }
-    let (target, plural) = effect_text_shared::describe_apply_continuous_target(
+    let (mut target, mut plural) = effect_text_shared::describe_apply_continuous_target(
         effect,
         describe_choose_spec,
         |filter| pluralize_noun_phrase(&filter.description()),
     );
-    let target = if plural || target.contains("creatures that shares ") {
+    target = if plural || target.contains("creatures that shares ") {
         target
             .replace(" that shares ", " that share ")
             .replace(" that object", " it")
     } else {
         target
     };
+    match effect.set_quantifier_surface {
+        Some(ironsmith_core::SetQuantifierSurface::All) => {
+            if !target.to_ascii_lowercase().starts_with("all ") {
+                target = format!("all {target}");
+            }
+            plural = true;
+        }
+        Some(ironsmith_core::SetQuantifierSurface::Each)
+            if effect
+                .target_spec
+                .as_ref()
+                .is_some_and(|spec| matches!(spec.base(), ChooseSpec::Tagged(_))) =>
+        {
+            target = "each of them".to_string();
+            plural = false;
+        }
+        Some(ironsmith_core::SetQuantifierSurface::Each)
+            if effect.target_spec.is_some() && plural =>
+        {
+            target.push_str(" each");
+        }
+        Some(ironsmith_core::SetQuantifierSurface::Each) => {
+            if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
+                let description = filter.description();
+                let description = strip_indefinite_article(&description)
+                    .strip_prefix("another ")
+                    .unwrap_or(strip_indefinite_article(&description));
+                target = format!("Each {description}");
+                plural = false;
+            }
+        }
+        None => {}
+    }
     (target, plural)
 }
 
@@ -514,7 +692,18 @@ pub(crate) fn source_generic_ability_grant_target_surface(
 
 pub(crate) fn granted_ability_self_subject_for_apply_continuous(
     effect: &crate::effects::ApplyContinuousEffect,
-) -> &'static str {
+) -> &str {
+    let targets_source = effect
+        .target_spec
+        .as_ref()
+        .map(|spec| matches!(spec.unhinted(), ChooseSpec::Source))
+        .unwrap_or_else(|| matches!(effect.target, crate::continuous::EffectTarget::Source));
+    if targets_source
+        && let Some(crate::target::SourceReferenceSurface::ThisPermanentType(text)) =
+            effect.source_reference_surface.as_ref()
+    {
+        return text;
+    }
     if let Some(spec) = &effect.target_spec {
         return granted_ability_self_subject_for_choose_spec(spec);
     }
@@ -620,6 +809,25 @@ pub(crate) fn describe_apply_continuous_clauses(
             let verb = if plural_target { "become" } else { "becomes" };
             clauses.push(format!("{verb} {descriptor} in addition to {other_types}"));
         }
+        crate::continuous::Modification::SetCardTypes(card_types) => {
+            let mut words: Vec<String> = card_types
+                .iter()
+                .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+                .collect();
+            if words.is_empty() {
+                return;
+            }
+            let descriptor = if plural_target {
+                if let Some(last) = words.last_mut() {
+                    *last = pluralize_word(last);
+                }
+                words.join(" ")
+            } else {
+                with_indefinite_article(&words.join(" "))
+            };
+            let verb = if plural_target { "become" } else { "becomes" };
+            clauses.push(format!("{verb} {descriptor}"));
+        }
         crate::continuous::Modification::AddSubtypes(subtypes) => {
             let mut words: Vec<String> = subtypes
                 .iter()
@@ -683,6 +891,12 @@ pub(crate) fn describe_apply_continuous_clauses(
             } else {
                 gets
             };
+            if power.unhinted() == toughness.unhinted()
+                && power.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            {
+                clauses.push(format!("{verb} base power and toughness X/X"));
+                return;
+            }
             clauses.push(format!(
                 "{verb} base power and toughness {}/{}",
                 describe_value(power),
@@ -817,6 +1031,10 @@ pub(crate) fn describe_apply_continuous_clauses(
                 if let Some(for_each_text) = describe_basic_land_type_pt_for_each(power, toughness)
                 {
                     clauses.push(format!("{gets} {for_each_text}"));
+                } else if power.unhinted() == toughness.unhinted()
+                    && power.has_surface_hint(ValueSurfaceHint::WhereXIs)
+                {
+                    clauses.push(format!("{gets} +X/+X"));
                 } else {
                     clauses.push(format!(
                         "{gets} {}/{}",
@@ -1116,6 +1334,12 @@ pub(crate) fn plural_non_target_land_animation_target(
     if !object_filter_is_land_kind(filter) {
         return None;
     }
+    if filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+    }) {
+        return None;
+    }
 
     let description = filter.description();
     let rest = strip_leading_article(&description).trim();
@@ -1130,9 +1354,10 @@ pub(crate) fn describe_apply_continuous_animation_effect(
     target: &str,
     plural_target: bool,
 ) -> Option<String> {
-    let Some(crate::continuous::Modification::AddCardTypes(card_types)) = &effect.modification
-    else {
-        return None;
+    let (card_types, replaces_other_types) = match &effect.modification {
+        Some(crate::continuous::Modification::AddCardTypes(card_types)) => (card_types, false),
+        Some(crate::continuous::Modification::SetCardTypes(card_types)) => (card_types, true),
+        _ => return None,
     };
     if !card_types.contains(&CardType::Creature) || !effect.runtime_modifications.is_empty() {
         return None;
@@ -1143,7 +1368,7 @@ pub(crate) fn describe_apply_continuous_animation_effect(
     let mut colors = None;
     let mut subtypes = Vec::new();
     let mut ability_text = Vec::new();
-    let mut has_generic_ability = false;
+    let mut has_quoted_generic_ability = false;
     for modification in &effect.additional_modifications {
         match modification {
             crate::continuous::Modification::SetPowerToughness {
@@ -1160,6 +1385,9 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             crate::continuous::Modification::AddSubtypes(candidate_subtypes) => {
                 subtypes.extend(candidate_subtypes.iter().copied());
             }
+            crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            ) => {}
             crate::continuous::Modification::AddAllSubtypesOfFamily(
                 crate::types::SubtypeFamily::Creature,
             ) => {
@@ -1169,8 +1397,23 @@ pub(crate) fn describe_apply_continuous_animation_effect(
                 ability_text.push(lowercase_first(&ability.display()));
             }
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
-                has_generic_ability = true;
-                ability_text.push(describe_inline_ability(ability));
+                has_quoted_generic_ability = true;
+                let mut rendered = capitalize_first(&describe_inline_ability_with_self_subject(
+                    ability,
+                    "this creature",
+                ))
+                .replace(". otherwise,", ". Otherwise,");
+                rendered = replace_this_spell_self_reference(rendered, "this creature");
+                rendered = normalize_granted_triggered_ability_surface(rendered);
+                rendered = rendered.replace(", where X is X", "");
+                if matches!(effect.until, Until::EndOfTurn) {
+                    rendered = normalize_temporary_granted_trigger_surface(rendered, ability);
+                }
+                if !rendered.ends_with('.') && !rendered.ends_with('!') && !rendered.ends_with('?')
+                {
+                    rendered.push('.');
+                }
+                ability_text.push(format!("\"{rendered}\""));
             }
             _ => return None,
         }
@@ -1181,12 +1424,22 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             effect.target_spec.as_ref(),
             Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
         );
-    let mut preserves_land_types = effect
-        .target_spec
-        .as_ref()
-        .and_then(choose_spec_land_filter)
-        .is_some()
-        || target.eq_ignore_ascii_case("this land");
+    let explicitly_still_a_land = matches!(
+        effect.type_retention_surface,
+        Some(ironsmith_core::TypeRetentionSurface::StillALand)
+    );
+    let explicitly_in_addition = matches!(
+        effect.type_retention_surface,
+        Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes)
+    );
+    let mut preserves_land_types = !replaces_other_types
+        && (explicitly_still_a_land
+            || effect
+                .target_spec
+                .as_ref()
+                .and_then(choose_spec_land_filter)
+                .is_some()
+            || target.eq_ignore_ascii_case("this land"));
     let (target_text, plural_target) =
         if let Some(target_text) = plural_non_target_land_animation_target(effect) {
             (target_text, true)
@@ -1239,7 +1492,9 @@ pub(crate) fn describe_apply_continuous_animation_effect(
     };
     let dynamic_equal_pt_uses_mana_value =
         if let (Some(power), Some(toughness)) = (power, toughness) {
-            power == toughness && matches!(power.unhinted(), Value::ManaValueOf(_))
+            power == toughness
+                && matches!(power.unhinted(), Value::ManaValueOf(_))
+                && !power.has_surface_hint(ValueSurfaceHint::WhereXIs)
         } else {
             false
         };
@@ -1325,9 +1580,12 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         && effect.target_spec.as_ref().is_some_and(|spec| {
             choose_spec_prefers_land_addition_surface(spec, dynamic_equal_pt, plural_target)
         });
-    let render_as_addition_to_other_types = returned_permanent_animation
-        || (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
-        || land_addition_surface;
+    let render_as_addition_to_other_types = !replaces_other_types
+        && !explicitly_still_a_land
+        && (explicitly_in_addition
+            || returned_permanent_animation
+            || (!preserves_land_types && !ability_text.is_empty() && !has_quoted_generic_ability)
+            || land_addition_surface);
     if render_as_addition_to_other_types && !artifact_type_is_redundant {
         if plural_target {
             text.push_str(" in addition to their other types");
@@ -1335,31 +1593,16 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             text.push_str(" in addition to its other types");
         }
     }
-    let tail = describe_apply_continuous_tail(effect);
-    let inline_still_land = preserves_land_types
-        && !render_as_addition_to_other_types
-        && !plural_target
-        && target_text == "target land";
-    match &tail {
-        Some(tail) if inline_still_land => {
-            text.push(' ');
-            text.push_str(tail);
-            text.push_str(". It's still a land");
-        }
-        Some(tail) => {
-            text.push(' ');
-            text.push_str(tail);
-        }
-        None if inline_still_land => {
-            text.push_str(". It's still a land");
-        }
-        None => {}
-    }
+    text = apply_continuous_text_with_tail(
+        text,
+        describe_apply_continuous_tail(effect),
+        has_quoted_generic_ability,
+    );
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");
         text.push_str(&where_clause);
     }
-    if preserves_land_types && !render_as_addition_to_other_types && !inline_still_land {
+    if preserves_land_types && !render_as_addition_to_other_types {
         if plural_target {
             text.push_str(". They're still lands");
         } else {
@@ -1484,6 +1727,7 @@ pub(crate) fn describe_apply_continuous_effect(
         && let Some(text) = describe_dynamic_runtime_pt_with_where_x(
             target.as_str(),
             plural_target,
+            effect.target_spec.as_ref(),
             power,
             toughness,
             &effect.until,
@@ -1494,6 +1738,22 @@ pub(crate) fn describe_apply_continuous_effect(
     if let Some(text) =
         describe_doesnt_untap_apply_continuous_effect(effect, &target, plural_target)
     {
+        return Some(text);
+    }
+    if matches!(
+        effect.modification.as_ref(),
+        Some(crate::continuous::Modification::SwitchPowerToughness)
+    ) && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+    {
+        let mut text = format!(
+            "Switch {} power and toughness",
+            possessive_runtime_pt_target(&target)
+        );
+        if !matches!(effect.until, Until::Forever) {
+            text.push(' ');
+            text.push_str(&describe_until(&effect.until));
+        }
         return Some(text);
     }
 
@@ -1509,6 +1769,50 @@ pub(crate) fn describe_apply_continuous_effect(
         describe_apply_continuous_tail(effect),
         quoted_granted_ability,
     );
+    if !text.contains("where X is ")
+        && let Some(where_x) = effect.runtime_modifications.iter().find_map(|runtime| {
+            let crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            } = runtime
+            else {
+                return None;
+            };
+            (power.unhinted() == toughness.unhinted()
+                && power.has_surface_hint(ValueSurfaceHint::WhereXIs))
+            .then(|| describe_where_x_basis(power))
+            .flatten()
+        })
+    {
+        text.push_str(", where X is ");
+        text.push_str(&where_x);
+    }
+    if !text.contains("where X is ")
+        && let Some(where_x) = effect
+            .modification
+            .iter()
+            .chain(effect.additional_modifications.iter())
+            .find_map(|modification| {
+                let crate::continuous::Modification::SetPowerToughness {
+                    power, toughness, ..
+                } = modification
+                else {
+                    return None;
+                };
+                (power.unhinted() == toughness.unhinted()
+                    && power.has_surface_hint(ValueSurfaceHint::WhereXIs))
+                .then(|| describe_value(power))
+            })
+    {
+        text.push_str(", where X is ");
+        text.push_str(&where_x);
+    }
+    if let Some(spec) = effect.target_spec.as_ref()
+        && let Some(where_clause) = choose_spec_dynamic_count_value_where_clause(spec)
+        && !text.contains("where X is ")
+    {
+        text.push_str(&where_clause);
+    }
     let text = normalize_each_other_continuous_subject(text);
     if let Some(condition) = &effect.condition
         && !matches!(effect.until, Until::ThisLeavesTheBattlefield)
@@ -2197,6 +2501,192 @@ pub(crate) fn describe_until(until: &Until) -> String {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UntapRestrictionSubject {
+    text: String,
+    plural: bool,
+    controller_is_you: bool,
+}
+
+impl UntapRestrictionSubject {
+    pub(crate) fn singular(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            plural: false,
+            controller_is_you: false,
+        }
+    }
+
+    pub(crate) fn plural(text: impl Into<String>, controller_is_you: bool) -> Self {
+        Self {
+            text: text.into(),
+            plural: true,
+            controller_is_you,
+        }
+    }
+
+    pub(crate) fn source(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            plural: false,
+            controller_is_you: true,
+        }
+    }
+
+    pub(crate) fn controlled_by_you(text: impl Into<String>, plural: bool) -> Self {
+        Self {
+            text: text.into(),
+            plural,
+            controller_is_you: true,
+        }
+    }
+}
+
+pub(crate) fn untap_restriction_filter_noun(filter: &ObjectFilter) -> &'static str {
+    match filter.card_types.as_slice() {
+        [CardType::Artifact] => "artifact",
+        [CardType::Battle] => "battle",
+        [CardType::Creature] => "creature",
+        [CardType::Enchantment] => "enchantment",
+        [CardType::Land] => "land",
+        [CardType::Planeswalker] => "planeswalker",
+        _ => "permanent",
+    }
+}
+
+fn default_untap_restriction_subject(filter: &ObjectFilter) -> UntapRestrictionSubject {
+    if !filter.any_of.is_empty() {
+        let subjects = filter
+            .any_of
+            .iter()
+            .map(|branch| {
+                let description = branch.description();
+                let description = strip_indefinite_article(&description)
+                    .trim()
+                    .trim_end_matches(" on the battlefield")
+                    .trim();
+                format!("each {description}")
+            })
+            .collect::<Vec<_>>();
+        let text = capitalize_first(&join_with_and(&subjects));
+        let controlled_by_you = filter
+            .any_of
+            .iter()
+            .all(|branch| branch.controller == Some(PlayerFilter::You));
+        return if controlled_by_you {
+            UntapRestrictionSubject::controlled_by_you(text, false)
+        } else {
+            UntapRestrictionSubject::singular(text)
+        };
+    }
+
+    if filter.source {
+        let subject = filter
+            .source_surface
+            .as_ref()
+            .map(describe_source_reference_surface_text)
+            .unwrap_or_else(|| format!("this {}", untap_restriction_filter_noun(filter)));
+        return UntapRestrictionSubject::source(capitalize_first(&subject));
+    }
+
+    let tagged = filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+        .collect::<Vec<_>>();
+    if let [constraint] = tagged.as_slice() {
+        let text = if matches!(constraint.tag.as_str(), "__it__" | "it") {
+            "It".to_string()
+        } else {
+            format!("That {}", untap_restriction_filter_noun(filter))
+        };
+        return if filter.controller == Some(PlayerFilter::You) {
+            UntapRestrictionSubject::controlled_by_you(text, false)
+        } else {
+            UntapRestrictionSubject::singular(text)
+        };
+    }
+
+    let description = filter.description();
+    let description = strip_indefinite_article(&description)
+        .trim()
+        .trim_end_matches(" on the battlefield")
+        .trim();
+    if filter.controller == Some(PlayerFilter::You) {
+        return UntapRestrictionSubject::plural(
+            capitalize_first(&pluralize_relative_object_phrase(description)),
+            true,
+        );
+    }
+
+    UntapRestrictionSubject::singular(format!("Each {description}"))
+}
+
+pub(crate) fn describe_untap_restriction_for_subject(
+    cant: &crate::effects::CantEffect,
+    subject: UntapRestrictionSubject,
+) -> Option<String> {
+    let crate::effect::Restriction::Untap(_) = &cant.restriction else {
+        return None;
+    };
+    if !matches!(
+        cant.duration,
+        Until::Forever
+            | Until::ControllersNextUntapStep
+            | Until::ThisLeavesTheBattlefield
+            | Until::SourceUntaps
+            | Until::YouStopControllingThis
+    ) {
+        return None;
+    }
+
+    let verb = if subject.plural {
+        "don't untap"
+    } else {
+        "doesn't untap"
+    };
+    let controller_step = if subject.controller_is_you {
+        "your untap step"
+    } else if subject.plural {
+        "their controllers' untap steps"
+    } else {
+        "its controller's untap step"
+    };
+    let controller_next_step = if subject.controller_is_you {
+        "your next untap step"
+    } else if subject.plural {
+        "their controllers' next untap steps"
+    } else {
+        "its controller's next untap step"
+    };
+
+    let mut text = match cant.duration {
+        Until::ControllersNextUntapStep => {
+            format!("{} {verb} during {controller_next_step}", subject.text)
+        }
+        _ => format!("{} {verb} during {controller_step}", subject.text),
+    };
+    if matches!(
+        cant.duration,
+        Until::ThisLeavesTheBattlefield | Until::SourceUntaps | Until::YouStopControllingThis
+    ) {
+        text.push(' ');
+        text.push_str(&describe_until(&cant.duration));
+    }
+    Some(text)
+}
+
+pub(crate) fn describe_untap_restriction_oracle(
+    cant: &crate::effects::CantEffect,
+) -> Option<String> {
+    let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
+        return None;
+    };
+    describe_untap_restriction_for_subject(cant, default_untap_restriction_subject(filter))
+}
+
 pub(crate) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -> String {
     let mut parts = Vec::new();
     if filter.combat_only {
@@ -2777,6 +3267,7 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::SearchedLibrary => "you search your library this way".to_string(),
         EffectPredicate::HappenedNotReplaced => "happened and was not replaced".to_string(),
         EffectPredicate::ExcessDamageDealt => "excess damage was dealt this way".to_string(),
+        EffectPredicate::DealtDamageToPlayer => "a player is dealt damage this way".to_string(),
         EffectPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
             let relation = if *negated { "isn't" } else { "is" };
             format!(
@@ -2793,10 +3284,14 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
 pub(crate) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
     let base = tag.split('_').next().unwrap_or(tag);
     match base {
+        "sacrifice" => Some("sacrificed"),
         "sacrificed" => Some("sacrificed"),
         "destroyed" => Some("destroyed"),
         "exiled" => Some("exiled"),
         "discarded" => Some("discarded"),
+        "revealed" => Some("revealed"),
+        "returned" => Some("returned"),
+        "countered" => Some("countered"),
         "died" => Some("died"),
         "milled" => Some("milled"),
         "moved" => Some("put"),
@@ -2804,10 +3299,39 @@ pub(crate) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
     }
 }
 
+pub(crate) fn this_way_action_from_tag(tag: &TagKey) -> Option<&'static str> {
+    if let Some(action) = tag_action_from_name(tag.as_str()) {
+        return Some(action);
+    }
+    for (helper_action, rendered) in [
+        ("revealed", "revealed"),
+        ("destroyed", "destroyed"),
+        ("exiled", "exiled"),
+        ("discarded", "discarded"),
+        ("sacrificed", "sacrificed"),
+        ("milled", "milled"),
+        ("returned", "returned"),
+        ("countered", "countered"),
+        ("died", "died"),
+    ] {
+        if crate::cards::is_sentence_helper_tag(tag.as_str(), helper_action) {
+            return Some(rendered);
+        }
+    }
+    None
+}
+
 pub(crate) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFilter) -> String {
+    let action = this_way_action_from_tag(tag);
     let card_context = tag.as_str().starts_with("discarded_")
         || tag.as_str().starts_with("exiled_")
-        || tag.as_str().starts_with("revealed_");
+        || tag.as_str().starts_with("revealed_")
+        || matches!(action, Some("revealed" | "milled" | "discarded"))
+        // A type exclusion such as "noncreature card" is broader than a
+        // noncreature permanent. Preserve that card-set surface when the
+        // remembered result is in exile.
+        || (action == Some("exiled")
+            && !filter.excluded_card_types.is_empty());
     if card_context
         && !filter.card_types.is_empty()
         && filter.zone.is_none()
@@ -2822,7 +3346,28 @@ pub(crate) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFi
             .iter()
             .map(|card_type| describe_card_type_word_local(*card_type).to_string())
             .collect::<Vec<_>>();
-        return with_indefinite_article(&format!("{} card", join_with_or(&words)));
+        let type_phrase = join_with_or(&words);
+        let described_type = with_indefinite_article(&type_phrase);
+        let desc = filter.description();
+        let bare_desc = strip_leading_article(&desc);
+        let bare_type = strip_leading_article(&described_type);
+        if let Some(rest) = bare_desc.strip_prefix(bare_type) {
+            return format!("{described_type} card{rest}");
+        }
+        return with_indefinite_article(&format!("{type_phrase} card"));
+    }
+    if card_context
+        && filter.card_types.is_empty()
+        && filter.excluded_card_types.len() == 1
+        && filter.zone.is_none()
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && filter.subtypes.is_empty()
+        && filter.any_of.is_empty()
+        && filter.tagged_constraints.is_empty()
+    {
+        let excluded = describe_card_type_word_local(filter.excluded_card_types[0]);
+        return with_indefinite_article(&format!("non{excluded} card"));
     }
 
     let desc = filter.description();
@@ -2879,6 +3424,12 @@ pub(crate) fn describe_player_relative_condition(condition: &Condition) -> Optio
                 return None;
             }
             Some("had a land enter the battlefield under their control this turn".to_string())
+        }
+        Condition::PlayerDescendedThisTurn { player } => {
+            if *player != PlayerFilter::IteratedPlayer {
+                return None;
+            }
+            Some("descended this turn".to_string())
         }
         Condition::ValueComparison {
             left: Value::MaxCardsDrawnThisTurn(PlayerFilter::IteratedPlayer),

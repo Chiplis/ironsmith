@@ -752,6 +752,15 @@ fn choose_trigger_modes(
     if selected_point_total < min_modes {
         return None;
     }
+    if !spell_has_legal_targets_with_modes(
+        game,
+        &effects,
+        trigger.controller,
+        Some(trigger.source),
+        Some(&valid),
+    ) {
+        return None;
+    }
 
     Some(Some(valid))
 }
@@ -768,6 +777,7 @@ fn trigger_target_requirement_contexts(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect()
@@ -866,6 +876,7 @@ fn target_requirements_from_explicit_choices(
                 description: format!("target for {}", trigger.source_name),
                 min_targets: count.min,
                 max_targets: count.max,
+                distinct_player_group: None,
             }
         })
         .collect()

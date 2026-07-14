@@ -417,6 +417,15 @@ fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]
     })
 }
 
+fn sentences_have_bound_characteristic_followup_after_first<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> bool {
+    sentences.iter().skip(1).any(|sentence| {
+        effect_grammar::labeled_dispatch::parse_passive_color_type_addition_shape(sentence.as_ref())
+            .is_some_and(|shape| shape.tagged_subject)
+    })
+}
+
 fn returned_object_static_followup_start<S: AsRef<[OwnedLexToken]>>(
     sentences: &[S],
 ) -> Option<usize> {
@@ -789,6 +798,16 @@ fn parse_triggered_line_impl(
             player: schedule.player,
             effects,
         },
+        DelayedScheduleStep::MainPhase => EffectAst::DelayedUntilNextMainPhase {
+            player: match schedule.player {
+                PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                PlayerAst::That => PlayerFilter::IteratedPlayer,
+                PlayerAst::Target => PlayerFilter::target_player(),
+                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                _ => PlayerFilter::Any,
+            },
+            effects,
+        },
         DelayedScheduleStep::EndStep if schedule.start_next_turn => {
             EffectAst::DelayedUntilEndStepOfExtraTurn {
                 player: schedule.player,
@@ -905,6 +924,8 @@ fn parse_triggered_ability_line_impl(
         sentences_have_token_creation_followup_after_first(&selected_effect_sentences);
     let selected_effect_has_temporary_static_followup_after_first =
         sentences_have_temporary_static_followup_after_first(&selected_effect_sentences);
+    let selected_effect_has_bound_characteristic_followup_after_first =
+        sentences_have_bound_characteristic_followup_after_first(&selected_effect_sentences);
     let selected_effect_has_counter_linked_land_subtype_followup_after_first =
         selected_effect_sentences.iter().skip(1).any(|sentence| {
             super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(sentence)
@@ -945,6 +966,7 @@ fn parse_triggered_ability_line_impl(
     let selected_split_has_trailing_static_after_first = selected_effect_sentences.len() > 1
         && !selected_effect_has_token_creation_followup_after_first
         && !selected_effect_has_temporary_static_followup_after_first
+        && !selected_effect_has_bound_characteristic_followup_after_first
         && selected_effect_sentences
             .iter()
             .enumerate()
@@ -959,9 +981,12 @@ fn parse_triggered_ability_line_impl(
         sentences_have_token_creation_followup_after_first(&full_sentences);
     let has_temporary_static_followup_after_first =
         sentences_have_temporary_static_followup_after_first(&full_sentences);
+    let has_bound_characteristic_followup_after_first =
+        sentences_have_bound_characteristic_followup_after_first(&full_sentences);
     if full_sentences.len() > 1
         && !has_token_creation_followup_after_first
         && !has_temporary_static_followup_after_first
+        && !has_bound_characteristic_followup_after_first
         && !selected_effect_has_counter_linked_land_subtype_followup_after_first
         && !selected_split_has_trailing_static_after_first
         && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
@@ -1000,9 +1025,12 @@ fn parse_triggered_ability_line_impl(
         sentences_have_token_creation_followup_after_first(&effect_sentences);
     let effect_has_temporary_static_followup_after_first =
         sentences_have_temporary_static_followup_after_first(&effect_sentences);
+    let effect_has_bound_characteristic_followup_after_first =
+        sentences_have_bound_characteristic_followup_after_first(&effect_sentences);
     if effect_sentences.len() > 1
         && !effect_has_token_creation_followup_after_first
         && !effect_has_temporary_static_followup_after_first
+        && !effect_has_bound_characteristic_followup_after_first
         && !selected_effect_has_counter_linked_land_subtype_followup_after_first
         && let Some(first_static_idx) =
             effect_sentences
@@ -1257,6 +1285,7 @@ fn lower_special_rewrite_triggered_head(
                 triggering_spell.clone(),
                 Value::Fixed(1),
                 PlayerAst::Implicit,
+                false,
                 false,
                 Vec::new(),
             ),
@@ -1976,6 +2005,29 @@ fn test_rewrite_triggered_line(raw_line: &str, full_text: &str) -> RewriteTrigge
 }
 
 #[test]
+fn tagged_characteristic_addition_is_a_bound_effect_followup() {
+    let tokens = lex_line(
+        "Put target artifact onto the battlefield. That permanent is an enchantment in addition to its other types.",
+        0,
+    )
+    .expect("bound characteristic fixture should lex");
+    let sentences = split_lexed_sentences(&tokens);
+    assert!(sentences_have_bound_characteristic_followup_after_first(
+        &sentences
+    ));
+
+    let tokens = lex_line(
+        "Draw a card. Creatures you control are artifacts in addition to their other types.",
+        0,
+    )
+    .expect("independent static fixture should lex");
+    let sentences = split_lexed_sentences(&tokens);
+    assert!(!sentences_have_bound_characteristic_followup_after_first(
+        &sentences
+    ));
+}
+
+#[test]
 fn triggered_line_source_text_keeps_raw_do_this_only_once_suffix() {
     let raw_line = "Whenever Pantlaza or another Dinosaur you control enters, you may discover X, where X is that creature's toughness. Do this only once each turn.";
     let full_text = "whenever pantlaza or another dinosaur you control enters, you may discover x, where x is that creature's toughness";
@@ -2240,6 +2292,7 @@ fn standard_gift_create_token_effect(
             exile_at_next_end_step: false,
             next_end_step_player: PlayerFilter::Any,
             granted_abilities: Vec::new(),
+            ability_presentation: None,
         },
     )
 }

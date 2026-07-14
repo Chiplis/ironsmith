@@ -1,5 +1,29 @@
 use super::*;
 
+fn rewrite_removed_counter_type_surface(
+    mut effects: String,
+    costs: &[crate::costs::Cost],
+) -> String {
+    let Some(count_phrase) = removed_counters_this_way_x_phrase(costs) else {
+        return effects;
+    };
+    let Some(counter_phrase) = count_phrase
+        .strip_prefix("the number of ")
+        .and_then(|phrase| phrase.strip_suffix(" removed this way"))
+    else {
+        return effects;
+    };
+    let singular = counter_phrase
+        .strip_suffix(" counters")
+        .map(|prefix| format!("{prefix} counter"))
+        .unwrap_or_else(|| counter_phrase.to_string());
+    effects = effects.replace(
+        "for each counter removed this way",
+        &format!("for each {singular} removed this way"),
+    );
+    effects
+}
+
 pub(super) fn describe_zone_change_triggering_card_to_your_library(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -387,6 +411,9 @@ pub(crate) fn describe_ability(
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
+            if let Some(rendered) = describe_tap_for_mana_additional_mana_trigger(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_zone_change_triggering_card_to_your_library(triggered)
             {
                 return vec![format!("Triggered ability {index}: {rendered}")];
@@ -396,17 +423,14 @@ pub(crate) fn describe_ability(
                 .as_ref()
                 .map(split_trigger_intervening_if)
                 .unwrap_or((None, None));
-            let mut intervening_condition = if trigger_is_state_based(&triggered.trigger) {
-                None
-            } else {
-                intervening_condition
-            };
+            let mut intervening_condition =
+                retain_state_trigger_residual_condition(&triggered.trigger, intervening_condition);
             intervening_condition = intervening_condition.and_then(|condition| {
                 remove_presentation_label_chosen_option(&condition, triggered)
             });
             let mut trigger_surface = apply_triggered_presentation_label(
                 triggered,
-                describe_trigger_surface_with_frequency(triggered, trigger_frequency),
+                describe_trigger_surface_with_frequency(triggered, trigger_frequency, subject),
             );
             if triggered_deals_same_damage_to_each_other_opponent(triggered) {
                 trigger_surface = trigger_surface
@@ -417,11 +441,6 @@ pub(crate) fn describe_ability(
                     .starts_with("Whenever you cast a spell that targets this creature")
             {
                 trigger_surface = format!("Heroic — {trigger_surface}");
-            }
-            if triggered.presentation_label.is_none()
-                && trigger_surface.starts_with("Whenever another creature you control enters")
-            {
-                trigger_surface = format!("Alliance — {trigger_surface}");
             }
             if matches!(intervening_condition, Some(Condition::YourTurn))
                 && trigger_surface
@@ -540,7 +559,11 @@ pub(crate) fn describe_ability(
             vec![line]
         }
         AbilityKind::Activated(activated) if activated.is_mana_ability() => {
-            let mut line = format!("Mana ability {index}");
+            let mut line = if activated_presentation_label(activated).is_some() {
+                String::new()
+            } else {
+                format!("Mana ability {index}")
+            };
             let mut cost_text = if !activated.mana_cost.costs().is_empty() {
                 Some(describe_cost_list(activated.mana_cost.costs()))
             } else {
@@ -584,15 +607,21 @@ pub(crate) fn describe_ability(
                 }
             } else {
                 if let (Some(cost), Some(add)) = (&cost_text, &add_text) {
-                    line.push_str(": ");
+                    if !line.is_empty() {
+                        line.push_str(": ");
+                    }
                     line.push_str(cost);
                     line.push_str(": ");
                     line.push_str(add);
                 } else if let Some(cost) = &cost_text {
-                    line.push_str(": ");
+                    if !line.is_empty() {
+                        line.push_str(": ");
+                    }
                     line.push_str(cost);
                 } else if let Some(add) = &add_text {
-                    line.push_str(": ");
+                    if !line.is_empty() {
+                        line.push_str(": ");
+                    }
                     line.push_str(add);
                 }
             }
@@ -613,6 +642,8 @@ pub(crate) fn describe_ability(
                     rewrite_it_deals,
                 );
                 effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
+                effects =
+                    rewrite_removed_counter_type_surface(effects, activated.mana_cost.costs());
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
@@ -620,8 +651,10 @@ pub(crate) fn describe_ability(
             }
             if let Some(prefix) = station_threshold_prefix(activated) {
                 line = prefix_rendered_ability_body(line, &format!("{prefix} | "));
-            } else if let Some(condition) = &activated.activation_condition {
-                let clause = describe_mana_activation_condition(condition);
+            } else if let Some(condition) =
+                activation_condition_without_presentation_label(activated)
+            {
+                let clause = describe_mana_activation_condition(&condition);
                 if !clause.is_empty() {
                     line.push_str(". ");
                     line.push_str(&clause);
@@ -630,6 +663,11 @@ pub(crate) fn describe_ability(
             for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
                 line.push_str(". ");
                 line.push_str(&clause);
+            }
+            if let Some(label) = activated_presentation_label(activated)
+                && !line.starts_with(label)
+            {
+                line = format!("{label} — {line}");
             }
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
@@ -700,10 +738,13 @@ pub(crate) fn describe_ability(
                         rewrite_it_deals,
                     );
                     effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
+                    effects =
+                        rewrite_removed_counter_type_surface(effects, activated.mana_cost.costs());
                     line.push_str(&effects);
                 }
-                if let Some(condition) = &activated.activation_condition {
-                    let clause = describe_mana_activation_condition(condition);
+                if let Some(condition) = activation_condition_without_presentation_label(activated)
+                {
+                    let clause = describe_mana_activation_condition(&condition);
                     if !clause.is_empty() {
                         line.push_str(". ");
                         line.push_str(&clause);
@@ -771,6 +812,8 @@ pub(crate) fn describe_ability(
                     rewrite_it_deals,
                 );
                 effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
+                effects =
+                    rewrite_removed_counter_type_surface(effects, activated.mana_cost.costs());
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
@@ -881,6 +924,20 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
         .replace("This source", &capitalized)
         .replace("this permanent", subject)
         .replace("This permanent", &capitalized);
+    let normalized = if let Some(source_type) = subject.strip_prefix("this ") {
+        let typed_object = with_indefinite_article(source_type);
+        normalized
+            .replace(
+                &format!("if {subject} is {typed_object}"),
+                &format!("if this permanent is {typed_object}"),
+            )
+            .replace(
+                &format!("If {subject} is {typed_object}"),
+                &format!("If this permanent is {typed_object}"),
+            )
+    } else {
+        normalized
+    };
     let normalized = rewrite_source_no_counter_resolution_surface(normalized, subject);
     let named_self_exile =
         format!("Exile {subject} and target creature without flying that's attacking you");
@@ -953,6 +1010,8 @@ pub(crate) fn rewrite_damage_phrases_for_permanent_abilities(
     out = out
         .replace(". Deal ", &format!(". {capitalized_subject} deals "))
         .replace(". deal ", &format!(". {subject} deals "))
+        .replace("| Deal ", &format!("| {capitalized_subject} deals "))
+        .replace("| deal ", &format!("| {subject} deals "))
         .replace(", then Deal ", &format!(", then {subject} deals "))
         .replace(", then deal ", &format!(", then {subject} deals "))
         .replace(", Deal ", &format!(", {subject} deals "))
@@ -1056,6 +1115,22 @@ pub(crate) fn subject_for_card(card: &crate::card::Card) -> &'static str {
 }
 
 pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExpr) -> String {
+    fn source_entered_this_turn_subject(condition: &crate::ConditionExpr) -> Option<String> {
+        let crate::ConditionExpr::ObjectEnteredBattlefieldThisTurn(filter) = condition else {
+            return None;
+        };
+        filter.source.then(|| filter.description())
+    }
+
+    fn activation_condition_body(condition: &crate::ConditionExpr) -> String {
+        let described = describe_mana_activation_condition(condition);
+        described
+            .strip_prefix("Activate only if ")
+            .or_else(|| described.strip_prefix("Activate only "))
+            .unwrap_or(&described)
+            .to_string()
+    }
+
     fn flatten(condition: &crate::ConditionExpr, out: &mut Vec<crate::ConditionExpr>) {
         match condition {
             crate::ConditionExpr::And(left, right) => {
@@ -1093,6 +1168,27 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
                     line
                 }
             }
+        }
+        crate::ConditionExpr::Or(left, right)
+            if source_entered_this_turn_subject(left).is_some()
+                || source_entered_this_turn_subject(right).is_some() =>
+        {
+            format!(
+                "Activate only if {} or if {}",
+                activation_condition_body(left),
+                activation_condition_body(right)
+            )
+        }
+        crate::ConditionExpr::ObjectEnteredBattlefieldThisTurn(filter) if filter.source => {
+            format!(
+                "Activate only if {} entered this turn",
+                filter.description()
+            )
+        }
+        crate::ConditionExpr::YouControl(filter) => {
+            let described =
+                with_indefinite_article(strip_indefinite_article(&filter.description()));
+            format!("Activate only if you control {described}")
         }
         crate::ConditionExpr::PlayerHasAtLeast {
             player,
@@ -1564,6 +1660,8 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             OptionalCostKind::Squad => {
                 if cost_text.trim().is_empty() {
                     label.to_string()
+                } else if !cost_text.contains(',') {
+                    format!("{label} {}", cost_text.trim_end_matches('.'))
                 } else {
                     format!("{label}—{}", cost_text.trim_end_matches('.'))
                 }

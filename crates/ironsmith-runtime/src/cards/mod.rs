@@ -1209,14 +1209,40 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_assigns_no_combat_damage_clause_as_combat_prevention() {
+    fn parse_assigns_no_combat_damage_clause_as_assignment_suppression() {
         use crate::ability::AbilityKind;
         use crate::effects::{
-            IfEffect, MayEffect, PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect,
-            SequenceEffect, TaggedEffect, WithIdEffect,
+            AssignNoCombatDamageEffect, IfEffect, MayEffect, PreventAllCombatDamageEffect,
+            PreventAllCombatDamageFromEffect, SequenceEffect, TaggedEffect, WithIdEffect,
         };
 
-        fn contains_prevent(effect: &crate::effect::Effect) -> bool {
+        fn contains_assignment_suppression(effect: &crate::effect::Effect) -> bool {
+            if effect
+                .downcast_ref::<AssignNoCombatDamageEffect>()
+                .is_some()
+            {
+                return true;
+            }
+            if let Some(may) = effect.downcast_ref::<MayEffect>() {
+                return may.effects.iter().any(contains_assignment_suppression);
+            }
+            if let Some(if_effect) = effect.downcast_ref::<IfEffect>() {
+                return if_effect.then.iter().any(contains_assignment_suppression)
+                    || if_effect.else_.iter().any(contains_assignment_suppression);
+            }
+            if let Some(seq) = effect.downcast_ref::<SequenceEffect>() {
+                return seq.effects.iter().any(contains_assignment_suppression);
+            }
+            if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
+                return contains_assignment_suppression(&tagged.effect);
+            }
+            if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
+                return contains_assignment_suppression(&with_id.effect);
+            }
+            false
+        }
+
+        fn contains_prevention(effect: &crate::effect::Effect) -> bool {
             if effect
                 .downcast_ref::<PreventAllCombatDamageEffect>()
                 .is_some()
@@ -1227,20 +1253,20 @@ mod tests {
                 return true;
             }
             if let Some(may) = effect.downcast_ref::<MayEffect>() {
-                return may.effects.iter().any(contains_prevent);
+                return may.effects.iter().any(contains_prevention);
             }
             if let Some(if_effect) = effect.downcast_ref::<IfEffect>() {
-                return if_effect.then.iter().any(contains_prevent)
-                    || if_effect.else_.iter().any(contains_prevent);
+                return if_effect.then.iter().any(contains_prevention)
+                    || if_effect.else_.iter().any(contains_prevention);
             }
             if let Some(seq) = effect.downcast_ref::<SequenceEffect>() {
-                return seq.effects.iter().any(contains_prevent);
+                return seq.effects.iter().any(contains_prevention);
             }
             if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
-                return contains_prevent(&tagged.effect);
+                return contains_prevention(&tagged.effect);
             }
             if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
-                return contains_prevent(&with_id.effect);
+                return contains_prevention(&with_id.effect);
             }
             false
         }
@@ -1260,9 +1286,38 @@ mod tests {
             .expect("expected a triggered ability");
 
         assert!(
-            triggered.effects.iter().any(contains_prevent),
-            "expected combat damage prevention in triggered effects, got {:#?}",
+            triggered
+                .effects
+                .iter()
+                .any(contains_assignment_suppression),
+            "expected assignment suppression in triggered effects, got {:#?}",
             triggered.effects
+        );
+        assert!(
+            !triggered.effects.iter().any(contains_prevention),
+            "assigns-no-damage must not lower to prevention, got {:#?}",
+            triggered.effects
+        );
+
+        let bone_dancer = CardDefinitionBuilder::new(CardId::new(), "Bone Dancer")
+            .card_types(vec![CardType::Creature])
+            .parse_text("Whenever this creature attacks and isn't blocked, you may put the top creature card of defending player's graveyard onto the battlefield under your control. If you do, this creature assigns no combat damage this turn.")
+            .expect("Bone Dancer should parse with assignment suppression");
+        let bone_trigger = bone_dancer
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("Bone Dancer should have a triggered ability");
+        assert!(
+            bone_trigger
+                .effects
+                .iter()
+                .any(contains_assignment_suppression),
+            "Bone Dancer should use assignment suppression, got {:#?}",
+            bone_trigger.effects
         );
     }
 

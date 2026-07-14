@@ -1,4 +1,5 @@
 use super::*;
+use ironsmith_core::TurnHistoryCount;
 
 pub(crate) fn is_bracketed_loyalty_activation_cost(text: &str) -> bool {
     let trimmed = text.trim();
@@ -35,7 +36,30 @@ pub(crate) fn strip_parenthetical_segments(text: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+pub(crate) fn additionalize_card_count_phrase(phrase: &str) -> String {
+    if let Some(rest) = phrase.strip_prefix("a card") {
+        return format!("an additional card{rest}");
+    }
+    if let Some(rest) = phrase.strip_prefix("cards") {
+        return format!("additional cards{rest}");
+    }
+    if let Some(card_index) = phrase.find(" cards") {
+        return format!(
+            "{} additional{}",
+            &phrase[..card_index],
+            &phrase[card_index..]
+        );
+    }
+    format!("additional {phrase}")
+}
+
 pub(crate) fn describe_card_count(value: &Value) -> String {
+    if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalCards) {
+        let count = value
+            .clone()
+            .without_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalCards);
+        return additionalize_card_count_phrase(&describe_card_count(&count));
+    }
     match value {
         Value::Fixed(1) => "a card".to_string(),
         Value::Fixed(n) => {
@@ -53,8 +77,14 @@ pub(crate) fn describe_card_count(value: &Value) -> String {
         value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::Difference) => {
             "cards equal to the difference".to_string()
         }
-        value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo) => {
-            format!("cards equal to {}", describe_value(value.unhinted()))
+        value
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
+                && describe_effect_count_backref(value).is_none() =>
+        {
+            let amount = value
+                .clone()
+                .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+            format!("a number of cards equal to {}", describe_value(&amount))
         }
         _ => {
             if let Some(backref) = describe_effect_count_backref(value) {
@@ -233,6 +263,7 @@ pub(crate) fn pluralize_discard_card_phrase(phrase: &str) -> String {
 
 pub(crate) fn describe_effect_count_backref(value: &Value) -> Option<String> {
     match value {
+        Value::SurfaceHinted { value, .. } => describe_effect_count_backref(value),
         Value::EffectValue(_) => Some("that many".to_string()),
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {
@@ -391,6 +422,16 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
             return "cards discarded this way".to_string();
         }
     }
+    if filter.has_explicit_card_noun()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+    {
+        return "those cards".to_string();
+    }
     if filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag.as_str().starts_with("milled_")
@@ -431,6 +472,15 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         .trim()
         .to_string();
     subject = pluralize_noun_phrase(&subject);
+    let attachment_already_implies_battlefield = filter.attached_to_object.is_some()
+        || filter.attached_to_player.is_some()
+        || filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject);
+    if attachment_already_implies_battlefield {
+        subject = subject.trim_end_matches(" on the battlefield").to_string();
+    }
     if filter.subtypes.len() == 2
         && filter.subtypes.contains(&crate::types::Subtype::Mount)
         && filter.subtypes.contains(&crate::types::Subtype::Vehicle)
@@ -452,6 +502,19 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         if !subject.contains("graveyard") {
             subject.push_str(" in all graveyards");
         }
+    }
+    // `ObjectFilter::description` returns immediately after rendering a named
+    // object, before it reaches the zone suffix. Recover that structured zone
+    // here so count values such as "cards named ... in your graveyard" do not
+    // silently broaden to every zone.
+    if filter.zone == Some(Zone::Graveyard) && !subject.contains("graveyard") {
+        let scope = match &filter.owner {
+            Some(owner) => describe_card_type_graveyard_scope(owner),
+            None if filter.single_graveyard => "a graveyard".to_string(),
+            None => "all graveyards".to_string(),
+        };
+        subject.push_str(" in ");
+        subject.push_str(&scope);
     }
 
     let mentions_location = subject.contains(" in ") || subject.contains(" on ");
@@ -487,6 +550,26 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     subject
 }
 
+/// Whether an unscoped count subject needs its battlefield provenance spelled
+/// out. Controller/owner and combat predicates already imply the battlefield,
+/// while a bare type or subtype does not.
+pub(crate) fn count_filter_needs_battlefield_surface(filter: &ObjectFilter, subject: &str) -> bool {
+    filter.zone == Some(Zone::Battlefield)
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && !subject.contains(" in ")
+        && !subject.contains(" on ")
+        && !filter.attacking
+        && !filter.nonattacking
+        && !filter.blocking
+        && !filter.nonblocking
+        && !filter.blocked
+        && !filter.unblocked
+        && describe_tagged_this_way_action(filter).is_none()
+        && !filter.entered_battlefield_this_turn
+        && filter.entered_battlefield_controller.is_none()
+}
+
 pub(crate) fn describe_domain_union_count_filter_subject(filter: &ObjectFilter) -> Option<String> {
     if filter.any_of.len() < 2 {
         return None;
@@ -494,8 +577,9 @@ pub(crate) fn describe_domain_union_count_filter_subject(filter: &ObjectFilter) 
 
     let mut outer = filter.clone();
     outer.any_of.clear();
-    if outer != ObjectFilter::default() {
-        return None;
+
+    if let Some(subject) = describe_owned_spell_domain_union_subject(&outer, &filter.any_of) {
+        return Some(subject);
     }
 
     let first_signature = domain_union_signature(filter.any_of.first()?)?;
@@ -507,8 +591,33 @@ pub(crate) fn describe_domain_union_count_filter_subject(filter: &ObjectFilter) 
         return None;
     }
 
-    let subjects = filter
-        .any_of
+    let branches = if outer == ObjectFilter::default() {
+        filter.any_of.clone()
+    } else {
+        // Some parsed count filters keep the shared card constraints on the
+        // outer union and use the branches only to identify the domains. Fold
+        // those domains into the shared filter before describing each arm so
+        // `instant cards ... in exile and in your graveyard` does not lose the
+        // instant/card-owner constraints at render time.
+        if first_signature != ObjectFilter::default() {
+            return None;
+        }
+        filter
+            .any_of
+            .iter()
+            .map(|branch| {
+                let mut merged = outer.clone();
+                merged.zone = branch.zone.or(merged.zone);
+                merged.controller = branch.controller.clone().or(merged.controller);
+                merged.owner = branch.owner.clone().or(merged.owner);
+                merged.single_graveyard |= branch.single_graveyard;
+                merged.other |= branch.other;
+                merged
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let subjects = branches
         .iter()
         .map(describe_count_filter_value_subject)
         .collect::<Vec<_>>();
@@ -517,6 +626,71 @@ pub(crate) fn describe_domain_union_count_filter_subject(filter: &ObjectFilter) 
     }
 
     Some(join_with_and(&subjects))
+}
+
+fn describe_owned_spell_domain_union_subject(
+    outer: &ObjectFilter,
+    branches: &[ObjectFilter],
+) -> Option<String> {
+    if !outer.type_or_subtype_union
+        || outer.card_types.is_empty()
+        || outer.subtypes.as_slice() != [crate::types::Subtype::Adventure]
+        || branches
+            .iter()
+            .any(|branch| domain_union_signature(branch) != Some(ObjectFilter::default()))
+    {
+        return None;
+    }
+
+    let mut remainder = outer.clone();
+    remainder.owner = None;
+    remainder.card_types.clear();
+    remainder.subtypes.clear();
+    remainder.type_or_subtype_union = false;
+    if remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut subject = match outer.owner.as_ref() {
+        Some(PlayerFilter::You) => "cards you own".to_string(),
+        None => "cards".to_string(),
+        _ => return None,
+    };
+    let mut locations = Vec::new();
+    for branch in branches {
+        let location = match branch.zone {
+            Some(Zone::Exile) => "in exile",
+            Some(Zone::Graveyard) if outer.owner == Some(PlayerFilter::You) => "in your graveyard",
+            Some(Zone::Graveyard) => "in a graveyard",
+            _ => return None,
+        };
+        if !locations.iter().any(|found| found == location) {
+            locations.push(location.to_string());
+        }
+    }
+    if locations.is_empty() {
+        return None;
+    }
+    subject.push(' ');
+    subject.push_str(&join_with_and(&locations));
+
+    let mut predicates = outer
+        .card_types
+        .iter()
+        .map(|card_type| format!("are {} cards", card_type.to_string().to_ascii_lowercase()))
+        .collect::<Vec<_>>();
+    predicates.push("have an Adventure".to_string());
+    let predicate_text = match predicates.as_slice() {
+        [] => return None,
+        [only] => only.clone(),
+        [first, second] => format!("{first} and/or {second}"),
+        many => format!(
+            "{}, and/or {}",
+            many[..many.len() - 1].join(", "),
+            many.last()?
+        ),
+    };
+    Some(format!("{subject} that {predicate_text}"))
 }
 
 pub(crate) fn domain_union_signature(filter: &ObjectFilter) -> Option<ObjectFilter> {
@@ -623,7 +797,28 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         subject = format!("other {}", rest.trim());
     }
     if let Some(action) = describe_tagged_this_way_action(filter) {
-        if action == "exiled" {
+        if action == "discarded" && filter.zone == Some(Zone::Graveyard) {
+            // An explicit graveyard destination distinguishes oracle's movement wording
+            // ("put into a graveyard this way") from the broader "discarded this way".
+            // Keep the discard tag for execution-time identity, but render the narrower
+            // destination fact rather than flattening it into "in a graveyard discarded".
+            let mut moved = filter.clone();
+            moved.zone = None;
+            moved.owner = None;
+            moved.tagged_constraints.clear();
+            let moved = strip_indefinite_article(&moved.description())
+                .trim()
+                .to_string();
+            let destination = match &owner {
+                Some(owner) => format!(
+                    "{} graveyard",
+                    describe_possessive_graveyard_owner_filter(owner)
+                ),
+                None if filter.single_graveyard => "a single graveyard".to_string(),
+                None => "a graveyard".to_string(),
+            };
+            subject = format!("{moved} put into {destination} this way");
+        } else if action == "exiled" {
             if let Some(head) = subject.strip_suffix(" in exile") {
                 subject = head.trim().to_string();
             } else if let Some((head, tail)) = subject.split_once(" in exile ") {
@@ -647,7 +842,9 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
                 subject = format!("{} cards", head.trim());
             }
         }
-        subject = format!("{subject} {action} this way");
+        if !(action == "discarded" && filter.zone == Some(Zone::Graveyard)) {
+            subject = format!("{subject} {action} this way");
+        }
     }
 
     let controller_suffix = match controller {
@@ -661,9 +858,9 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::DamagedPlayer) => Some("that player controls"),
         Some(PlayerFilter::Teammate) => Some("a teammate controls"),
         Some(PlayerFilter::Specific(_)) => Some("that player controls"),
-        Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => {
-            Some("that player controls")
-        }
+        Some(PlayerFilter::Target(_))
+        | Some(PlayerFilter::AliasedTarget(_))
+        | Some(PlayerFilter::IteratedPlayer) => Some("that player controls"),
         Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
             Some("they control")
         }
@@ -699,9 +896,9 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::DamagedPlayer) => Some("that player owns"),
             Some(PlayerFilter::Teammate) => Some("a teammate owns"),
             Some(PlayerFilter::Specific(_)) => Some("that player owns"),
-            Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => {
-                Some("that player owns")
-            }
+            Some(PlayerFilter::Target(_))
+            | Some(PlayerFilter::AliasedTarget(_))
+            | Some(PlayerFilter::IteratedPlayer) => Some("that player owns"),
             Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
                 Some("they own")
             }
@@ -724,6 +921,9 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         if !subject.contains("graveyard") {
             subject.push_str(" in all graveyards");
         }
+    }
+    if count_filter_needs_battlefield_surface(filter, &subject) {
+        subject.push_str(" on the battlefield");
     }
 
     subject
@@ -758,6 +958,7 @@ pub(crate) fn describe_tagged_hand_origin_count_filter(filter: &ObjectFilter) ->
         Some(PlayerFilter::NotYou) => "card exiled from your opponent's hand this way".to_string(),
         Some(PlayerFilter::Specific(_))
         | Some(PlayerFilter::Target(_))
+        | Some(PlayerFilter::AliasedTarget(_))
         | Some(PlayerFilter::IteratedPlayer)
         | Some(PlayerFilter::ControllerOf(_)) => "card exiled from their hand this way".to_string(),
         Some(owner) => format!(
@@ -834,7 +1035,7 @@ pub(crate) fn describe_demonstrative_tagged_object_filter(
     });
 
     if base == crate::filter::ObjectFilter::default() {
-        return Some("that object".to_string());
+        return Some("it".to_string());
     }
 
     let base_desc = strip_leading_article(&base.description())
@@ -909,8 +1110,15 @@ pub(crate) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Op
 pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
         ChooseSpec::SurfaceHinted { spec, hints } => {
+            if let Some(kind) = hints.iter().find_map(|hint| match hint {
+                crate::target::ChooseSpecSurfaceHint::SacrificedObject(kind) => Some(*kind),
+                crate::target::ChooseSpecSurfaceHint::SourceReference(_) => None,
+            }) {
+                return format!("the sacrificed {}", kind.noun());
+            }
             match hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
+                crate::target::ChooseSpecSurfaceHint::SacrificedObject(_) => None,
             }) {
                 Some(surface) => describe_source_reference_surface_text(surface),
                 None => describe_choose_spec(spec),
@@ -1020,7 +1228,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         }
         ChooseSpec::All(filter) => {
             if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
-                if tagged_text == "that object" {
+                if matches!(tagged_text.as_str(), "it" | "that object") {
                     return "them".to_string();
                 }
                 if let Some(rest) = tagged_text.strip_prefix("that ") {
@@ -1034,7 +1242,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::EachPlayer(filter) => format!("each {}", describe_player_filter(filter)),
         ChooseSpec::SpecificObject(_) => "that object".to_string(),
         ChooseSpec::SpecificPlayer(_) => "that player".to_string(),
-        ChooseSpec::Iterated => "that object".to_string(),
+        ChooseSpec::Iterated => "it".to_string(),
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             let inner_text = describe_choose_spec(inner);
             let controller_suffix = match inner.base() {
@@ -1263,7 +1471,7 @@ pub(crate) fn describe_counted_attach_objects_spec(
     };
 
     if count.is_single() {
-        return Some(format!("{base}{random_suffix}"));
+        return Some(format!("{}{random_suffix}", with_indefinite_article(base)));
     }
     if count.is_up_to_dynamic_x() {
         return Some(format!("up to X {plural}{random_suffix}"));
@@ -1345,6 +1553,9 @@ pub(crate) fn describe_goad_target(spec: &ChooseSpec) -> String {
                             } else {
                                 format!("each creature target {who} controls")
                             }
+                        }
+                        PlayerFilter::AliasedTarget(_) => {
+                            "each creature that player controls".to_string()
                         }
                         PlayerFilter::IteratedPlayer => {
                             "each creature that player controls".to_string()
@@ -1728,6 +1939,87 @@ pub(crate) fn ensure_trailing_period(text: &str) -> String {
     }
 }
 
+pub(crate) fn is_nonbattlefield_card_zone(zone: Zone) -> bool {
+    matches!(
+        zone,
+        Zone::Graveyard
+            | Zone::Hand
+            | Zone::Library
+            | Zone::Exile
+            | Zone::Command
+            | Zone::OutsideGame
+    )
+}
+
+fn rendered_filter_zone_clause(filter: &ObjectFilter) -> Option<String> {
+    let zone = filter.zone?;
+    let zone_name = match zone {
+        Zone::Graveyard => "graveyard",
+        Zone::Hand => "hand",
+        Zone::Library => "library",
+        Zone::Exile => "exile",
+        Zone::Command => "command zone",
+        Zone::OutsideGame => "outside the game",
+        Zone::Battlefield | Zone::Stack => return None,
+    };
+    Some(if let Some(owner) = &filter.owner {
+        format!(
+            "in {} {zone_name}",
+            describe_possessive_player_filter(owner)
+        )
+    } else if zone == Zone::Graveyard && filter.single_graveyard {
+        "in single graveyard".to_string()
+    } else if zone == Zone::Graveyard {
+        "in a graveyard".to_string()
+    } else {
+        format!("in {zone_name}")
+    })
+}
+
+/// Describe a card filter with its nonbattlefield zone still available to the
+/// noun renderer, then remove only the redundant zone clause from the surface.
+/// This keeps an unconstrained library filter as `card` while preserving an
+/// explicit six-type restriction as `permanent card`.
+pub(crate) fn describe_nonbattlefield_card_filter_without_zone(
+    filter: &ObjectFilter,
+    zone: Zone,
+) -> String {
+    debug_assert!(is_nonbattlefield_card_zone(zone));
+    let mut contextual_filter = filter.clone();
+    contextual_filter.zone = Some(zone);
+    let mut description = contextual_filter.description();
+    if let Some(zone_clause) = rendered_filter_zone_clause(&contextual_filter) {
+        let needle = format!(" {zone_clause}");
+        if let Some(start) = description.rfind(&needle) {
+            description.replace_range(start..start + needle.len(), "");
+        }
+    }
+    description.trim().to_string()
+}
+
+pub(crate) fn filter_explicitly_selects_permanent_cards(filter: &ObjectFilter) -> bool {
+    let permanent_types = [
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    filter.card_types.len() == permanent_types.len()
+        && permanent_types
+            .iter()
+            .all(|card_type| filter.card_types.contains(card_type))
+}
+
+pub(crate) fn describe_single_search_filter_in_zone(filter: &ObjectFilter, zone: Zone) -> String {
+    let selection = describe_nonbattlefield_card_filter_without_zone(filter, zone);
+    if selection == "card" || filter_explicitly_selects_permanent_cards(filter) {
+        return with_indefinite_article(&selection);
+    }
+    with_indefinite_article(&describe_search_selection_with_cards(&selection))
+}
+
 pub(crate) fn describe_search_selection_with_cards(selection: &str) -> String {
     let selection = selection.trim();
     if selection.is_empty() {
@@ -2001,12 +2293,21 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
         return None;
     }
     let target_desc = describe_choose_spec(target?);
+    let choice_owner = match choose_mode.chooser.as_ref() {
+        None | Some(PlayerFilter::You) => "your".to_string(),
+        Some(PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)) => {
+            "its controller's".to_string()
+        }
+        Some(chooser) => describe_possessive_player_filter(chooser),
+    };
     Some(if allow_colorless {
         format!(
-            "{target_desc} gains protection from colorless or from the color of your choice until end of turn"
+            "{target_desc} gains protection from colorless or from the color of {choice_owner} choice until end of turn"
         )
     } else {
-        format!("{target_desc} gains protection from the color of your choice until end of turn")
+        format!(
+            "{target_desc} gains protection from the color of {choice_owner} choice until end of turn"
+        )
     })
 }
 
@@ -2127,6 +2428,53 @@ pub(crate) fn describe_compact_return_to_hand_color_choice(effect: &Effect) -> O
     ))
 }
 
+fn describe_coordinated_keyword_choice_mode(effects: &[Effect]) -> Option<(String, String)> {
+    let [effect] = effects else {
+        return None;
+    };
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if matches!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::Sequential
+    ) || sequence.effects.len() < 2
+    {
+        return None;
+    }
+
+    let mut subjects = Vec::with_capacity(sequence.effects.len());
+    let mut selected_ability = None;
+    for effect in &sequence.effects {
+        let apply = super::super::render_effects::unwrap_basic_tag_wrappers(effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if !matches!(apply.until, Until::EndOfTurn)
+            || !apply.additional_modifications.is_empty()
+            || !apply.runtime_modifications.is_empty()
+        {
+            return None;
+        }
+        let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification else {
+            return None;
+        };
+        let ability_text = ability
+            .granted_inline_ability()
+            .map(describe_inline_ability)
+            .unwrap_or_else(|| ability.display())
+            .to_ascii_lowercase();
+        if selected_ability
+            .as_ref()
+            .is_some_and(|expected| expected != &ability_text)
+        {
+            return None;
+        }
+        selected_ability = Some(ability_text);
+        subjects.push(describe_apply_continuous_target(apply).0);
+    }
+    if subjects.iter().any(String::is_empty) || subjects.windows(2).any(|pair| pair[0] == pair[1]) {
+        return None;
+    }
+    Some((join_with_and(&subjects), selected_ability?))
+}
+
 pub(crate) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String> {
     let effect = if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
         && is_implicit_reference_tag(tagged.tag.as_str())
@@ -2145,12 +2493,35 @@ pub(crate) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String>
 
     let mut subject: Option<String> = None;
     let mut plural_subject = false;
+    let mut coordinated_subject: Option<bool> = None;
     let mut abilities = Vec::new();
 
     for mode in &choose_mode.modes {
+        if let Some((mode_subject, ability)) =
+            describe_coordinated_keyword_choice_mode(&mode.effects)
+        {
+            if coordinated_subject == Some(false) {
+                return None;
+            }
+            coordinated_subject = Some(true);
+            if let Some(existing) = &subject {
+                if existing != &mode_subject {
+                    return None;
+                }
+            } else {
+                plural_subject = true;
+                subject = Some(mode_subject);
+            }
+            abilities.push(ability);
+            continue;
+        }
         if mode.effects.len() != 1 {
             return None;
         }
+        if coordinated_subject == Some(true) {
+            return None;
+        }
+        coordinated_subject = Some(false);
         if let Some(grant_target) =
             mode.effects[0].downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()
         {
@@ -2241,11 +2612,65 @@ pub(crate) fn describe_compact_keyword_choice(effect: &Effect) -> Option<String>
     }
 
     let subject = subject?;
-    let verb = if plural_subject { "gain" } else { "gains" };
+    let verb = if coordinated_subject == Some(true) {
+        "both gain"
+    } else if plural_subject {
+        "gain"
+    } else {
+        "gains"
+    };
     let choice_text = join_with_or(&abilities);
     Some(format!(
         "{subject} {verb} your choice of {choice_text} until end of turn"
     ))
+}
+
+#[cfg(test)]
+mod optional_companion_keyword_choice_tests {
+    use super::*;
+
+    fn grant(spec: ChooseSpec, ability: crate::static_abilities::StaticAbility) -> Effect {
+        Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            spec,
+            crate::continuous::Modification::AddAbility(ability),
+            Until::EndOfTurn,
+        ))
+    }
+
+    #[test]
+    fn shared_keyword_choice_renders_required_and_optional_subjects_once() {
+        let source = ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                ),
+            ),
+        );
+        let mut companion_filter = ObjectFilter::creature().you_control();
+        companion_filter.other = true;
+        let companion = ChooseSpec::target(ChooseSpec::Object(companion_filter))
+            .with_count(crate::effect::ChoiceCount::up_to(1));
+        let mode = |ability: crate::static_abilities::StaticAbility| ironsmith_core::EffectMode {
+            source_text: String::new(),
+            effects: vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+                vec![
+                    grant(source.clone(), ability.clone()),
+                    grant(companion.clone(), ability),
+                ],
+            ))],
+        };
+        let choice = Effect::choose_one(vec![
+            mode(crate::static_abilities::StaticAbility::first_strike()),
+            mode(crate::static_abilities::StaticAbility::lifelink()),
+        ]);
+
+        assert_eq!(
+            describe_compact_keyword_choice(&choice).as_deref(),
+            Some(
+                "this creature and up to one other target creature you control both gain your choice of first strike or lifelink until end of turn"
+            )
+        );
+    }
 }
 
 pub(crate) fn describe_mana_symbol(symbol: ManaSymbol) -> String {
@@ -2297,6 +2722,9 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::LifeLost => "the life lost this way".to_string(),
         crate::effect::EffectMetric::LifeGained => "the life gained this way".to_string(),
         crate::effect::EffectMetric::DamageDealt => "the damage dealt this way".to_string(),
+        crate::effect::EffectMetric::ExcessDamage => {
+            "the excess damage dealt to that creature this way".to_string()
+        }
         crate::effect::EffectMetric::DamagePrevented => "the damage prevented this way".to_string(),
         crate::effect::EffectMetric::FirstPower => "that creature's power".to_string(),
         crate::effect::EffectMetric::FirstToughness => "that creature's toughness".to_string(),
@@ -2337,6 +2765,348 @@ pub(crate) fn describe_effect_metric_value(
     }
 }
 
+pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'static str> {
+    if value.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay) {
+        return Some("the number of cards drawn this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CardsRevealedThisWay) {
+        return Some("the number of cards revealed this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CardsExiledThisWay) {
+        return Some("the number of cards exiled this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay) {
+        return Some("the number of cards discarded this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::PermanentsSacrificedThisWay) {
+        return Some("the number of permanents sacrificed this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay) {
+        return Some("the number of counters removed this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::EnergyPaidThisWay) {
+        return Some("the amount of {E} paid this way");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::PriorEffectResult) {
+        return Some("the result");
+    }
+    if value.has_surface_hint(ValueSurfaceHint::ManaValueOfPermanentExiledThisWay) {
+        return Some("the mana value of the permanent exiled this way");
+    }
+    None
+}
+
+fn describe_history_event_object(filter: &ObjectFilter) -> String {
+    let mut surface = filter.clone();
+    surface.zone = None;
+    strip_leading_article(&surface.description())
+        .trim()
+        .to_string()
+}
+
+fn describe_history_spell(filter: &ObjectFilter) -> String {
+    if filter.card_types.len() == 2
+        && filter.card_types.contains(&CardType::Instant)
+        && filter.card_types.contains(&CardType::Sorcery)
+        && filter.all_card_types.is_empty()
+    {
+        return "instant and sorcery spell".to_string();
+    }
+    let mut surface = filter.clone();
+    surface.zone = Some(Zone::Stack);
+    surface.stack_kind = Some(StackObjectKind::Spell);
+    surface.has_mana_cost = false;
+    let described = strip_leading_article(&surface.description())
+        .trim()
+        .to_string();
+    if described == "spell" || described.ends_with(" spell") {
+        described
+    } else {
+        format!("{described} spell")
+    }
+}
+
+/// Render the singular event basis selected by a typed `for each` history
+/// count. This deliberately reads the structured query rather than trying to
+/// singularize the ordinary "the number of ..." value surface.
+pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<String> {
+    if !value.has_surface_hint(ValueSurfaceHint::ForEach)
+        || value.has_surface_hint(ValueSurfaceHint::EqualTo)
+        || value.has_surface_hint(ValueSurfaceHint::WhereXIs)
+    {
+        return None;
+    }
+
+    match value.unhinted() {
+        Value::TurnHistoryCount(TurnHistoryCount::Died(filter)) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            let subject = describe_history_event_object(&subject_filter);
+            Some(match controller {
+                Some(controller) => format!(
+                    "{subject} that died under {} control this turn",
+                    describe_possessive_player_filter(&controller)
+                ),
+                None => format!("{subject} that died this turn"),
+            })
+        }
+        Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+            player,
+            filter,
+            from_zone,
+            from_outside_hand,
+            exclude_source,
+            before_triggering_spell,
+        }) => {
+            let mut subject = describe_history_spell(filter);
+            if *exclude_source && !subject.starts_with("other ") {
+                subject = format!("other {subject}");
+            }
+            if *before_triggering_spell {
+                return Some(match player {
+                    PlayerFilter::You => {
+                        format!("{subject} you've cast before it this turn")
+                    }
+                    PlayerFilter::Any => {
+                        format!("{subject} cast before that spell this turn")
+                    }
+                    other => format!(
+                        "{subject} {} cast before that spell this turn",
+                        describe_player_filter(other)
+                    ),
+                });
+            }
+            Some(match (player, from_zone, from_outside_hand) {
+                (PlayerFilter::You, Some(zone), _) => {
+                    format!("{subject} you've cast from {zone} this turn")
+                }
+                (_, Some(zone), _) => format!(
+                    "{subject} {} cast from {zone} this turn",
+                    describe_player_filter(player)
+                ),
+                (PlayerFilter::You, None, true) => {
+                    format!("{subject} you've cast from anywhere other than your hand this turn")
+                }
+                (PlayerFilter::You, None, false) => {
+                    format!("{subject} you've cast this turn")
+                }
+                (_, None, true) => format!(
+                    "{subject} {} cast from anywhere other than their hand this turn",
+                    describe_player_filter(player)
+                ),
+                (_, None, false) => format!(
+                    "{subject} {} cast this turn",
+                    describe_player_filter(player)
+                ),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
+    match query {
+        TurnHistoryCount::Died(filter) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            subject_filter.zone = None;
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(&subject_filter));
+            match controller {
+                Some(controller) => format!(
+                    "the number of {subject} that died under {} control this turn",
+                    describe_possessive_player_filter(&controller)
+                ),
+                None => format!("the number of {subject} that died this turn"),
+            }
+        }
+        TurnHistoryCount::EnteredBattlefield(filter) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            subject_filter.zone = None;
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(&subject_filter));
+            match controller {
+                Some(controller) => format!(
+                    "the number of {subject} that entered the battlefield under {} control this turn",
+                    describe_possessive_player_filter(&controller)
+                ),
+                None => format!("the number of {subject} that entered the battlefield this turn"),
+            }
+        }
+        TurnHistoryCount::TokensCreated(player) => match player {
+            PlayerFilter::You => "the number of tokens you created this turn".to_string(),
+            _ => format!(
+                "the number of tokens {} created this turn",
+                describe_player_filter(player)
+            ),
+        },
+        TurnHistoryCount::PutIntoGraveyard { owner, from } => {
+            let origin = match from.as_slice() {
+                [] => "from anywhere".to_string(),
+                [Zone::Hand, Zone::Library] | [Zone::Library, Zone::Hand] => {
+                    format!(
+                        "from {} hand or library",
+                        describe_possessive_player_filter(owner)
+                    )
+                }
+                [zone] => format!("from {}", zone.name()),
+                zones => format!(
+                    "from {}",
+                    join_with_or(
+                        &zones
+                            .iter()
+                            .map(|zone| zone.name().to_string())
+                            .collect::<Vec<_>>()
+                    )
+                ),
+            };
+            format!(
+                "the number of cards put into {} graveyard {origin} this turn",
+                describe_possessive_player_filter(owner)
+            )
+        }
+        TurnHistoryCount::MovedZones { filter, from, to } => {
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(filter));
+            match (from, to) {
+                (Some(from), Some(to)) => {
+                    format!("the number of {subject} put into {to} from {from} this turn")
+                }
+                (Some(from), None) => {
+                    format!("the number of {subject} that left {from} this turn")
+                }
+                (None, Some(to)) => {
+                    format!("the number of {subject} put into {to} this turn")
+                }
+                (None, None) => format!("the number of {subject} that changed zones this turn"),
+            }
+        }
+        TurnHistoryCount::Sacrificed { player, filter } => format!(
+            "the number of {} {} sacrificed this turn",
+            pluralize_noun_phrase(&describe_for_each_filter(filter)),
+            describe_player_filter(player)
+        ),
+        TurnHistoryCount::CountersPutOn {
+            counter_type,
+            filter,
+        } => format!(
+            "the number of {} counters put on {} this turn",
+            counter_type.map_or("".to_string(), |counter_type| counter_type
+                .description()
+                .to_string()),
+            pluralize_noun_phrase(&describe_for_each_filter(filter))
+        ),
+        TurnHistoryCount::CreaturesAttackedWith { player, filter } => format!(
+            "the number of {} {} attacked with this turn",
+            pluralize_noun_phrase(&describe_for_each_filter(filter)),
+            describe_player_filter(player)
+        ),
+        TurnHistoryCount::OpponentsAttacked(player) => match player {
+            PlayerFilter::You => "the number of opponents you attacked this turn".to_string(),
+            _ => format!(
+                "the number of opponents {} attacked this turn",
+                describe_player_filter(player)
+            ),
+        },
+        TurnHistoryCount::PlayersDiscarded(player) => match player {
+            PlayerFilter::Any => "the number of players who discarded a card this turn".to_string(),
+            _ => format!(
+                "the number of {} who discarded a card this turn",
+                pluralize_noun_phrase(&describe_player_filter(player))
+            ),
+        },
+        TurnHistoryCount::PlayersDealtDamage(player) => format!(
+            "the number of {} who were dealt damage this turn",
+            pluralize_noun_phrase(&describe_player_filter(player))
+        ),
+        TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => format!(
+            "the number of {} who were dealt combat damage by {} this turn",
+            pluralize_noun_phrase(&describe_player_filter(players)),
+            describe_for_each_filter(sources)
+        ),
+        TurnHistoryCount::DiscardedOrCycled(player) => match player {
+            PlayerFilter::You => {
+                "the number of cards you've cycled or discarded this turn".to_string()
+            }
+            _ => format!(
+                "the number of cards {} cycled or discarded this turn",
+                describe_player_filter(player)
+            ),
+        },
+        TurnHistoryCount::Cycled(player) => match player {
+            PlayerFilter::You => "the number of cards you've cycled this turn".to_string(),
+            _ => format!(
+                "the number of cards {} cycled this turn",
+                describe_player_filter(player)
+            ),
+        },
+        TurnHistoryCount::PlayersLostLife(player) => format!(
+            "the number of {} who lost life this turn",
+            pluralize_noun_phrase(&describe_player_filter(player))
+        ),
+        TurnHistoryCount::SpellsCast {
+            player,
+            filter,
+            from_zone,
+            from_outside_hand,
+            exclude_source,
+            before_triggering_spell,
+        } => {
+            let base = pluralize_noun_phrase(&describe_history_spell(filter));
+            let mut out = if *before_triggering_spell {
+                match player {
+                    PlayerFilter::You => {
+                        format!("the number of {base} you've cast before it this turn")
+                    }
+                    PlayerFilter::Any => {
+                        format!("the number of {base} cast before that spell this turn")
+                    }
+                    other => format!(
+                        "the number of {base} {} cast before that spell this turn",
+                        describe_player_filter(other)
+                    ),
+                }
+            } else {
+                match (player, from_zone, from_outside_hand) {
+                    (PlayerFilter::You, Some(zone), _) => {
+                        format!("the number of {base} you've cast from {zone} this turn")
+                    }
+                    (_, Some(zone), _) => format!(
+                        "the number of {base} {} cast from {zone} this turn",
+                        describe_player_filter(player)
+                    ),
+                    (PlayerFilter::You, None, true) => format!(
+                        "the number of {base} you've cast from anywhere other than your hand this turn"
+                    ),
+                    (PlayerFilter::You, None, false) => {
+                        format!("the number of {base} you've cast this turn")
+                    }
+                    (_, None, true) => format!(
+                        "the number of {base} {} cast from anywhere other than their hand this turn",
+                        describe_player_filter(player)
+                    ),
+                    (_, None, false) => format!(
+                        "the number of {base} {} cast this turn",
+                        describe_player_filter(player)
+                    ),
+                }
+            };
+            if *exclude_source {
+                out = out.replacen("the number of ", "the number of other ", 1);
+            }
+            out
+        }
+        TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => match player {
+            PlayerFilter::You => {
+                "the number of colors among permanents you control and spells you've cast this turn"
+                    .to_string()
+            }
+            _ => format!(
+                "the number of colors among permanents {} controls and spells they cast this turn",
+                describe_player_filter(player)
+            ),
+        },
+    }
+}
+
 pub(crate) fn describe_value(value: &Value) -> String {
     fn describe_static_ability_id(
         ability_id: crate::static_abilities::StaticAbilityId,
@@ -2364,11 +3134,63 @@ pub(crate) fn describe_value(value: &Value) -> String {
         {
             "the difference".to_string()
         }
-        Value::SurfaceHinted { value, .. } => describe_value(value),
+        Value::SurfaceHinted { value, hints } => {
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::DamageDealt)
+                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
+            {
+                return "the damage dealt".to_string();
+            }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::RevealedCardReference)
+                && matches!(value.unhinted(), Value::ManaValueOf(_))
+            {
+                return "the revealed card's mana value".to_string();
+            }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::CountersAmong)
+                && let Value::CountersOn(spec, counter_type) = value.unhinted()
+                && let ChooseSpec::All(filter) = spec.unhinted()
+            {
+                let subject = render_effects::pluralize_noun_phrase(&filter.description());
+                return match counter_type {
+                    Some(counter_type) => format!(
+                        "the number of {} counters among {subject}",
+                        counter_type.description()
+                    ),
+                    None => format!("the number of counters among {subject}"),
+                };
+            }
+            if let Some(kind) = hints.iter().find_map(|hint| match hint {
+                ironsmith_core::ValueSurfaceHint::SacrificedObject(kind) => Some(*kind),
+                _ => None,
+            }) {
+                let characteristic = match value.unhinted() {
+                    Value::PowerOf(_) => Some("power"),
+                    Value::ToughnessOf(_) => Some("toughness"),
+                    Value::ManaValueOf(_) => Some("mana value"),
+                    _ => None,
+                };
+                if let Some(characteristic) = characteristic {
+                    return format!(
+                        "the sacrificed {}'s {characteristic}",
+                        kind.noun()
+                    );
+                }
+                if let Value::ManaSymbolsInManaCostOf { color, .. } = value.unhinted() {
+                    return format!(
+                        "the number of {} mana symbols in the sacrificed {}'s mana cost",
+                        color.name(),
+                        kind.noun()
+                    );
+                }
+            }
+            describe_value(value)
+        }
         Value::Fixed(n) => n.to_string(),
         Value::Add(left, right) => {
             if left == right {
                 return format!("twice {}", describe_value(left));
+            }
+            if matches!(right.as_ref(), Value::XTimes(-1)) {
+                return format!("{} minus X", describe_value(left));
             }
             if let Value::Fixed(n) = right.as_ref()
                 && *n < 0
@@ -2427,6 +3249,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::XTimes(factor) => {
             if *factor == 1 {
                 "X".to_string()
+            } else if *factor == 2 {
+                "twice X".to_string()
             } else if *factor == -1 {
                 "-X".to_string()
             } else {
@@ -2526,6 +3350,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of different powers among {}",
             describe_count_filter_value_subject(filter)
         ),
+        Value::TurnHistoryCount(query) => describe_turn_history_count(query),
         Value::CreaturesDiedThisTurn => "the number of creatures that died this turn".to_string(),
         Value::CreaturesDiedThisTurnControlledBy(filter) => format!(
             "the number of creatures that died under {} control this turn",
@@ -2558,7 +3383,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::SourcePower => "this source's power".to_string(),
         Value::SourceToughness => "this source's toughness".to_string(),
         Value::PowerOf(spec) => {
-            if let ChooseSpec::Tagged(tag) = spec.base()
+            if let Some(kind) = spec.sacrificed_object_kind() {
+                format!("the sacrificed {}'s power", kind.noun())
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
             {
                 "the exiled card's power".to_string()
@@ -2567,7 +3394,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
         }
         Value::ToughnessOf(spec) => {
-            if let ChooseSpec::Tagged(tag) = spec.base()
+            if let Some(kind) = spec.sacrificed_object_kind() {
+                format!("the sacrificed {}'s toughness", kind.noun())
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
             {
                 "the exiled card's toughness".to_string()
@@ -2578,10 +3407,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ManaValueOf(spec) => {
             // For implicit off-battlefield references, oracle text usually prefers
             // "that card's mana value" over "its mana value".
-            if let ChooseSpec::Tagged(tag) = spec.base()
+            if let Some(kind) = spec.sacrificed_object_kind() {
+                format!("the sacrificed {}'s mana value", kind.noun())
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && tag.as_str() == "triggering"
             {
                 "that spell's mana value".to_string()
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
+                && (tag.as_str() == "discarded_cost"
+                    || tag.as_str().starts_with("discard_cost_"))
+            {
+                "the discarded card's mana value".to_string()
             } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && (tag.as_str().starts_with("revealed_")
                     || tag.as_str() == crate::effects::PUBLIC_REVEALED_TAG
@@ -2592,10 +3428,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
                     || tag.as_str().starts_with("__sentence_helper_exiled"))
             {
                 "that card's mana value".to_string()
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str().starts_with("exile_cost_")
+            {
+                "the exiled card's mana value".to_string()
             } else {
                 format!("{} mana value", describe_possessive_choose_spec(spec))
             }
         }
+        Value::ManaSymbolsInManaCostOf { spec, color } => format!(
+            "the number of {} mana symbols in {} mana cost",
+            color.name(),
+            describe_possessive_choose_spec(spec)
+        ),
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
         }
@@ -2604,7 +3449,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
             describe_possessive_player_filter(filter)
         ),
         Value::LifeTotalDifference(filter) => match filter {
-            PlayerFilter::Target(_) => "the difference between those players' life totals".to_string(),
+            PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
+                "the difference between those players' life totals".to_string()
+            }
             _ => format!(
                 "the difference between {} life totals",
                 describe_player_filter(filter)
@@ -2680,7 +3527,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Opponent => {
                 "the damage already dealt to your opponents this turn".to_string()
             }
-            PlayerFilter::Target(_) => {
+            PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
                 "the damage already dealt to that player this turn".to_string()
             }
             _ => format!(
@@ -2840,6 +3687,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of colors of mana spent to cast this spell".to_string()
         }
         Value::ManaSpentToCastThisSpell => "the amount of mana spent to cast this spell".to_string(),
+        Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+        } => {
+            let mut source = source_filter.description();
+            if *include_source_noun {
+                source.push_str(" source");
+            }
+            format!("the amount of mana from {source} spent to cast this spell")
+        }
+        Value::ManaSpentToCastTriggeringObject => {
+            "the amount of mana spent to cast that spell".to_string()
+        }
         Value::UnspentMana(player) => {
             let subject = describe_player_filter(player);
             let verb = player_verb(&subject, "have", "has");
@@ -2928,7 +3788,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::CountersOn(spec, Some(counter_type)) => {
             if let ChooseSpec::All(filter) = spec.unhinted() {
                 format!(
-                    "the number of {} counters among {}",
+                    "the number of {} counters on {}",
                     counter_type.description(),
                     render_effects::pluralize_noun_phrase(&filter.description())
                 )
@@ -2943,7 +3803,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::CountersOn(spec, None) => {
             if let ChooseSpec::All(filter) = spec.unhinted() {
                 format!(
-                    "the number of counters among {}",
+                    "the number of counters on {}",
                     render_effects::pluralize_noun_phrase(&filter.description())
                 )
             } else {

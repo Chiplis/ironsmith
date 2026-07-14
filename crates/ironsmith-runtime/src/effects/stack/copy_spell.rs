@@ -174,37 +174,50 @@ impl EffectExecutor for CopySpellEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let copy_count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
-        // Resolve the spell object to copy (source, specific, tagged, or targeted spell).
-        let target_id = *resolve_objects_for_effect(game, ctx, &self.target)?
-            .first()
-            .ok_or(ExecutionError::InvalidTarget)?;
-
-        let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-
+        // Resolve the stack object(s) to copy. `ChooseSpec::All` is a real
+        // fanout instruction (for example, "copy all spells you control"),
+        // while ordinary target/object specs still resolve to one object.
+        // Snapshot the IDs before creating copies so a broad stack filter can
+        // never recursively include the copies it just created.
+        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        if target_ids.is_empty() {
+            return Err(ExecutionError::InvalidTarget);
+        }
         let copier = resolve_player_filter(game, &self.copier, ctx)?;
-        let mut created_ids = Vec::with_capacity(copy_count);
+        let mut created_ids = Vec::with_capacity(copy_count.saturating_mul(target_ids.len()));
 
-        for _ in 0..copy_count {
-            let copy_id = create_stack_copy(
-                game,
-                target_id,
-                &original_entry,
-                copier,
-                &self.removed_supertypes,
-                None,
-            )?;
-            created_ids.push(copy_id);
+        for target_id in target_ids {
+            let Some(original_entry) = stack_entry_for_copy_target(game, target_id, ctx)? else {
+                continue;
+            };
+            for _ in 0..copy_count {
+                let copy_id = create_stack_copy(
+                    game,
+                    target_id,
+                    &original_entry,
+                    copier,
+                    &self.removed_supertypes,
+                    None,
+                )?;
+                created_ids.push(copy_id);
 
-            // Copying a spell can trigger magecraft-like abilities.
-            game.queue_trigger_event(
-                ctx.provenance,
-                TriggerEvent::new_with_provenance(
-                    SpellCopiedEvent::new(copy_id, copier),
-                    ctx.provenance,
-                ),
-            );
+                // Only copying a spell emits the spell-copied event. The same
+                // effect type also represents activated/triggered ability
+                // copies, which must not trigger magecraft-like abilities.
+                if !original_entry.is_ability {
+                    game.queue_trigger_event(
+                        ctx.provenance,
+                        TriggerEvent::new_with_provenance(
+                            SpellCopiedEvent::new(copy_id, copier),
+                            ctx.provenance,
+                        ),
+                    );
+                }
+            }
+        }
+
+        if created_ids.is_empty() {
+            return Ok(EffectOutcome::target_invalid());
         }
 
         Ok(EffectOutcome::with_objects(created_ids))
@@ -344,6 +357,33 @@ mod tests {
             }
         } else {
             panic!("Expected Objects result");
+        }
+    }
+
+    #[test]
+    fn test_copy_all_matching_spells_fans_out_once_per_original() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+
+        let first = create_instant_on_stack(&mut game, "First Spell", alice);
+        let second = create_instant_on_stack(&mut game, "Second Spell", alice);
+        let originals = [first, second];
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = CopySpellEffect::single(ChooseSpec::All(
+            crate::filter::ObjectFilter::spell()
+                .controlled_by(crate::target::PlayerFilter::You),
+        ));
+
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(copies) = result.value else {
+            panic!("expected copied stack objects, got {result:#?}");
+        };
+        assert_eq!(copies.len(), originals.len());
+        assert_eq!(game.stack.len(), originals.len() + copies.len());
+        for copy in copies {
+            assert!(!originals.contains(&copy));
+            assert_eq!(game.object(copy).expect("copy exists").zone, Zone::Stack);
         }
     }
 

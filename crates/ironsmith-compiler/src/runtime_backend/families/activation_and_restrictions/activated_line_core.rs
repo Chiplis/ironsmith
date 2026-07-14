@@ -116,10 +116,8 @@ pub(crate) fn parse_activated_line_with_raw(
             } else {
                 parse_activation_cost(cost_tokens)?
             };
-            let reference_imports = first_sacrifice_cost_choice_tag(&mana_cost)
-                .or_else(|| last_exile_cost_choice_tag(&mana_cost))
-                .map(ReferenceImports::with_last_object_tag)
-                .unwrap_or_default();
+            let reference_imports =
+                super::super::util::activation_cost_reference_imports(&mana_cost);
 
             let mut extra_effects_ast = inline_effects_ast.clone();
             if effect_sentences.len() > 1 {
@@ -303,10 +301,7 @@ pub(crate) fn parse_activated_line_with_raw(
     if effects_ast.is_empty() {
         return Ok(None);
     }
-    let reference_imports = first_sacrifice_cost_choice_tag(&mana_cost)
-        .or_else(|| last_exile_cost_choice_tag(&mana_cost))
-        .map(ReferenceImports::with_last_object_tag)
-        .unwrap_or_default();
+    let reference_imports = super::super::util::activation_cost_reference_imports(&mana_cost);
     if loyalty_shorthand_cost.is_some() {
         timing = ActivationTiming::SorcerySpeed;
         for restriction in loyalty_additional_restrictions(true) {
@@ -446,16 +441,6 @@ pub(crate) fn loyalty_additional_restrictions(is_loyalty_shorthand: bool) -> Vec
         return Vec::new();
     }
     vec!["Activate only once each turn.".to_string()]
-}
-
-pub(crate) fn first_sacrifice_cost_choice_tag(
-    mana_cost: &crate::cost::TotalCost,
-) -> Option<TagKey> {
-    super::super::util::find_first_sacrifice_cost_choice_tag(mana_cost)
-}
-
-pub(crate) fn last_exile_cost_choice_tag(mana_cost: &crate::cost::TotalCost) -> Option<TagKey> {
-    super::super::util::find_last_exile_cost_choice_tag(mana_cost)
 }
 
 pub(crate) fn infer_activated_functional_zones_lexed(
@@ -875,11 +860,13 @@ pub(crate) fn parse_all_creatures_able_to_block_source_line(
     if activated_line_grammar::parse_activated_block_requirement_words(&words)
         == Some(ActivatedBlockRequirement::AllCreaturesBlockSource)
     {
-        return Ok(Some(StaticAbilityAst::GrantStaticAbility {
-            filter: ObjectFilter::creature(),
-            ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_block())),
-            condition: None,
-        }));
+        return Ok(Some(StaticAbilityAst::Static(StaticAbility::restriction(
+            crate::effect::Restriction::must_block_specific_attacker(
+                ObjectFilter::creature(),
+                ObjectFilter::source(),
+            ),
+            "All creatures able to block this creature do so".to_string(),
+        ))));
     }
     Ok(None)
 }

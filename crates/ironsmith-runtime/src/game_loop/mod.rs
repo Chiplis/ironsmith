@@ -122,6 +122,7 @@ pub use self::priority_mana::{
 };
 pub use self::targeting::drain_pending_trigger_events;
 pub(crate) use self::targeting::{
+    count_target_selection_slots_for_isolated_effect,
     extract_target_requirements_for_effect_with_state,
     extract_target_requirements_from_program_with_modes, spell_has_legal_targets_with_mode_preview,
     spell_has_legal_targets_with_modes, spell_has_legal_targets_with_modes_and_view,

@@ -113,7 +113,25 @@ pub(crate) fn parse_counter_target_phrase(
         )));
     }
 
-    parse_target_phrase(tokens)
+    let mut target = parse_target_phrase(tokens)?;
+    preserve_spell_kind_on_counter_target(&mut target);
+    Ok(target)
+}
+
+fn preserve_spell_kind_on_counter_target(target: &mut TargetAst) {
+    match target {
+        TargetAst::Object(filter, ..) => {
+            // Once ability targets have been routed above, a typed object in a
+            // counter instruction is a spell on the stack. Generic object
+            // parsing preserves the Stack zone but otherwise loses this kind.
+            filter.zone = Some(Zone::Stack);
+            filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            preserve_spell_kind_on_counter_target(inner);
+        }
+        _ => {}
+    }
 }
 
 fn parse_counter_ability_target_phrase(
@@ -522,6 +540,14 @@ pub(crate) fn parse_reveal(
                     let tail = &words[equal_idx..];
                     let equal_token_idx = counter_grammar::word_token_boundary(tokens, equal_idx)
                         .unwrap_or(equal_idx);
+                    let parsed_expression = counter_grammar::parse_prefix(tail, &[EQUAL_TO_PREFIX])
+                        .and_then(|prefix| {
+                            counter_grammar::word_token_boundary(tokens, equal_idx + prefix.end)
+                        })
+                        .and_then(|value_token_idx| parse_value(&tokens[value_token_idx..]))
+                        .map(|(value, _)| {
+                            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
+                        });
                     let count_value =
                         if counter_grammar::parse_prefix(tail, &[PARTY_SIZE_EQUAL_TO_PREFIX])
                             .is_some()
@@ -535,6 +561,8 @@ pub(crate) fn parse_reveal(
                             parse_equal_to_number_of_filter_value(&tokens[equal_token_idx..])
                         {
                             Some(value)
+                        } else if parsed_expression.is_some() {
+                            parsed_expression
                         } else {
                             parse_dynamic_cost_modifier_value(&tokens[equal_token_idx..])?
                         };
@@ -549,6 +577,25 @@ pub(crate) fn parse_reveal(
                             TagKey::from(IT_TAG),
                         ));
                     }
+                }
+                if matches!(parse_value(tokens), Some((Value::X, _)))
+                    && counter_grammar::find_word(&words, REVEAL_CARDS_WORDS).is_some()
+                    && counter_grammar::find_reveal_hand_source(tokens).is_some()
+                {
+                    let count_value = counter_grammar::find_phrase(&words, &[WHERE_X_IS_PREFIX])
+                        .and_then(|shape| counter_grammar::word_token_boundary(tokens, shape.start))
+                        .and_then(|where_token_idx| {
+                            parse_value_binding_clause(&tokens[where_token_idx..])
+                        })
+                        .map(|value| {
+                            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+                        });
+                    return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
+                        player,
+                        ChoiceCount::dynamic_x(),
+                        count_value,
+                        TagKey::from(IT_TAG),
+                    ));
                 }
                 if let Some((count, _used)) = parse_number(tokens)
                     && counter_grammar::find_word(&words, REVEAL_CARDS_WORDS).is_some()
@@ -590,6 +637,8 @@ pub(crate) fn parse_reveal(
             words.join(" ")
         )));
     }
+
+    let player = counter_grammar::parse_top_library_owner(tokens).unwrap_or(player);
 
     if counter_grammar::parse_prefix(&words, THAT_MANY_TOP_CARDS_PREFIXES).is_some() {
         return Ok(EffectAst::subject_verb_reveal_top_cards(
@@ -673,10 +722,14 @@ pub(crate) fn parse_life_equal_to_value(
     let amount_words = crate::runtime_backend::token_word_refs(amount_tokens);
 
     if let Some(value) = parse_add_mana_equal_amount_value(amount_tokens) {
-        return Ok(Some(value));
+        return Ok(Some(
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+        ));
     }
     if let Some(value) = parse_devotion_value_from_add_clause(amount_tokens)? {
-        return Ok(Some(value));
+        return Ok(Some(
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+        ));
     }
     if let Some(value) = parse_equal_to_number_of_filter_value(amount_tokens) {
         return Ok(Some(value));
@@ -818,6 +871,28 @@ pub(crate) fn parse_life_amount_from_trailing(
         return Ok(None);
     }
 
+    // Prefer the generic tagged-count representation for prior-action
+    // correlations. Unlike a bare pending effect count, this preserves noun
+    // restrictions such as "land card discarded this way" and resolves the
+    // IT_TAG placeholder to the prior action's affected-object snapshots.
+    let trailing_words = crate::runtime_backend::token_word_refs(trailing);
+    if let Some((value, used)) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &trailing_words,
+        )
+        && used == trailing_words.len()
+        && let Some(multiplier) = match base_amount {
+            Value::Fixed(value) => Some(*value),
+            Value::X => Some(1),
+            _ => None,
+        }
+    {
+        return Ok(Some(
+            scale_value_multiplier(value, multiplier)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
+    }
+
     if let Some(counter_value) = parse_for_each_counter_on_reference_value(trailing)
         && let Some(multiplier) = match base_amount {
             Value::Fixed(value) => Some(*value),
@@ -825,7 +900,10 @@ pub(crate) fn parse_life_amount_from_trailing(
             _ => None,
         }
     {
-        return Ok(Some(scale_value_multiplier(counter_value, multiplier)));
+        return Ok(Some(
+            scale_value_multiplier(counter_value, multiplier)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
     }
 
     if let Some(dynamic) = parse_dynamic_cost_modifier_value(trailing)? {
@@ -936,5 +1014,49 @@ fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<
         Some(Value::HalfLifeTotalRoundedDown(player_filter))
     } else {
         Some(Value::HalfLifeTotalRoundedUp(player_filter))
+    }
+}
+
+#[cfg(test)]
+mod filtered_prior_action_life_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn life_multiplier_preserves_discarded_land_filter() {
+        let tokens = lex_line("for each land card discarded this way", 0).unwrap();
+        let expected = Value::CountScaled(
+            ObjectFilter::land()
+                .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+            3,
+        );
+        assert_eq!(
+            parse_life_amount_from_trailing(&Value::Fixed(3), &tokens).unwrap(),
+            Some(expected)
+        );
+    }
+}
+
+#[cfg(test)]
+mod counter_spell_target_kind_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    fn assert_typed_spell_target(text: &str) {
+        let target = parse_counter_target_phrase(&lex_line(text, 0).unwrap()).unwrap();
+        let TargetAst::Object(filter, ..) = target else {
+            panic!("expected typed counter target for {text}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        );
+    }
+
+    #[test]
+    fn qualified_counter_targets_remain_spells() {
+        assert_typed_spell_target("target creature spell with mana value 4 or less");
+        assert_typed_spell_target("target spell with mana value 3 or less");
     }
 }

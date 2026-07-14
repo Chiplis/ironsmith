@@ -249,6 +249,7 @@ fn owned_optional_value<T: Clone>(value: &Option<SharedValue<T>>) -> Option<T> {
 #[derive(Debug, Clone)]
 pub(crate) struct CardSharedHandles {
     name: SharedStr,
+    first_printed_set_name: Option<SharedStr>,
     mana_cost: Option<SharedValue<ManaCost>>,
     supertypes: SharedVec<Supertype>,
     card_types: SharedVec<CardType>,
@@ -267,6 +268,7 @@ impl CardSharedHandles {
     pub(crate) fn from_definition(def: &crate::cards::CardDefinition) -> Self {
         Self {
             name: def.card.name.clone().into(),
+            first_printed_set_name: def.card.first_printed_set_name.clone().map(Into::into),
             mana_cost: shared_optional_value(def.card.mana_cost.clone()),
             supertypes: def.card.supertypes.clone().into(),
             card_types: def.card.card_types.clone().into(),
@@ -377,6 +379,7 @@ pub struct BestowCastState {
 #[derive(Debug, Clone)]
 pub struct FaceDownCastState {
     pub name: SharedStr,
+    pub first_printed_set_name: Option<SharedStr>,
     pub mana_cost: Option<SharedValue<ManaCost>>,
     pub color_override: Option<ColorSet>,
     pub supertypes: SharedVec<Supertype>,
@@ -428,6 +431,9 @@ pub struct Object {
 
     // Copiable values (what Clone effects copy)
     pub name: SharedStr,
+    /// Earliest eligible paper set for the oracle identity represented by the
+    /// current copiable name, when registry metadata is available.
+    pub first_printed_set_name: Option<SharedStr>,
     pub mana_cost: Option<SharedValue<ManaCost>>,
     pub color_override: Option<ColorSet>,
     pub supertypes: SharedVec<Supertype>,
@@ -612,6 +618,7 @@ impl Object {
             zone,
             owner,
             name: card.name.clone().into(),
+            first_printed_set_name: card.first_printed_set_name.clone().map(Into::into),
             mana_cost: shared_optional_value(card.mana_cost.clone()),
             color_override: card.color_indicator,
             supertypes: card.supertypes.clone().into(),
@@ -687,6 +694,7 @@ impl Object {
             zone,
             owner,
             name: "Hidden Card".into(),
+            first_printed_set_name: None,
             mana_cost: None,
             color_override: None,
             supertypes: Vec::new().into(),
@@ -775,6 +783,7 @@ impl Object {
             .unwrap_or((None, None));
 
         self.name = handles.name.clone();
+        self.first_printed_set_name = handles.first_printed_set_name.clone();
         self.mana_cost = handles.mana_cost.clone();
         self.color_override = def.card.color_indicator;
         self.supertypes = handles.supertypes.clone();
@@ -814,6 +823,7 @@ impl Object {
         }
 
         self.name = format!("{} // {}", self.name, other.card.name).into();
+        self.first_printed_set_name = None;
         self.mana_cost = if mana_pips.is_empty() {
             None
         } else {
@@ -859,6 +869,10 @@ impl Object {
             card: Card {
                 id: self.card.unwrap_or(CardId::new()),
                 name: self.name.to_owned_string(),
+                first_printed_set_name: self
+                    .first_printed_set_name
+                    .as_ref()
+                    .map(SharedStr::to_owned_string),
                 mana_cost: self.mana_cost_owned(),
                 color_indicator: self.color_override,
                 supertypes: self.supertypes.to_vec(),
@@ -907,6 +921,7 @@ impl Object {
             zone: Zone::Battlefield,
             owner,
             name: name.into(),
+            first_printed_set_name: None,
             mana_cost: None,
             color_override: Some(color),
             supertypes: Vec::new().into(),
@@ -971,6 +986,7 @@ impl Object {
             owner,
             // Copiable values from source
             name: source.name.clone(),
+            first_printed_set_name: source.first_printed_set_name.clone(),
             mana_cost: source.mana_cost.clone(),
             color_override: source.color_override,
             supertypes: source.supertypes.clone(),
@@ -1036,6 +1052,7 @@ impl Object {
             zone: Zone::Stack,
             owner,
             name: source.name.clone(),
+            first_printed_set_name: source.first_printed_set_name.clone(),
             mana_cost: source.mana_cost.clone(),
             color_override: source.color_override,
             supertypes: source.supertypes.clone(),
@@ -1088,6 +1105,7 @@ impl Object {
         id: ObjectId,
         owner: PlayerId,
     ) -> Self {
+        let copiable = &snapshot.copiable_values;
         let mut token = Self {
             id,
             stable_id: StableId::from(id),
@@ -1096,27 +1114,28 @@ impl Object {
             card: None,
             zone: Zone::Battlefield,
             owner,
-            name: snapshot.name.clone().into(),
+            name: copiable.name.clone().into(),
+            first_printed_set_name: snapshot.first_printed_set_name.clone().map(Into::into),
             mana_cost: shared_optional_value(snapshot.mana_cost.clone()),
-            color_override: (!snapshot.colors.is_empty()).then_some(snapshot.colors),
-            supertypes: snapshot.supertypes.clone().into(),
-            card_types: snapshot.card_types.clone().into(),
-            subtypes: snapshot.subtypes.clone().into(),
-            compiled_card_text: Arc::from(snapshot.compiled_card_text.as_str()),
+            color_override: (!copiable.colors.is_empty()).then_some(copiable.colors),
+            supertypes: copiable.supertypes.clone().into(),
+            card_types: copiable.card_types.clone().into(),
+            subtypes: copiable.subtypes.clone().into(),
+            compiled_card_text: Arc::from(copiable.compiled_card_text.as_str()),
             rules_text_color_identity: ColorSet::COLORLESS,
             other_face: snapshot.other_face,
             other_face_name: snapshot.other_face_name.clone().map(Into::into),
             linked_face_layout: snapshot.linked_face_layout,
-            base_power: snapshot.base_power.map(PtValue::Fixed),
-            base_toughness: snapshot.base_toughness.map(PtValue::Fixed),
+            base_power: copiable.power.map(PtValue::Fixed),
+            base_toughness: copiable.toughness.map(PtValue::Fixed),
             base_loyalty: snapshot.loyalty,
             base_defense: snapshot.defense,
-            abilities: snapshot.abilities.clone(),
+            abilities: copiable.abilities.clone(),
             counters: HashMap::new(),
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
-            aura_attach_filter: shared_optional_value(snapshot.aura_attach_filter.clone()),
+            aura_attach_filter: shared_optional_value(copiable.aura_attach_filter.clone()),
             bestow_cast_state: None,
             face_down_cast_state: None,
             prototype_cast_state: None,
@@ -1158,6 +1177,7 @@ impl Object {
             zone: Zone::Command,
             owner,
             name: name.into(),
+            first_printed_set_name: None,
             mana_cost: None,
             color_override: None,
             supertypes: Vec::new().into(),
@@ -1202,6 +1222,7 @@ impl Object {
     pub fn copy_copiable_values_from(&mut self, source: &Object) {
         let bestow_restore = source.bestow_cast_state.as_ref();
         self.name = source.name.clone();
+        self.first_printed_set_name = source.first_printed_set_name.clone();
         self.mana_cost = source.mana_cost.clone();
         self.color_override = source.color_override;
         self.supertypes = source.supertypes.clone();
@@ -1368,6 +1389,7 @@ impl Object {
 
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
             name: self.name.clone(),
+            first_printed_set_name: self.first_printed_set_name.clone(),
             mana_cost: self.mana_cost.clone(),
             color_override: self.color_override,
             supertypes: self.supertypes.clone(),
@@ -1385,6 +1407,7 @@ impl Object {
         }));
 
         self.name = "Face-down creature".into();
+        self.first_printed_set_name = None;
         self.mana_cost = None;
         self.color_override = Some(ColorSet::COLORLESS);
         self.supertypes.clear();
@@ -1424,6 +1447,7 @@ impl Object {
         let restore = *restore;
 
         self.name = restore.name;
+        self.first_printed_set_name = restore.first_printed_set_name;
         self.mana_cost = restore.mana_cost;
         self.color_override = restore.color_override;
         self.supertypes = restore.supertypes;
@@ -1790,6 +1814,7 @@ impl Object {
             zone: Zone::Battlefield,
             owner: controller,
             name: handles.name.clone(),
+            first_printed_set_name: handles.first_printed_set_name.clone(),
             mana_cost: None,                          // Tokens don't have mana costs
             color_override: def.card.color_indicator, // Use color indicator if set
             supertypes: handles.supertypes.clone(),

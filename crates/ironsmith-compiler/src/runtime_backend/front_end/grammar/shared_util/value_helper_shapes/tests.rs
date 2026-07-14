@@ -37,3 +37,18 @@ fn aggregate_scope_returns_semantic_value_directly() {
     assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
     assert_eq!(filter.controller, Some(PlayerFilter::You));
 }
+
+#[test]
+fn counter_aggregate_preserves_among_surface() {
+    let value =
+        parse_aggregate_scope_value_words(&["counters", "among", "creatures", "you", "control"])
+            .expect("counter aggregate value");
+    assert!(value.has_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong));
+    assert!(matches!(
+        value.unhinted(),
+        Value::CountersOn(spec, None)
+            if matches!(spec.unhinted(), ChooseSpec::All(filter)
+                if filter.card_types == vec![crate::types::CardType::Creature]
+                    && filter.controller == Some(PlayerFilter::You))
+    ));
+}

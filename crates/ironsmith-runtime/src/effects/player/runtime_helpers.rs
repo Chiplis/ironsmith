@@ -239,6 +239,7 @@ fn target_assignments_for_requirements(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect::<Vec<_>>();
@@ -284,6 +285,7 @@ fn choose_effect_driven_cast_targets(
                 legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
+                distinct_player_group: requirement.distinct_player_group,
             },
         )
         .collect::<Vec<_>>();
@@ -370,13 +372,14 @@ pub(super) fn cast_effect_driven_spell_with_payment(
                 option.from_zone,
             )
             .map(|base_cost| {
-                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone(
                     game,
                     caster,
                     spell,
                     &base_cost,
                     &targets,
                     &option.casting_method,
+                    option.from_zone,
                 )
             })
         };
@@ -394,6 +397,14 @@ pub(super) fn cast_effect_driven_spell_with_payment(
         }
     }
 
+    let mana_sources_tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+    let tagged_objects = game
+        .object(stack_id)
+        .and_then(|spell| spell.cast_tagged_objects.get(&mana_sources_tag))
+        .filter(|snapshots| !snapshots.is_empty())
+        .cloned()
+        .map(|snapshots| std::collections::HashMap::from([(mana_sources_tag, snapshots)]))
+        .unwrap_or_default();
     let stack_entry = StackEntry {
         object_id: stack_id,
         controller: caster,
@@ -424,7 +435,7 @@ pub(super) fn cast_effect_driven_spell_with_payment(
         crew_contributors: vec![],
         saddle_contributors: vec![],
         chosen_modes: None,
-        tagged_objects: std::collections::HashMap::new(),
+        tagged_objects,
         effect_outcomes: std::collections::HashMap::new(),
     };
     game.push_to_stack(stack_entry);

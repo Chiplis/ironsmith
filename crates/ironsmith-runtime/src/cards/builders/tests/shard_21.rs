@@ -2120,6 +2120,41 @@ pub(super) fn parse_oriss_grandeur_named_discard_cost() {
         debug.contains("DiscardEffect") && debug.contains("oriss, samite guardian"),
         "expected named-card discard cost, got {debug}"
     );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("grandeur")
+            && rendered.contains("discard another card named oriss, samite guardian"),
+        "expected named-card grandeur cost in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "target player can't cast spells this turn, and creatures that player controls can't attack this turn"
+        ),
+        "expected both restrictions to share the targeted player, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_page_loose_leaf_grandeur_keeps_named_discard_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Page, Loose Leaf")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: Add {C}.\nGrandeur — Discard another card named Page, Loose Leaf: Reveal cards from the top of your library until you reveal an instant or sorcery card. Put that card into your hand and the rest on the bottom of your library in a random order.",
+        )
+        .expect("Page, Loose Leaf should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("grandeur")
+            && rendered.contains("discard another card named page, loose leaf"),
+        "expected named-card grandeur cost in compiled text, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3357,7 +3392,7 @@ pub(super) fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss()
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("BeginningOfEndStepTrigger { player: Any }")
+        debug.contains("BeginningOfEndStepTrigger { player: Any, surface: Definite }")
             && debug.contains("intervening_if: Some(Not(PermanentLeftBattlefieldThisTurn))")
             && debug.contains("LoseLifeEffect")
             && debug.contains("PowerOf")
@@ -3367,8 +3402,7 @@ pub(super) fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss()
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        (rendered.contains("At the beginning of each end step")
-            || rendered.contains("At the beginning of each player's end step"))
+        rendered.contains("At the beginning of the end step")
             && rendered.contains("if no permanents left the battlefield this turn")
             && (rendered.contains("that player loses X life")
                 || rendered.contains("that player loses life equal to this creature's power"))
@@ -3391,6 +3425,136 @@ pub(super) fn parse_sarevok_deathbringer_keeps_global_ltb_gate_and_player_loss()
             && !compiled.contains("if not"),
         "expected Sarevok compiled text to render the negated condition clearly, got {compiled}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn definite_end_step_surface_is_preserved_for_frozen_card_cluster() {
+    for (name, text) in [
+        (
+            "Arc Runner",
+            "At the beginning of the end step, sacrifice this creature.",
+        ),
+        (
+            "Ichorid",
+            "At the beginning of the end step, sacrifice this creature.",
+        ),
+        (
+            "Impetuous Devils",
+            "At the beginning of the end step, sacrifice this creature.",
+        ),
+        (
+            "Kuon, Ogre Ascendant",
+            "At the beginning of the end step, if three or more creatures died this turn, flip this creature.",
+        ),
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+            .card_types(vec![CardType::Creature])
+            .parse_text(text)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("BeginningOfEndStepTrigger { player: Any, surface: Definite }"),
+            "{name} should keep the definite typed end-step surface: {debug}"
+        );
+        let rendered = unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            rendered.starts_with("At the beginning of the end step,"),
+            "{name} should render the definite end-step surface: {rendered}"
+        );
+    }
+
+    let each = CardDefinitionBuilder::new(CardId::from_raw(2), "Each End Step Control")
+        .card_types(vec![CardType::Creature])
+        .parse_text("At the beginning of each end step, sacrifice this creature.")
+        .expect("each-end-step control should parse");
+    let rendered = unprocessed_compiled_lines(&each).join(" ");
+    assert!(
+        rendered.starts_with("At the beginning of each end step,"),
+        "explicit each-end-step wording must remain distinct: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cant_be_blocked_frozen_clusters_render_as_single_oracle_clauses() {
+    for (name, expected) in [
+        (
+            "Distortion Strike",
+            "target creature gets +1/+0 until end of turn and can't be blocked this turn",
+        ),
+        (
+            "Hraesvelgr of the First Brood",
+            "target creature gets +1/+0 until end of turn and can't be blocked this turn",
+        ),
+        (
+            "Taigam's Strike",
+            "target creature gets +2/+0 until end of turn and can't be blocked this turn",
+        ),
+        (
+            "Teleportal",
+            "target creature you control gets +1/+0 until end of turn and can't be blocked this turn",
+        ),
+        (
+            "Temmet, Vizier of Naktamun",
+            "target creature token you control gets +1/+1 until end of turn and can't be blocked this turn",
+        ),
+    ] {
+        let compiled = canonical_compiled_lines(&parse_oracle_card_definition(name))
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains(expected),
+            "{name} should coalesce its same-target pump and unblockable effects: {compiled}"
+        );
+    }
+
+    for name in ["Expendable Lackey", "Reservoir Kraken"] {
+        let compiled = canonical_compiled_lines(&parse_oracle_card_definition(name))
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains(
+                "create a 1/1 blue fish creature token with \"this token can't be blocked\""
+            ),
+            "{name} should inline the permanent token ability: {compiled}"
+        );
+        assert!(
+            !compiled.contains("it has \"this token can't be blocked\""),
+            "{name} should not split the token ability into a follow-up sentence: {compiled}"
+        );
+    }
+
+    for (name, expected) in [
+        (
+            "Ichor Synthesizer",
+            "as long as this has four or more oil counters on it, this gets +2/+0 and can't be blocked",
+        ),
+        (
+            "Jace's Sentinel",
+            "as long as you control a jace planeswalker, this gets +1/+0 and can't be blocked",
+        ),
+        (
+            "Slippery Scoundrel",
+            "as long as you have the city's blessing, this has hexproof and can't be blocked",
+        ),
+        (
+            "Steel of the Godhead",
+            "as long as enchanted creature is blue, enchanted creature gets +1/+1 and can't be blocked",
+        ),
+        (
+            "Vortex Runner",
+            "as long as you control eight or more lands, this gets +1/+0 and can't be blocked",
+        ),
+    ] {
+        let compiled = canonical_compiled_lines(&parse_oracle_card_definition(name))
+            .join("\n")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains(expected),
+            "{name} should coalesce same-condition continuous bonuses: {compiled}"
+        );
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3425,4 +3589,31 @@ pub(super) fn parse_kitsune_mystic_keeps_two_aura_intervening_if_gate() {
             && rendered.contains("flip it"),
         "expected Kitsune Mystic rendering to preserve the two-Aura gate, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn descend_end_step_cards_keep_intervening_if_gate_and_surface() {
+    for name in [
+        "Broodrage Mycoid",
+        "Canonized in Blood",
+        "Child of the Volcano",
+        "Deep Goblin Skulltaker",
+        "Enterprising Scallywag",
+        "Ruin-Lurker Bat",
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let debug = format!("{:?}", def.abilities);
+        assert!(
+            debug.contains("BeginningOfEndStepTrigger { player: You }")
+                && debug.contains("intervening_if: Some(PlayerDescendedThisTurn { player: You })"),
+            "expected {name} to keep the typed descend intervening-if gate, got {debug}"
+        );
+
+        let rendered = canonical_compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains("At the beginning of your end step, if you descended this turn"),
+            "expected {name} to render the descend intervening-if clause, got {rendered}"
+        );
+    }
 }

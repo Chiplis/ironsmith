@@ -395,7 +395,10 @@ pub(crate) fn parse_sentence_return_multiple_targets(
         }
     }
 
-    Ok(Some(effects))
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+    }]))
 }
 
 pub(crate) fn parse_sentence_for_each_of_target_objects(

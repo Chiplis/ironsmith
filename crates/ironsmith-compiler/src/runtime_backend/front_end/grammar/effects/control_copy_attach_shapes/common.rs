@@ -83,6 +83,9 @@ pub(crate) fn parse_battlefield_controller_prefix(
 }
 
 pub(crate) fn parse_destination_player(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
+    if explicitly_names_object_owner(tokens) {
+        return None;
+    }
     if primitives::contains_word(tokens, "your") || primitives::contains_word(tokens, "you") {
         return Some(PlayerAst::You);
     }
@@ -93,6 +96,29 @@ pub(crate) fn parse_destination_player(tokens: &[OwnedLexToken]) -> Option<Playe
         return Some(PlayerAst::That);
     }
     None
+}
+
+pub(crate) fn parse_destination_player_reference_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::DestinationPlayerReferenceSurface> {
+    if explicitly_names_object_owner(tokens) {
+        return None;
+    }
+    if permission_shapes::contains_tokens(tokens, &["that", "player"])
+        || permission_shapes::contains_tokens(tokens, &["that", "players"])
+    {
+        return Some(ironsmith_core::DestinationPlayerReferenceSurface::ThatPlayer);
+    }
+    if primitives::contains_word(tokens, "their") {
+        return Some(ironsmith_core::DestinationPlayerReferenceSurface::Pronoun);
+    }
+    None
+}
+
+fn explicitly_names_object_owner(tokens: &[OwnedLexToken]) -> bool {
+    ["owner", "owners", "owner's", "owners'"]
+        .iter()
+        .any(|word| primitives::contains_word(tokens, word))
 }
 
 pub(crate) fn parse_destination_zone(tokens: &[OwnedLexToken]) -> Option<Zone> {
@@ -120,6 +146,17 @@ pub(crate) fn is_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
             &["that", "card"],
             &["those", "card"],
             &["those", "cards"],
+        ],
+    )
+}
+
+pub(crate) fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
+    permission_shapes::exact_tokens_any(
+        trim_lexed_commas(tokens),
+        &[
+            &["them"],
+            &["those", "cards"],
+            &["the", "exiled", "cards"],
         ],
     )
 }
@@ -220,5 +257,33 @@ mod tests {
 
         let target = lex_line("up to two cards from your graveyard", 0).unwrap();
         assert!(parse_counted_card_target_shape(&target).is_some());
+    }
+
+    #[test]
+    fn distinguishes_pronoun_and_explicit_player_destinations() {
+        let pronoun = lex_line("their graveyard", 0).unwrap();
+        assert_eq!(
+            parse_destination_player_reference_surface(&pronoun),
+            Some(ironsmith_core::DestinationPlayerReferenceSurface::Pronoun)
+        );
+
+        let explicit = lex_line("that player's graveyard", 0).unwrap();
+        assert_eq!(
+            parse_destination_player_reference_surface(&explicit),
+            Some(ironsmith_core::DestinationPlayerReferenceSurface::ThatPlayer)
+        );
+
+        for owner_destination in [
+            "its owner's library",
+            "their owners' libraries",
+            "their owner's library",
+        ] {
+            let owner_destination = lex_line(owner_destination, 0).unwrap();
+            assert_eq!(parse_destination_player(&owner_destination), None);
+            assert_eq!(
+                parse_destination_player_reference_surface(&owner_destination),
+                None
+            );
+        }
     }
 }

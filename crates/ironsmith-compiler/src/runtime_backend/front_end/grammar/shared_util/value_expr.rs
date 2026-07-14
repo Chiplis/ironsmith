@@ -1,13 +1,15 @@
-use crate::TagKey;
 use crate::cards::builders::IT_TAG;
 use crate::effect::{EventValueSpec, Value};
 use crate::runtime_backend::grammar::{filters::parse_counter_type_words, leaf};
-use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView};
+use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView, synthetic_word_tokens};
 use crate::runtime_backend::object_filters::parse_object_filter_words;
 use crate::runtime_backend::util::{
     source_choose_spec_for_surface, source_reference_surface_for_possessive_words,
+    source_reference_surface_for_words,
 };
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, PlayerFilter, SacrificedObjectKind};
+use crate::{Color, TagKey};
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::permission_shapes;
 use super::value_helper_shapes;
@@ -20,12 +22,15 @@ const EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
     (&["amount", "of", "e", "paid", "this", "way"], 6),
     (&["that", "amount", "of", "excess", "damage"], 5),
     (&["that", "much", "excess", "damage"], 4),
-    (&["damage", "dealt"], 2),
-    (&["the", "damage", "dealt"], 3),
-    (&["that", "damage"], 2),
     (&["the", "result"], 2),
     (&["that", "result"], 2),
     (&["result"], 1),
+];
+
+const DAMAGE_EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
+    (&["damage", "dealt"], 2),
+    (&["the", "damage", "dealt"], 3),
+    (&["that", "damage"], 2),
 ];
 
 const COLORS_SPENT_PREFIXES: &[&[&str]] = &[
@@ -144,12 +149,16 @@ const TAGGED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
     &["the", "sacrificed", "creatures", "mana", "value"],
     &["the", "sacrificed", "artifact", "mana", "value"],
     &["the", "sacrificed", "artifacts", "mana", "value"],
+    &["the", "sacrificed", "enchantment", "mana", "value"],
+    &["the", "sacrificed", "enchantments", "mana", "value"],
     &["the", "sacrificed", "permanent", "mana", "value"],
     &["the", "sacrificed", "permanents", "mana", "value"],
     &["sacrificed", "creature", "mana", "value"],
     &["sacrificed", "creatures", "mana", "value"],
     &["sacrificed", "artifact", "mana", "value"],
     &["sacrificed", "artifacts", "mana", "value"],
+    &["sacrificed", "enchantment", "mana", "value"],
+    &["sacrificed", "enchantments", "mana", "value"],
     &["sacrificed", "permanent", "mana", "value"],
     &["sacrificed", "permanents", "mana", "value"],
     &["the", "amassed", "army", "mana", "value"],
@@ -174,6 +183,99 @@ fn tagged_characteristic_reference_tag(words: &[&str]) -> &'static str {
     } else {
         IT_TAG
     }
+}
+
+fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
+    words.windows(2).find_map(|pair| {
+        if pair[0] != "sacrificed" {
+            return None;
+        }
+        match pair[1] {
+            "creature" | "creatures" | "creature's" => Some(SacrificedObjectKind::Creature),
+            "artifact" | "artifacts" | "artifact's" => Some(SacrificedObjectKind::Artifact),
+            "enchantment" | "enchantments" | "enchantment's" => {
+                Some(SacrificedObjectKind::Enchantment)
+            }
+            "permanent" | "permanents" | "permanent's" => Some(SacrificedObjectKind::Permanent),
+            _ => None,
+        }
+    })
+}
+
+fn with_sacrificed_object_surface(value: Value, words: &[&str]) -> Value {
+    match sacrificed_object_kind(words) {
+        Some(kind) => value.with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
+        None => value,
+    }
+}
+
+fn colored_mana_symbols_in_sacrificed_cost(words: &[&str]) -> Option<(Value, usize)> {
+    let mut idx = usize::from(words.first() == Some(&"the"));
+    if !permission_shapes::starts_at_words(words, idx, &["number", "of"]) {
+        return None;
+    }
+    idx += 2;
+
+    let color = Color::from_name(words.get(idx).copied()?)?;
+    idx += 1;
+    if !permission_shapes::starts_at_words(words, idx, &["mana", "symbols", "in"]) {
+        return None;
+    }
+    idx += 3;
+    if words
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "the" | "a" | "an"))
+    {
+        idx += 1;
+    }
+
+    let kind = sacrificed_object_kind(words.get(idx..idx + 2)?)?;
+    idx += 2;
+    if !permission_shapes::starts_at_words(words, idx, &["mana", "cost"]) {
+        return None;
+    }
+    idx += 2;
+
+    Some((
+        Value::ManaSymbolsInManaCostOf {
+            spec: Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            color,
+        }
+        .with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
+        idx,
+    ))
+}
+
+fn sacrificed_postpositive_characteristic_prefix(
+    words: &[&str],
+    characteristic: &[&str],
+) -> Option<(SacrificedObjectKind, usize)> {
+    let mut idx = usize::from(words.first() == Some(&"the"));
+    if !permission_shapes::starts_at_words(words, idx, characteristic) {
+        return None;
+    }
+    idx += characteristic.len();
+    if words.get(idx) != Some(&"of") {
+        return None;
+    }
+    idx += 1;
+    if words
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "the" | "a" | "an"))
+    {
+        idx += 1;
+    }
+    if words.get(idx) != Some(&"sacrificed") {
+        return None;
+    }
+    let kind = match words.get(idx + 1).copied()? {
+        "creature" | "creatures" => SacrificedObjectKind::Creature,
+        "artifact" | "artifacts" => SacrificedObjectKind::Artifact,
+        "enchantment" | "enchantments" => SacrificedObjectKind::Enchantment,
+        "permanent" | "permanents" => SacrificedObjectKind::Permanent,
+        _ => return None,
+    };
+    Some((kind, idx + 2))
 }
 
 const REVEALED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
@@ -248,6 +350,9 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if words.is_empty() {
         return None;
     }
+    if let Some(value) = colored_mana_symbols_in_sacrificed_cost(words) {
+        return Some(value);
+    }
     if permission_shapes::prefix_words(words, &["half"]) {
         if let Some((round_idx, rounding)) = first_rounding(&words[1..]) {
             let round_idx = round_idx + 1;
@@ -267,6 +372,17 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         }
     }
 
+    if let Some((_, used)) = DAMAGE_EVENT_AMOUNT_PREFIXES
+        .iter()
+        .find(|(expected, _)| permission_shapes::prefix_words(words, expected))
+    {
+        return Some((
+            Value::EventValue(EventValueSpec::Amount)
+                .with_surface_hint(ValueSurfaceHint::DamageDealt),
+            *used,
+        ));
+    }
+
     if let Some((_, used)) = EVENT_AMOUNT_PREFIXES
         .iter()
         .find(|(expected, _)| permission_shapes::prefix_words(words, expected))
@@ -280,6 +396,40 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
                 metric: ironsmith_core::EffectMetric::OtherNumber,
             },
             3,
+        ));
+    }
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &[
+                "the", "amount", "of", "mana", "spent", "to", "cast", "that", "spell",
+            ],
+            &[
+                "amount", "of", "mana", "spent", "to", "cast", "that", "spell",
+            ],
+        ],
+    ) {
+        return Some((Value::ManaSpentToCastTriggeringObject, used));
+    }
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &[
+                "the", "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
+            ],
+            &[
+                "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
+            ],
+            &["the", "excess", "damage", "dealt", "this", "way"],
+            &["excess", "damage", "dealt", "this", "way"],
+        ],
+    ) {
+        return Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::ExcessDamage,
+            },
+            used,
         ));
     }
     if words.len() >= 5
@@ -303,6 +453,31 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::Fixed(value), 1));
     }
 
+    for (characteristic, constructor) in [
+        (
+            &["mana", "value"][..],
+            Value::ManaValueOf as fn(Box<ChooseSpec>) -> Value,
+        ),
+        (
+            &["power"][..],
+            Value::PowerOf as fn(Box<ChooseSpec>) -> Value,
+        ),
+        (
+            &["toughness"][..],
+            Value::ToughnessOf as fn(Box<ChooseSpec>) -> Value,
+        ),
+    ] {
+        if let Some((kind, used)) =
+            sacrificed_postpositive_characteristic_prefix(words, characteristic)
+        {
+            return Some((
+                constructor(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+                    .with_surface_hint(ValueSurfaceHint::SacrificedObject(kind)),
+                used,
+            ));
+        }
+    }
+
     if let Some(used) = prefix_len(
         words,
         &[
@@ -312,6 +487,20 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         ],
     ) {
         return Some((Value::UnspentMana(PlayerFilter::You), used));
+    }
+    if permission_shapes::prefix_words(words, &["your", "life", "total"]) {
+        return Some((Value::LifeTotal(PlayerFilter::You), 3));
+    }
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["target", "players", "life", "total"],
+            &["target", "player", "life", "total"],
+            &["that", "players", "life", "total"],
+            &["that", "player", "life", "total"],
+        ],
+    ) {
+        return Some((Value::LifeTotal(PlayerFilter::target_player()), used));
     }
     if permission_shapes::prefix_words(words, &["your", "speed"]) {
         return Some((Value::Speed(PlayerFilter::You), 2));
@@ -404,14 +593,20 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(used) = prefix_len(words, TAGGED_POWER_PREFIXES) {
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
-            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(tag)))),
+            with_sacrificed_object_surface(
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(tag)))),
+                &words[..used],
+            ),
             used,
         ));
     }
     if let Some(used) = prefix_len(words, TAGGED_TOUGHNESS_PREFIXES) {
         let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
-            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(tag)))),
+            with_sacrificed_object_surface(
+                Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(tag)))),
+                &words[..used],
+            ),
             used,
         ));
     }
@@ -427,13 +622,17 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
                 "__public_revealed",
-            )))),
+            ))))
+            .with_surface_hint(ValueSurfaceHint::RevealedCardReference),
             used,
         ));
     }
     if let Some(used) = prefix_len(words, TAGGED_MANA_VALUE_PREFIXES) {
         return Some((
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+            with_sacrificed_object_surface(
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                &words[..used],
+            ),
             used,
         ));
     }
@@ -463,6 +662,30 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     }
     if let Some(counter_idx) = first_counter_word(&words[counter_descriptor_start..])
         .map(|relative| counter_descriptor_start + relative)
+        .filter(|counter_idx| counter_idx.saturating_sub(counter_descriptor_start) <= 2)
+        && let Some(counter_type) = (counter_idx > counter_descriptor_start)
+            .then(|| parse_counter_type_words(&words[counter_descriptor_start..=counter_idx]))
+            .flatten()
+    {
+        if permission_shapes::starts_at_words(words, counter_idx + 1, &["you", "have"]) {
+            return Some((
+                Value::PlayerCounters(PlayerFilter::You, counter_type),
+                counter_idx + 3,
+            ));
+        }
+        if words
+            .get(counter_idx + 1)
+            .is_some_and(|word| matches!(*word, "youve" | "you've"))
+        {
+            return Some((
+                Value::PlayerCounters(PlayerFilter::You, counter_type),
+                counter_idx + 2,
+            ));
+        }
+    }
+    if let Some(counter_idx) = first_counter_word(&words[counter_descriptor_start..])
+        .map(|relative| counter_descriptor_start + relative)
+        .filter(|counter_idx| counter_idx.saturating_sub(counter_descriptor_start) <= 2)
         && permission_shapes::starts_at_words(words, counter_idx + 1, &["on"])
     {
         let parsed_counter_type = (counter_idx > counter_descriptor_start)
@@ -473,10 +696,35 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         let reference = &words[reference_start..reference_end];
         if is_source_counter_reference(reference) {
             let value = match parsed_counter_type {
-                Some(counter_type) => Value::CountersOnSource(counter_type),
-                None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                Some(counter_type) => {
+                    if let Some(surface) = source_reference_surface_for_words(reference) {
+                        Value::CountersOn(
+                            Box::new(source_choose_spec_for_surface(surface)),
+                            Some(counter_type),
+                        )
+                    } else {
+                        Value::CountersOnSource(counter_type)
+                    }
+                }
+                None => Value::CountersOn(
+                    Box::new(
+                        source_reference_surface_for_words(reference)
+                            .map(source_choose_spec_for_surface)
+                            .unwrap_or(ChooseSpec::Source),
+                    ),
+                    None,
+                ),
             };
             return Some((value, reference_end));
+        }
+        if let Some(surface) = source_reference_surface_for_words(reference) {
+            return Some((
+                Value::CountersOn(
+                    Box::new(source_choose_spec_for_surface(surface)),
+                    parsed_counter_type,
+                ),
+                reference_end,
+            ));
         }
         if is_tagged_counter_reference(reference) {
             return Some((
@@ -484,6 +732,12 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
                     Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
                     parsed_counter_type,
                 ),
+                reference_end,
+            ));
+        }
+        if let Ok(filter) = parse_object_filter_words(reference, false) {
+            return Some((
+                Value::CountersOn(Box::new(ChooseSpec::All(filter)), parsed_counter_type),
                 reference_end,
             ));
         }
@@ -495,6 +749,10 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     let filter_words = &words[filter_start..filter_end];
+    let history_tokens = synthetic_word_tokens(filter_words);
+    if let Some(value) = super::value_semantics::parse_turn_history_count_value(&history_tokens) {
+        return Some((value, filter_end));
+    }
     if exact_one_of(
         filter_words,
         &[
@@ -511,8 +769,27 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     {
         return Some((value, filter_end));
     }
+    if let Some(mut filter) = parse_source_controller_graveyard_filter(filter_words) {
+        filter.zone = Some(crate::zone::Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        return Some((Value::Count(filter), filter_end));
+    }
     let filter = parse_object_filter_words(filter_words, false).ok()?;
     Some((Value::Count(filter), filter_end))
+}
+
+fn parse_source_controller_graveyard_filter(words: &[&str]) -> Option<crate::target::ObjectFilter> {
+    const POSSESSIVE_GRAVEYARD_SUFFIXES: &[&[&str]] = &[
+        &["in", "its", "controller", "graveyard"],
+        &["in", "its", "controllers", "graveyard"],
+    ];
+    let suffix = POSSESSIVE_GRAVEYARD_SUFFIXES
+        .iter()
+        .find(|suffix| permission_shapes::suffix_words(words, suffix))?;
+    let object_words = words.get(..words.len().checked_sub(suffix.len())?)?;
+    (!object_words.is_empty())
+        .then(|| parse_object_filter_words(object_words, false).ok())
+        .flatten()
 }
 
 fn first_rounding(words: &[&str]) -> Option<(usize, Rounding)> {
@@ -635,5 +912,140 @@ mod tests {
             parse_value_expr_tokens(&tokens),
             Some((Value::Add(Box::new(Value::X), Box::new(Value::Fixed(2))), 3,))
         );
+    }
+
+    #[test]
+    fn parses_triggering_cast_mana_and_excess_damage_values() {
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the", "amount", "of", "mana", "spent", "to", "cast", "that", "spell",
+            ]),
+            Some((Value::ManaSpentToCastTriggeringObject, 9))
+        );
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the", "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
+            ]),
+            Some((
+                Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::Outcome,
+                    metric: ironsmith_core::EffectMetric::ExcessDamage,
+                },
+                9,
+            ))
+        );
+    }
+
+    #[test]
+    fn parses_life_total_player_counter_and_source_controller_graveyard_values() {
+        assert_eq!(
+            parse_value_expr_words(&["your", "life", "total"]),
+            Some((Value::LifeTotal(PlayerFilter::You), 3))
+        );
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the",
+                "number",
+                "of",
+                "experience",
+                "counters",
+                "you",
+                "have",
+            ]),
+            Some((
+                Value::PlayerCounters(PlayerFilter::You, CounterType::Experience),
+                7,
+            ))
+        );
+
+        let (value, used) = parse_value_expr_words(&[
+            "the",
+            "number",
+            "of",
+            "creature",
+            "cards",
+            "in",
+            "its",
+            "controller",
+            "graveyard",
+        ])
+        .expect("source-controller graveyard count");
+        assert_eq!(used, 9);
+        let Value::Count(filter) = value else {
+            panic!("expected object count");
+        };
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn sacrificed_characteristic_values_keep_identity_and_typed_surface() {
+        let sacrificed_creature =
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+                .with_surface_hint(ValueSurfaceHint::SacrificedObject(
+                    SacrificedObjectKind::Creature,
+                ));
+        assert_eq!(
+            parse_value_expr_words(&["the", "sacrificed", "creature", "toughness"]),
+            Some((sacrificed_creature, 4))
+        );
+
+        let sacrificed_permanent =
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
+                .with_surface_hint(ValueSurfaceHint::SacrificedObject(
+                    SacrificedObjectKind::Permanent,
+                ));
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "permanent",
+            ]),
+            Some((sacrificed_permanent, 7))
+        );
+
+        let red_symbols = Value::ManaSymbolsInManaCostOf {
+            spec: Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            color: Color::Red,
+        }
+        .with_surface_hint(ValueSurfaceHint::SacrificedObject(
+            SacrificedObjectKind::Creature,
+        ));
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the",
+                "number",
+                "of",
+                "red",
+                "mana",
+                "symbols",
+                "in",
+                "the",
+                "sacrificed",
+                "creatures",
+                "mana",
+                "cost",
+            ]),
+            Some((red_symbols, 12))
+        );
+    }
+
+    #[test]
+    fn explicit_revealed_card_mana_value_keeps_reference_surface() {
+        let (value, used) = parse_value_expr_words(&["the", "revealed", "card", "mana", "value"])
+            .expect("revealed-card mana value");
+
+        assert_eq!(used, 5);
+        assert!(value.has_surface_hint(ValueSurfaceHint::RevealedCardReference));
+        assert!(matches!(
+            value.unhinted(),
+            Value::ManaValueOf(spec)
+                if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__public_revealed")
+        ));
     }
 }
