@@ -53,8 +53,3 @@ jobs:
       - name: Publish with provenance
         if: startsWith(github.ref, 'refs/tags/ironsmith-wasm-v') || inputs.publish
         run: npm publish ./target/npm/ironsmith-wasm --access public
-        # This secret is only needed to create the package on its first release.
-        # Once npm trusts this workflow, npm 11.5.1 prefers GitHub's OIDC token;
-        # deleting NPM_TOKEN leaves this as a tokenless trusted publish.
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
