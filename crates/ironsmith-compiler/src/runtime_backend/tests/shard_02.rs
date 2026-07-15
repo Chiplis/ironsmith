@@ -329,6 +329,81 @@ pub(super) fn rewrite_player_counter_conditional_anthem_compiles_without_parse_l
 }
 
 #[test]
+pub(super) fn rewrite_conditional_vehicle_type_identity_lowers_as_static_with_condition() {
+    for (name, text, condition_fragments, expects_source_surface) in [
+        (
+            "Grond, the Gatebreaker",
+            "As long as it's your turn and you control an Army, Grond is an artifact creature.",
+            &["YourTurn", "Army"][..],
+            false,
+        ),
+        (
+            "Phoenix Fleet Airship",
+            "As long as you control eight or more permanents named Phoenix Fleet Airship, this Vehicle is an artifact creature.",
+            &["Phoenix Fleet Airship", "GreaterThanOrEqual(8)"][..],
+            true,
+        ),
+    ] {
+        let (compiled, loss) = crate::parse_loss::capture(|| {
+            super::super::compile_card_text(
+                CardDefinitionBuilder::new(CardId::from_raw(1), name)
+                    .card_types(vec![CardType::Artifact])
+                    .subtypes(vec![Subtype::Vehicle]),
+                text,
+                false,
+            )
+        });
+        let compiled = compiled.unwrap_or_else(|err| panic!("{name}: {err:?}"));
+        assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+        assert!(
+            compiled.definition.spell_effect.is_none(),
+            "a conditional static identity must not become a spell-resolution effect: {name}: {:#?}",
+            compiled.definition.spell_effect
+        );
+
+        let (filter, card_types, condition) = compiled
+            .definition
+            .abilities
+            .iter()
+            .find_map(|ability| {
+                let AbilityKind::Static(static_ability) = &ability.kind else {
+                    return None;
+                };
+                let StaticAbilityPayload::Conditional { ability, condition } =
+                    &static_ability.payload
+                else {
+                    return None;
+                };
+                let StaticAbilityPayload::SetCardTypes { filter, card_types } = &ability.payload
+                else {
+                    return None;
+                };
+                Some((filter, card_types, condition))
+            })
+            .unwrap_or_else(|| panic!("{name}: expected conditioned SetCardTypes ability"));
+
+        assert!(filter.source, "{name}: {filter:#?}");
+        assert_eq!(
+            filter.source_surface.is_some(),
+            expects_source_surface,
+            "{name}: {filter:#?}"
+        );
+        assert_eq!(
+            card_types.as_slice(),
+            &[CardType::Artifact, CardType::Creature],
+            "{name}"
+        );
+        let condition_debug = format!("{condition:#?}");
+        for fragment in condition_fragments {
+            assert!(
+                condition_debug.contains(fragment),
+                "{name}: missing condition fragment '{fragment}': {condition_debug}"
+            );
+        }
+    }
+}
+
+#[test]
 pub(super) fn rewrite_tagged_plural_pump_after_untap_compiles_without_parse_loss() {
     for (name, text) in [
         (
@@ -1289,6 +1364,52 @@ pub(super) fn dynamic_draw_count_lowers_destroyed_this_way_to_prior_effect_metri
             && debug.contains("DrawCardsEffect"),
         "expected draw count to bind to prior destroy metric, got {debug}"
     );
+}
+
+#[test]
+pub(super) fn generic_damage_count_lowers_tapped_this_way_to_typed_prior_effect_metric() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tapped Damage Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Tap all untapped creatures. This spell deals damage to target player equal to the number of creatures tapped this way.",
+        )
+        .expect("generic tapped-this-way damage count should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("TapEffect")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("AffectedObjects")
+            && debug.contains("Tapped")
+            && debug.contains("EqualTo"),
+        "expected generic damage count to bind to the prior tap effect, got {debug}"
+    );
+}
+
+#[test]
+pub(super) fn raiding_party_per_player_tapped_count_uses_partitioned_metric_scope() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Raiding Party Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Sacrifice an Orc: Each player may tap any number of untapped white creatures they control. For each creature tapped this way, that player chooses up to two Plains. Then destroy all Plains that weren't chosen this way by any player.",
+        )
+        .expect("per-player tapped-this-way choice sequence should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        debug.matches("ForPlayersEffect").count() >= 2
+            && debug.contains("WithIdEffect")
+            && debug.contains("TapEffect")
+            && debug.contains("RepeatEffectsEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("PriorEffectMetric")
+            && compact.contains("player:Some(IteratedPlayer)"),
+        "expected a per-player repeat over the matching tap-result partition, got {debug}"
+    );
+    assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
 }
 
 #[test]

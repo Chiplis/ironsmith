@@ -4,9 +4,9 @@ use crate::effects::{
 };
 pub use ironsmith_core::{
     ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, Comparison, Condition,
-    DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode, EffectPredicate, EventValueSpec,
-    ManaSpendPermission, Restriction, SearchResultReferenceSurface, SearchSelectionMode, Until,
-    Value, ValueComparisonOperator,
+    ConditionalModeRange, DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode,
+    EffectPredicate, EventValueSpec, ManaSpendPermission, Restriction,
+    SearchResultReferenceSurface, SearchSelectionMode, Until, Value, ValueComparisonOperator,
 };
 use std::any::Any;
 use std::fmt::Debug;
@@ -1236,6 +1236,19 @@ impl Effect {
         ))
     }
 
+    pub fn prevent_all_combat_damage_source_would_deal(
+        target: crate::target::ChooseSpec,
+        until: Until,
+    ) -> Self {
+        Self::new(
+            crate::effects::PreventAllCombatDamageEffect::new(
+                crate::effects::CombatDamagePreventionTarget::From(target),
+                until,
+            )
+            .with_source_would_deal_surface(),
+        )
+    }
+
     pub fn prevent_all_combat_damage_to_players(until: Until) -> Self {
         Self::new(crate::effects::PreventAllCombatDamageEffect::new(
             crate::effects::CombatDamagePreventionTarget::Players,
@@ -1631,6 +1644,10 @@ impl Effect {
         Self::new(crate::effects::GoadEffect::new(target))
     }
 
+    pub fn goad_for(target: crate::target::ChooseSpec, duration: Until) -> Self {
+        Self::new(crate::effects::GoadEffect::with_duration(target, duration))
+    }
+
     pub fn suspect(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::SuspectEffect::new(target))
     }
@@ -1824,6 +1841,10 @@ impl Effect {
 
     pub fn reveal_source_from_hand() -> Self {
         Self::new(crate::effects::RevealSourceFromHandEffect::new())
+    }
+
+    pub fn reveal_source_from_hand_until_upkeep_ends() -> Self {
+        Self::new(crate::effects::RevealSourceFromHandEffect::until_upkeep_ends_or_leaves_hand())
     }
 
     pub fn reveal_from_hand(

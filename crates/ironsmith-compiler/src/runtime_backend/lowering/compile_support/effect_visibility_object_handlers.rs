@@ -173,6 +173,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             if chooses_tagged_object_pool(&resolved_filter)
                 && matches!(resolved_filter.zone, None | Some(Zone::Battlefield))
+                && resolved_filter.prior_effect_action_surface().is_none()
             {
                 resolved_filter.zone = None;
             }

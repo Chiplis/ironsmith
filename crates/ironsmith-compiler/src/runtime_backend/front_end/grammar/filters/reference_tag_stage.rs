@@ -506,6 +506,10 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut filter = parse_object_filter_lexed(tokens, other)?;
+    super::counter_constraints::preserve_filter_counter_constraint_surface_tokens(
+        &mut filter,
+        tokens,
+    );
     super::simple::preserve_branch_scoped_card_type_union(&mut filter, tokens, other);
     apply_chosen_type_domain(&mut filter, tokens);
     Ok(filter)
@@ -1008,6 +1012,7 @@ pub(super) fn parse_object_filter_inner(
         &mut filter,
         &mut all_words,
     );
+    try_apply_no_shared_creature_type_with_chosen_creature_clause(&mut filter, &mut all_words);
     try_apply_shared_creature_type_with_source_clause(&mut filter, &mut all_words);
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
@@ -1217,6 +1222,7 @@ pub(super) fn parse_object_filter_inner(
         attacking_player_filter_from_words(&outer_filter_words, &pronoun_player_filter)
     {
         filter.attacking_player_or_planeswalker_controlled_by = Some(attacking_filter);
+        filter.attacking_player_only = !outer_filter_words.contains(&"planeswalker");
     }
 
     let is_outer_tagged_spell_reference_at = |idx: usize| {
@@ -1680,6 +1686,42 @@ pub(super) fn parse_object_filter_inner(
         {
             filter.excluded_subtypes.push(subtype);
             negated_word_indices.insert(target_idx);
+        }
+
+        // A single negated copula scopes over the entire coordinated type
+        // list: “isn't an Insect, Rat, Spider, or Squirrel” excludes every
+        // listed subtype, not just the first one. Token punctuation has
+        // already been removed here, so walk through conjunctions/articles
+        // until the first word that is not another characteristic.
+        let mut list_idx = target_idx + 1;
+        while list_idx < all_words.len() {
+            let word = all_words[list_idx];
+            if matches!(word, "and" | "or" | "and/or") || is_article(word) {
+                list_idx += 1;
+                continue;
+            }
+            let mut recognized = false;
+            if let Some(card_type) = parse_card_type(word) {
+                push_unique(&mut filter.excluded_card_types, card_type);
+                recognized = true;
+            }
+            if let Some(supertype) = parse_supertype_word(word) {
+                push_unique(&mut filter.excluded_supertypes, supertype);
+                recognized = true;
+            }
+            if let Some(color) = parse_color(word) {
+                filter.excluded_colors = filter.excluded_colors.union(color);
+                recognized = true;
+            }
+            if let Some(subtype) = parse_subtype_flexible(word) {
+                push_unique(&mut filter.excluded_subtypes, subtype);
+                recognized = true;
+            }
+            if !recognized {
+                break;
+            }
+            negated_word_indices.insert(list_idx);
+            list_idx += 1;
         }
     }
     for idx in 0..all_words.len().saturating_sub(1) {
@@ -2439,6 +2481,8 @@ pub(super) fn parse_object_filter_inner(
         )));
     }
 
+    preserve_relative_characteristic_list_surface(&mut filter, tokens.as_slice());
+
     if vote_winners_only {
         filter = filter.match_tagged(
             TagKey::from(VOTE_WINNERS_TAG),
@@ -2523,6 +2567,27 @@ pub(super) fn parse_object_filter_inner(
     }
 
     Ok(filter)
+}
+
+fn preserve_relative_characteristic_list_surface(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
+    if filter.subtypes.len() + filter.excluded_subtypes.len() < 2 {
+        return;
+    }
+    let words = parser_token_word_refs(tokens);
+    let has_relative_copula = words.iter().any(|word| {
+        matches!(
+            *word,
+            "that's" | "thats" | "isn't" | "isnt" | "aren't" | "arent"
+        )
+    }) || words.windows(2).any(|pair| {
+        matches!(pair, ["that", "is"] | ["that", "are"] | ["is", "not"] | ["are", "not"])
+    });
+    if has_relative_copula {
+        filter.set_relative_characteristic_list_surface(true);
+    }
 }
 
 fn relation_clause_is_inside_aggregate_scope(words: &[&str], relation_start: usize) -> bool {
@@ -2788,6 +2853,49 @@ fn try_apply_no_shared_creature_type_with_your_creatures_or_graveyard_clause(
                 .owned_by(PlayerFilter::You),
         );
         all_words.drain(idx..idx + phrase.len());
+        return true;
+    }
+    false
+}
+
+fn try_apply_no_shared_creature_type_with_chosen_creature_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    for phrase in [
+        [
+            "that", "doesn't", "share", "creature", "type", "with", "chosen", "creature",
+            "they", "control",
+        ]
+        .as_slice(),
+        [
+            "that", "doesnt", "share", "creature", "type", "with", "chosen", "creature",
+            "they", "control",
+        ]
+        .as_slice(),
+        [
+            "that", "don't", "share", "creature", "type", "with", "chosen", "creature",
+            "they", "control",
+        ]
+        .as_slice(),
+        [
+            "that", "dont", "share", "creature", "type", "with", "chosen", "creature",
+            "they", "control",
+        ]
+        .as_slice(),
+        [
+            "that", "do", "not", "share", "creature", "type", "with", "chosen", "creature",
+            "they", "control",
+        ]
+        .as_slice(),
+    ] {
+        let Some(fact) = parse_phrase_anywhere(all_words, phrase) else {
+            continue;
+        };
+        filter
+            .no_shared_creature_types_with
+            .push(ObjectFilter::tagged(TagKey::from(IT_TAG)));
+        all_words.drain(fact.span.start..fact.span.start + phrase.len());
         return true;
     }
     false

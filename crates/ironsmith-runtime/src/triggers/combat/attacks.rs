@@ -445,7 +445,7 @@ fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
             || tail.starts_with("an opponent ")
             || tail.starts_with("your "))
     {
-        return format!("{head}s {tail}");
+        return crate::compiled_text::pluralize_noun_phrase_for_trigger(subject);
     }
     if let Some((head, tail)) = subject.split_once(" creature ") {
         if !head.contains(' ')
@@ -454,7 +454,10 @@ fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase())
         {
-            return format!("{head}s {tail}");
+            return format!(
+                "{} {tail}",
+                crate::compiled_text::pluralize_noun_phrase_for_trigger(head)
+            );
         }
         return format!("{head} creatures {tail}");
     }
@@ -465,7 +468,7 @@ fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase())
         {
-            return format!("{stripped}s");
+            return crate::compiled_text::pluralize_noun_phrase_for_trigger(stripped);
         }
         return format!("{stripped} creatures");
     }

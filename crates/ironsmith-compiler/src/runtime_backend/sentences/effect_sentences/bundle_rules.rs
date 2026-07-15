@@ -25,7 +25,10 @@ use crate::filter::AlternativeCastKind;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::front_end::grammar::effects as bundle_grammar;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::target::{
+    ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint,
+    TaggedOpbjectRelation,
+};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -399,7 +402,7 @@ fn parse_choose_type_then_phase_out_bundle(
     let mut effects = effect_sentences::parse_effect_sentence_lexed(second_sentence)?;
     let [
         EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-            action: crate::cards::builders::SubjectVerbActionAst::PhaseOutAll { filter },
+            action: crate::cards::builders::SubjectVerbActionAst::PhaseOutAll { filter, .. },
             ..
         }),
     ] = effects.as_mut_slice()
@@ -463,14 +466,16 @@ fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst>
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match subject_verb.action {
             SubjectVerbActionAst::Exile { target, face_down } => Some(
-                EffectAst::subject_verb_exile_until_source_leaves(target, face_down),
+                EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
+                    .with_explicit_exile_return_surface(),
             ),
-            SubjectVerbActionAst::ExileAll { filter, face_down } => {
-                Some(EffectAst::subject_verb_exile_until_source_leaves(
+            SubjectVerbActionAst::ExileAll { filter, face_down } => Some(
+                EffectAst::subject_verb_exile_until_source_leaves(
                     TargetAst::Object(filter, None, None),
                     face_down,
-                ))
-            }
+                )
+                .with_explicit_exile_return_surface(),
+            ),
             _ => None,
         },
         EffectAst::Conditional {
@@ -1461,7 +1466,58 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
     ])
 }
 
+/// Parse a linked-duration sequence such as
+/// "untap all creatures, then those creatures phase out until this enchantment
+/// leaves the battlefield." The repeated filter is semantic identity; the
+/// printed "those" does not depend on whether untapping changed each object.
+fn parse_untap_then_phase_out_until_source_leaves_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    use crate::runtime_backend::front_end::grammar::primitives as grammar;
+
+    let (untap_tokens, phase_tokens) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())?;
+    let untap_effects =
+        effect_sentences::parse_effect_sentence_lexed(&trim_commas(untap_tokens)).ok()?;
+    let [untap_effect] = untap_effects.as_slice() else {
+        return None;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::UntapAll { filter },
+        ..
+    }) = untap_effect
+    else {
+        return None;
+    };
+
+    let trimmed_phase_tokens = trim_commas(phase_tokens);
+    let phase_words = words(&trimmed_phase_tokens);
+    let phase_idx = phase_words
+        .windows(4)
+        .position(|window| window == ["phase", "out", "until", "this"])?;
+    if phase_idx < 2
+        || phase_words.first().copied() != Some("those")
+        || phase_words.len() < phase_idx + 7
+        || phase_words[phase_words.len() - 3..] != ["leaves", "the", "battlefield"]
+    {
+        return None;
+    }
+    let source_words = &phase_words[phase_idx + 3..phase_words.len() - 3];
+    if source_words.len() < 2 || source_words.first().copied() != Some("this") {
+        return None;
+    }
+    let source_surface = SourceReferenceSurface::ThisPermanentType(source_words.join(" "));
+
+    Some(vec![
+        untap_effect.clone(),
+        EffectAst::subject_verb_phase_out_all_until_source_leaves(filter.clone(), source_surface),
+    ])
+}
+
 pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    if let Some(effects) = parse_untap_then_phase_out_until_source_leaves_bundle(tokens) {
+        return Some(effects);
+    }
     if let Ok(Some(effects)) = parse_hidden_exile_partition_permission_bundle(tokens) {
         return Some(effects);
     }
@@ -1505,6 +1561,14 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Some(mut effects) =
+            parse_untap_then_phase_out_until_source_leaves_bundle(sentences[0])
+        && let Ok(mut follow_up) = effect_sentences::parse_effect_sentence_lexed(sentences[1])
+    {
+        effects.append(&mut follow_up);
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Some(effects) =
             parse_regenerate_then_gain_control_if_regenerates_bundle(sentences[0], sentences[1])

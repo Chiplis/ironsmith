@@ -182,8 +182,21 @@ impl StaticAbility {
                         .to_string(),
                 });
             }
+            Some(StaticAbilityId::PreventAllDamageToSelfFromSourcesMatching) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail:
+                        "self damage prevention with source constraints needs its typed payload"
+                            .to_string(),
+                });
+            }
             Some(StaticAbilityId::PreventAllDamageToSelfByCreatures) => {
                 Self::prevent_all_damage_to_self_by_creatures()
+            }
+            Some(StaticAbilityId::PreventDamageToOtherCreatureYouControlPutCountersInstead) => {
+                Self::prevent_damage_to_other_creature_you_control_put_counters_instead(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    label,
+                )
             }
             Some(StaticAbilityId::PreventAllNoncombatDamageToOtherCreaturesYouControl) => {
                 Self::prevent_all_noncombat_damage_to_other_creatures_you_control()
@@ -219,6 +232,10 @@ impl StaticAbility {
             }
             Some(StaticAbilityId::StartingLifeBonus) => Self::starting_life_bonus(0),
             Some(StaticAbilityId::BuybackCostReduction) => Self::buyback_cost_reduction(0),
+            Some(StaticAbilityId::LegendRuleDoesntApply) => Self::legend_rule_doesnt_apply(),
+            Some(StaticAbilityId::LegendRuleDoesntApplyToController) => {
+                Self::legend_rule_doesnt_apply_to_controller()
+            }
             Some(StaticAbilityId::ShuffleIntoLibraryFromGraveyard) => {
                 Self::shuffle_into_library_from_graveyard()
             }

@@ -30,10 +30,29 @@ fn parses_typed_where_x_shapes() {
             layout.primary_where_tokens,
             sentence.stripped_references_target,
         ),
-        Some(WhereXValueShape::PriorEffectMetric {
-            source: EffectMetricSource::AffectedObjects,
-            metric: EffectMetric::Count,
-        })
+        Some(WhereXValueShape::PriorEffectMetric(
+            PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count,)
+                .with_filter({
+                    let mut filter = ObjectFilter::default();
+                    filter.set_explicit_card_noun(true);
+                    filter
+                })
+                .with_action(ironsmith_core::PriorEffectAction::Exiled),
+        ))
+    );
+
+    let tokens = lex_line(
+        "Put X +1/+1 counters on it, where X is the number of charge counters removed this way.",
+        0,
+    )
+    .unwrap();
+    let sentence = parse_where_x_sentence_tokens(&tokens).unwrap();
+    assert_eq!(
+        parse_where_x_value_shape_tokens(
+            sentence.layout(false).primary_where_tokens,
+            sentence.stripped_references_target,
+        ),
+        Some(WhereXValueShape::RemovedCountersThisWay),
     );
 }
 

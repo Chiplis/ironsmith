@@ -15,6 +15,10 @@ pub(crate) fn is_sacrificed_object_reference_tag(tag: &str) -> bool {
         || tag.starts_with("__sentence_helper_sacrificed")
 }
 
+fn is_exiled_collection_reference_tag(tag: &str) -> bool {
+    tag == "exiled" || tag.starts_with("exiled_") || tag.starts_with("__sentence_helper_exiled")
+}
+
 pub(crate) fn is_you_player_filter(filter: &PlayerFilter) -> bool {
     match filter {
         PlayerFilter::You => true,
@@ -400,7 +404,9 @@ pub(crate) fn resolve_it_tag(
         && tag.as_str() != "triggering"
     {
         for constraint in &mut resolved.tagged_constraints {
-            if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+            if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && is_exiled_collection_reference_tag(tag.as_str())
+            {
                 constraint.tag = tag.clone();
             }
             if constraint.tag.as_str() == "__public_revealed"
@@ -735,6 +741,10 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 Ok(ChooseSpec::Object(resolved))
             }
         }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => Ok(ChooseSpec::ObjectOrPlayer(
+            resolve_it_tag(object_filter, refs)?,
+            resolve_contextual_player_filter(player_filter, refs)?,
+        )),
         ChooseSpec::Target(inner) => {
             let resolved = resolve_choose_spec_it_tag(inner, refs)?;
             if matches!(resolved.base(), ChooseSpec::Source) {
@@ -813,6 +823,9 @@ pub(crate) fn resolve_value_it_tag(
         Value::GreatestManaValue(filter) => {
             Ok(Value::GreatestManaValue(resolve_it_tag(filter, refs)?))
         }
+        Value::LeastPower(filter) => Ok(Value::LeastPower(resolve_it_tag(filter, refs)?)),
+        Value::LeastToughness(filter) => Ok(Value::LeastToughness(resolve_it_tag(filter, refs)?)),
+        Value::LeastManaValue(filter) => Ok(Value::LeastManaValue(resolve_it_tag(filter, refs)?)),
         Value::BasicLandTypesAmong(filter) => {
             Ok(Value::BasicLandTypesAmong(resolve_it_tag(filter, refs)?))
         }
@@ -990,6 +1003,38 @@ pub(crate) fn resolve_value_it_tag(
                 offset: *offset,
             })
         }
+        Value::PendingPriorEffectMetric(query) => {
+            let id = refs.known_last_effect_id().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending filtered effect metric requires a prior memory-producing effect"
+                        .to_string(),
+                )
+            })?;
+            let mut query = query.clone();
+            if let Some(filter) = query.filter.as_mut() {
+                *filter = resolve_it_tag(filter, refs)?;
+            }
+            if let Some(player) = query.player.as_mut() {
+                *player = resolve_contextual_player_filter(player, refs)?;
+            }
+            Ok(Value::PriorEffectMetric {
+                effect_id: id,
+                query,
+            })
+        }
+        Value::PriorEffectMetric { effect_id, query } => {
+            let mut query = query.clone();
+            if let Some(filter) = query.filter.as_mut() {
+                *filter = resolve_it_tag(filter, refs)?;
+            }
+            if let Some(player) = query.player.as_mut() {
+                *player = resolve_contextual_player_filter(player, refs)?;
+            }
+            Ok(Value::PriorEffectMetric {
+                effect_id: *effect_id,
+                query,
+            })
+        }
         _ => Ok(value.clone()),
     }
 }
@@ -1045,6 +1090,7 @@ pub(crate) fn choose_spec_targets_object(spec: &ChooseSpec) -> bool {
     matches!(
         spec.base(),
         ChooseSpec::Object(_)
+            | ChooseSpec::ObjectOrPlayer(_, _)
             | ChooseSpec::Tagged(_)
             | ChooseSpec::SpecificObject(_)
             | ChooseSpec::Source
@@ -1056,9 +1102,10 @@ pub(crate) fn with_target_reference_surface_hint(
     target: &TargetAst,
 ) -> ChooseSpec {
     let span = match target {
-        TargetAst::Source(span) | TargetAst::Tagged(_, span) | TargetAst::Object(_, _, span) => {
-            *span
-        }
+        TargetAst::Source(span)
+        | TargetAst::Tagged(_, span)
+        | TargetAst::Object(_, _, span)
+        | TargetAst::ObjectOrPlayer(_, _, span) => *span,
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             return with_target_reference_surface_hint(spec, inner);
         }
@@ -1110,6 +1157,14 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
         TargetAst::Source(span) => target_reference_hinted_spec(ChooseSpec::Source, *span),
         TargetAst::AnyTarget(_) => ChooseSpec::AnyTarget,
         TargetAst::AnyOtherTarget(_) => ChooseSpec::AnyOtherTarget,
+        TargetAst::ObjectOrPlayer(object_filter, player_filter, explicit_target_span) => {
+            let spec = ChooseSpec::ObjectOrPlayer(object_filter.clone(), player_filter.clone());
+            if explicit_target_span.is_some() {
+                ChooseSpec::target(spec)
+            } else {
+                spec
+            }
+        }
         TargetAst::PlayerOrPlaneswalker(filter, _) => {
             ChooseSpec::PlayerOrPlaneswalker(filter.clone())
         }
@@ -1182,8 +1237,11 @@ pub(crate) fn resolve_target_spec_with_choices(
     } else {
         Vec::new()
     };
-    if let TargetAst::Object(filter, _, _) = target {
-        append_object_filter_target_player_choices(filter, &mut choices);
+    match target {
+        TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
+            append_object_filter_target_player_choices(filter, &mut choices);
+        }
+        _ => {}
     }
     Ok((spec, choices))
 }
@@ -1304,5 +1362,34 @@ mod tests {
 
         assert!(resolved.tagged_constraints.is_empty());
         assert_eq!(resolved.card_types, filter.card_types);
+    }
+
+    #[test]
+    fn source_exiled_reference_does_not_bind_to_unrelated_sacrifice() {
+        let filter = ObjectFilter::tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG));
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(TagKey::from("sacrificed_0")),
+            ..ReferenceEnv::default()
+        };
+
+        let resolved = resolve_it_tag(&filter, &refs).expect("preserve source exile link");
+
+        assert_eq!(
+            resolved.tagged_constraints[0].tag.as_str(),
+            crate::tag::SOURCE_EXILED_TAG
+        );
+    }
+
+    #[test]
+    fn source_exiled_reference_can_bind_to_local_exile_collection() {
+        let filter = ObjectFilter::tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG));
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(TagKey::from("exiled_0")),
+            ..ReferenceEnv::default()
+        };
+
+        let resolved = resolve_it_tag(&filter, &refs).expect("bind local exile collection");
+
+        assert_eq!(resolved.tagged_constraints[0].tag.as_str(), "exiled_0");
     }
 }

@@ -26,6 +26,7 @@ use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_le
 use super::values::parse_mana_symbol;
 use crate::cards::builders::{
     CardTextError, IT_TAG, PlayerAst, PredicateAst, THIS_WAY_SACRIFICED_TAG, TagKey,
+    TurnHistoryPredicateAst,
 };
 use crate::color::{Color, ColorSet};
 use crate::effect::Value;
@@ -34,7 +35,8 @@ use crate::filter::TaggedObjectConstraint;
 use crate::mana::ManaSymbol;
 use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
 use crate::target::{
-    ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation, TargetabilityConstraint,
+    ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation,
+    TargetabilityConstraint,
 };
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
@@ -44,6 +46,7 @@ mod color_and_sticker_facts;
 mod counter_constraints;
 mod decorations;
 mod domain_unions;
+mod extremum;
 mod meld_and_special_subjects;
 mod naming_and_reference;
 mod player_relations;
@@ -56,6 +59,7 @@ pub(crate) mod spell_filters;
 pub(super) use chosen_type_references::*;
 use color_and_sticker_facts::*;
 use domain_unions::*;
+pub(crate) use extremum::{parse_extremum_object_filter_lexed, parse_extremum_object_filter_words};
 pub(super) use meld_and_special_subjects::*;
 use naming_and_reference::*;
 use player_relations::*;
@@ -63,12 +67,15 @@ pub(super) use predicate_phrases::*;
 pub(crate) use predicate_phrases::{
     WinnowAtom as PermissionAtom, WinnowCaptureKind as PermissionCaptureKind,
     WinnowCaptureRole as PermissionCaptureRole, WinnowSequence as PermissionSequence,
+    parse_source_keyword_condition_filter as parse_source_keyword_condition_filter_lexed,
 };
 pub(super) use reference_tag_stage::*;
 
 pub(crate) use counter_constraints::{
     intern_counter_name, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_counter_type_words, parse_filter_counter_constraint_words,
+    preserve_filter_counter_constraint_surface_tokens,
+    preserve_filter_counter_constraint_surface_words,
 };
 pub(crate) use decorations::{
     apply_filter_tail_decoration, apply_parity_filter_phrases, parse_filter_distinct_names_tokens,

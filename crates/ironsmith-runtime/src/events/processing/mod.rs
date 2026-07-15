@@ -19,7 +19,7 @@ use crate::DecisionMaker;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::decisions::replacement_option_description;
 use crate::events::DamageTarget;
-use crate::events::{Event, EventContext};
+use crate::events::{Event, EventContext, ReplacementMatcher as _};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, UiBattlefieldTransitionKind};
 use crate::ids::{ObjectId, PlayerId};
@@ -445,6 +445,7 @@ pub fn process_trait_event_with_dm_and_applied_effects(
         &[],
         applied_effects,
         applied_effect_keys,
+        None,
     )
 }
 
@@ -495,6 +496,11 @@ impl TraitEventProcessingState {
     }
 }
 
+fn damage_event_has_been_removed(event: &Event) -> bool {
+    crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+        .is_some_and(|damage| damage.amount == 0)
+}
+
 /// Process an event directly using trait-based matchers.
 fn process_event_direct(
     game: &mut GameState,
@@ -503,6 +509,14 @@ fn process_event_direct(
     additional_effects: &[ReplacementEffect],
     event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> TraitEventResult {
+    // CR 614.7: once a replacement effect reduces a damage event to zero,
+    // that damage event no longer exists. Do not offer it to later replacement
+    // effects. Returning the zero-valued carrier lets the caller retain any
+    // separately modeled partial-redirection remainder without dealing damage.
+    if damage_event_has_been_removed(&event) {
+        return TraitEventResult::Proceed(event);
+    }
+
     // Safety check for infinite loops
     if state.exceeded_max_iterations() {
         return TraitEventResult::Proceed(event);
@@ -2109,7 +2123,7 @@ fn process_with_dm(
     event: Event,
     dm: &mut (impl DecisionMaker + ?Sized),
 ) -> TraitEventResult {
-    process_with_dm_and_additional_effects(game, event, dm, &[])
+    process_with_dm_and_additional_effects_and_snapshot(game, event, dm, &[], None)
 }
 
 fn process_with_dm_and_additional_effects(
@@ -2118,6 +2132,16 @@ fn process_with_dm_and_additional_effects(
     dm: &mut (impl DecisionMaker + ?Sized),
     additional_effects: &[ReplacementEffect],
 ) -> TraitEventResult {
+    process_with_dm_and_additional_effects_and_snapshot(game, event, dm, additional_effects, None)
+}
+
+fn process_with_dm_and_additional_effects_and_snapshot(
+    game: &mut GameState,
+    event: Event,
+    dm: &mut (impl DecisionMaker + ?Sized),
+    additional_effects: &[ReplacementEffect],
+    event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+) -> TraitEventResult {
     process_with_dm_and_additional_effects_and_applied(
         game,
         event,
@@ -2125,6 +2149,7 @@ fn process_with_dm_and_additional_effects(
         additional_effects,
         &std::collections::HashSet::new(),
         &std::collections::HashSet::new(),
+        event_source_snapshot,
     )
 }
 
@@ -2135,6 +2160,7 @@ fn process_with_dm_and_additional_effects_and_applied(
     additional_effects: &[ReplacementEffect],
     applied_effects: &std::collections::HashSet<ReplacementEffectId>,
     applied_effect_keys: &std::collections::HashSet<ReplacementEffectKey>,
+    event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> TraitEventResult {
     use crate::decisions::{
         make_decision,
@@ -2156,7 +2182,7 @@ fn process_with_dm_and_additional_effects_and_applied(
             current_event.clone(),
             &mut state,
             additional_effects,
-            None,
+            event_source_snapshot,
         );
 
         match result {
@@ -2173,17 +2199,14 @@ fn process_with_dm_and_additional_effects_and_applied(
                         .iter()
                         .enumerate()
                         .filter_map(|(idx, &id)| {
-                            game.effect_store
-                                .replacement_effects
-                                .get_effect(id)
-                                .map(|e| {
-                                    ReplacementOption::new(
-                                        idx,
-                                        e.source,
-                                        replacement_effect_choice_description(game, e),
-                                    )
-                                    .with_related_objects(replacement_effect_related_objects(e))
-                                })
+                            find_effect_for_choice(game, additional_effects, id).map(|e| {
+                                ReplacementOption::new(
+                                    idx,
+                                    e.source,
+                                    replacement_effect_choice_description(game, &e),
+                                )
+                                .with_related_objects(replacement_effect_related_objects(&e))
+                            })
                         })
                         .collect();
 
@@ -2210,11 +2233,8 @@ fn process_with_dm_and_additional_effects_and_applied(
                     return TraitEventResult::Proceed(*boxed_event);
                 };
 
-                let Some(chosen_effect) = game
-                    .effect_store
-                    .replacement_effects
-                    .get_effect(effect_id)
-                    .cloned()
+                let Some(chosen_effect) =
+                    find_effect_for_choice(game, additional_effects, effect_id)
                 else {
                     // Effect disappeared (e.g., source left battlefield). Continue with event.
                     state.mark_applied(effect_id);
@@ -2423,6 +2443,24 @@ pub struct ProcessedDamageResult {
     pub replacement_prevented: bool,
 }
 
+/// One damage event in a set that would happen simultaneously.
+#[derive(Debug, Clone)]
+pub struct SimultaneousDamageEvent {
+    pub source: crate::ids::ObjectId,
+    pub target: DamageTarget,
+    pub amount: u32,
+    pub is_combat: bool,
+    pub unpreventable: bool,
+    pub cause: crate::events::cause::EventCause,
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PreventionBatchAllocation {
+    allocated_shields: std::collections::HashSet<crate::prevention::PreventionShieldId>,
+    limits: std::collections::HashMap<crate::prevention::PreventionShieldId, u32>,
+}
+
 /// Process damage and return all final assignments after replacement/prevention.
 pub fn process_damage_assignments_with_event(
     game: &mut GameState,
@@ -2473,6 +2511,400 @@ pub fn process_damage_assignments_with_event_with_source_snapshot_opts(
     cause: crate::events::cause::EventCause,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> ProcessedDamageResult {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+        game,
+        source,
+        target,
+        amount,
+        is_combat,
+        unpreventable,
+        cause,
+        source_snapshot,
+        &mut dm,
+    )
+}
+
+#[derive(Debug, Clone)]
+struct PreventionShieldReplacementMatcher {
+    shield_id: crate::prevention::PreventionShieldId,
+    source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+}
+
+impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
+    fn matches_event(&self, event: &dyn crate::events::GameEventType, ctx: &EventContext) -> bool {
+        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event)
+        else {
+            return false;
+        };
+        let Some(shield) = ctx
+            .game
+            .effect_store
+            .prevention_effects
+            .shields()
+            .iter()
+            .find(|shield| shield.id == self.shield_id)
+        else {
+            return false;
+        };
+        if !shield.has_prevention_remaining() {
+            return false;
+        }
+
+        let protects_target = match (damage.target, &shield.protected) {
+            (DamageTarget::Player(player), crate::prevention::PreventionTarget::Player(p)) => {
+                player == *p
+            }
+            (DamageTarget::Player(_), crate::prevention::PreventionTarget::Players) => true,
+            (DamageTarget::Player(player), crate::prevention::PreventionTarget::You)
+            | (
+                DamageTarget::Player(player),
+                crate::prevention::PreventionTarget::YouAndPermanentsYouControl,
+            )
+            | (
+                DamageTarget::Player(player),
+                crate::prevention::PreventionTarget::YouAndPermanentsMatching(_),
+            ) => player == shield.controller,
+            (DamageTarget::Object(object), crate::prevention::PreventionTarget::Permanent(p)) => {
+                object == *p
+            }
+            (
+                DamageTarget::Object(object),
+                crate::prevention::PreventionTarget::YouAndPermanentsYouControl,
+            ) => ctx
+                .game
+                .object(object)
+                .is_some_and(|object| ctx.game.controller_of(object) == shield.controller),
+            (
+                DamageTarget::Object(object),
+                crate::prevention::PreventionTarget::PermanentsMatching(filter),
+            )
+            | (
+                DamageTarget::Object(object),
+                crate::prevention::PreventionTarget::YouAndPermanentsMatching(filter),
+            ) => {
+                let filter_ctx = ctx
+                    .game
+                    .filter_context_for(shield.controller, Some(shield.source));
+                ctx.game
+                    .object(object)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, ctx.game))
+            }
+            (_, crate::prevention::PreventionTarget::All) => true,
+            _ => false,
+        };
+        if !protects_target {
+            return false;
+        }
+
+        let filter_ctx = ctx
+            .game
+            .filter_context_for(shield.controller, Some(shield.source));
+        if let Some(source_filter) = &shield.damage_filter.from_source {
+            let current_matches = ctx
+                .game
+                .object(damage.source)
+                .is_some_and(|source| source_filter.matches(source, &filter_ctx, ctx.game));
+            let lki_matches = self
+                .source_snapshot
+                .as_ref()
+                .filter(|snapshot| snapshot.object_id == damage.source)
+                .is_some_and(|snapshot| {
+                    source_filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
+                });
+            if !current_matches && !lki_matches {
+                return false;
+            }
+        }
+
+        let (source_colors, source_card_types) =
+            if let Some(characteristics) = ctx.game.calculated_characteristics(damage.source) {
+                (characteristics.colors, characteristics.card_types.to_vec())
+            } else if let Some(snapshot) = self
+                .source_snapshot
+                .as_ref()
+                .filter(|snapshot| snapshot.object_id == damage.source)
+            {
+                (snapshot.colors, snapshot.card_types.clone())
+            } else {
+                (crate::color::ColorSet::COLORLESS, Vec::new())
+            };
+        shield.damage_filter.matches(
+            damage.is_combat,
+            damage.source,
+            &source_colors,
+            &source_card_types,
+        )
+    }
+
+    fn priority(&self) -> crate::events::ReplacementPriority {
+        crate::events::ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        format!("Prevention shield {}", self.shield_id.0)
+    }
+}
+
+fn prevention_shield_replacement_effects(
+    game: &GameState,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    batch_allocation: Option<&PreventionBatchAllocation>,
+) -> Vec<ReplacementEffect> {
+    game.effect_store
+        .prevention_effects
+        .shields()
+        .iter()
+        .filter_map(|shield| {
+            let max_amount = if batch_allocation
+                .is_some_and(|allocation| allocation.allocated_shields.contains(&shield.id))
+            {
+                let amount = batch_allocation
+                    .and_then(|allocation| allocation.limits.get(&shield.id))
+                    .copied()
+                    .unwrap_or(0);
+                if amount == 0 {
+                    return None;
+                }
+                Some(amount)
+            } else {
+                None
+            };
+            Some(ReplacementEffect::with_matcher(
+                shield.source,
+                shield.controller,
+                PreventionShieldReplacementMatcher {
+                    shield_id: shield.id,
+                    source_snapshot: source_snapshot.cloned(),
+                },
+                ReplacementAction::PreventWithShield {
+                    shield_id: shield.id,
+                    max_amount,
+                },
+            ))
+        })
+        .collect()
+}
+
+fn affected_player_for_damage(
+    game: &GameState,
+    target: DamageTarget,
+    fallback: PlayerId,
+) -> PlayerId {
+    match target {
+        DamageTarget::Player(player) => player,
+        DamageTarget::Object(object) => game.current_controller(object).unwrap_or(fallback),
+    }
+}
+
+fn apnap_position(game: &GameState, player: PlayerId) -> usize {
+    let turn_order = &game.turn_store.turn_order;
+    if turn_order.is_empty() {
+        return player.index();
+    }
+    let active = turn_order
+        .iter()
+        .position(|candidate| *candidate == game.turn.active_player)
+        .unwrap_or(0);
+    turn_order
+        .iter()
+        .position(|candidate| *candidate == player)
+        .map(|position| (position + turn_order.len() - active) % turn_order.len())
+        .unwrap_or(turn_order.len() + player.index())
+}
+
+fn collect_simultaneous_prevention_allocations(
+    game: &GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+) -> Vec<PreventionBatchAllocation> {
+    let mut allocations = vec![PreventionBatchAllocation::default(); events.len()];
+    if !game.can_prevent_damage() {
+        return allocations;
+    }
+
+    // Snapshot before any shield is mutated. Every allocation decision therefore
+    // sees the complete simultaneous source/amount set required by CR 615.7.
+    let shields = game.effect_store.prevention_effects.shields().to_vec();
+    for shield in shields {
+        let Some(capacity) = shield.amount_remaining.filter(|amount| *amount > 0) else {
+            continue;
+        };
+        let matcher = PreventionShieldReplacementMatcher {
+            shield_id: shield.id,
+            source_snapshot: None,
+        };
+        let mut eligible = events
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                if item.amount == 0 || item.unpreventable {
+                    return None;
+                }
+                let damage = crate::events::DamageEvent::with_cause(
+                    item.source,
+                    item.target,
+                    item.amount,
+                    item.is_combat,
+                    item.cause.clone(),
+                );
+                let matcher = PreventionShieldReplacementMatcher {
+                    source_snapshot: item.source_snapshot.clone(),
+                    ..matcher.clone()
+                };
+                let ctx =
+                    EventContext::for_replacement_effect(shield.controller, shield.source, game)
+                        .with_event_source_snapshot(item.source_snapshot.as_ref());
+                matcher.matches_event(&damage, &ctx).then_some(index)
+            })
+            .collect::<Vec<_>>();
+
+        let distinct_sources = eligible
+            .iter()
+            .map(|index| events[*index].source)
+            .collect::<std::collections::HashSet<_>>();
+        let total_damage = eligible
+            .iter()
+            .map(|index| events[*index].amount)
+            .sum::<u32>();
+        if distinct_sources.len() < 2 || total_damage <= capacity {
+            continue;
+        }
+
+        eligible.sort_by_key(|index| {
+            let player = affected_player_for_damage(game, events[*index].target, shield.controller);
+            (apnap_position(game, player), *index)
+        });
+
+        for index in &eligible {
+            allocations[*index].allocated_shields.insert(shield.id);
+        }
+
+        let mut remaining = capacity.min(total_damage);
+        for (position, index) in eligible.iter().copied().enumerate() {
+            let later_damage = eligible[position + 1..]
+                .iter()
+                .map(|later| events[*later].amount)
+                .sum::<u32>();
+            let minimum = remaining.saturating_sub(later_damage);
+            let maximum = events[index].amount.min(remaining);
+            let chosen = if minimum == maximum {
+                minimum
+            } else {
+                let player =
+                    affected_player_for_damage(game, events[index].target, shield.controller);
+                let source_name = game
+                    .current_name(events[index].source)
+                    .unwrap_or_else(|| format!("source {}", events[index].source.0));
+                let spec = crate::decisions::NumberSpec::range(
+                    shield.source,
+                    minimum,
+                    maximum,
+                    format!(
+                        "Choose how much of prevention shield {} applies to damage from {source_name}",
+                        shield.id.0
+                    ),
+                );
+                crate::decisions::make_decision_with_fallback(
+                    game,
+                    dm,
+                    player,
+                    Some(shield.source),
+                    spec,
+                    crate::decision::FallbackStrategy::Maximum,
+                )
+                .clamp(minimum, maximum)
+            };
+            if chosen > 0 {
+                allocations[index].limits.insert(shield.id, chosen);
+            }
+            remaining = remaining.saturating_sub(chosen);
+        }
+    }
+
+    allocations
+}
+
+/// Process damage events that would happen simultaneously as one CR 615.7 batch.
+///
+/// Limited prevention shields are allocated before any event consumes them. The
+/// returned results remain aligned with the input events.
+pub fn process_simultaneous_damage_assignments_with_event_with_dm(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+) -> Vec<ProcessedDamageResult> {
+    game.update_cant_effects();
+    game.update_replacement_effects();
+    let allocations = collect_simultaneous_prevention_allocations(game, events, dm);
+    let mut results = Vec::with_capacity(events.len());
+    for (index, item) in events.iter().enumerate() {
+        results.push(
+            process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
+                game,
+                item.source,
+                item.target,
+                item.amount,
+                item.is_combat,
+                item.unpreventable,
+                item.cause.clone(),
+                item.source_snapshot.as_ref(),
+                dm,
+                Some(&allocations[index]),
+            ),
+        );
+    }
+    results
+}
+
+/// Deterministic convenience wrapper for a simultaneous damage batch.
+pub fn process_simultaneous_damage_assignments_with_event(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+) -> Vec<ProcessedDamageResult> {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    process_simultaneous_damage_assignments_with_event_with_dm(game, events, &mut dm)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+    unpreventable: bool,
+    cause: crate::events::cause::EventCause,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    dm: &mut dyn DecisionMaker,
+) -> ProcessedDamageResult {
+    process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
+        game,
+        source,
+        target,
+        amount,
+        is_combat,
+        unpreventable,
+        cause,
+        source_snapshot,
+        dm,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+    unpreventable: bool,
+    cause: crate::events::cause::EventCause,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    dm: &mut dyn DecisionMaker,
+    batch_allocation: Option<&PreventionBatchAllocation>,
+) -> ProcessedDamageResult {
     use crate::events::{DamageEvent, downcast_event};
 
     game.update_cant_effects();
@@ -2492,8 +2924,19 @@ pub fn process_damage_assignments_with_event_with_source_snapshot_opts(
     // replacement-generated effect execution.
     let event = game.ensure_event_provenance(event);
     let event_provenance = event.provenance();
-    let mut state = TraitEventProcessingState::default();
-    let result = process_event_direct(game, event, &mut state, &[], source_snapshot);
+    // CR 615.12 still applies prevention effects to unpreventable damage. They
+    // prevent zero, retain their shield capacity, and perform additional parts.
+    let mut prevention_effects =
+        prevention_shield_replacement_effects(game, source_snapshot, batch_allocation);
+    assign_ephemeral_effect_ids(&mut prevention_effects, u64::MAX / 4);
+    let result = process_with_dm_and_additional_effects_and_snapshot(
+        game,
+        event,
+        dm,
+        &prevention_effects,
+        source_snapshot,
+    );
+    execute_pending_prevention_follow_ups(game, dm);
 
     let replaced = match result {
         TraitEventResult::Prevented => {
@@ -2518,11 +2961,10 @@ pub fn process_damage_assignments_with_event_with_source_snapshot_opts(
                 ),
                 event_provenance,
             );
-            let mut dm = crate::decision::AutoPassDecisionMaker;
             let mut exec_ctx = crate::effects::ExecutionContext::new(
                 replacement_source,
                 replacement_controller,
-                &mut dm,
+                dm,
             )
             .with_triggering_event(triggering_event)
             .with_cause(crate::events::cause::EventCause::from_effect(
@@ -2562,21 +3004,20 @@ pub fn process_damage_assignments_with_event_with_source_snapshot_opts(
                 DamageEvent::with_cause(source, target, amount, is_combat, cause.clone())
             }
         }
-        _ => DamageEvent::with_cause(source, target, amount, is_combat, cause.clone()),
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+            debug_assert!(
+                false,
+                "damage replacement choice remained pending after decision-driven processing"
+            );
+            return ProcessedDamageResult {
+                assignments: Vec::new(),
+                replacement_prevented: true,
+            };
+        }
     };
 
     let mut assignments = Vec::new();
-    let final_damage = apply_prevention_for_damage_assignment(
-        game,
-        replaced.target,
-        replaced.amount,
-        replaced.is_combat,
-        replaced.source,
-        source_snapshot,
-        can_prevent,
-        &replaced.cause,
-        event_provenance,
-    );
+    let final_damage = replaced.amount;
     if final_damage > 0 {
         assignments.push(ProcessedDamageAssignment {
             target: replaced.target,
@@ -2587,14 +3028,16 @@ pub fn process_damage_assignments_with_event_with_source_snapshot_opts(
     if let Some((remainder_target, remainder_amount)) = replaced.remainder
         && remainder_amount > 0
     {
-        let remainder = process_damage_assignments_with_event_with_source_snapshot(
+        let remainder = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
             game,
             replaced.source,
             remainder_target,
             remainder_amount,
             replaced.is_combat,
+            unpreventable,
             replaced.cause.clone(),
             source_snapshot,
+            dm,
         );
         assignments.extend(remainder.assignments);
     }
@@ -2633,138 +3076,44 @@ pub fn process_damage_with_event_with_source_snapshot(
     (original_target_damage, processed.replacement_prevented)
 }
 
-fn apply_prevention_for_damage_assignment(
-    game: &mut GameState,
-    target: DamageTarget,
-    amount: u32,
-    is_combat: bool,
-    source: crate::ids::ObjectId,
-    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    can_prevent: bool,
-    cause: &crate::events::cause::EventCause,
-    provenance: crate::provenance::ProvNodeId,
-) -> u32 {
-    use crate::events::DamageEvent;
-
-    if amount == 0 {
-        return 0;
-    }
-
-    let (source_colors, source_card_types) = if let Some(obj) = game.object(source) {
-        (obj.colors(), obj.card_types.to_vec())
-    } else if let Some(snapshot) = source_snapshot {
-        (snapshot.colors, snapshot.card_types.clone())
-    } else {
-        (crate::color::ColorSet::COLORLESS, Vec::new())
-    };
-
-    let source_filter_matches: std::collections::HashMap<_, _> = game
+fn execute_pending_prevention_follow_ups(game: &mut GameState, dm: &mut dyn DecisionMaker) {
+    let pending = game
         .effect_store
         .prevention_effects
-        .shields()
-        .iter()
-        .filter_map(|shield| {
-            let source_filter = shield.damage_filter.from_source.as_ref()?;
-            let filter_ctx = game.filter_context_for(shield.controller, Some(shield.source));
-            let matches_current = game
-                .object(source)
-                .is_some_and(|source_obj| source_filter.matches(source_obj, &filter_ctx, game));
-            let matches_lki = source_snapshot
-                .filter(|snapshot| snapshot.object_id == source)
-                .is_some_and(|snapshot| {
-                    source_filter.matches_snapshot(snapshot, &filter_ctx, game)
-                });
-            Some((shield.id, matches_current || matches_lki))
-        })
-        .collect();
-
-    let result = match target {
-        DamageTarget::Player(player_id) => game
-            .effect_store
-            .prevention_effects
-            .apply_prevention_to_player_with_follow_ups(
-                player_id,
-                amount,
-                is_combat,
-                source,
-                &source_colors,
-                &source_card_types,
-                can_prevent,
-                &source_filter_matches,
-            ),
-        DamageTarget::Object(object_id) => {
-            let controller = game
-                .object(object_id)
-                .map(|o| game.controller_of(o))
-                .unwrap_or(game.turn.active_player);
-            game.effect_store
-                .prevention_effects
-                .apply_prevention_to_permanent_with_follow_ups(
-                    object_id,
-                    controller,
-                    amount,
-                    is_combat,
-                    source,
-                    &source_colors,
-                    &source_card_types,
-                    can_prevent,
-                    &source_filter_matches,
-                )
-        }
-    };
-
-    if can_prevent && !result.follow_ups.is_empty() {
-        for follow_up in result.follow_ups {
-            let prevented_event = crate::events::RawEvent::new(
-                DamageEvent::with_cause(
-                    source,
-                    target,
-                    follow_up.prevented,
-                    is_combat,
-                    cause.clone(),
-                ),
-                provenance,
-            );
-            let mut dm = crate::decision::AutoPassDecisionMaker;
-            let mut exec_ctx = crate::effects::ExecutionContext::new(
-                follow_up.source,
-                follow_up.controller,
-                &mut dm,
-            )
-            .with_triggering_event(prevented_event.clone())
-            .with_cause(crate::events::cause::EventCause::from_effect(
-                follow_up.source,
-                follow_up.controller,
-            ))
-            .with_provenance(provenance);
-            if follow_up.targets.is_empty() {
-                match target {
-                    DamageTarget::Player(player_id) => {
-                        exec_ctx
-                            .targets
-                            .push(crate::effects::ResolvedTarget::Player(player_id));
-                    }
-                    DamageTarget::Object(object_id) => {
-                        exec_ctx
-                            .targets
-                            .push(crate::effects::ResolvedTarget::Object(object_id));
-                    }
-                }
-            } else {
-                exec_ctx.targets = follow_up.targets;
-                exec_ctx.target_assignments = follow_up.target_assignments;
+        .take_pending_follow_ups();
+    for pending in pending {
+        let follow_up = pending.follow_up;
+        let prevented_event =
+            crate::events::RawEvent::new(pending.damage.clone(), pending.provenance);
+        let mut exec_ctx =
+            crate::effects::ExecutionContext::new(follow_up.source, follow_up.controller, &mut *dm)
+                .with_triggering_event(prevented_event)
+                .with_cause(crate::events::cause::EventCause::from_effect(
+                    follow_up.source,
+                    follow_up.controller,
+                ))
+                .with_provenance(pending.provenance);
+        if follow_up.targets.is_empty() {
+            match pending.damage.target {
+                DamageTarget::Player(player_id) => exec_ctx
+                    .targets
+                    .push(crate::effects::ResolvedTarget::Player(player_id)),
+                DamageTarget::Object(object_id) => exec_ctx
+                    .targets
+                    .push(crate::effects::ResolvedTarget::Object(object_id)),
             }
-            for effect in follow_up.effects {
-                if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut exec_ctx) {
-                    for trigger_event in outcome.events {
-                        game.queue_trigger_event(trigger_event.provenance(), trigger_event);
-                    }
+        } else {
+            exec_ctx.targets = follow_up.targets;
+            exec_ctx.target_assignments = follow_up.target_assignments;
+        }
+        for effect in follow_up.effects {
+            if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut exec_ctx) {
+                for trigger_event in outcome.events {
+                    game.queue_trigger_event(trigger_event.provenance(), trigger_event);
                 }
             }
         }
     }
-
-    result.remaining
 }
 
 /// Process a life gain event using the new Event type.
@@ -4217,6 +4566,415 @@ mod tests {
     }
 
     #[test]
+    fn damage_reduced_to_zero_is_not_offered_to_later_replacements() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let damage_source = create_creature(&mut game, "Damage Source", alice);
+        let zero_source = create_creature(&mut game, "Zero Replacement", alice);
+        let revive_source = create_creature(&mut game, "Later Replacement", alice);
+
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                zero_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Subtract(3)),
+            )
+            .with_priority_override(crate::events::traits::ReplacementPriority::SelfReplacement),
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                revive_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Add(100)),
+            ),
+        );
+
+        let result = process_trait_event(
+            &mut game,
+            Event::damage(
+                damage_source,
+                DamageTarget::Player(bob),
+                3,
+                false,
+                EventCause::effect(),
+            ),
+        );
+        let event = match result {
+            TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => event,
+            other => panic!("zero damage should terminate as a removed event, got {other:?}"),
+        };
+        let damage = crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+            .expect("the removed damage carrier should retain its event type");
+        assert_eq!(
+            damage.amount, 0,
+            "the later +100 replacement must not revive a zeroed damage event"
+        );
+
+        let processed = process_damage_assignments_with_event(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        assert!(processed.assignments.is_empty());
+    }
+
+    #[test]
+    fn distinct_identical_static_abilities_each_replace_the_same_event_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Double Modifier", alice);
+
+        for _ in 0..2 {
+            game.object_mut(source)
+                .expect("replacement source should exist")
+                .abilities_mut()
+                .push(crate::ability::Ability::static_ability(
+                    StaticAbility::modify_damage_amount_replacement(
+                        crate::target::ObjectFilter::default().you_control(),
+                        Some(crate::target::PlayerFilter::Opponent),
+                        None,
+                        1,
+                        "If a source you control would deal damage to an opponent, it deals that much damage plus 1 instead."
+                            .to_string(),
+                    ),
+                ));
+        }
+        game.update_replacement_effects();
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = process_with_dm(
+            &mut game,
+            Event::damage(
+                source,
+                DamageTarget::Player(bob),
+                2,
+                false,
+                EventCause::effect(),
+            ),
+            &mut dm,
+        );
+        let event = match result {
+            TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => event,
+            other => panic!("both replacements should finish processing, got {other:?}"),
+        };
+        let damage = crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+            .expect("processed event should remain damage");
+        assert_eq!(
+            damage.amount, 4,
+            "each distinct +1 static ability must apply exactly once"
+        );
+    }
+
+    #[test]
+    fn tied_damage_replacements_use_affected_players_choice_without_restoring_original() {
+        struct ChooseLastReplacement {
+            expected_player: PlayerId,
+        }
+
+        impl crate::decision::DecisionMaker for ChooseLastReplacement {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.player, self.expected_player);
+                ctx.options
+                    .iter()
+                    .rev()
+                    .find(|option| option.legal)
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default()
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let damage_source = create_creature(&mut game, "Damage Source", alice);
+        let add_source = create_creature(&mut game, "Add Replacement", alice);
+        let double_source = create_creature(&mut game, "Double Replacement", alice);
+
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                add_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Add(1)),
+            ),
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                double_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Multiply(2)),
+            ),
+        );
+
+        let mut dm = ChooseLastReplacement {
+            expected_player: bob,
+        };
+        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            false,
+            EventCause::effect(),
+            None,
+            &mut dm,
+        );
+        assert_eq!(
+            processed.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(bob),
+                amount: 7,
+            }],
+            "choosing double before +1 should produce seven damage, never restore the original three"
+        );
+    }
+
+    #[test]
+    fn prevention_shield_and_damage_replacement_share_affected_players_ordering() {
+        struct ChooseShieldReplacement {
+            expected_player: PlayerId,
+            shield_source: ObjectId,
+        }
+
+        impl crate::decision::DecisionMaker for ChooseShieldReplacement {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.player, self.expected_player);
+                ctx.options
+                    .iter()
+                    .find(|option| option.legal && option.object_id == Some(self.shield_source))
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default()
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let damage_source = create_creature(&mut game, "Damage Source", alice);
+        let replacement_source = create_creature(&mut game, "Double Replacement", alice);
+        let shield_source = create_creature(&mut game, "Prevention Shield", bob);
+
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                replacement_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Multiply(2)),
+            ),
+        );
+        game.effect_store
+            .prevention_effects
+            .add_shield(PreventionShield::prevent_next_n(
+                shield_source,
+                bob,
+                PreventionTarget::Player(bob),
+                1,
+            ));
+
+        let mut dm = ChooseShieldReplacement {
+            expected_player: bob,
+            shield_source,
+        };
+        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            false,
+            EventCause::effect(),
+            None,
+            &mut dm,
+        );
+        assert_eq!(
+            processed.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(bob),
+                amount: 4,
+            }],
+            "choosing prevention before doubling must produce (3 - 1) * 2 damage"
+        );
+    }
+
+    #[test]
+    fn limited_prevention_shields_are_consumed_in_affected_players_chosen_order() {
+        struct ChooseLastReplacement(PlayerId);
+
+        impl crate::decision::DecisionMaker for ChooseLastReplacement {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.player, self.0);
+                ctx.options
+                    .iter()
+                    .rev()
+                    .find(|option| option.legal)
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default()
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let damage_source = create_creature(&mut game, "Damage Source", alice);
+        let first_source = create_creature(&mut game, "One Point Shield", bob);
+        let second_source = create_creature(&mut game, "Three Point Shield", bob);
+        let first_id =
+            game.effect_store
+                .prevention_effects
+                .add_shield(PreventionShield::prevent_next_n(
+                    first_source,
+                    bob,
+                    PreventionTarget::Player(bob),
+                    1,
+                ));
+        let second_id =
+            game.effect_store
+                .prevention_effects
+                .add_shield(PreventionShield::prevent_next_n(
+                    second_source,
+                    bob,
+                    PreventionTarget::Player(bob),
+                    3,
+                ));
+
+        let mut dm = ChooseLastReplacement(bob);
+        let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            false,
+            EventCause::effect(),
+            None,
+            &mut dm,
+        );
+        assert!(processed.assignments.is_empty());
+        assert_eq!(
+            game.effect_store.prevention_effects.shields().len(),
+            1,
+            "the chosen three-point shield should exhaust before the earlier shield is touched"
+        );
+        assert_eq!(
+            game.effect_store.prevention_effects.shields()[0].id,
+            first_id
+        );
+        assert_eq!(
+            game.effect_store.prevention_effects.shields()[0].amount_remaining,
+            Some(1)
+        );
+        assert_ne!(first_id, second_id);
+    }
+
+    #[test]
+    fn limited_shield_is_allocated_across_simultaneous_damage_sources_before_commit() {
+        struct AllocateToLaterSource {
+            expected_player: PlayerId,
+            decisions: usize,
+        }
+
+        impl crate::decision::DecisionMaker for AllocateToLaterSource {
+            fn decide_number(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::NumberContext,
+            ) -> u32 {
+                assert_eq!(ctx.player, self.expected_player);
+                self.decisions += 1;
+                ctx.min
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let earlier_source = create_creature(&mut game, "Earlier Source", alice);
+        let later_source = create_creature(&mut game, "Later Source", alice);
+        let shield_source = create_creature(&mut game, "Limited Shield", bob);
+        game.effect_store
+            .prevention_effects
+            .add_shield(PreventionShield::prevent_next_n(
+                shield_source,
+                bob,
+                PreventionTarget::Player(bob),
+                2,
+            ));
+
+        let events = vec![
+            SimultaneousDamageEvent {
+                source: earlier_source,
+                target: DamageTarget::Player(bob),
+                amount: 3,
+                is_combat: true,
+                unpreventable: false,
+                cause: EventCause::combat_damage(earlier_source),
+                source_snapshot: None,
+            },
+            SimultaneousDamageEvent {
+                source: later_source,
+                target: DamageTarget::Player(bob),
+                amount: 3,
+                is_combat: true,
+                unpreventable: false,
+                cause: EventCause::combat_damage(later_source),
+                source_snapshot: None,
+            },
+        ];
+        let mut dm = AllocateToLaterSource {
+            expected_player: bob,
+            decisions: 0,
+        };
+        let processed =
+            process_simultaneous_damage_assignments_with_event_with_dm(&mut game, &events, &mut dm);
+
+        assert_eq!(
+            dm.decisions, 1,
+            "the final constrained allocation is automatic"
+        );
+        assert_eq!(
+            processed[0].assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(bob),
+                amount: 3,
+            }],
+            "the affected player allocated no shield to the earlier source"
+        );
+        assert_eq!(
+            processed[1].assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(bob),
+                amount: 1,
+            }],
+            "the full two-point shield allocation must apply to the later source"
+        );
+        assert!(
+            game.effect_store.prevention_effects.shields().is_empty(),
+            "the allocated shield capacity should be committed exactly once"
+        );
+    }
+
+    #[test]
     fn zone_change_lki_snapshot_uses_calculated_characteristics() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
@@ -4347,6 +5105,131 @@ mod tests {
             game.counter_count(protected, CounterType::PlusOnePlusOne),
             3,
             "follow-up should use the prevented amount on the damaged creature"
+        );
+    }
+
+    #[test]
+    fn unpreventable_damage_keeps_shield_and_executes_follow_up_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let protected = create_creature(&mut game, "Protected Bear", alice);
+        let source = create_creature(&mut game, "Unstoppable Bear", bob);
+        let shield = PreventionShield::prevent_next_n(
+            source,
+            alice,
+            PreventionTarget::Permanent(protected),
+            3,
+        )
+        .with_follow_up_effects(vec![
+            Effect::new(crate::effects::PutCountersEffect::new(
+                CounterType::PlusOnePlusOne,
+                Value::Fixed(1),
+                ChooseSpec::AnyTarget,
+            )),
+            Effect::new(crate::effects::PutCountersEffect::new(
+                CounterType::Ice,
+                Value::EventValue(EventValueSpec::Amount),
+                ChooseSpec::AnyTarget,
+            )),
+        ]);
+        game.effect_store.prevention_effects.add_shield(shield);
+
+        for expected_counters in 1..=2 {
+            let processed = process_damage_assignments_with_event_with_source_snapshot_opts(
+                &mut game,
+                source,
+                DamageTarget::Object(protected),
+                3,
+                false,
+                true,
+                EventCause::effect(),
+                None,
+            );
+
+            assert_eq!(
+                processed.assignments,
+                vec![ProcessedDamageAssignment {
+                    target: DamageTarget::Object(protected),
+                    amount: 3,
+                }],
+                "CR 615.12 must not prevent unpreventable damage"
+            );
+            assert_eq!(
+                game.counter_count(protected, CounterType::PlusOnePlusOne),
+                expected_counters,
+                "the shield's unconditional follow-up should happen once per damage event"
+            );
+            assert_eq!(
+                game.counter_count(protected, CounterType::Ice),
+                0,
+                "the amount prevented is zero for an unpreventable damage event"
+            );
+            assert_eq!(
+                game.effect_store.prevention_effects.shields()[0].amount_remaining,
+                Some(3),
+                "unpreventable damage must not consume the shield"
+            );
+        }
+    }
+
+    #[test]
+    fn filter_based_prevention_shield_only_protects_matching_permanents() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let white_card = CardBuilder::new(CardId::new(), "White Bear")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::White]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let black_card = CardBuilder::new(CardId::new(), "Black Bear")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Black]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let white = game.create_object_from_card(&white_card, alice, Zone::Battlefield);
+        let black = game.create_object_from_card(&black_card, alice, Zone::Battlefield);
+        let source = create_creature(&mut game, "Damage Source", bob);
+        let shield = PreventionShield::prevent_all(
+            source,
+            alice,
+            PreventionTarget::PermanentsMatching(
+                crate::target::ObjectFilter::creature().with_colors(crate::color::ColorSet::WHITE),
+            ),
+        );
+        game.effect_store.prevention_effects.add_shield(shield);
+
+        let excluded = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Object(black),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        assert_eq!(
+            excluded.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Object(black),
+                amount: 3,
+            }],
+            "the white-permanent shield must not prevent damage to a black permanent"
+        );
+
+        let included = process_damage_assignments_with_event(
+            &mut game,
+            source,
+            DamageTarget::Object(white),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        assert!(
+            included.assignments.is_empty(),
+            "the shield should prevent damage to the matching white permanent"
         );
     }
 
@@ -4507,6 +5390,74 @@ mod tests {
         assert_eq!(
             total_damage, 6,
             "source-filtered damage replacements should match departed sources using LKI"
+        );
+    }
+
+    #[test]
+    fn prevention_source_properties_use_calculated_characteristics_and_lki() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let damage_source = create_creature(&mut game, "Colorless Sparkmage", alice);
+        let color_source = create_creature(&mut game, "Color Setter", alice);
+        let shield_source = create_creature(&mut game, "Red Ward", bob);
+
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                color_source,
+                alice,
+                crate::continuous::EffectTarget::Specific(damage_source),
+                crate::continuous::Modification::SetColors(crate::color::ColorSet::RED),
+            ));
+        game.refresh_continuous_state();
+        assert_eq!(
+            game.calculated_characteristics(damage_source)
+                .expect("damage source should have calculated characteristics")
+                .colors,
+            crate::color::ColorSet::RED
+        );
+
+        game.effect_store.prevention_effects.add_shield(
+            PreventionShield::prevent_all(shield_source, bob, PreventionTarget::Player(bob))
+                .with_filter(crate::prevention::DamageFilter::from_color(
+                    crate::color::Color::Red,
+                )),
+        );
+
+        let current = process_damage_assignments_with_event(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            2,
+            false,
+            EventCause::effect(),
+        );
+        assert!(
+            current.assignments.is_empty(),
+            "a source made red by a continuous effect must match red-source prevention"
+        );
+
+        let source_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                game.object(damage_source)
+                    .expect("source should still exist"),
+                &game,
+            );
+        game.move_object(damage_source, Zone::Graveyard, EventCause::effect())
+            .expect("damage source should move");
+        let departed = process_damage_assignments_with_event_with_source_snapshot(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(bob),
+            2,
+            false,
+            EventCause::effect(),
+            Some(&source_snapshot),
+        );
+        assert!(
+            departed.assignments.is_empty(),
+            "red calculated characteristics captured in source LKI must keep matching prevention"
         );
     }
 }

@@ -18,6 +18,19 @@ pub(crate) enum DelayedObjectKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DelayedLeavesObjectKind {
+    Creature,
+    Permanent,
+    Token,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DelayedTaggedLeavesShape<'a> {
+    pub(crate) kind: DelayedLeavesObjectKind,
+    pub(crate) effect_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DelayedNextCombatShape<'a> {
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
@@ -125,6 +138,44 @@ fn object_kind<'a>(input: &mut LexStream<'a>) -> WResult<DelayedObjectKind> {
         primitives::kw("permanent").value(DelayedObjectKind::Permanent),
     ))
     .parse_next(input)
+}
+
+fn leaves_object_kind<'a>(input: &mut LexStream<'a>) -> WResult<DelayedLeavesObjectKind> {
+    alt((
+        primitives::kw("creature").value(DelayedLeavesObjectKind::Creature),
+        primitives::kw("permanent").value(DelayedLeavesObjectKind::Permanent),
+        primitives::kw("token").value(DelayedLeavesObjectKind::Token),
+    ))
+    .parse_next(input)
+}
+
+/// Parses a delayed follow-up that watches the object selected or created by
+/// the preceding effect: `When that creature/token/permanent leaves the
+/// battlefield, ...`.
+pub(crate) fn parse_delayed_tagged_leaves_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DelayedTaggedLeavesShape<'_>> {
+    let tokens = trimmed(tokens);
+    let (header_tokens, effect_tokens) =
+        primitives::split_lexed_once_on_separator(tokens, || primitives::comma().void())?;
+    let kind = primitives::parse_all(
+        trimmed(header_tokens),
+        (
+            trigger_intro,
+            primitives::kw("that"),
+            leaves_object_kind,
+            primitives::phrase(&["leaves", "the", "battlefield"]),
+            eof,
+        )
+            .map(|(_, _, kind, _, _)| kind),
+        "delayed tagged-object leaves trigger",
+    )
+    .ok()?;
+    let effect_tokens = trimmed(effect_tokens);
+    (!effect_tokens.is_empty()).then_some(DelayedTaggedLeavesShape {
+        kind,
+        effect_tokens,
+    })
 }
 
 pub(crate) fn parse_delayed_next_combat_shape(
@@ -326,6 +377,41 @@ pub(crate) fn parse_delayed_deals_combat_damage_kind(
     .ok()
 }
 
+/// Parse the object-kind portion of a delayed "target ... dies" trigger.
+///
+/// The target is chosen while the enclosing spell or ability resolves; the
+/// delayed trigger must subsequently watch that exact object rather than every
+/// object matching the descriptive filter.
+pub(crate) fn parse_delayed_target_dies_subject(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let tokens = trimmed(tokens);
+    let (_, after_target) = primitives::parse_prefix(tokens, primitives::kw("target"))?;
+    let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(after_target, 1, || {
+        (primitives::kw("dies"), eof).void()
+    })?;
+    let subject_tokens = trimmed(subject_tokens);
+    (!subject_tokens.is_empty()).then_some(subject_tokens)
+}
+
+/// Parse the object-kind portion of a delayed
+/// "target ... is put into your graveyard" trigger.
+pub(crate) fn parse_delayed_target_put_into_your_graveyard_subject(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let tokens = trimmed(tokens);
+    let (_, after_target) = primitives::parse_prefix(tokens, primitives::kw("target"))?;
+    let (subject_tokens, ()) = primitives::split_lexed_once_before_suffix(after_target, 1, || {
+        (
+            primitives::phrase(&["is", "put", "into", "your", "graveyard"]),
+            eof,
+        )
+            .void()
+    })?;
+    let subject_tokens = trimmed(subject_tokens);
+    (!subject_tokens.is_empty()).then_some(subject_tokens)
+}
+
 pub(crate) fn is_next_cast_spell_or_loyalty_shape(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         trimmed(tokens),
@@ -468,6 +554,18 @@ mod tests {
                 .unwrap()
                 .references_previous_creature
         );
+
+        let target_dies = tokens("When target creature dies this turn, draw a card.");
+        let shape = parse_delayed_this_turn_shape(&target_dies).unwrap();
+        assert!(parse_delayed_target_dies_subject(shape.trigger_tokens).is_some());
+
+        let target_graveyard = tokens(
+            "When target creature is put into your graveyard this turn, draw a card.",
+        );
+        let shape = parse_delayed_this_turn_shape(&target_graveyard).unwrap();
+        assert!(
+            parse_delayed_target_put_into_your_graveyard_subject(shape.trigger_tokens).is_some()
+        );
     }
 
     #[test]
@@ -484,5 +582,12 @@ mod tests {
                 .unwrap()
                 .may_choose_new_targets
         );
+
+        let leaves = tokens(
+            "When that creature leaves the battlefield, return this card from exile to the battlefield.",
+        );
+        let shape = parse_delayed_tagged_leaves_shape(&leaves).unwrap();
+        assert_eq!(shape.kind, DelayedLeavesObjectKind::Creature);
+        assert!(!shape.effect_tokens.is_empty());
     }
 }

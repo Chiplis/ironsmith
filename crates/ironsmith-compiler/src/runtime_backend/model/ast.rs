@@ -406,7 +406,10 @@ pub(crate) enum TriggerSpec {
     BeginningOfPostcombatMain(PlayerFilter),
     DayNightChanged,
     ThisEntersBattlefield,
-    ThisEntersBattlefieldWithSurface(crate::target::SourceReferenceSurface),
+    ThisEntersBattlefieldWithSurface {
+        surface: crate::target::SourceReferenceSurface,
+        subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber,
+    },
     ThisEntersBattlefieldFromZone {
         subject_filter: ObjectFilter,
         from: Zone,
@@ -750,6 +753,7 @@ pub(crate) enum PredicateAst {
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
     ThisSpellWasCastFromNonHand,
+    TurnHistory(TurnHistoryPredicateAst),
     ValueComparison {
         left: Value,
         operator: crate::effect::ValueComparisonOperator,
@@ -758,6 +762,58 @@ pub(crate) enum PredicateAst {
     Not(Box<PredicateAst>),
     And(Box<PredicateAst>, Box<PredicateAst>),
     Or(Box<PredicateAst>, Box<PredicateAst>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum TurnHistoryPredicateAst {
+    SpellsCastLastTurnAtLeast(u32),
+    SourceCrewedByAtLeast {
+        count: u32,
+        filter: ObjectFilter,
+    },
+    SourceWasCast {
+        surface: SourceReferenceSurface,
+    },
+    SourceWasCastByController {
+        surface: SourceReferenceSurface,
+    },
+    SourceWasKicked {
+        surface: SourceReferenceSurface,
+    },
+    SourceEnteredBattlefieldThisTurn {
+        surface: SourceReferenceSurface,
+    },
+    SourceAttackedThisTurn {
+        surface: SourceReferenceSurface,
+    },
+    TriggeringObjectWasCast,
+    TriggeringObjectWasCastFromZone(Zone),
+    PlayerPlayedLandThisTurn(PlayerAst),
+    TriggeringObjectDied,
+    PlayerPlayedCardFromZoneThisTurn {
+        player: PlayerAst,
+        zone: Zone,
+    },
+    TriggeringPlayerAttackedControllerLastTurn,
+    PlayerLostLifeLastTurn(PlayerAst),
+    TriggeringPlayersTurn {
+        definite_player: bool,
+    },
+    ControllerTeamGainedLifeThisTurn,
+    TriggeringObjectsNoneWereCastOrNoManaSpent,
+    ManaFromSourceSpentOnTriggeringAction {
+        source_filter: ObjectFilter,
+    },
+    AllPlayersLifeAtMost(i32),
+    AnotherOpponentControlsPotentialTarget {
+        filter: ObjectFilter,
+    },
+    TriggeringAttackerBlockers {
+        required: ObjectFilter,
+        required_count: u32,
+        prohibited: ObjectFilter,
+    },
+    TriggeringAbilityIsManaAbility,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -791,9 +847,15 @@ impl PredicateAst {
             | PredicateAst::ThisSpellWasKicked
             | PredicateAst::ThisSpellPaidLabel(_)
             | PredicateAst::ThisSpellWasCastFromZone(_)
-            | PredicateAst::ThisSpellWasCastFromNonHand => {
-                Some(PredicateReferenceAntecedent::SourceObject)
-            }
+            | PredicateAst::ThisSpellWasCastFromNonHand
+            | PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::SourceCrewedByAtLeast { .. }
+                | TurnHistoryPredicateAst::SourceWasCast { .. }
+                | TurnHistoryPredicateAst::SourceWasCastByController { .. }
+                | TurnHistoryPredicateAst::SourceWasKicked { .. }
+                | TurnHistoryPredicateAst::SourceEnteredBattlefieldThisTurn { .. }
+                | TurnHistoryPredicateAst::SourceAttackedThisTurn { .. },
+            ) => Some(PredicateReferenceAntecedent::SourceObject),
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => left
                 .reference_antecedent()
                 .or_else(|| right.reference_antecedent()),
@@ -1197,10 +1259,12 @@ pub(crate) enum SubjectVerbActionAst {
     PreventAllCombatDamageFromSource {
         duration: Until,
         source: TargetAst,
+        source_would_deal_surface: bool,
     },
     PreventAllCombatDamageFromSourceFilter {
         duration: Until,
         source_filter: ObjectFilter,
+        excluded_source_target: Option<TargetAst>,
     },
     PreventAllCombatDamageToPlayers {
         duration: Until,
@@ -1226,6 +1290,8 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
         source_of_your_choice: bool,
+        source_choice_shares_activation_mana_color: bool,
+        source_target: Option<TargetAst>,
     },
     PreventAllDamageToTargetFromSourceFilter {
         target: TargetAst,
@@ -1353,6 +1419,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         face_down: bool,
         all: bool,
+        explicit_return_surface: bool,
     },
     MoveToZone {
         target: TargetAst,
@@ -1379,6 +1446,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     TargetOnly {
         target: TargetAst,
+        explicit_declaration: bool,
     },
     TagMatchingObjects {
         filter: ObjectFilter,
@@ -1526,8 +1594,13 @@ pub(crate) enum SubjectVerbActionAst {
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
         remove_supertypes: Vec<Supertype>,
+        add_card_types: Vec<CardType>,
+        set_card_types: Vec<CardType>,
+        add_subtypes: Vec<Subtype>,
+        set_subtypes: Vec<Subtype>,
         granted_abilities: Vec<GrantedAbilityAst>,
         set_base_power_toughness: Option<(Value, Value)>,
+        copy_exception_surface: Option<String>,
     },
     GrantAbilitiesAll {
         filter: ObjectFilter,
@@ -1750,9 +1823,13 @@ pub(crate) enum SubjectVerbActionAst {
     },
     PhaseOut {
         target: TargetAst,
+        duration: crate::effects::PhaseOutDuration,
+        source_surface: Option<SourceReferenceSurface>,
     },
     PhaseOutAll {
         filter: ObjectFilter,
+        duration: crate::effects::PhaseOutDuration,
+        source_surface: Option<SourceReferenceSurface>,
     },
     PhaseIn {
         target: TargetAst,
@@ -1991,6 +2068,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     Goad {
         target: TargetAst,
+        duration: Until,
     },
     Suspect {
         target: TargetAst,
@@ -2498,18 +2576,25 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("source", source)
                 .field("duration", duration)
                 .finish(),
-            Self::PreventAllCombatDamageFromSource { duration, source } => f
+            Self::PreventAllCombatDamageFromSource {
+                duration,
+                source,
+                source_would_deal_surface,
+            } => f
                 .debug_struct("PreventAllCombatDamageFromSource")
                 .field("duration", duration)
                 .field("source", source)
+                .field("source_would_deal_surface", source_would_deal_surface)
                 .finish(),
             Self::PreventAllCombatDamageFromSourceFilter {
                 duration,
                 source_filter,
+                excluded_source_target,
             } => f
                 .debug_struct("PreventAllCombatDamageFromSourceFilter")
                 .field("duration", duration)
                 .field("source_filter", source_filter)
+                .field("excluded_source_target", excluded_source_target)
                 .finish(),
             Self::PreventAllCombatDamageToPlayers { duration } => f
                 .debug_struct("PreventAllCombatDamageToPlayers")
@@ -2551,11 +2636,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 duration,
                 source_of_your_choice,
+                source_choice_shares_activation_mana_color,
+                source_target,
             } => f
                 .debug_struct("PreventAllDamageToTarget")
                 .field("target", target)
                 .field("duration", duration)
                 .field("source_of_your_choice", source_of_your_choice)
+                .field(
+                    "source_choice_shares_activation_mana_color",
+                    source_choice_shares_activation_mana_color,
+                )
+                .field("source_target", source_target)
                 .finish(),
             Self::PreventAllDamageToTargetFromSourceFilter {
                 target,
@@ -2778,11 +2870,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 face_down,
                 all,
+                explicit_return_surface,
             } => f
                 .debug_struct("ExileUntilSourceLeaves")
                 .field("target", target)
                 .field("face_down", face_down)
                 .field("all", all)
+                .field("explicit_return_surface", explicit_return_surface)
                 .finish(),
             Self::MoveToZone {
                 target,
@@ -2832,7 +2926,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("MoveToLibraryTopOrBottomChoice")
                 .field("target", target)
                 .finish(),
-            Self::TargetOnly { target } => f.debug_tuple("TargetOnly").field(target).finish(),
+            Self::TargetOnly {
+                target,
+                explicit_declaration,
+            } => f
+                .debug_struct("TargetOnly")
+                .field("target", target)
+                .field("explicit_declaration", explicit_declaration)
+                .finish(),
             Self::TagMatchingObjects { filter, zones, tag } => f
                 .debug_struct("TagMatchingObjects")
                 .field("filter", filter)
@@ -3097,8 +3198,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 name_override_surface,
                 add_supertypes,
                 remove_supertypes,
+                add_card_types,
+                set_card_types,
+                add_subtypes,
+                set_subtypes,
                 granted_abilities,
                 set_base_power_toughness,
+                copy_exception_surface,
             } => f
                 .debug_struct("BecomeCopy")
                 .field("target", target)
@@ -3109,8 +3215,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("name_override_surface", name_override_surface)
                 .field("add_supertypes", add_supertypes)
                 .field("remove_supertypes", remove_supertypes)
+                .field("add_card_types", add_card_types)
+                .field("set_card_types", set_card_types)
+                .field("add_subtypes", add_subtypes)
+                .field("set_subtypes", set_subtypes)
                 .field("granted_abilities", granted_abilities)
                 .field("set_base_power_toughness", set_base_power_toughness)
+                .field("copy_exception_surface", copy_exception_surface)
                 .finish(),
             Self::GrantAbilitiesAll {
                 filter,
@@ -3397,8 +3508,26 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("tap_filter", tap_filter)
                 .field("untap_filter", untap_filter)
                 .finish(),
-            Self::PhaseOut { target } => f.debug_tuple("PhaseOut").field(target).finish(),
-            Self::PhaseOutAll { filter } => f.debug_tuple("PhaseOutAll").field(filter).finish(),
+            Self::PhaseOut {
+                target,
+                duration,
+                source_surface,
+            } => f
+                .debug_struct("PhaseOut")
+                .field("target", target)
+                .field("duration", duration)
+                .field("source_surface", source_surface)
+                .finish(),
+            Self::PhaseOutAll {
+                filter,
+                duration,
+                source_surface,
+            } => f
+                .debug_struct("PhaseOutAll")
+                .field("filter", filter)
+                .field("duration", duration)
+                .field("source_surface", source_surface)
+                .finish(),
             Self::PhaseIn { target } => f.debug_tuple("PhaseIn").field(target).finish(),
             Self::PhaseInAll { filter } => f.debug_tuple("PhaseInAll").field(filter).finish(),
             Self::Transform { target } => f.debug_tuple("Transform").field(target).finish(),
@@ -3731,7 +3860,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::LoseGame => f.write_str("LoseGame"),
             Self::WinGame => f.write_str("WinGame"),
             Self::Detain { target } => f.debug_tuple("Detain").field(target).finish(),
-            Self::Goad { target } => f.debug_tuple("Goad").field(target).finish(),
+            Self::Goad { target, duration } => f
+                .debug_struct("Goad")
+                .field("target", target)
+                .field("duration", duration)
+                .finish(),
             Self::Suspect { target } => f.debug_tuple("Suspect").field(target).finish(),
             Self::ClearSuspected { target } => {
                 f.debug_tuple("ClearSuspected").field(target).finish()

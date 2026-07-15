@@ -460,7 +460,11 @@ fn flush_level_range_activations(
 fn is_mergeable_keyword_surface(keyword: &str) -> bool {
     let keyword = keyword.trim_end_matches('.');
     let lower = keyword.to_ascii_lowercase();
+    let is_numbered_firebending = lower
+        .strip_prefix("firebending ")
+        .is_some_and(|amount| amount.parse::<u32>().is_ok());
     (is_keyword_phrase(keyword) && lower != "changeling")
+        || is_numbered_firebending
         || matches!(
             lower.as_str(),
             "flying"
@@ -660,6 +664,12 @@ pub(super) fn describe_resolution_program(
             }
             rendered_segments.push(
                 describe_pre_clause_structural_effect_list(&segment.default_effects)
+                    .or_else(|| {
+                        describe_structural_multisentence_effect_list(&segment.default_effects)
+                    })
+                    .or_else(|| {
+                        render_consult_reveal_move_matches_then_bottom(&segment.default_effects)
+                    })
                     .or_else(|| {
                         describe_effect_clause_list(&segment.default_effects)
                             .map(|text| capitalize_first(&text))
@@ -913,6 +923,25 @@ fn describe_single_self_replacement_segment(
         compact_replacement.unwrap_or_else(|| describe_effect_list(&branch.replacement_effects));
     let raw_condition_text = super::normalize_common::describe_condition(&branch.condition);
     let condition_text = normalize_target_quality_condition(&default_text, &raw_condition_text);
+    if let Some(return_text) = describe_same_target_hand_to_battlefield_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &default_text,
+        &condition_text,
+        branch.condition_after_replacement,
+    ) {
+        return Some(return_text);
+    }
+    if let Some(search_destination_text) =
+        describe_shared_search_hand_to_battlefield_self_replacement(
+            &segment.default_effects,
+            &branch.replacement_effects,
+            &default_text,
+            &condition_text,
+        )
+    {
+        return Some(search_destination_text);
+    }
     if let Some(looked_cards_text) = describe_looked_cards_non_hand_self_replacement(
         &segment.default_effects,
         &branch.replacement_effects,
@@ -1030,6 +1059,144 @@ fn describe_single_self_replacement_segment(
         &condition_text,
         &replacement,
     ))
+}
+
+/// Recognize a complete search/reveal/move/shuffle replacement pipeline whose
+/// only semantic change is the searched collection's destination.  The full
+/// structural comparison is intentional: it lets compiled text express the
+/// local "instead of putting them into your hand" replacement without hiding
+/// a changed selector, count, reveal, tag, or shuffle instruction.
+fn describe_shared_search_hand_to_battlefield_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    struct Pipeline<'a> {
+        choose: &'a crate::effects::ChooseObjectsEffect,
+        reveal: &'a crate::effects::RevealTaggedEffect,
+        for_each_tag: &'a TagKey,
+        move_wrapper_tag: Option<&'a TagKey>,
+        move_to_zone: &'a crate::effects::MoveToZoneEffect,
+        shuffle: &'a crate::effects::ShuffleLibraryEffect,
+    }
+
+    fn move_with_wrapper_tag(
+        effect: &Effect,
+    ) -> Option<(Option<&TagKey>, &crate::effects::MoveToZoneEffect)> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return Some((
+                Some(&tagged.tag),
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::MoveToZoneEffect>()?,
+            ));
+        }
+        Some((
+            None,
+            effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?,
+        ))
+    }
+
+    fn pipeline(effects: &[Effect]) -> Option<Pipeline<'_>> {
+        let [choose_effect, reveal_effect, for_each_effect, shuffle_effect] = effects else {
+            return None;
+        };
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+        let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        let [move_effect] = for_each.effects.as_slice() else {
+            return None;
+        };
+        let (move_wrapper_tag, move_to_zone) = move_with_wrapper_tag(move_effect)?;
+        let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        if !choose.is_search
+            || reveal.tag != choose.tag
+            || for_each.tag != choose.tag
+            || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        {
+            return None;
+        }
+        Some(Pipeline {
+            choose,
+            reveal,
+            for_each_tag: &for_each.tag,
+            move_wrapper_tag,
+            move_to_zone,
+            shuffle,
+        })
+    }
+
+    let default = pipeline(default_effects)?;
+    let replacement = pipeline(replacement_effects)?;
+    let mut replacement_move_at_default_destination = replacement.move_to_zone.clone();
+    replacement_move_at_default_destination.zone = default.move_to_zone.zone;
+    if default.choose != replacement.choose
+        || default.reveal != replacement.reveal
+        || default.for_each_tag != replacement.for_each_tag
+        || default.move_wrapper_tag != replacement.move_wrapper_tag
+        || default.shuffle != replacement.shuffle
+        || default.move_to_zone != &replacement_move_at_default_destination
+        || default.move_to_zone.zone != Zone::Hand
+        || replacement.move_to_zone.zone != Zone::Battlefield
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{}. If {condition_text}, put those cards onto the battlefield instead of putting them into your hand",
+        default_text.trim().trim_end_matches('.')
+    ))
+}
+
+fn describe_same_target_hand_to_battlefield_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    condition_text: &str,
+    condition_after_replacement: bool,
+) -> Option<String> {
+    let [default_effect] = default_effects else {
+        return None;
+    };
+    let [replacement_effect] = replacement_effects else {
+        return None;
+    };
+    let default_tagged = default_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let replacement_tagged = replacement_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    if default_tagged.tag != replacement_tagged.tag {
+        return None;
+    }
+    let return_to_hand = default_tagged
+        .effect
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()?;
+    let return_to_battlefield = replacement_tagged
+        .effect
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+    if return_to_hand.target.unhinted() != return_to_battlefield.target.unhinted()
+        || return_to_battlefield.as_aura.is_some()
+        || !return_to_battlefield.enters_with_counters.is_empty()
+    {
+        return None;
+    }
+    let replacement = format!(
+        "return that card to the battlefield{} instead",
+        if return_to_battlefield.tapped {
+            " tapped"
+        } else {
+            ""
+        }
+    );
+    if condition_after_replacement {
+        Some(format!(
+            "{default_text}. {} if {condition_text}",
+            capitalize_first(&replacement)
+        ))
+    } else {
+        Some(format!(
+            "{default_text}. If {condition_text}, {replacement}"
+        ))
+    }
 }
 
 fn describe_shared_terminal_shuffle_self_replacement(
@@ -3420,7 +3587,11 @@ pub(super) fn describe_alternative_cast_line(
             } else {
                 parts.join(" and ")
             };
-            let mut line = format!("You may {clause} rather than pay this spell's mana cost");
+            let mut line = if parts.is_empty() {
+                "You may cast this spell without paying its mana cost".to_string()
+            } else {
+                format!("You may {clause} rather than pay this spell's mana cost")
+            };
             if !name.is_empty() {
                 line.push_str(&format!(" ({name})"));
             }
@@ -3479,8 +3650,10 @@ pub(super) fn describe_alternative_cast_line(
             }
         }
         AlternativeCastingMethod::Retrace { .. } => "Retrace".to_string(),
-        AlternativeCastingMethod::JumpStart => "Jump-start".to_string(),
-        AlternativeCastingMethod::Escape { cost, exile_count } => {
+        AlternativeCastingMethod::JumpStart { .. } => "Jump-start".to_string(),
+        AlternativeCastingMethod::Escape {
+            cost, exile_count, ..
+        } => {
             let count_text =
                 small_number_word(*exile_count).unwrap_or_else(|| exile_count.to_string());
             if let Some(cost) = cost {
@@ -3553,7 +3726,7 @@ fn alternative_cast_method_matches_kind(
             AlternativeCastingMethod::Flashback { .. }
         ) | (
             AlternativeCastKind::JumpStart,
-            AlternativeCastingMethod::JumpStart
+            AlternativeCastingMethod::JumpStart { .. }
         ) | (
             AlternativeCastKind::Escape,
             AlternativeCastingMethod::Escape { .. }
@@ -3911,6 +4084,20 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
+                describe_structural_modifier_type_addition_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
+                describe_authored_attached_transform_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
                 describe_labeled_static_bundle(&def.abilities[ability_idx..], subject)
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
@@ -4223,6 +4410,310 @@ fn static_display_with_id(
             .trim_end_matches('.')
             .to_string()
     })
+}
+
+fn static_bundle_subjects_match(first: &str, next: &str) -> bool {
+    if first.eq_ignore_ascii_case(next) {
+        return true;
+    }
+    let normalize_each = |subject: &str| {
+        let lower = subject.trim().to_ascii_lowercase();
+        let Some(rest) = lower.strip_prefix("each ") else {
+            return lower;
+        };
+        let Some((noun, tail)) = rest.split_once(' ') else {
+            return format!("{rest}s");
+        };
+        let plural = match noun {
+            "creature" => "creatures".to_string(),
+            "artifact" => "artifacts".to_string(),
+            "enchantment" => "enchantments".to_string(),
+            "permanent" => "permanents".to_string(),
+            "land" => "lands".to_string(),
+            "token" => "tokens".to_string(),
+            other => format!("{other}s"),
+        };
+        format!("{plural} {tail}")
+    };
+    normalize_each(first) == normalize_each(next)
+}
+
+fn render_static_bundle_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.clone(),
+        [left, right] => format!("{left} and {right}"),
+        _ => {
+            let (last, leading) = items.split_last().expect("nonempty static bundle list");
+            format!("{}, and {last}", leading.join(", "))
+        }
+    }
+}
+
+/// Recombine layer-correct static pieces from one authored modifier clause.
+/// The terminal type addition is the structural anchor: every consumed piece
+/// must affect the same subject, and only P/T, granted-ability, and additive
+/// type predicates are accepted.
+fn describe_structural_modifier_type_addition_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let AbilityKind::Static(first) = &abilities.first()?.kind else {
+        return None;
+    };
+    let first_display = first.display();
+    let (subject, first_tail, first_verb) = match first.id() {
+        crate::static_abilities::StaticAbilityId::Anthem => {
+            split_static_predicate_with_verb(&first_display, &[" gets ", " get "])?
+        }
+        crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter => {
+            split_static_predicate_with_verb(&first_display, &[" has ", " have "])?
+        }
+        _ => return None,
+    };
+    let singular = matches!(first_verb, "gets" | "has");
+    let first_predicate = format!("{first_verb} {first_tail}");
+    let mut grant_items = Vec::new();
+    let mut has_quoted_grant = false;
+    let mut removes_all_other_abilities = false;
+    let mut color_descriptors = Vec::new();
+    let mut colors_are_additive = false;
+    let mut type_descriptors = Vec::new();
+    let mut consumed = 1usize;
+    let mut saw_type_addition = false;
+
+    while let Some(Ability {
+        kind: AbilityKind::Static(next),
+        ..
+    }) = abilities.get(consumed)
+    {
+        let display = next.display();
+        match next.id() {
+            crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter => {
+                if saw_type_addition || removes_all_other_abilities {
+                    break;
+                }
+                let next_subject = display
+                    .strip_suffix(" lose all abilities")
+                    .or_else(|| display.strip_suffix(" loses all abilities"))?;
+                if !static_bundle_subjects_match(subject, next_subject) {
+                    break;
+                }
+                removes_all_other_abilities = true;
+            }
+            crate::static_abilities::StaticAbilityId::GrantAbility => {
+                if saw_type_addition {
+                    break;
+                }
+                let (next_subject, tail, _) =
+                    split_static_predicate_with_verb(&display, &[" has ", " have "])?;
+                if !static_bundle_subjects_match(subject, next_subject) {
+                    break;
+                }
+                grant_items.push(tail.to_string());
+            }
+            crate::static_abilities::StaticAbilityId::AttachedAbilityGrant => {
+                if saw_type_addition {
+                    break;
+                }
+                let (next_subject, tail, _) =
+                    split_static_predicate_with_verb(&display, &[" has ", " have "])?;
+                if !static_bundle_subjects_match(subject, next_subject) {
+                    break;
+                }
+                let body = tail.trim().trim_matches('"').trim_end_matches('.');
+                let terminal = if body.ends_with('?') || body.ends_with('!') {
+                    ""
+                } else {
+                    "."
+                };
+                grant_items.push(format!("\"{body}{terminal}\""));
+                has_quoted_grant = true;
+            }
+            crate::static_abilities::StaticAbilityId::SetColors
+            | crate::static_abilities::StaticAbilityId::AddColors => {
+                if saw_type_addition {
+                    break;
+                }
+                let (next_subject, tail, _) =
+                    split_static_predicate_with_verb(&display, &[" is ", " are "])?;
+                if !static_bundle_subjects_match(subject, next_subject) {
+                    break;
+                }
+                let (descriptor, additive) = if next.id()
+                    == crate::static_abilities::StaticAbilityId::AddColors
+                {
+                    (
+                        tail.strip_suffix(" in addition to its other colors")
+                            .or_else(|| {
+                                tail.strip_suffix(" in addition to their other colors")
+                            })?,
+                        true,
+                    )
+                } else {
+                    (tail, false)
+                };
+                color_descriptors.push(descriptor.trim().to_string());
+                colors_are_additive |= additive;
+            }
+            crate::static_abilities::StaticAbilityId::AddCardTypes
+            | crate::static_abilities::StaticAbilityId::AddSubtypes => {
+                let (next_subject, tail, type_verb) =
+                    split_static_predicate_with_verb(&display, &[" is ", " are "])?;
+                if !static_bundle_subjects_match(subject, next_subject) {
+                    break;
+                }
+                let descriptor = tail
+                    .strip_suffix(" in addition to its other types")
+                    .or_else(|| tail.strip_suffix(" in addition to their other types"))?;
+                let descriptor = descriptor
+                    .strip_prefix("a ")
+                    .or_else(|| descriptor.strip_prefix("an "))
+                    .unwrap_or(descriptor)
+                    .trim();
+                let descriptor = if singular && type_verb == "are" {
+                    let mut words = descriptor
+                        .split_whitespace()
+                        .map(str::to_string)
+                        .collect::<Vec<_>>();
+                    if let Some(last) = words.last_mut() {
+                        *last = singular_subtype_word(last);
+                    }
+                    words.join(" ")
+                } else {
+                    descriptor.to_string()
+                };
+                type_descriptors.push(descriptor);
+                saw_type_addition = true;
+            }
+            _ => break,
+        }
+        consumed += 1;
+    }
+
+    if !saw_type_addition || type_descriptors.is_empty() {
+        return None;
+    }
+    let mut descriptors = color_descriptors;
+    descriptors.extend(type_descriptors);
+    let descriptor = descriptors.join(" ");
+    let descriptor = if singular {
+        with_indefinite_article(&descriptor)
+    } else {
+        descriptor
+    };
+    let scopes = if colors_are_additive {
+        if singular {
+            "its other colors and types"
+        } else {
+            "their other colors and types"
+        }
+    } else if singular {
+        "its other types"
+    } else {
+        "their other types"
+    };
+    let type_predicate = format!(
+        "{} {descriptor} in addition to {scopes}",
+        if singular { "is" } else { "are" },
+    );
+
+    let text = if grant_items.is_empty() && removes_all_other_abilities {
+        format!(
+            "{subject} {first_predicate}, loses all other abilities, and {type_predicate}"
+        )
+    } else if grant_items.is_empty() {
+        format!("{subject} {first_predicate} and {type_predicate}")
+    } else {
+        let grant_predicate = format!("has {}", render_static_bundle_list(&grant_items));
+        if removes_all_other_abilities {
+            format!(
+                "{subject} {first_predicate}, {grant_predicate}, loses all other abilities, and {type_predicate}"
+            )
+        } else if has_quoted_grant && singular {
+            format!(
+                "{subject} {first_predicate} and {grant_predicate}. It's {descriptor} in addition to its other types"
+            )
+        } else {
+            format!(
+                "{subject} {first_predicate}, {grant_predicate}, and {type_predicate}"
+            )
+        }
+    };
+    Some((text, consumed))
+}
+
+fn static_subject_for_attached_transform_piece(ability: &Ability) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let display = static_ability.display();
+    match static_ability.id() {
+        crate::static_abilities::StaticAbilityId::AddSubtypes
+        | crate::static_abilities::StaticAbilityId::SetColors
+        | crate::static_abilities::StaticAbilityId::MakeColorless => {
+            split_static_predicate_with_verb(&display, &[" is ", " are "])
+                .map(|(subject, _, _)| subject.to_string())
+        }
+        crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter => display
+            .strip_suffix(" lose all abilities")
+            .or_else(|| display.strip_suffix(" loses all abilities"))
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+/// Attached characteristic-setting lines lower into independent layer-correct
+/// static abilities. Preserve the authored line on SetCardTypes and consume the
+/// adjacent pieces only when their subjects prove they belong to that line.
+fn describe_authored_attached_transform_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let first_static = match &abilities.first()?.kind {
+        AbilityKind::Static(static_ability) => static_ability,
+        _ => return None,
+    };
+    let (set_idx, grant_tail) = if first_static.id()
+        == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant
+    {
+        let display = first_static.display();
+        let (_, tail) = split_static_predicate(&display, " has ")?;
+        (1usize, Some(tail.to_string()))
+    } else {
+        (0usize, None)
+    };
+
+    let AbilityKind::Static(set_types) = &abilities.get(set_idx)?.kind else {
+        return None;
+    };
+    if set_types.id() != crate::static_abilities::StaticAbilityId::SetCardTypes {
+        return None;
+    }
+    let surface = set_types.authored_line_surface()?;
+    if let Some(grant_tail) = grant_tail {
+        let surface_lower = surface.to_ascii_lowercase();
+        let grant_lower = grant_tail.to_ascii_lowercase();
+        if !surface_lower.contains(&grant_lower) {
+            return None;
+        }
+    } else if surface.to_ascii_lowercase().contains(" with ") {
+        return None;
+    }
+
+    let set_display = set_types.display();
+    let (subject, _, _) =
+        split_static_predicate_with_verb(&set_display, &[" is ", " are "])?;
+    let mut consumed = set_idx + 1;
+    while let Some(next) = abilities.get(consumed) {
+        let Some(next_subject) = static_subject_for_attached_transform_piece(next) else {
+            break;
+        };
+        if next_subject != subject {
+            break;
+        }
+        consumed += 1;
+    }
+
+    Some((surface.trim().trim_end_matches('.').to_string(), consumed))
 }
 
 fn exact_enchanted_restriction_subject(filter: &ObjectFilter) -> Option<&'static str> {
@@ -4674,6 +5165,8 @@ fn split_static_predicate_with_verb<'a>(
                 " is " => "is",
                 " have " => "have",
                 " has " => "has",
+                " get " => "get",
+                " gets " => "gets",
                 _ => continue,
             };
             return Some((subject, tail, normalized));

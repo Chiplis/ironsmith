@@ -532,6 +532,11 @@ mod tests {
         // Can't draw from empty library
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
         assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert!(
+            game.player(alice)
+                .unwrap()
+                .attempted_draw_from_empty_library
+        );
     }
 
     #[test]
@@ -551,6 +556,11 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(alice).unwrap().hand.len(), 2);
         assert_eq!(game.player(alice).unwrap().library.len(), 0);
+        assert!(
+            game.player(alice)
+                .unwrap()
+                .attempted_draw_from_empty_library
+        );
     }
 
     #[test]

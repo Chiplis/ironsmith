@@ -9,15 +9,17 @@ use super::*;
 /// Per MTG Comprehensive Rules 601.2, casting follows this order:
 /// 1. Proposing (601.2a) - Move spell to stack
 /// 2. ChoosingModes (601.2b) - Announce modes for modal spells
-/// 3. ChoosingX (601.2b) - Announce X value
+/// 3. ChoosingSplices (601.2b) - Reveal and order cards being spliced
 /// 4. ChoosingOptionalCosts (601.2b) - Announce additional costs (kicker, buyback)
-/// 5. AnnouncingCost (601.2b) - Announce hybrid/Phyrexian mana choices
-/// 6. ChoosingTargets (601.2c) - Choose targets
-/// 7. ChoosingNextCost - Choose the next remaining cost to pay
-/// 8. ProcessingCosts - Pay a selected non-mana cost
-/// 9. ChoosingSacrifice / ChoosingCardCost - Resolve object/card cost choices
-/// 10. PayingMana (601.2g-h) - Activate mana abilities and pay costs
-/// 11. ReadyToFinalize (601.2i) - Spell becomes cast
+/// 5. ChoosingX (601.2b) - Announce X value
+/// 6. AnnouncingCost (601.2b) - Announce hybrid/Phyrexian mana choices
+/// 7. ChoosingTargets (601.2c) - Choose targets
+/// 8. ActivatingManaAbilities (601.2g) - One repeatable mana-ability window
+/// 9. ChoosingNextCost - Choose the next remaining cost to pay
+/// 10. ProcessingCosts - Pay a selected non-mana cost
+/// 11. ChoosingSacrifice / ChoosingCardCost - Resolve object/card cost choices
+/// 12. PayingMana (601.2h) - Pay locked mana costs without reopening 601.2g
+/// 13. ReadyToFinalize (601.2i) - Spell becomes cast
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CastStage {
     /// Spell is being proposed - moved to stack per 601.2a.
@@ -26,15 +28,21 @@ pub enum CastStage {
     /// Need to choose modes for modal spells (per 601.2b).
     /// Modes must be chosen before targets.
     ChoosingModes,
-    /// Need to choose X value (for spells with X in cost).
-    ChoosingX,
+    /// Need to reveal and order cards being spliced onto the spell.
+    ChoosingSplices,
     /// Need to choose optional costs (kicker, buyback, etc.).
     ChoosingOptionalCosts,
+    /// Need to choose X value (for spells with X in cost).
+    ChoosingX,
     /// Need to announce hybrid/Phyrexian mana payment choices (per 601.2b).
     /// These choices are locked in before targets are chosen.
     AnnouncingCost,
     /// Need to choose targets.
     ChoosingTargets,
+    /// Need to divide an amount among the chosen targets.
+    ChoosingDistribution,
+    /// Total cost is locked; the player may repeatedly activate mana abilities.
+    ActivatingManaAbilities,
     /// Need to choose the next remaining cost to pay.
     ChoosingNextCost,
     /// Need to pay a selected immediate non-mana cost.
@@ -54,10 +62,13 @@ impl CastStage {
         match self {
             CastStage::Proposing => "proposing",
             CastStage::ChoosingModes => "choosing modes",
+            CastStage::ChoosingSplices => "choosing splices",
             CastStage::ChoosingX => "choosing X",
             CastStage::ChoosingOptionalCosts => "choosing optional costs",
             CastStage::AnnouncingCost => "announcing costs",
             CastStage::ChoosingTargets => "choosing targets",
+            CastStage::ChoosingDistribution => "choosing distribution",
+            CastStage::ActivatingManaAbilities => "activating mana abilities",
             CastStage::ChoosingNextCost => "choosing next cost",
             CastStage::ProcessingCosts => "processing costs",
             CastStage::ChoosingSacrifice => "choosing sacrifices",
@@ -106,18 +117,37 @@ pub struct PendingCast {
     pub chosen_targets: Vec<Target>,
     /// Target requirement assignments bound to `chosen_targets`.
     pub chosen_target_assignments: Vec<crate::game_state::TargetAssignment>,
+    /// Target divisions already announced for the proposed spell.
+    pub target_distributions: Vec<crate::game_state::TargetDistribution>,
+    /// Remaining target divisions to announce in effect order.
+    pub pending_target_distributions: std::collections::VecDeque<PendingTargetDistribution>,
     /// Target requirements that still need to be fulfilled.
     pub remaining_requirements: Vec<TargetRequirement>,
     /// The casting method (normal or alternative like flashback).
     pub casting_method: CastingMethod,
+    /// Whether an effect instructs the player to cast this spell without
+    /// paying its printed mana cost. Additional and optional costs are still
+    /// announced and paid through the ordinary CR 601 transaction.
+    pub base_mana_cost_waived: bool,
+    /// A resolving effect may reduce the total mana cost of the cast it
+    /// authorizes. Apply this after ordinary modifiers and optional mana costs.
+    pub effect_mana_cost_reduction: Option<crate::mana::ManaCost>,
+    /// True when this cast was initiated by a resolving effect. Such a cast
+    /// receives timing permission from that effect and must not grant priority
+    /// until the parent spell or ability finishes resolving.
+    pub effect_driven: bool,
     /// Which optional costs will be paid (kicker, buyback, etc.).
     pub optional_costs_paid: OptionalCostsPaid,
+    /// Later optional-cost choices required by an earlier CR 601.4 mode choice.
+    pub required_optional_cost_indices: Vec<usize>,
     /// Ordered trace of cost payments performed so far.
     pub payment_trace: Vec<CostStep>,
     /// True after activating a mana ability that is not undo-safe
     /// (for example it adds/removes counters, sacrifices, loses life, or has
     /// non-mana side effects).
     pub undo_locked_by_mana: bool,
+    /// True once the single CR 601.2g mana-ability window has been closed.
+    pub mana_ability_window_closed: bool,
     /// Mana actually spent to cast the spell (color-by-color).
     pub mana_spent_to_cast: ManaPool,
     /// The computed mana cost to pay (set during PayingMana stage).
@@ -144,6 +174,10 @@ pub struct PendingCast {
     /// Pre-chosen modes for modal spells (per MTG rule 601.2b).
     /// Set during ChoosingModes stage, used during resolution.
     pub chosen_modes: Option<Vec<usize>>,
+    /// Stable identities of cards revealed and spliced, in resolution order.
+    pub spliced_cards: Vec<crate::ids::StableId>,
+    /// Additional costs contributed by the selected splice abilities.
+    pub splice_costs: Vec<crate::cost::TotalCost>,
     /// Hybrid/Phyrexian mana payment choices made during cost announcement (601.2b).
     /// Maps pip index to the chosen mana symbol for that pip.
     pub hybrid_choices: Vec<(usize, crate::mana::ManaSymbol)>,
@@ -182,11 +216,18 @@ impl PendingCast {
             x_value,
             chosen_targets: Vec::new(),
             chosen_target_assignments: Vec::new(),
+            target_distributions: Vec::new(),
+            pending_target_distributions: std::collections::VecDeque::new(),
             remaining_requirements,
             casting_method,
+            base_mana_cost_waived: false,
+            effect_mana_cost_reduction: None,
+            effect_driven: false,
             optional_costs_paid,
+            required_optional_cost_indices: Vec::new(),
             payment_trace: Vec::new(),
             undo_locked_by_mana: false,
+            mana_ability_window_closed: false,
             mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
             display_mana_pips: Vec::new(),
@@ -197,6 +238,8 @@ impl PendingCast {
             effect_outcomes: std::collections::HashMap::new(),
             next_sacrifice_cost_tag_index: 0,
             chosen_modes,
+            spliced_cards: Vec::new(),
+            splice_costs: Vec::new(),
             hybrid_choices: Vec::new(),
             pending_hybrid_pips: Vec::new(),
             stack_id,
@@ -214,6 +257,16 @@ pub struct PendingRemoveCountersAmongChoice {
     pub removed_total: u32,
 }
 
+/// One CR 601.2d/602.2b division waiting to be announced.
+#[derive(Debug, Clone)]
+pub struct PendingTargetDistribution {
+    pub spec: crate::target::ChooseSpec,
+    pub range: std::ops::Range<usize>,
+    pub total: u32,
+    pub targets: Vec<Target>,
+    pub min_per_target: u32,
+}
+
 /// Stage of the ability activation process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivationStage {
@@ -225,6 +278,10 @@ pub enum ActivationStage {
     AnnouncingCost,
     /// Need to choose ability targets.
     ChoosingTargets,
+    /// Need to divide an amount among the chosen targets.
+    ChoosingDistribution,
+    /// Total cost is locked; the player may repeatedly activate mana abilities.
+    ActivatingManaAbilities,
     /// Need to choose the next remaining cost to pay.
     ChoosingNextCost,
     /// Need to pay a selected deferred non-mana cost.
@@ -246,6 +303,8 @@ impl ActivationStage {
             ActivationStage::ChoosingX => "choosing X",
             ActivationStage::AnnouncingCost => "announcing costs",
             ActivationStage::ChoosingTargets => "choosing targets",
+            ActivationStage::ChoosingDistribution => "choosing distribution",
+            ActivationStage::ActivatingManaAbilities => "activating mana abilities",
             ActivationStage::ChoosingNextCost => "choosing next cost",
             ActivationStage::ProcessingCosts => "processing costs",
             ActivationStage::ChoosingSacrifice => "choosing sacrifices",
@@ -282,6 +341,8 @@ pub enum ActivationCardCostChoice {
         cost: crate::costs::Cost,
         card_type: Option<CardType>,
         description: String,
+        /// Generic mana paid by this selected card. Non-Delve costs use zero.
+        generic_mana_reduction: u32,
     },
     /// Choose an object in a specific zone to exile as a cost.
     ExileChosenObject {
@@ -613,6 +674,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                         cost: single_choice_cost(cost),
                         card_type,
                         description: description.clone(),
+                        generic_mana_reduction: 0,
                     },
                 ));
             }
@@ -687,6 +749,10 @@ pub struct PendingActivation {
     pub chosen_targets: Vec<Target>,
     /// Target requirement assignments bound to `chosen_targets`.
     pub chosen_target_assignments: Vec<crate::game_state::TargetAssignment>,
+    /// Target divisions already announced for the proposed ability.
+    pub target_distributions: Vec<crate::game_state::TargetDistribution>,
+    /// Remaining target divisions to announce in effect order.
+    pub pending_target_distributions: std::collections::VecDeque<PendingTargetDistribution>,
     /// Target requirements that still need to be fulfilled.
     pub remaining_requirements: Vec<TargetRequirement>,
     /// The computed mana cost to pay.
@@ -703,9 +769,14 @@ pub struct PendingActivation {
     /// True after activating a mana ability that is not undo-safe while paying
     /// this activation's mana costs.
     pub undo_locked_by_mana: bool,
+    /// True once the single CR 602.2b/601.2g mana-ability window has closed.
+    pub mana_ability_window_closed: bool,
     /// Remaining mana pips to pay (pip-by-pip payment flow).
     /// Each element is a pip with its alternatives (e.g., [Black, Life(2)] for {B/P}).
     pub remaining_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+    /// Mana actually spent on this activation cost, retained color-by-color
+    /// for resolution-time effects that refer to that payment.
+    pub mana_spent_on_activation: ManaPool,
     /// Remaining non-mana activation costs awaiting payment.
     pub remaining_cost_steps: Vec<ActivationCostStep>,
     /// Tagged object snapshots captured while paying activation costs.
@@ -785,13 +856,17 @@ impl PendingActivation {
             effects,
             chosen_targets: Vec::new(),
             chosen_target_assignments: Vec::new(),
+            target_distributions: Vec::new(),
+            pending_target_distributions: std::collections::VecDeque::new(),
             remaining_requirements,
             mana_cost_to_pay,
             payment_reason,
             display_mana_pips: Vec::new(),
             payment_trace,
             undo_locked_by_mana: false,
+            mana_ability_window_closed: false,
             remaining_mana_pips: Vec::new(),
+            mana_spent_on_activation: ManaPool::default(),
             remaining_cost_steps,
             tagged_objects,
             next_sacrifice_cost_tag_index,
@@ -902,6 +977,21 @@ impl PriorityLoopState {
     /// Clear the checkpoint (called when action completes successfully or after restore).
     pub fn clear_checkpoint(&mut self) {
         self.checkpoint = None;
+    }
+
+    /// Restore the pre-action snapshot and discard every suspended part of the
+    /// current cast/activation transaction.
+    pub fn rollback_action(&mut self, game: &mut GameState) -> bool {
+        let Some(checkpoint) = self.checkpoint.take() else {
+            return false;
+        };
+        *game = checkpoint;
+        self.pending_cast = None;
+        self.pending_activation = None;
+        self.pending_method_selection = None;
+        self.pending_mana_ability = None;
+        self.pending_continuation = None;
+        true
     }
 
     /// Check if there's an active action chain (pending cast or activation).

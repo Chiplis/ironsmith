@@ -15,12 +15,11 @@ impl EffectExecutor for AdditionalPhasesEffect {
         if game.turn_store.additional_phase_continuation.is_none() {
             game.turn_store.additional_phase_continuation = next_phase(game.turn.phase);
         }
-        game.turn_store
-            .additional_phases
-            .extend(self.phases.iter().map(|phase| match phase {
-                AdditionalPhase::Combat => Phase::Combat,
-                AdditionalPhase::Main => Phase::NextMain,
-            }));
+        let phases = self.phases.iter().map(|phase| match phase {
+            AdditionalPhase::Combat => Phase::Combat,
+            AdditionalPhase::Main => Phase::NextMain,
+        });
+        game.turn_store.additional_phases.splice(0..0, phases);
         Ok(EffectOutcome::resolved())
     }
 }
@@ -58,5 +57,37 @@ mod tests {
 
         advance_phase(&mut game).expect("advance to normal combat");
         assert_eq!(game.turn.phase, Phase::Combat);
+    }
+
+    #[test]
+    fn most_recently_created_phase_group_occurs_first() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        AdditionalPhasesEffect::combat_then_main()
+            .execute(&mut game, &mut ctx)
+            .expect("first phase group resolves");
+        AdditionalPhasesEffect::combat()
+            .execute(&mut game, &mut ctx)
+            .expect("later phase resolves");
+
+        assert_eq!(
+            game.turn_store.additional_phases,
+            vec![Phase::Combat, Phase::Combat, Phase::NextMain],
+            "the later-created combat occurs before the earlier combat/main group"
+        );
+        advance_phase(&mut game).expect("advance to most recent combat");
+        assert_eq!(game.turn.phase, Phase::Combat);
+        game.turn.step = None;
+        advance_phase(&mut game).expect("advance to earlier combat");
+        assert_eq!(game.turn.phase, Phase::Combat);
+        game.turn.step = None;
+        advance_phase(&mut game).expect("advance to earlier group's main");
+        assert_eq!(game.turn.phase, Phase::NextMain);
     }
 }

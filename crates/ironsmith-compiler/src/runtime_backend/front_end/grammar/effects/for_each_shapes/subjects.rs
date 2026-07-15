@@ -108,6 +108,14 @@ pub(crate) fn parse_for_each_object_subject_shape(
 pub(crate) fn parse_for_each_object_effect_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ForEachObjectEffectShape<'_>> {
+    // A leading bare "Each" is an ordinary quantified subject (for example,
+    // "Each creature that isn't an Insect, Rat, Spider, or Squirrel gets ...").
+    // Treat only an explicit "For each ...," prefix as an iterator sentence;
+    // otherwise a subtype-list comma can be mistaken for the effect boundary.
+    primitives::parse_prefix(
+        trim_lexed_commas(tokens),
+        primitives::phrase(&["for", "each"]),
+    )?;
     let (subject_tokens, effect_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::comma().void())?;
     let subject = parse_for_each_object_subject_shape(subject_tokens)?;

@@ -84,6 +84,76 @@ pub(crate) fn effects_reference_tag(effects: &[EffectAst], tag: &str) -> bool {
         .any(|effect| effect_references_tag(effect, tag))
 }
 
+fn push_unique_tag(tags: &mut Vec<TagKey>, tag: &TagKey) {
+    if !tags.iter().any(|known| known == tag) {
+        tags.push(tag.clone());
+    }
+}
+
+fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
+    match effect {
+        EffectAst::ChooseObjects { tag, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { tag, .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { tag, .. }
+        | EffectAst::ChooseTaggedObjectsInZone { tag, .. }
+        | EffectAst::ChooseObjectsAcrossZones { tag, .. }
+        | EffectAst::TagAffected { tag, .. } => push_unique_tag(tags, tag),
+        EffectAst::SnapshotLastObjectTag { into } => push_unique_tag(tags, into),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
+            SubjectVerbActionAst::ChooseCardName { tag, .. }
+            | SubjectVerbActionAst::ChoosePlayer { tag, .. }
+            | SubjectVerbActionAst::ChooseSpellCastHistory { tag, .. }
+            | SubjectVerbActionAst::RevealCardsFromHand { tag, .. }
+            | SubjectVerbActionAst::LookAtTopCards { tag, .. }
+            | SubjectVerbActionAst::TagMatchingObjects { tag, .. }
+            | SubjectVerbActionAst::SearchLibrarySlotsToHand {
+                progress_tag: tag, ..
+            } => push_unique_tag(tags, tag),
+            SubjectVerbActionAst::ExileTopOfLibrary {
+                tags: result_tags,
+                accumulated_tags,
+                ..
+            } => {
+                for tag in result_tags.iter().chain(accumulated_tags) {
+                    push_unique_tag(tags, tag);
+                }
+            }
+            SubjectVerbActionAst::ConsultTopOfLibrary {
+                all_tag, match_tag, ..
+            } => {
+                push_unique_tag(tags, all_tag);
+                push_unique_tag(tags, match_tag);
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    for_each_nested_effects(effect, true, |nested| {
+        for nested_effect in nested {
+            collect_effect_produced_tags(nested_effect, tags);
+        }
+    });
+}
+
+/// Whether a later sibling consumes an explicit tag produced by an earlier
+/// sibling. Such siblings are a semantic pipeline, not independent display
+/// arms, and must remain flat for reference flow and specialist lowering.
+pub(crate) fn effects_have_cross_arm_tag_dependency(effects: &[EffectAst]) -> bool {
+    let mut prior_tags = Vec::<TagKey>::new();
+    for effect in effects {
+        if prior_tags
+            .iter()
+            .any(|tag| effect_references_tag(effect, tag.as_str()))
+        {
+            return true;
+        }
+        collect_effect_produced_tags(effect, &mut prior_tags);
+    }
+    false
+}
+
 pub(crate) fn effects_reference_tag_in_object_position(effects: &[EffectAst], tag: &str) -> bool {
     effects
         .iter()
@@ -117,13 +187,13 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
             | SubjectVerbActionAst::FightIterated { creature2: target }
             | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Goad { target, .. }
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
             | SubjectVerbActionAst::Regenerate { target, .. }
             | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::PhaseOut { target }
+            | SubjectVerbActionAst::PhaseOut { target, .. }
             | SubjectVerbActionAst::PhaseIn { target }
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
@@ -149,7 +219,6 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { target, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { source: target, .. }
             | SubjectVerbActionAst::PreventDamage { target, .. }
-            | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
@@ -161,6 +230,20 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. } => visit(target),
+            SubjectVerbActionAst::PreventAllDamageToTarget {
+                target,
+                source_target,
+                ..
+            } => {
+                visit(target);
+                if let Some(source_target) = source_target {
+                    visit(source_target);
+                }
+            }
+            SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
+                excluded_source_target: Some(target),
+                ..
+            } => visit(target),
             SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
                 protected_target,
                 destination_target,
@@ -211,7 +294,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                     visit(attach_target);
                 }
             }
-            SubjectVerbActionAst::TargetOnly { target } => visit(target),
+            SubjectVerbActionAst::TargetOnly { target, .. } => visit(target),
             SubjectVerbActionAst::Pump { target, .. }
             | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
@@ -499,6 +582,9 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
@@ -518,6 +604,17 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         }
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => {
+            query.filter.as_ref().is_some_and(|filter| {
+                filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == tag)
+            }) || query
+                .player
+                .as_ref()
+                .is_some_and(|player| player_filter_references_tag(player, tag))
+        }
         _ => false,
     }
 }
@@ -635,6 +732,13 @@ pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
             .tagged_constraints
             .iter()
             .any(|constraint| constraint.tag.as_str() == tag),
+        TargetAst::ObjectOrPlayer(object_filter, player_filter, _) => {
+            object_filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == tag)
+                || player_filter_references_tag(player_filter, tag)
+        }
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
             player_filter_references_tag(filter, tag)
         }
@@ -663,7 +767,9 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
         | Value::EventValue(EventValueSpec::LifeAmount)
         | Value::EventValueOffset(EventValueSpec::Amount, _)
         | Value::EventValueOffset(EventValueSpec::LifeAmount, _) => true,
-        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => true,
+        Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. }
+        | Value::PendingPriorEffectMetric(_) => true,
         Value::SurfaceHinted { value, .. } => value_references_event_derived_amount(value),
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_event_derived_amount(left)
@@ -1019,6 +1125,10 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
         return true;
     }
     match effect {
+        EffectAst::RepeatEffects { count, effects } => {
+            value_references_event_derived_amount(count)
+                || effects.iter().any(effect_references_event_derived_amount)
+        }
         EffectAst::ChooseObjects {
             count_value: Some(count_value),
             ..
@@ -1086,7 +1196,7 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
                     | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
                     | SubjectVerbActionAst::TapAll { filter }
                     | SubjectVerbActionAst::UntapAll { filter }
-                    | SubjectVerbActionAst::PhaseOutAll { filter }
+                    | SubjectVerbActionAst::PhaseOutAll { filter, .. }
                     | SubjectVerbActionAst::PhaseInAll { filter }
                     | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
                     | SubjectVerbActionAst::SacrificeAll { filter }
@@ -1241,7 +1351,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
             | SubjectVerbActionAst::TapAll { filter }
             | SubjectVerbActionAst::UntapAll { filter }
-            | SubjectVerbActionAst::PhaseOutAll { filter }
+            | SubjectVerbActionAst::PhaseOutAll { filter, .. }
             | SubjectVerbActionAst::PhaseInAll { filter }
             | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
             | SubjectVerbActionAst::RegenerateAll { filter } => {
@@ -1349,7 +1459,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
         EffectAst::ForEachTagged { tag, effects } => {
             tag.as_str() == IT_TAG || effects_reference_it_tag(effects)
         }
-        EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => true,
+        EffectAst::DelayedWhenLastObjectDiesThisTurn { .. }
+        | EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => true,
         EffectAst::ForEachObject { filter, effects } => {
             filter_references_tag(filter, IT_TAG) || effects_reference_it_tag(effects)
         }

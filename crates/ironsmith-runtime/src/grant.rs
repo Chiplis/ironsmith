@@ -141,6 +141,9 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 Some(AlternativeCastingMethod::Escape {
                     cost: Some(mana_cost),
                     exile_count: *exile_count,
+                    additional_cost: crate::TotalCost::from_cost(
+                        crate::costs::Cost::exile_from_graveyard(*exile_count, None),
+                    ),
                 })
             }
             Self::ManaValueAsGenericFromHand => {

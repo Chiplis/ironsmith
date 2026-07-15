@@ -1507,6 +1507,142 @@ fn test_non_recursive_match_avoids_calculated_power() {
     );
 }
 
+#[test]
+fn extremum_power_filter_matches_every_tied_maximum_and_only_the_minimum() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::Value;
+    use crate::game_state::GameState;
+    use crate::ids::CardId;
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let make_creature = |id, name, power, toughness| {
+        CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .build()
+    };
+    let small = game.create_object_from_card(
+        &make_creature(40_100, "Small", 2, 4),
+        you,
+        Zone::Battlefield,
+    );
+    let tied_max_a = game.create_object_from_card(
+        &make_creature(40_101, "Tied Max A", 5, 3),
+        you,
+        Zone::Battlefield,
+    );
+    let tied_max_b = game.create_object_from_card(
+        &make_creature(40_102, "Tied Max B", 5, 1),
+        you,
+        Zone::Battlefield,
+    );
+    let ctx = FilterContext::new(you);
+    let scope = ObjectFilter::creature();
+    let greatest = ObjectFilter::creature().with_power(Comparison::EqualExpr(Box::new(
+        Value::GreatestPower(scope.clone()),
+    )));
+    let least = ObjectFilter::creature()
+        .with_power(Comparison::EqualExpr(Box::new(Value::LeastPower(scope))));
+
+    assert!(!greatest.matches(game.object(small).unwrap(), &ctx, &game));
+    assert!(greatest.matches(game.object(tied_max_a).unwrap(), &ctx, &game));
+    assert!(greatest.matches(game.object(tied_max_b).unwrap(), &ctx, &game));
+    assert!(least.matches(game.object(small).unwrap(), &ctx, &game));
+    assert!(!least.matches(game.object(tied_max_a).unwrap(), &ctx, &game));
+    assert!(!least.matches(game.object(tied_max_b).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn tagged_extremum_mana_value_filter_uses_the_tagged_snapshot_set() {
+    use crate::card::CardBuilder;
+    use crate::effect::Value;
+    use crate::game_state::GameState;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let cheap_card = CardBuilder::new(CardId::from_raw(40_110), "Cheap Card")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .build();
+    let expensive_card = CardBuilder::new(CardId::from_raw(40_111), "Expensive Card")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .build();
+    let cheap_id = game.create_object_from_card(&cheap_card, you, Zone::Graveyard);
+    let expensive_id = game.create_object_from_card(&expensive_card, you, Zone::Graveyard);
+    let cheap = ObjectSnapshot::from_object(game.object(cheap_id).unwrap(), &game);
+    let expensive = ObjectSnapshot::from_object(game.object(expensive_id).unwrap(), &game);
+    let tag = TagKey::from("discarded_cards");
+    let tagged_constraint = TaggedObjectConstraint {
+        tag: tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    };
+    let scope = ObjectFilter {
+        tagged_constraints: vec![tagged_constraint.clone()],
+        ..ObjectFilter::default()
+    };
+    let filter = ObjectFilter {
+        mana_value: Some(Comparison::EqualExpr(Box::new(Value::GreatestManaValue(
+            scope,
+        )))),
+        tagged_constraints: vec![tagged_constraint],
+        ..ObjectFilter::default()
+    };
+    let ctx = FilterContext::new(you).with_tagged_objects(&std::collections::HashMap::from([(
+        tag,
+        vec![cheap.clone(), expensive.clone()],
+    )]));
+
+    assert!(!filter.matches_snapshot(&cheap, &ctx, &game));
+    assert!(filter.matches_snapshot(&expensive, &ctx, &game));
+}
+
+#[test]
+fn dynamic_comparison_resolves_surface_hinted_source_counter_count() {
+    use crate::card::CardBuilder;
+    use crate::effect::Value;
+    use crate::game_state::GameState;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::CounterType;
+    use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let source = CardBuilder::new(CardId::from_raw(40_120), "Counter Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let one_mana = CardBuilder::new(CardId::from_raw(40_121), "One-Mana Spell")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let two_mana = CardBuilder::new(CardId::from_raw(40_122), "Two-Mana Spell")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .build();
+    let source_id = game.create_object_from_card(&source, you, Zone::Battlefield);
+    let one_mana_id = game.create_object_from_card(&one_mana, you, Zone::Hand);
+    let two_mana_id = game.create_object_from_card(&two_mana, you, Zone::Hand);
+    game.add_counters(source_id, CounterType::Charge, 1)
+        .expect("the source should receive a charge counter");
+
+    let source_spec = ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+        SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
+    ));
+    let filter = ObjectFilter {
+        mana_value: Some(Comparison::EqualExpr(Box::new(Value::CountersOn(
+            Box::new(source_spec),
+            Some(CounterType::Charge),
+        )))),
+        ..ObjectFilter::default()
+    };
+    let ctx = FilterContext::new(you).with_source(source_id);
+
+    assert!(filter.matches(game.object(one_mana_id).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(two_mana_id).unwrap(), &ctx, &game));
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_filter_matches_earthbent_land_as_creature() {

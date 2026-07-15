@@ -1729,6 +1729,49 @@ pub(super) fn resolve_value_with_context(
             });
             max_toughness
         }
+        Value::LeastPower(filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut least_power = None::<i32>;
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game)
+                    && let Some(power) = ctx.game.calculated_power(obj.id).or_else(|| obj.power())
+                {
+                    least_power = Some(least_power.map_or(power, |least| least.min(power)));
+                }
+            });
+            least_power.unwrap_or(0)
+        }
+        Value::LeastToughness(filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut least_toughness = None::<i32>;
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game)
+                    && let Some(toughness) = ctx
+                        .game
+                        .calculated_toughness(obj.id)
+                        .or_else(|| obj.toughness())
+                {
+                    least_toughness =
+                        Some(least_toughness.map_or(toughness, |least| least.min(toughness)));
+                }
+            });
+            least_toughness.unwrap_or(0)
+        }
+        Value::LeastManaValue(filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut least_mana_value = None::<i32>;
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    let mana_value = obj
+                        .mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32);
+                    least_mana_value =
+                        Some(least_mana_value.map_or(mana_value, |least| least.min(mana_value)));
+                }
+            });
+            least_mana_value.unwrap_or(0)
+        }
 
         // For these, we'd need more complex resolution (game state, execution context)
         // Return 0 as fallback (these are rare in continuous effects anyway)
@@ -1736,6 +1779,7 @@ pub(super) fn resolve_value_with_context(
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::PlayersWhoControlMoreThanYou(_)
+        | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
         | Value::TotalPower(_)
         | Value::TotalToughness(_)
         | Value::TotalManaValue(_)
@@ -1778,6 +1822,8 @@ pub(super) fn resolve_value_with_context(
         | Value::EffectMetricOffset { .. }
         | Value::PendingEffectMetric { .. }
         | Value::PendingEffectMetricOffset { .. }
+        | Value::PriorEffectMetric { .. }
+        | Value::PendingPriorEffectMetric(_)
         | Value::WasKicked
         | Value::WasBoughtBack
         | Value::WasEntwined

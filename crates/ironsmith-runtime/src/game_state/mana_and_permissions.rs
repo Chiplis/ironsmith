@@ -75,6 +75,15 @@ impl GameState {
 
         // Update continuous effects from static abilities
         self.update_static_ability_effects();
+        self.reconcile_continuous_control_changes();
+
+        // A continuous effect may itself inspect summoning-sickness state.
+        // Rebuild once after a controller transition so those predicates see
+        // the newly sick permanent in this same refresh transaction.
+        if !self.continuous_state_is_clean() {
+            self.update_static_ability_effects();
+            self.reconcile_continuous_control_changes();
+        }
 
         // Update replacement effects from static abilities
         self.update_replacement_effects();
@@ -84,6 +93,7 @@ impl GameState {
 
         if self.apply_day_nightbound_transformations_with_current_restrictions() {
             self.update_static_ability_effects();
+            self.reconcile_continuous_control_changes();
             self.update_replacement_effects();
             self.update_cant_effects();
         }
@@ -94,8 +104,41 @@ impl GameState {
         // so refresh those effects once more when a designation is granted.
         if self.grant_citys_blessings_from_permanent_ascend() {
             self.update_static_ability_effects();
+            self.reconcile_continuous_control_changes();
             self.update_replacement_effects();
             self.update_cant_effects();
+        }
+    }
+
+    /// Translate changes in derived control into CR 302.6 state.
+    ///
+    /// This comparison belongs at the continuous-state boundary rather than
+    /// only in "gain control" executors: static abilities and expired effects
+    /// can change a permanent's controller without executing such an effect.
+    pub(crate) fn reconcile_continuous_control_changes(&mut self) {
+        let controllers = self
+            .battlefield
+            .iter()
+            .copied()
+            .filter_map(|id| {
+                self.current_controller(id)
+                    .map(|controller| (id, controller))
+            })
+            .collect::<HashMap<_, _>>();
+        let changed = controllers
+            .iter()
+            .filter_map(|(&id, &controller)| {
+                self.battlefield_flags
+                    .controller_at_last_refresh
+                    .get(&id)
+                    .is_some_and(|previous| *previous != controller)
+                    .then_some(id)
+            })
+            .collect::<Vec<_>>();
+
+        self.battlefield_flags_mut().controller_at_last_refresh = controllers;
+        for id in changed {
+            self.set_summoning_sick(id);
         }
     }
 
@@ -951,6 +994,7 @@ impl GameState {
                             payment_source,
                         ))
             }
+            crate::ability::ManaUsageRestriction::CastSpellWithManaBonus { .. } => true,
             crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
                 spell_filter,
                 ability_source_filter,
@@ -1979,9 +2023,11 @@ impl GameState {
         self.battlefield
             .iter()
             .filter(|&&id| {
-                self.objects
-                    .get(&id)
-                    .is_some_and(|o| self.controller_of(o) == controller)
+                !self.is_phased_out(id)
+                    && self
+                        .objects
+                        .get(&id)
+                        .is_some_and(|o| self.controller_of(o) == controller)
             })
             .copied()
             .collect()
@@ -1992,9 +2038,10 @@ impl GameState {
         self.battlefield
             .iter()
             .filter(|&&id| {
-                self.objects.get(&id).is_some_and(|o| {
-                    self.controller_of(o) == controller && self.current_is_creature(id)
-                })
+                !self.is_phased_out(id)
+                    && self.objects.get(&id).is_some_and(|o| {
+                        self.controller_of(o) == controller && self.current_is_creature(id)
+                    })
             })
             .copied()
             .collect()

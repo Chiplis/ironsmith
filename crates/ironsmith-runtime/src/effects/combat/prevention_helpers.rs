@@ -1,4 +1,5 @@
 use crate::effect::{Effect, Until};
+use crate::color::{Color, ColorSet};
 use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::{GameState, TargetAssignment};
@@ -17,11 +18,47 @@ pub fn choose_source_of_your_choice(
     game: &GameState,
     ctx: &mut ExecutionContext,
 ) -> SourceChoiceSelection {
+    choose_source_of_your_choice_matching_colors(game, ctx, None)
+}
+
+/// Choose a source whose current colors overlap the colors used to activate
+/// the resolving ability.
+pub fn choose_source_sharing_activation_payment_color(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> SourceChoiceSelection {
+    let payment = &ctx.mana.activation_payment;
+    let mut colors = ColorSet::new();
+    for (color, amount) in [
+        (Color::White, payment.white),
+        (Color::Blue, payment.blue),
+        (Color::Black, payment.black),
+        (Color::Red, payment.red),
+        (Color::Green, payment.green),
+    ] {
+        if amount > 0 {
+            colors = colors.with(color);
+        }
+    }
+    choose_source_of_your_choice_matching_colors(game, ctx, Some(colors))
+}
+
+fn choose_source_of_your_choice_matching_colors(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    required_colors: Option<ColorSet>,
+) -> SourceChoiceSelection {
     let mut candidates = Vec::new();
     candidates.extend(game.stack.iter().map(|entry| entry.object_id));
     candidates.extend(game.battlefield.iter().copied());
     candidates.sort_by_key(|id| id.0);
     candidates.dedup();
+    if let Some(required_colors) = required_colors {
+        candidates.retain(|id| {
+            game.current_colors(*id)
+                .is_some_and(|colors| !colors.intersection(required_colors).is_empty())
+        });
+    }
 
     if candidates.is_empty() {
         return SourceChoiceSelection::NoAvailableSource;

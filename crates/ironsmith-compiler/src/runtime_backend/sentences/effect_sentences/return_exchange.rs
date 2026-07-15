@@ -4,9 +4,18 @@ fn parse_return_back_reference_target(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
     if crate::runtime_backend::grammar::effects::is_return_back_reference_shape(tokens) {
+        let span = span_from_tokens(tokens);
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        if matches!(words.as_slice(), ["that" | "those", noun] if crate::runtime_backend::util::is_demonstrative_object_head(noun))
+        {
+            crate::runtime_backend::util::record_source_reference_surface(
+                span,
+                crate::target::SourceReferenceSurface::ThisPermanentType(words.join(" ")),
+            );
+        }
         Ok(TargetAst::Tagged(
             TagKey::from(IT_TAG),
-            span_from_tokens(tokens),
+            span,
         ))
     } else {
         parse_target_phrase(tokens)
@@ -124,14 +133,26 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             filter_tokens,
             count,
         } => {
-            let filter = parse_object_filter(&filter_tokens, false)?;
+            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            // "The exiled cards" can appear in a later ability of the same
+            // source. Do not let its generic `it` placeholder bind to an
+            // unrelated local action (for example, a sacrifice immediately
+            // before the return). Exile execution already records the
+            // source/object link represented by SOURCE_EXILED_TAG.
+            filter
+                .tagged_constraints
+                .retain(|constraint| constraint.relation != TaggedOpbjectRelation::IsTaggedObject);
+            filter = filter.match_tagged(
+                TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
             match destination.zone {
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Battlefield => {
                     EffectAst::subject_verb_return_all_to_battlefield(
                         filter,
                         destination.tapped,
                         false,
-                        ReturnControllerAst::Owner,
+                        return_controller,
                     )
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Graveyard => {
@@ -241,7 +262,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                         filter,
                         destination.tapped,
                         false,
-                        ReturnControllerAst::Owner,
+                        return_controller,
                     )
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Graveyard => {
@@ -282,7 +303,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             let mut target = if let Some(target) = source_from_graveyard_target {
                 target
             } else if back_reference {
-                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
+                parse_return_back_reference_target(&target_tokens)?
             } else {
                 parse_target_phrase(&target_tokens)?
             };
@@ -309,6 +330,20 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                             return_controller,
                             destination.tapped,
                             Some(attached_to),
+                        )
+                        .with_move_to_zone_verb_surface(
+                            ironsmith_core::MoveToZoneVerbSurface::Return,
+                        )
+                    } else if destination.attacking {
+                        EffectAst::subject_verb_move_to_zone_with_attacking(
+                            target,
+                            Zone::Battlefield,
+                            false,
+                            return_controller,
+                            destination.tapped,
+                            true,
+                            false,
+                            None,
                         )
                         .with_move_to_zone_verb_surface(
                             ironsmith_core::MoveToZoneVerbSurface::Return,
@@ -514,5 +549,30 @@ mod tests {
         assert_eq!(filter.zone, Some(Zone::Graveyard));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.card_types, [CardType::Creature]);
+    }
+
+    #[test]
+    fn preserves_explicit_controller_and_source_link_for_exiled_card_returns() {
+        let tokens = lex_line("the exiled cards to the battlefield under your control", 0)
+            .expect("lex return clause");
+        let effect = parse_return(&tokens).expect("parse return clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ReturnAllToBattlefield {
+                    filter, controller, ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a bulk battlefield return");
+        };
+
+        assert_eq!(controller, ReturnControllerAst::You);
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| { constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG })
+        );
     }
 }

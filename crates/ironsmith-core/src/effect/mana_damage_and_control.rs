@@ -307,14 +307,42 @@ impl PutCounterOfChosenKindEffect {
     }
 }
 
+/// How long an effect keeps a permanent phased out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PhaseOutDuration {
+    /// The normal phasing rule: phase in during its controller's next untap step.
+    #[default]
+    UntilNextUntap,
+    /// Keep it phased out until the ability source leaves the battlefield.
+    UntilSourceLeaves,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PhaseOutEffect {
     pub target: ChooseSpec,
+    pub duration: PhaseOutDuration,
+    /// Printed source wording for source-linked durations (for example,
+    /// "this enchantment"). Runtime identity still comes from the effect source.
+    pub source_surface: Option<crate::SourceReferenceSurface>,
 }
 
 impl PhaseOutEffect {
     pub fn with_spec(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            duration: PhaseOutDuration::UntilNextUntap,
+            source_surface: None,
+        }
+    }
+
+    pub fn until_source_leaves(mut self) -> Self {
+        self.duration = PhaseOutDuration::UntilSourceLeaves;
+        self
+    }
+
+    pub fn with_source_surface(mut self, surface: crate::SourceReferenceSurface) -> Self {
+        self.source_surface = Some(surface);
+        self
     }
 }
 
@@ -2250,11 +2278,22 @@ impl AssignNoCombatDamageEffect {
 pub struct PreventAllCombatDamageEffect {
     pub target: CombatDamagePreventionTarget,
     pub until: Until,
+    /// Preserve the active-voice oracle surface, "<sources> would deal".
+    pub source_would_deal_surface: bool,
 }
 
 impl PreventAllCombatDamageEffect {
     pub fn new(target: CombatDamagePreventionTarget, until: Until) -> Self {
-        Self { target, until }
+        Self {
+            target,
+            until,
+            source_would_deal_surface: false,
+        }
+    }
+
+    pub fn with_source_would_deal_surface(mut self) -> Self {
+        self.source_would_deal_surface = true;
+        self
     }
 }
 
@@ -2267,6 +2306,8 @@ pub enum PreventionTarget {
     Permanent(crate::ids::ObjectId),
     /// Protects all permanents matching a filter.
     PermanentsMatching(ObjectFilter),
+    /// Protects the controller and permanents matching a filter.
+    YouAndPermanentsMatching(ObjectFilter),
     /// Protects all players.
     Players,
     /// Protects "you" (the shield's controller).
@@ -2292,6 +2333,8 @@ pub struct DamageFilter {
     pub from_card_types: Option<Vec<CardType>>,
     /// Only prevent damage from a specific source.
     pub from_specific_source: Option<crate::ids::ObjectId>,
+    /// Do not prevent damage from this independently chosen source.
+    pub excluded_specific_source: Option<crate::ids::ObjectId>,
 }
 
 impl DamageFilter {
@@ -2351,6 +2394,9 @@ impl DamageFilter {
         {
             return false;
         }
+        if self.excluded_specific_source == Some(source) {
+            return false;
+        }
         if let Some(ref colors) = self.from_colors {
             let matches_color = colors.iter().any(|c| source_colors.contains(*c));
             if !matches_color {
@@ -2376,6 +2422,15 @@ pub struct PreventAllDamageEffect {
     pub damage_filter: DamageFilter,
     /// Whether the source is chosen as the effect resolves.
     pub source_of_your_choice: bool,
+    /// Whether the chosen source must share a color with mana spent on the
+    /// activation that created this prevention effect.
+    pub source_choice_shares_activation_mana_color: bool,
+    /// An independently targeted source whose damage this shield applies to.
+    pub source_target: Option<ChooseSpec>,
+    /// An independently targeted source whose damage this shield excludes.
+    pub excluded_source_target: Option<ChooseSpec>,
+    /// Protect the resolving ability's source object.
+    pub protect_source: bool,
     pub until: Until,
 }
 
@@ -2386,6 +2441,10 @@ impl PreventAllDamageEffect {
             target,
             damage_filter,
             source_of_your_choice: false,
+            source_choice_shares_activation_mana_color: false,
+            source_target: None,
+            excluded_source_target: None,
+            protect_source: false,
             until,
         }
     }
@@ -2393,6 +2452,29 @@ impl PreventAllDamageEffect {
     /// Restrict this prevention shield to a source chosen as the effect resolves.
     pub fn with_source_of_your_choice(mut self) -> Self {
         self.source_of_your_choice = true;
+        self
+    }
+
+    /// Restrict the chosen source to colors represented in this activation's
+    /// mana payment.
+    pub fn with_source_choice_sharing_activation_mana_color(mut self) -> Self {
+        self.source_of_your_choice = true;
+        self.source_choice_shares_activation_mana_color = true;
+        self
+    }
+
+    pub fn with_target_source(mut self, source: ChooseSpec) -> Self {
+        self.source_target = Some(source);
+        self
+    }
+
+    pub fn excluding_target_source(mut self, source: ChooseSpec) -> Self {
+        self.excluded_source_target = Some(source);
+        self
+    }
+
+    pub fn protecting_source(mut self) -> Self {
+        self.protect_source = true;
         self
     }
 
@@ -2795,6 +2877,8 @@ pub struct ReturnFromGraveyardToBattlefieldEffect {
     pub target: ChooseSpec,
     pub tapped: bool,
     pub as_aura: Option<ReturnAsAuraOptions>,
+    /// Counters that are part of this object's battlefield-entry event.
+    pub enters_with_counters: Vec<BattlefieldEntryCounterSpec>,
 }
 
 impl ReturnFromGraveyardToBattlefieldEffect {
@@ -2803,7 +2887,13 @@ impl ReturnFromGraveyardToBattlefieldEffect {
             target,
             tapped,
             as_aura: None,
+            enters_with_counters: Vec::new(),
         }
+    }
+
+    pub fn with_entry_counter(mut self, counter: BattlefieldEntryCounterSpec) -> Self {
+        self.enters_with_counters.push(counter);
+        self
     }
 
     pub fn as_aura(mut self, attachment_filter: ObjectFilter) -> Self {
@@ -3417,16 +3507,22 @@ impl ChoosePlayerEffect {
 
 /// Printed relationship among the child effects of a sequence.
 ///
-/// Both variants execute in order. `Coordinated` records that the children
+/// All variants execute in order. `Coordinated` records that the children
 /// came from one Oracle clause joined by "and" (rather than from successive
 /// sentences), allowing typed renderers to preserve the shared verb/subject
-/// without guessing from adjacent runtime effects.
+/// without guessing from adjacent runtime effects. `ResultConjunction` is the
+/// narrower grammar-confirmed form created for an explicit "If/When you do"
+/// result body; it lets that wrapper restore the source conjunction without
+/// overriding older coordinated specialist surfaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SequenceSurface {
     #[default]
     Sequential,
     Coordinated,
     CoordinatedLeadingDuration,
+    ResultConjunction {
+        leading_duration: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3454,6 +3550,13 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::CoordinatedLeadingDuration,
+        }
+    }
+
+    pub fn result_conjunction(effects: Vec<E>, leading_duration: bool) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::ResultConjunction { leading_duration },
         }
     }
 }

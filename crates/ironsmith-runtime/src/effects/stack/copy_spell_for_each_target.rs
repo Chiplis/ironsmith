@@ -18,13 +18,15 @@ pub type CopySpellForEachTargetEffect = ironsmith_core::CopySpellForEachTargetEf
 
 fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
-        ChooseSpec::Target(inner) => requires_target_selection(inner),
+        ChooseSpec::Target(_) => true,
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
         | ChooseSpec::Player(_)
         | ChooseSpec::Object(_)
         | ChooseSpec::PlayerOrPlaneswalker(_) => true,
-        ChooseSpec::WithCount(inner, _) => requires_target_selection(inner),
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+            requires_target_selection(inner)
+        }
         _ => false,
     }
 }

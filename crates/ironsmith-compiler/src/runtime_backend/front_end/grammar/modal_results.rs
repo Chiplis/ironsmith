@@ -1,4 +1,8 @@
-use crate::cards::builders::IfResultPredicate;
+use crate::cards::builders::{IfResultPredicate, PlayerAst, PredicateAst};
+use ironsmith_core::{
+    PriorEffectAction, PriorEffectResultActor, PriorEffectResultQuantifier,
+    PriorEffectResultSurface,
+};
 use winnow::combinator::{alt, eof, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -202,6 +206,177 @@ fn matches_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> 
     .is_ok()
 }
 
+/// Route a typed `... this way` object predicate through the ordinary
+/// predicate grammar instead of collapsing it to the legacy `if you do`
+/// boolean. The generated result tag supplies identity; the retained filter,
+/// action, actor, and cardinality supply exact LKI semantics and rendering.
+fn parse_typed_prior_effect_result_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<PriorEffectResultSurface> {
+    let predicate = super::filters::parse_predicate(tokens).ok()?;
+    let (actor, mut filter) = match predicate {
+        PredicateAst::TaggedMatches(_, filter) => (PriorEffectResultActor::Passive, filter),
+        PredicateAst::PlayerTaggedObjectMatches { player, filter, .. } => {
+            let actor = match player {
+                PlayerAst::You => PriorEffectResultActor::You,
+                PlayerAst::That | PlayerAst::Implicit | PlayerAst::ItsController => {
+                    PriorEffectResultActor::ThatPlayer
+                }
+                _ => PriorEffectResultActor::ThatPlayer,
+            };
+            (actor, filter)
+        }
+        _ => return None,
+    };
+    let action = filter.prior_effect_action_surface()?;
+    filter.set_prior_effect_action_surface(None);
+    // The antecedent result memory provides identity and the action provides
+    // the zone transition. Neither an implicit tag nor a parser-default zone
+    // belongs in the semantic characteristic filter.
+    filter.tagged_constraints.clear();
+    filter.zone = None;
+
+    let normalized = normalized_word_tokens(tokens);
+    let quantifier = if starts_with_phrase(&normalized, &["one", "or", "more"]) {
+        PriorEffectResultQuantifier::OneOrMore
+    } else {
+        PriorEffectResultQuantifier::One
+    };
+    Some(PriorEffectResultSurface::new(
+        action, filter, actor, quantifier,
+    ))
+}
+
+fn parse_prior_result_object_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::ObjectFilter> {
+    let mut start = 0usize;
+    if tokens.get(0).is_some_and(|token| token.is_word("one"))
+        && tokens.get(1).is_some_and(|token| token.is_word("or"))
+        && tokens.get(2).is_some_and(|token| token.is_word("more"))
+    {
+        start = 3;
+    }
+    let mut filter =
+        super::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens[start..], false)
+            .ok()?;
+    filter.zone = None;
+    filter.tagged_constraints.clear();
+    filter.set_prior_effect_action_surface(None);
+    Some(filter)
+}
+
+/// Recognize prior-result clauses whose verbs are not object-filter
+/// predicates in the general condition grammar (active reveal/cast/search,
+/// "put into exile", damage prevention, and counter removal).
+fn parse_direct_prior_effect_result_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<PriorEffectResultSurface> {
+    let words = normalized_word_tokens(tokens);
+    if words.len() < 3 || !ends_with_phrase(&words, &["this", "way"]) {
+        return None;
+    }
+    let normalized_words = words
+        .iter()
+        .map(OwnedLexToken::parser_text)
+        .collect::<Vec<_>>();
+    let one_or_more = starts_with_phrase(&words, &["one", "or", "more"]);
+    let ordinary_quantifier = if one_or_more {
+        PriorEffectResultQuantifier::OneOrMore
+    } else {
+        PriorEffectResultQuantifier::One
+    };
+
+    if normalized_words.as_slice() == ["it", "connives", "this", "way"]
+        || normalized_words.as_slice() == ["it", "connive", "this", "way"]
+    {
+        return Some(PriorEffectResultSurface::new(
+            PriorEffectAction::Connived,
+            crate::target::ObjectFilter::default(),
+            PriorEffectResultActor::It,
+            PriorEffectResultQuantifier::ActionOnly,
+        ));
+    }
+
+    if normalized_words.first() == Some(&"you") {
+        let (action, verb_len, action_only) = match normalized_words.get(1).copied()? {
+            "cast" => (PriorEffectAction::Cast, 1, false),
+            "discard" | "discarded" => (PriorEffectAction::Discarded, 1, false),
+            "reveal" | "revealed" => (PriorEffectAction::Revealed, 1, false),
+            "tap" | "tapped" => (PriorEffectAction::Tapped, 1, false),
+            "search" | "searched" => (PriorEffectAction::Searched, 1, true),
+            _ => return None,
+        };
+        let filter = if action_only {
+            crate::target::ObjectFilter::default()
+        } else {
+            // The result prefix is lexicalized as ordinary words, so the
+            // first two raw tokens are the actor and action as well.
+            let this_way_idx = tokens.iter().position(|token| token.is_word("this"))?;
+            parse_prior_result_object_filter(&tokens[1 + verb_len..this_way_idx])?
+        };
+        return Some(PriorEffectResultSurface::new(
+            action,
+            filter,
+            PriorEffectResultActor::You,
+            if action_only {
+                PriorEffectResultQuantifier::ActionOnly
+            } else {
+                ordinary_quantifier
+            },
+        ));
+    }
+
+    let copula_idx = tokens.iter().position(|token| {
+        token
+            .as_word()
+            .is_some_and(|word| matches!(word, "is" | "are" | "was" | "were"))
+    })?;
+    let after = tokens[copula_idx + 1..]
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
+    let action = if after.starts_with(&["put", "into", "exile"]) {
+        PriorEffectAction::Exiled
+    } else if after.starts_with(&["put", "onto", "the", "battlefield"])
+        || after.starts_with(&["put", "onto", "battlefield"])
+    {
+        PriorEffectAction::PutOntoBattlefield
+    } else if after.first() == Some(&"removed") {
+        PriorEffectAction::Removed
+    } else if after.first() == Some(&"prevented") {
+        PriorEffectAction::Prevented
+    } else if after.first() == Some(&"countered") {
+        PriorEffectAction::Countered
+    } else {
+        return None;
+    };
+    let non_object_subject = tokens[..copula_idx].iter().any(|token| {
+        token.as_word().is_some_and(|word| {
+            matches!(
+                word,
+                "ability" | "abilities" | "counter" | "counters" | "damage"
+            )
+        })
+    });
+    let filter = if non_object_subject {
+        crate::target::ObjectFilter::default()
+    } else {
+        parse_prior_result_object_filter(&tokens[..copula_idx]).unwrap_or_default()
+    };
+    let action_only = filter == crate::target::ObjectFilter::default();
+    Some(PriorEffectResultSurface::new(
+        action,
+        filter,
+        PriorEffectResultActor::Passive,
+        if action_only {
+            PriorEffectResultQuantifier::ActionOnly
+        } else {
+            ordinary_quantifier
+        },
+    ))
+}
+
 pub(crate) fn parse_if_result_predicate_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
@@ -225,6 +400,11 @@ pub(crate) fn parse_if_result_predicate_tokens(
 pub(crate) fn parse_if_result_predicate_lexed_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
+    if let Some(surface) = parse_direct_prior_effect_result_surface(tokens)
+        .or_else(|| parse_typed_prior_effect_result_surface(tokens))
+    {
+        return Some(IfResultPredicate::PriorEffectResult(surface));
+    }
     let normalized = normalized_word_tokens(tokens);
     let shape = parse_modal_result_shape(&normalized);
     let word_count = normalized.len();

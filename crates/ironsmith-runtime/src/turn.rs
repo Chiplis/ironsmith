@@ -150,6 +150,9 @@ pub fn advance_step(game: &mut GameState) -> Result<(), TurnError> {
 
     // Try to advance to next step in current phase
     if let Some(next) = next_step(current_phase, current_step) {
+        if next != Step::Upkeep {
+            game.clear_forecast_revealed_hand_cards();
+        }
         game.turn.step = Some(next);
         game.turn.priority_player = Some(game.turn.active_player);
         return Ok(());
@@ -208,6 +211,7 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
             game.cleanup_restrictions_end_of_combat();
             game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
         }
+        game.clear_forecast_revealed_hand_cards();
         game.turn.phase = next;
         if matches!(next, Phase::Combat) {
             game.mark_combat_phase_started();
@@ -335,16 +339,25 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
     let has_cant_untap_restrictions = !game.effect_store.cant_effects.cant_untap.is_empty();
 
-    let phased_in: Vec<_> = game
-        .phased_out_ids()
-        .filter(|&id| {
-            game.object(id).is_some_and(|obj| {
-                obj.zone == crate::zone::Zone::Battlefield
-                    && game.controller_of(obj) == active_player
-            })
-        })
-        .collect();
-    for id in phased_in {
+    // CR 702.26a performs one simultaneous phasing exchange before untapping:
+    // visible permanents with phasing phase out, while permanents that phased
+    // out directly under this player's control phase in. Snapshot both sides
+    // before changing either status.
+    let phase_out = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| !game.is_phased_out(*id))
+        .filter(|id| game.current_controller(*id) == Some(active_player))
+        .filter(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Phasing))
+        .collect::<Vec<_>>();
+    let phase_in = game
+        .directly_phased_out_under(active_player)
+        .collect::<Vec<_>>();
+    for id in phase_out {
+        game.phase_out(id);
+    }
+    for id in phase_in {
         game.phase_in(id);
     }
 
@@ -383,7 +396,8 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
             }
         }
     }
-    let permanents: Vec<_> = permanents.into_iter().collect();
+    let mut permanents: Vec<_> = permanents.into_iter().collect();
+    permanents.sort_by_key(|id| id.0);
 
     // First pass: collect which permanents should untap
     let should_untap: std::collections::HashSet<_> = if !may_have_untap_static_abilities
@@ -425,14 +439,18 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
             .collect()
     };
 
-    // Second pass: untap eligible permanents and remove summoning sickness from all
+    // Second pass: untap eligible permanents. Only the active player's
+    // permanents have been under their controller continuously since that
+    // player's most recent turn began; off-turn Seedborn-style untaps do not
+    // cure summoning sickness (CR 302.6).
     for id in permanents {
         // Only untap if the permanent doesn't have DoesntUntap
         if should_untap.contains(&id) {
             game.untap(id);
         }
-        // Always remove summoning sickness at untap step
-        game.remove_summoning_sickness(id);
+        if game.current_controller(id) == Some(active_player) {
+            game.remove_summoning_sickness(id);
+        }
     }
 
     for effect in &mut game.effect_store.restriction_effects {
@@ -824,7 +842,7 @@ pub fn is_combat_phase(game: &GameState) -> bool {
 mod tests {
     use super::*;
     use crate::ability::Ability;
-    use crate::card::CardBuilder;
+    use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::{Restriction, Until};
     use crate::ids::{CardId, ObjectId};
     use crate::object::Object;
@@ -853,6 +871,33 @@ mod tests {
         }
         game.add_object(obj);
         id
+    }
+
+    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.add_object(Object::from_card(id, &card, controller, Zone::Battlefield));
+        id
+    }
+
+    #[test]
+    fn generic_step_advancement_clears_forecast_reveal_on_draw_entry() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        let card = CardBuilder::new(CardId::new(), "Forecast Step Probe").build();
+        let source = game.create_object_from_card(&card, alice, Zone::Hand);
+        assert!(game.reveal_hand_card_until_upkeep_ends(source));
+
+        advance_step(&mut game).expect("advance to draw");
+
+        assert_eq!(game.turn.step, Some(Step::Draw));
+        assert!(!game.is_hand_card_revealed_until_upkeep_ends(source));
     }
 
     #[derive(Default)]
@@ -1035,6 +1080,132 @@ mod tests {
         assert!(
             !game.is_tapped(alices_artifact),
             "matching permanent should untap during another player's untap step"
+        );
+    }
+
+    #[test]
+    fn off_turn_untap_does_not_end_summoning_sickness() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let _seedborn_like = create_artifact(
+            &mut game,
+            "Seedborn Relic",
+            alice,
+            vec![StaticAbility::untap_during_each_other_players_untap_step(
+                crate::target::ObjectFilter::permanent().you_control(),
+                "Untap all permanents you control during each other player's untap step"
+                    .to_string(),
+            )],
+        );
+        let creature = create_creature(&mut game, "New Recruit", alice);
+        game.tap(creature);
+        game.set_summoning_sick(creature);
+
+        let mut dm = AlwaysYesDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(!game.is_tapped(creature));
+        assert!(
+            game.is_summoning_sick(creature),
+            "another player's untap step does not establish continuous control since Alice's turn began"
+        );
+    }
+
+    #[test]
+    fn untap_step_performs_the_simultaneous_phasing_exchange() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let phases_out = create_artifact(
+            &mut game,
+            "Shimmering Relic",
+            alice,
+            vec![StaticAbility::phasing()],
+        );
+        let phases_in = create_artifact(&mut game, "Returning Relic", alice, vec![]);
+        game.phase_out(phases_in);
+
+        let mut dm = AlwaysYesDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(game.is_phased_out(phases_out));
+        assert!(!game.is_phased_out(phases_in));
+    }
+
+    #[test]
+    fn phased_out_permanents_are_absent_from_filters_and_controlled_counts() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let visible = create_creature(&mut game, "Visible Bear", alice);
+        let absent = create_creature(&mut game, "Vanishing Bear", alice);
+        let anthem = create_artifact(
+            &mut game,
+            "Visible Anthem",
+            alice,
+            vec![StaticAbility::anthem(
+                ObjectFilter::creature().you_control(),
+                1,
+                1,
+            )],
+        );
+        game.refresh_continuous_state();
+        assert_eq!(game.current_power(visible), Some(3));
+        game.phase_out(anthem);
+        game.refresh_continuous_state();
+        assert_eq!(game.current_power(visible), Some(2));
+        game.phase_out(absent);
+
+        assert_eq!(game.permanents_controlled_by(alice), vec![visible]);
+        assert!(game.current_characteristics(absent).is_none());
+
+        let ctx = crate::effects::ExecutionContext::new_default(absent, alice);
+        let resolved = crate::effects::helpers::resolve_objects_from_spec(
+            &game,
+            &crate::target::ChooseSpec::all(ObjectFilter::creature()),
+            &ctx,
+        )
+        .expect("all creatures resolves");
+        assert_eq!(resolved, vec![visible]);
+    }
+
+    #[test]
+    fn phasing_removes_combatants_and_carries_attached_permanents() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_creature(&mut game, "Blinking Attacker", alice);
+        let attachment = create_artifact(&mut game, "Attached Relic", alice, vec![]);
+        assert!(game.attach_object_to_target(
+            attachment,
+            crate::object::AttachmentTarget::Object(attacker)
+        ));
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+            ..Default::default()
+        });
+
+        game.phase_out(attacker);
+
+        assert!(game.is_phased_out(attacker));
+        assert!(game.is_phased_out(attachment));
+        assert!(
+            game.combat
+                .as_ref()
+                .is_some_and(|combat| combat.attackers.is_empty())
+        );
+
+        game.phase_in(attacker);
+        assert!(!game.is_phased_out(attacker));
+        assert!(!game.is_phased_out(attachment));
+        assert_eq!(
+            game.object(attachment)
+                .and_then(|object| object.attached_to),
+            Some(crate::object::AttachmentTarget::Object(attacker))
         );
     }
 

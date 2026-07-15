@@ -445,6 +445,9 @@
         if let Some(compact) = describe_each_player_may_discard_card_then_draw(for_players) {
             return compact;
         }
+        if let Some(compact) = describe_each_player_shuffle_hand_then_draw(for_players) {
+            return compact;
+        }
         // Preserve the explicit searched-card partition before the generic
         // correlated-loop renderers flatten the per-player collection into
         // independent choose and move sentences.
@@ -1076,7 +1079,7 @@
             }),
             _ => None,
         };
-        return match move_to_zone.zone {
+        let rendered = match move_to_zone.zone {
             Zone::Exile => {
                 if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
                     let mut target_text =
@@ -1304,6 +1307,14 @@
             Zone::Command => format!("Move {target} to the command zone"),
             Zone::OutsideGame => format!("Move {target} outside the game"),
         };
+        return if move_to_zone.zone == Zone::Battlefield {
+            append_battlefield_entry_counter_surface(
+                rendered,
+                &move_to_zone.enters_with_counters,
+            )
+        } else {
+            rendered
+        };
     }
     let describe_library_top_position = |position: &crate::effect::Value| match position {
         crate::effect::Value::Add(left, right)
@@ -1403,12 +1414,45 @@
                 .replacen(" that was put", " that were put", 1);
             return format!("Exile {target}{face_down_suffix}");
         }
+        if let Some(owner) = graveyard_owner_from_spec(&exile.spec) {
+            let target = describe_choose_spec_without_graveyard_zone(&exile.spec);
+            let from = match owner {
+                Some(owner) => format!(
+                    "{} graveyard",
+                    describe_possessive_graveyard_owner_filter(&owner)
+                ),
+                None if graveyard_spec_is_single(&exile.spec) => {
+                    "a single graveyard".to_string()
+                }
+                None if choose_spec_allows_multiple(&exile.spec) => "graveyards".to_string(),
+                None => "a graveyard".to_string(),
+            };
+            return format!("Exile {target} from {from}{face_down_suffix}");
+        }
         if let Some(rest) = target.strip_prefix("all cards in ") {
             return format!("Exile all cards from {rest}{face_down_suffix}");
         }
         return format!("Exile {}{face_down_suffix}", target);
     }
     if let Some(exile_until) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
+        if exile_until.explicit_return_surface
+            && exile_until.duration
+                == crate::effects::ExileUntilDuration::SourceLeavesBattlefield
+            && exile_until.return_zone == Zone::Battlefield
+        {
+            let target = describe_choose_spec(&exile_until.spec);
+            let plural = choose_spec_allows_multiple(&exile_until.spec);
+            let return_object = if plural { "those cards" } else { "that card" };
+            let owner_control = if plural {
+                "under their owners' control"
+            } else {
+                "under its owner's control"
+            };
+            let face_down_suffix = if exile_until.face_down { " face down" } else { "" };
+            return format!(
+                "Exile {target}{face_down_suffix}. Return {return_object} to the battlefield {owner_control} when this permanent leaves the battlefield"
+            );
+        }
         let duration = match exile_until.duration {
             crate::effects::ExileUntilDuration::SourceLeavesBattlefield => {
                 "until this permanent leaves the battlefield"
@@ -1663,6 +1707,41 @@
                 );
             }
 
+            if deal_damage
+                .amount
+                .has_surface_hint(ValueSurfaceHint::EqualTo)
+                && let Some(basis) = describe_prior_effect_count_basis_for_action(
+                    &deal_damage.amount,
+                    crate::effect::PriorEffectAction::Tapped,
+                    true,
+                )
+            {
+                let verb = if choose_spec_is_plural(&with_source.source) {
+                    "deal"
+                } else {
+                    "deals"
+                };
+                return format!(
+                    "{subject} {verb} damage to {target} equal to the number of {basis}"
+                );
+            }
+            if deal_damage
+                .amount
+                .has_surface_hint(ValueSurfaceHint::ForEach)
+                && let Some(basis) = describe_prior_effect_count_basis_for_action(
+                    &deal_damage.amount,
+                    crate::effect::PriorEffectAction::Tapped,
+                    false,
+                )
+            {
+                let verb = if choose_spec_is_plural(&with_source.source) {
+                    "deal"
+                } else {
+                    "deals"
+                };
+                return format!("{subject} {verb} 1 damage to {target} for each {basis}");
+            }
+
             let (amount, where_x) = describe_damage_amount_clause(&deal_damage.amount);
             let mut text = format!("{subject} deals {amount} to {target}");
             if let Some(where_x) = where_x {
@@ -1821,6 +1900,34 @@
                 "Deal damage to {} equal to {}",
                 describe_damage_target(&deal_damage.target),
                 describe_value(&deal_damage.amount)
+            );
+        }
+        if deal_damage
+            .amount
+            .has_surface_hint(ValueSurfaceHint::EqualTo)
+            && let Some(basis) = describe_prior_effect_count_basis_for_action(
+                &deal_damage.amount,
+                crate::effect::PriorEffectAction::Tapped,
+                true,
+            )
+        {
+            return format!(
+                "Deal damage to {} equal to the number of {basis}",
+                describe_damage_target(&deal_damage.target)
+            );
+        }
+        if deal_damage
+            .amount
+            .has_surface_hint(ValueSurfaceHint::ForEach)
+            && let Some(basis) = describe_prior_effect_count_basis_for_action(
+                &deal_damage.amount,
+                crate::effect::PriorEffectAction::Tapped,
+                false,
+            )
+        {
+            return format!(
+                "Deal 1 damage to {} for each {basis}",
+                describe_damage_target(&deal_damage.target)
             );
         }
         if let Some((amount, where_x)) = describe_where_x_offset_value(&deal_damage.amount) {
@@ -2409,14 +2516,36 @@
             .or_else(|| choose_spec_filter_where_x_clause(&return_to_battlefield.target))
             .unwrap_or_default();
         if matches!(return_to_battlefield.target.unhinted(), ChooseSpec::Source) {
-            return format!(
-                "Return {} from your graveyard to the battlefield{}{where_clause}",
-                describe_choose_spec(&return_to_battlefield.target),
-                if return_to_battlefield.tapped {
-                    " tapped"
-                } else {
-                    ""
-                }
+            return append_battlefield_entry_counter_surface(
+                format!(
+                    "Return {} from your graveyard to the battlefield{}{where_clause}",
+                    describe_choose_spec(&return_to_battlefield.target),
+                    if return_to_battlefield.tapped {
+                        " tapped"
+                    } else {
+                        ""
+                    }
+                ),
+                &return_to_battlefield.enters_with_counters,
+            );
+        }
+        if return_to_battlefield.target.source_reference_surface().is_some()
+            && matches!(
+                return_to_battlefield.target.unhinted(),
+                ChooseSpec::Tagged(_) | ChooseSpec::Iterated
+            )
+        {
+            return append_battlefield_entry_counter_surface(
+                format!(
+                    "Return {} to the battlefield{}{where_clause}",
+                    describe_choose_spec(&return_to_battlefield.target),
+                    if return_to_battlefield.tapped {
+                        " tapped"
+                    } else {
+                        ""
+                    }
+                ),
+                &return_to_battlefield.enters_with_counters,
             );
         }
         if let Some(owner) = graveyard_owner_from_spec(&return_to_battlefield.target) {
@@ -2429,25 +2558,31 @@
                 ),
                 None => "from graveyard".to_string(),
             };
-            return format!(
-                "Return {} {} to the battlefield{}{where_clause}",
-                target_text,
-                from_text,
+            return append_battlefield_entry_counter_surface(
+                format!(
+                    "Return {} {} to the battlefield{}{where_clause}",
+                    target_text,
+                    from_text,
+                    if return_to_battlefield.tapped {
+                        " tapped"
+                    } else {
+                        ""
+                    }
+                ),
+                &return_to_battlefield.enters_with_counters,
+            );
+        }
+        return append_battlefield_entry_counter_surface(
+            format!(
+                "Return {} from graveyard to the battlefield{}{where_clause}",
+                describe_choose_spec(&return_to_battlefield.target),
                 if return_to_battlefield.tapped {
                     " tapped"
                 } else {
                     ""
                 }
-            );
-        }
-        return format!(
-            "Return {} from graveyard to the battlefield{}{where_clause}",
-            describe_choose_spec(&return_to_battlefield.target),
-            if return_to_battlefield.tapped {
-                " tapped"
-            } else {
-                ""
-            }
+            ),
+            &return_to_battlefield.enters_with_counters,
         );
     }
     if let Some(return_all_to_battlefield) =
@@ -2528,6 +2663,16 @@
     }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
         let player = describe_choose_spec(&gain.player);
+        if let Some(multiplier) = counters_removed_this_way_multiplier(&gain.amount)
+            && multiplier > 0
+        {
+            return format!(
+                "{} {} {} life for each counter removed this way",
+                player,
+                player_verb(&player, "gain", "gains"),
+                multiplier
+            );
+        }
         if value_has_surface_hint(&gain.amount, ValueSurfaceHint::EqualTo) {
             let amount = gain
                 .amount
@@ -2543,6 +2688,9 @@
         if gain.amount.has_surface_hint(ValueSurfaceHint::ForEach) {
             let (basis, multiplier) = match gain.amount.unhinted() {
                 Value::Add(left, right) if left == right => (left.as_ref(), 2),
+                Value::Scaled(value, multiplier) if *multiplier > 0 => {
+                    (value.as_ref(), *multiplier)
+                }
                 basis => (basis, 1),
             };
             if let Some(for_each) = describe_create_for_each_count(basis) {
@@ -2693,6 +2841,9 @@
                 | Value::GreatestPower(_)
                 | Value::GreatestToughness(_)
                 | Value::GreatestManaValue(_)
+                | Value::LeastPower(_)
+                | Value::LeastToughness(_)
+                | Value::LeastManaValue(_)
                 | Value::SourcePower
                 | Value::SourceToughness
                 | Value::PowerOf(_)
@@ -3297,6 +3448,14 @@
             return format!("{} with phasing phase out", capitalize_first(&desc));
         }
         let target = describe_choose_spec(&phase_out.spec);
+        if phase_out.duration == crate::effects::PhaseOutDuration::UntilSourceLeaves {
+            let source = phase_out
+                .source_surface
+                .as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            return format!("Phase out {target} until {source} leaves the battlefield");
+        }
         if target == "equipped creature" {
             return "Equipped creature phases out".to_string();
         }
@@ -4124,52 +4283,29 @@
         } else {
             "gets"
         };
-        let each_text = if let Some((1, party)) =
-            describe_party_size_for_each_basis(&modify_pt_each.count)
-        {
-            party
-        } else {
-            match &modify_pt_each.count {
-                Value::Count(filter) => describe_for_each_count_filter(filter),
-                Value::BasicLandTypesAmong(filter) => describe_basic_land_types_among(filter)
-                    .replace("basic land types", "basic land type"),
-                Value::CreatureTypesAmong(filter) => format!(
-                    "creature type among {}",
-                    describe_count_filter_value_subject(filter)
-                ),
-                Value::CardTypesAmong(filter) => format!(
-                    "card type among {}",
-                    describe_count_filter_value_subject(filter)
-                ),
-                Value::ColorsAmong(filter) => describe_colors_among(filter),
-                value if value_has_surface_hint(value, ValueSurfaceHint::CardsDiscardedThisWay) => {
-                    "card discarded this way".to_string()
-                }
-                _ => describe_value(&modify_pt_each.count),
-            }
-        };
-        if value_has_surface_hint(
+        let each_text = describe_create_for_each_count(&modify_pt_each.count)
+            .unwrap_or_else(|| describe_value(&modify_pt_each.count));
+        let additional = if value_has_surface_hint(
             &modify_pt_each.count,
-            ValueSurfaceHint::CardsDiscardedThisWay,
+            ValueSurfaceHint::AdditionalPowerToughnessModifier,
         ) {
+            "an additional "
+        } else {
+            ""
+        };
+        let power = describe_signed_i32(modify_pt_each.power_per);
+        let toughness = describe_signed_i32(modify_pt_each.toughness_per);
+        let duration = describe_until(&modify_pt_each.duration);
+        if modify_pt_each
+            .count
+            .has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay)
+        {
             return format!(
-                "{} {} {}/{} {} for each {}",
-                target_text,
-                gets_verb,
-                describe_signed_i32(modify_pt_each.power_per),
-                describe_signed_i32(modify_pt_each.toughness_per),
-                describe_until(&modify_pt_each.duration),
-                each_text,
+                "{target_text} {gets_verb} {additional}{power}/{toughness} {duration} for each {each_text}"
             );
         }
         return format!(
-            "{} {} {}/{} for each {} {}",
-            target_text,
-            gets_verb,
-            describe_signed_i32(modify_pt_each.power_per),
-            describe_signed_i32(modify_pt_each.toughness_per),
-            each_text,
-            describe_until(&modify_pt_each.duration)
+            "{target_text} {gets_verb} {additional}{power}/{toughness} for each {each_text} {duration}"
         );
     }
     if let Some(bid_life) = effect.downcast_ref::<crate::effects::BidLifeEffect>() {
@@ -4460,6 +4596,11 @@
                 lowercase_first(&compact)
             );
         }
+        if let Some(compact) =
+            describe_was_declined_optional_battlefield_fallback_conditional(conditional)
+        {
+            return compact;
+        }
         let mut true_branch = describe_effect_clause_list(&conditional.if_true)
             .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
         if matches!(
@@ -4566,7 +4707,7 @@
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
         let then_text = describe_conditional_branch_effect_list(&if_effect.then)
-            .unwrap_or_else(|| describe_effect_list(&if_effect.then));
+            .unwrap_or_else(|| describe_result_branch_effect_list(&if_effect.then));
         let else_text = describe_effect_list(&if_effect.else_);
         if then_text.trim().is_empty() && else_text.trim().is_empty() {
             return String::new();
@@ -4605,11 +4746,12 @@
         );
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
+        let triggered = describe_result_branch_effect_list(&reflexive.effects);
         return format!(
             "When effect #{} {}, {}",
             reflexive.condition.0,
             describe_effect_predicate(&reflexive.predicate),
-            describe_effect_list(&reflexive.effects)
+            triggered
         );
     }
     if let Some(cast_tagged) = effect.downcast_ref::<crate::effects::CastTaggedEffect>() {

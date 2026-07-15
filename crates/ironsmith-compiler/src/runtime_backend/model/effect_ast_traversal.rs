@@ -119,6 +119,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::DelayedWhenLastObjectLeavesBattlefield {
+                effects: $effects,
+                ..
+            }
             | EffectAst::VoteOption {
                 effects: $effects,
                 ..
@@ -148,6 +152,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DelayedUntilEndOfCombat { .. } => {}
         EffectAst::DelayedTriggerThisTurn { .. } => {}
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {}
+        EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => {}
         EffectAst::Conditional { .. } => {}
         EffectAst::TrailingUnless { .. } => {}
         EffectAst::ManaRestricted { .. } => {}

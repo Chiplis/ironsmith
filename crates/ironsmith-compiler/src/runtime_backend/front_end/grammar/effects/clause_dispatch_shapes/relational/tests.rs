@@ -6,10 +6,15 @@ fn parses_passive_and_copular_shapes() {
     let sacrifice = lex_line("Each creature is sacrificed by its controller.", 0).unwrap();
     assert!(parse_passive_sacrifice_shape(&sacrifice).is_some());
     let goad = lex_line("The token is goaded for the rest of the game.", 0).unwrap();
-    assert!(matches!(
-        parse_passive_goad_shape(&goad).unwrap().target,
-        GoadTargetShape::TaggedToken
-    ));
+    let goad = parse_passive_goad_shape(&goad).unwrap();
+    assert!(matches!(goad.target, GoadTargetShape::TaggedToken));
+    assert!(goad.for_rest_of_game);
+    let ordinary = lex_line("The token is goaded.", 0).unwrap();
+    assert!(
+        !parse_passive_goad_shape(&ordinary)
+            .unwrap()
+            .for_rest_of_game
+    );
     let animation = lex_line(
         "Target land is a 3/3 creature in addition to its other types.",
         0,

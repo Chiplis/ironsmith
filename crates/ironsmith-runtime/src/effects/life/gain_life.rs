@@ -3,7 +3,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
-use crate::effects::{ExecutionContext, ExecutionError};
+use crate::effects::{CostExecutableEffect, CostValidationError, ExecutionContext, ExecutionError};
 use crate::events::LifeGainEvent;
 use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
@@ -75,6 +75,30 @@ impl EffectExecutor for GainLifeEffect {
 
     fn target_description(&self) -> &'static str {
         "player to gain life"
+    }
+
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+}
+
+impl CostExecutableEffect for GainLifeEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let ctx = ExecutionContext::new_default(source, controller);
+        let recipient = resolve_player_from_spec(game, &self.player, &ctx).map_err(|error| {
+            CostValidationError::Other(format!("life-gain cost has no eligible recipient: {error}"))
+        })?;
+        if !game.can_gain_life(recipient) {
+            return Err(CostValidationError::Other(
+                "required player can't gain life".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 

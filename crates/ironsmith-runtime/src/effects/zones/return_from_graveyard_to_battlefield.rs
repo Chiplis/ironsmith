@@ -2,6 +2,7 @@
 
 use super::battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+    resolve_battlefield_entry_counters,
 };
 use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
 use crate::decisions::make_decision;
@@ -177,11 +178,18 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
 
         let mut moved = Vec::new();
         for target_id in target_ids {
+            let initial_counters = resolve_battlefield_entry_counters(
+                game,
+                ctx,
+                target_id,
+                &self.enters_with_counters,
+            )?;
             match move_to_battlefield_with_options(
                 game,
                 ctx,
                 target_id,
-                BattlefieldEntryOptions::preserve(self.tapped),
+                BattlefieldEntryOptions::preserve(self.tapped)
+                    .with_initial_counters(initial_counters),
             ) {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     if let Some(as_aura) = &self.as_aura {

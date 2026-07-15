@@ -5,10 +5,10 @@
 //!
 //! Key rules:
 //! - Rule 615.1: Prevention effects are replacement effects
-//! - Rule 615.6: "Prevent the next N damage" creates a shield that tracks remaining prevention
-//! - Rule 615.7: When damage that can't be prevented would be dealt, prevention still applies
-//!               but doesn't actually prevent anything (and doesn't exhaust shields)
-//! - Rule 615.12: "Can't be prevented" damage bypasses prevention entirely
+//! - Rule 615.7: "Prevent the next N damage" creates a shield that tracks remaining prevention
+//!               and is allocated by the affected player across simultaneous sources
+//! - Rule 615.12: Prevention effects still apply once to unpreventable damage, prevent zero,
+//!                retain their shields, and perform any additional effects
 
 use crate::color::Color;
 use crate::effect::{Effect, Until};
@@ -184,9 +184,15 @@ pub struct PreventionEffectManager {
 
     /// Current turn number (for duration tracking)
     current_turn: u32,
+
+    /// Follow-ups produced by shields selected in the unified CR 616 loop.
+    pending_follow_ups: Vec<PendingPreventionFollowUp>,
 }
 
-/// A follow-up to run after a prevention shield actually prevents damage.
+/// A follow-up to run after a prevention shield is applied to damage.
+///
+/// `prevented` is zero when CR 615.12 applies the prevention effect to
+/// unpreventable damage without preventing any of it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventionFollowUp {
     pub source: ObjectId,
@@ -195,6 +201,14 @@ pub struct PreventionFollowUp {
     pub effects: Vec<Effect>,
     pub targets: Vec<ResolvedTarget>,
     pub target_assignments: Vec<TargetAssignment>,
+}
+
+/// A prevention follow-up paired with the exact damage event it modified.
+#[derive(Debug, Clone)]
+pub struct PendingPreventionFollowUp {
+    pub follow_up: PreventionFollowUp,
+    pub damage: crate::events::DamageEvent,
+    pub provenance: crate::provenance::ProvNodeId,
 }
 
 /// Result of applying prevention to a single damage assignment.
@@ -223,6 +237,68 @@ impl PreventionEffectManager {
     /// Get the current turn number (for deterministic state hashing).
     pub fn current_turn(&self) -> u32 {
         self.current_turn
+    }
+
+    /// Apply one specifically chosen shield to a damage amount.
+    pub fn apply_chosen_shield(
+        &mut self,
+        id: PreventionShieldId,
+        damage: u32,
+        can_prevent: bool,
+        max_amount: Option<u32>,
+    ) -> PreventionApplicationResult {
+        if damage == 0 {
+            return PreventionApplicationResult::default();
+        }
+        let Some(shield) = self.get_shield_mut(id) else {
+            return PreventionApplicationResult {
+                remaining: damage,
+                follow_ups: Vec::new(),
+            };
+        };
+        let prevented = if can_prevent {
+            shield.reduce(damage.min(max_amount.unwrap_or(u32::MAX)))
+        } else {
+            0
+        };
+        let follow_ups = if !shield.follow_up_effects.is_empty() {
+            vec![PreventionFollowUp {
+                source: shield.source,
+                controller: shield.controller,
+                prevented,
+                effects: shield.follow_up_effects.clone(),
+                targets: shield.follow_up_targets.clone(),
+                target_assignments: shield.follow_up_target_assignments.clone(),
+            }]
+        } else {
+            Vec::new()
+        };
+        if can_prevent {
+            self.cleanup_exhausted();
+        }
+        PreventionApplicationResult {
+            remaining: damage - prevented,
+            follow_ups,
+        }
+    }
+
+    /// Queue a chosen shield's follow-up with its exact pre-damage event.
+    pub fn queue_follow_up(
+        &mut self,
+        follow_up: PreventionFollowUp,
+        damage: crate::events::DamageEvent,
+        provenance: crate::provenance::ProvNodeId,
+    ) {
+        self.pending_follow_ups.push(PendingPreventionFollowUp {
+            follow_up,
+            damage,
+            provenance,
+        });
+    }
+
+    /// Drain follow-ups produced by the unified replacement loop.
+    pub fn take_pending_follow_ups(&mut self) -> Vec<PendingPreventionFollowUp> {
+        std::mem::take(&mut self.pending_follow_ups)
     }
 
     /// Add a new prevention shield.
@@ -270,7 +346,8 @@ impl PreventionEffectManager {
                 PreventionTarget::Player(p) => *p == player,
                 PreventionTarget::Players => true,
                 PreventionTarget::You => s.controller == player,
-                PreventionTarget::YouAndPermanentsYouControl => s.controller == player,
+                PreventionTarget::YouAndPermanentsYouControl
+                | PreventionTarget::YouAndPermanentsMatching(_) => s.controller == player,
                 PreventionTarget::All => true,
                 _ => false,
             })
@@ -282,6 +359,7 @@ impl PreventionEffectManager {
         &self,
         permanent: ObjectId,
         controller: PlayerId,
+        protected_filter_matches: &HashMap<PreventionShieldId, bool>,
     ) -> Vec<&PreventionShield> {
         self.shields
             .iter()
@@ -289,10 +367,12 @@ impl PreventionEffectManager {
             .filter(|s| match &s.protected {
                 PreventionTarget::Permanent(p) => *p == permanent,
                 PreventionTarget::YouAndPermanentsYouControl => s.controller == controller,
-                PreventionTarget::PermanentsMatching(_filter) => {
-                    // Would need object context to evaluate filter
-                    // For now, include all filter-based shields
-                    true
+                PreventionTarget::PermanentsMatching(_)
+                | PreventionTarget::YouAndPermanentsMatching(_) => {
+                    protected_filter_matches
+                        .get(&s.id)
+                        .copied()
+                        .unwrap_or(false)
                 }
                 PreventionTarget::All => true,
                 _ => false,
@@ -422,6 +502,7 @@ impl PreventionEffectManager {
         can_be_prevented: bool,
     ) -> u32 {
         let source_filter_matches = HashMap::new();
+        let protected_filter_matches = HashMap::new();
         self.apply_prevention_to_permanent_with_follow_ups(
             permanent,
             controller,
@@ -432,6 +513,7 @@ impl PreventionEffectManager {
             source_card_types,
             can_be_prevented,
             &source_filter_matches,
+            &protected_filter_matches,
         )
         .remaining
     }
@@ -448,6 +530,7 @@ impl PreventionEffectManager {
         source_card_types: &[CardType],
         can_be_prevented: bool,
         source_filter_matches: &HashMap<PreventionShieldId, bool>,
+        protected_filter_matches: &HashMap<PreventionShieldId, bool>,
     ) -> PreventionApplicationResult {
         if damage == 0 {
             return PreventionApplicationResult::default();
@@ -458,7 +541,7 @@ impl PreventionEffectManager {
 
         // Find applicable shields
         let shield_ids: Vec<PreventionShieldId> = self
-            .get_shields_for_permanent(permanent, controller)
+            .get_shields_for_permanent(permanent, controller, protected_filter_matches)
             .iter()
             .filter(|s| {
                 let source_filter_ok = s.damage_filter.from_source.is_none()
@@ -623,6 +706,39 @@ mod tests {
 
         assert_eq!(remaining, 8); // Only 2 could be prevented
         assert!(manager.shields().is_empty()); // Shield exhausted and removed
+    }
+
+    #[test]
+    fn filter_based_shield_requires_the_damaged_permanent_to_match() {
+        let mut manager = PreventionEffectManager::new();
+        let permanent = ObjectId::from_raw(2);
+        let shield_id = manager.add_shield(PreventionShield::prevent_all(
+            ObjectId::from_raw(1),
+            PlayerId::from_index(0),
+            PreventionTarget::PermanentsMatching(crate::target::ObjectFilter::creature()),
+        ));
+
+        assert!(
+            manager
+                .get_shields_for_permanent(
+                    permanent,
+                    PlayerId::from_index(0),
+                    &HashMap::from([(shield_id, false)]),
+                )
+                .is_empty(),
+            "a filter shield must not be offered for a nonmatching permanent"
+        );
+        assert_eq!(
+            manager
+                .get_shields_for_permanent(
+                    permanent,
+                    PlayerId::from_index(0),
+                    &HashMap::from([(shield_id, true)]),
+                )
+                .len(),
+            1,
+            "the same shield should be offered when the protected-object filter matches"
+        );
     }
 
     #[test]

@@ -1297,6 +1297,7 @@ fn lower_parsed_ability_chunk(
         mut builder,
         parsed,
         info,
+        semantic_facts,
         annotations,
         ..
     } = input;
@@ -1312,7 +1313,27 @@ fn lower_parsed_ability_chunk(
             &info.normalized,
         );
     }
-    let ability = parsed_ability.into_runtime();
+    let mut ability = parsed_ability.into_runtime();
+    if semantic_facts
+        .statement
+        .trailing_instead_if_predicate
+        .is_some()
+    {
+        let program = match &mut ability.kind {
+            AbilityKind::Triggered(triggered) => Some(&mut triggered.effects),
+            AbilityKind::Activated(activated) => Some(&mut activated.effects),
+            _ => None,
+        };
+        if let Some(program) = program {
+            for branch in program
+                .segments
+                .iter_mut()
+                .flat_map(|segment| segment.self_replacements.iter_mut())
+            {
+                branch.condition_after_replacement = true;
+            }
+        }
+    }
     builder = builder.with_ability(ability);
     Ok(builder)
 }

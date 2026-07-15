@@ -1,7 +1,7 @@
 use crate::{
     CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric,
-    KeywordActionKind, ObjectId, PlayerId, SourceReferenceSurface, StaticAbilityId, Subtype,
-    Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
+    KeywordActionKind, ObjectId, PlayerId, PriorEffectAction, SourceReferenceSurface,
+    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
 };
 
 fn ensure_indefinite_article(text: String) -> String {
@@ -110,12 +110,12 @@ pub enum ObjectFilterUnionConnective {
     AndOr,
 }
 
-/// Presentation metadata for an [`ObjectFilter`] union.
+/// Presentation metadata for an [`ObjectFilter`].
 ///
 /// `PartialEq` is intentionally semantic-transparent: `ObjectFilter` derives
 /// equality and is used throughout lowering, deduplication, and runtime shape
-/// checks. An `and/or` spelling must therefore compare equal to the same
-/// inclusive union written with `or`.
+/// checks. Oracle-only spelling choices must therefore compare equal to the
+/// same runtime filter rendered with a canonical surface.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ObjectFilterUnionSurface {
     connective: ObjectFilterUnionConnective,
@@ -127,6 +127,21 @@ pub struct ObjectFilterUnionSurface {
     /// independently so that the same semantic filter does not render as a
     /// battlefield `permanent` merely because its contextual zone moved.
     explicit_card_noun: bool,
+    counter_requirement_plural_noun: bool,
+    counter_requirement_plural_subject: bool,
+    counter_exclusion_plural_noun: bool,
+    counter_exclusion_plural_subject: bool,
+    /// Oracle expressed an intrinsic attachment state postpositively, as in
+    /// "creatures you control that are enchanted", instead of the canonical
+    /// adjective form "enchanted creatures you control".
+    relative_attachment_state: bool,
+    /// Oracle expressed a coordinated subtype list as a relative clause, for
+    /// example "creature that's an Insect, Rat, Spider, or Squirrel".
+    relative_characteristic_list: bool,
+    /// Oracle explicitly related this object set to a prior producer with
+    /// `... this way`. The generated runtime tag retains identity; this field
+    /// preserves the authored action without deriving semantics from tag text.
+    prior_effect_action: Option<PriorEffectAction>,
 }
 
 impl ObjectFilterUnionSurface {
@@ -135,6 +150,13 @@ impl ObjectFilterUnionSurface {
             connective,
             one_or_more: false,
             explicit_card_noun: false,
+            counter_requirement_plural_noun: false,
+            counter_requirement_plural_subject: false,
+            counter_exclusion_plural_noun: false,
+            counter_exclusion_plural_subject: false,
+            relative_attachment_state: false,
+            relative_characteristic_list: false,
+            prior_effect_action: None,
         }
     }
 
@@ -163,6 +185,67 @@ impl ObjectFilterUnionSurface {
     pub const fn with_explicit_card_noun(mut self, explicit_card_noun: bool) -> Self {
         self.explicit_card_noun = explicit_card_noun;
         self
+    }
+
+    pub const fn with_counter_requirement_surface(
+        mut self,
+        plural_noun: bool,
+        plural_subject: bool,
+    ) -> Self {
+        self.counter_requirement_plural_noun = plural_noun;
+        self.counter_requirement_plural_subject = plural_subject;
+        self
+    }
+
+    pub const fn counter_requirement_surface(self) -> (bool, bool) {
+        (
+            self.counter_requirement_plural_noun,
+            self.counter_requirement_plural_subject,
+        )
+    }
+
+    pub const fn with_counter_exclusion_surface(
+        mut self,
+        plural_noun: bool,
+        plural_subject: bool,
+    ) -> Self {
+        self.counter_exclusion_plural_noun = plural_noun;
+        self.counter_exclusion_plural_subject = plural_subject;
+        self
+    }
+
+    pub const fn counter_exclusion_surface(self) -> (bool, bool) {
+        (
+            self.counter_exclusion_plural_noun,
+            self.counter_exclusion_plural_subject,
+        )
+    }
+
+    pub const fn with_relative_attachment_state(mut self, relative: bool) -> Self {
+        self.relative_attachment_state = relative;
+        self
+    }
+
+    pub const fn relative_attachment_state(self) -> bool {
+        self.relative_attachment_state
+    }
+
+    pub const fn with_relative_characteristic_list(mut self, relative: bool) -> Self {
+        self.relative_characteristic_list = relative;
+        self
+    }
+
+    pub const fn relative_characteristic_list(self) -> bool {
+        self.relative_characteristic_list
+    }
+
+    pub const fn with_prior_effect_action(mut self, action: Option<PriorEffectAction>) -> Self {
+        self.prior_effect_action = action;
+        self
+    }
+
+    pub const fn prior_effect_action(self) -> Option<PriorEffectAction> {
+        self.prior_effect_action
     }
 }
 
@@ -571,6 +654,10 @@ pub struct ObjectFilter {
     pub attacking: bool,
     pub attacked_this_turn: bool,
     pub attacking_player_or_planeswalker_controlled_by: Option<PlayerFilter>,
+    /// When set with `attacking_player_or_planeswalker_controlled_by`, require
+    /// the attack target itself to be that player rather than a planeswalker
+    /// they control.
+    pub attacking_player_only: bool,
     /// The battlefield object this object is attached to must match this
     /// filter. Unlike a tagged-object relation, this is an intrinsic selector
     /// and is valid without a prior effect establishing a tag.
@@ -681,6 +768,60 @@ impl ObjectFilter {
 
     pub const fn has_explicit_card_noun(&self) -> bool {
         self.union_surface.explicit_card_noun()
+    }
+
+    /// Preserve whether Oracle used `counter`/`counters` and `it`/`them` for
+    /// a positive counter requirement. This changes rendering only.
+    pub fn set_counter_requirement_surface(&mut self, plural_noun: bool, plural_subject: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_counter_requirement_surface(plural_noun, plural_subject);
+    }
+
+    pub const fn counter_requirement_surface(&self) -> (bool, bool) {
+        self.union_surface.counter_requirement_surface()
+    }
+
+    /// Preserve whether Oracle used `counter`/`counters` and `it`/`them` for
+    /// a negative counter requirement. This changes rendering only.
+    pub fn set_counter_exclusion_surface(&mut self, plural_noun: bool, plural_subject: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_counter_exclusion_surface(plural_noun, plural_subject);
+    }
+
+    pub const fn counter_exclusion_surface(&self) -> (bool, bool) {
+        self.union_surface.counter_exclusion_surface()
+    }
+
+    /// Preserve postpositive attachment wording without changing matching.
+    pub fn set_relative_attachment_state_surface(&mut self, relative: bool) {
+        self.union_surface = self.union_surface.with_relative_attachment_state(relative);
+    }
+
+    pub const fn has_relative_attachment_state_surface(&self) -> bool {
+        self.union_surface.relative_attachment_state()
+    }
+
+    /// Preserve relative-clause wording for a coordinated characteristic list.
+    pub fn set_relative_characteristic_list_surface(&mut self, relative: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_relative_characteristic_list(relative);
+    }
+
+    pub const fn has_relative_characteristic_list_surface(&self) -> bool {
+        self.union_surface.relative_characteristic_list()
+    }
+
+    /// Preserve an explicit `... this way` object-reference action without
+    /// changing the set of objects matched at runtime.
+    pub fn set_prior_effect_action_surface(&mut self, action: Option<PriorEffectAction>) {
+        self.union_surface = self.union_surface.with_prior_effect_action(action);
+    }
+
+    pub const fn prior_effect_action_surface(&self) -> Option<PriorEffectAction> {
+        self.union_surface.prior_effect_action()
     }
 
     pub fn uses_power_or_toughness_characteristics(&self) -> bool {
@@ -989,6 +1130,12 @@ impl ObjectFilter {
 
     pub fn attacking_player_or_planeswalker_controlled_by(mut self, player: PlayerFilter) -> Self {
         self.attacking_player_or_planeswalker_controlled_by = Some(player);
+        self
+    }
+
+    pub fn attacking_player(mut self, player: PlayerFilter) -> Self {
+        self.attacking_player_or_planeswalker_controlled_by = Some(player);
+        self.attacking_player_only = true;
         self
     }
 
@@ -1997,9 +2144,13 @@ impl ObjectFilter {
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = player_filter.description();
-            post_noun_qualifiers.push(format!(
-                "attacking {player_text} or a planeswalker controlled by {player_text}"
-            ));
+            if self.attacking_player_only {
+                post_noun_qualifiers.push(format!("attacking {player_text}"));
+            } else {
+                post_noun_qualifiers.push(format!(
+                    "attacking {player_text} or a planeswalker controlled by {player_text}"
+                ));
+            }
         }
         if self.in_combat_with_source {
             post_noun_qualifiers.push("blocking or blocked by this creature".to_string());
@@ -2294,6 +2445,14 @@ impl ObjectFilter {
             || self.power_toughness_relation.is_some()
             || self.power_relative_to_source.is_some()
             || self.total_power_toughness.is_some();
+        if let Some(scope) = explicit_extremum_scope(self) {
+            if self.controller.is_some() && self.controller == scope.controller {
+                controller_suffix = None;
+            }
+            if self.owner.is_some() && self.owner == scope.owner {
+                owner_suffix = None;
+            }
+        }
         if has_power_or_toughness_qualifier
             && owner_suffix.is_none()
             && let Some(controller) = controller_suffix.take()
@@ -2317,7 +2476,10 @@ impl ObjectFilter {
                     PtReference::Effective => "power",
                     PtReference::Base => "base power",
                 };
-                parts.push(format!("with {label} {}", describe_comparison(power)));
+                parts.push(
+                    describe_extremum_filter_comparison(power, label)
+                        .unwrap_or_else(|| format!("with {label} {}", describe_comparison(power))),
+                );
             }
             if let Some(power_parity) = self.power_parity {
                 let axis = match self.power_reference {
@@ -2351,7 +2513,11 @@ impl ObjectFilter {
                     PtReference::Effective => "toughness",
                     PtReference::Base => "base toughness",
                 };
-                parts.push(format!("with {label} {}", describe_comparison(toughness)));
+                parts.push(
+                    describe_extremum_filter_comparison(toughness, label).unwrap_or_else(|| {
+                        format!("with {label} {}", describe_comparison(toughness))
+                    }),
+                );
             }
         }
         if let Some(ref total_power_toughness) = self.total_power_toughness {
@@ -2361,10 +2527,16 @@ impl ObjectFilter {
             ));
         }
         if let Some(ref mana_value) = self.mana_value {
-            parts.push(format!(
-                "with mana value {}",
-                describe_mana_value_comparison(mana_value)
-            ));
+            parts.push(
+                describe_extremum_filter_comparison(mana_value, "mana value").unwrap_or_else(
+                    || {
+                        format!(
+                            "with mana value {}",
+                            describe_mana_value_comparison(mana_value)
+                        )
+                    },
+                ),
+            );
         }
         if let Some(ref color_count) = self.color_count {
             parts.push(format!(
@@ -2401,15 +2573,19 @@ impl ObjectFilter {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
         if let Some(counter_requirement) = self.with_counter {
+            let (plural_noun, plural_subject) = self.counter_requirement_surface();
             parts.push(format!(
-                "with {} on it",
-                describe_counter_constraint(counter_requirement)
+                "with {} on {}",
+                describe_counter_constraint(counter_requirement, plural_noun),
+                if plural_subject { "them" } else { "it" }
             ));
         }
         if let Some(counter_exclusion) = self.without_counter {
+            let (plural_noun, plural_subject) = self.counter_exclusion_surface();
             parts.push(format!(
-                "without {} on it",
-                describe_counter_constraint(counter_exclusion)
+                "without {} on {}",
+                describe_counter_constraint(counter_exclusion, plural_noun),
+                if plural_subject { "them" } else { "it" }
             ));
         }
         if let Some(total_counters_parity) = self.total_counters_parity {
@@ -2743,7 +2919,7 @@ fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<Strin
     } else {
         "permanent"
     };
-    let replacement = if placeholder == "permanent" {
+    let replacement = if placeholder == "permanent" || selector.ends_with(placeholder) {
         selector
     } else {
         format!("{selector} {placeholder}")
@@ -3014,9 +3190,13 @@ fn describe_stack_object_kind(kind: StackObjectKind) -> &'static str {
     }
 }
 
-fn describe_counter_constraint(constraint: CounterConstraint) -> String {
+fn describe_counter_constraint(constraint: CounterConstraint, plural: bool) -> String {
     match constraint {
+        CounterConstraint::Any if plural => "counters".to_string(),
         CounterConstraint::Any => "a counter".to_string(),
+        CounterConstraint::Typed(counter_type) if plural => {
+            format!("{} counters", counter_type.description())
+        }
         CounterConstraint::Typed(counter_type) => {
             format!("a {} counter", counter_type.description())
         }
@@ -3156,6 +3336,79 @@ fn describe_count_filter_subject(filter: &ObjectFilter) -> String {
     format!("{}{}", pluralize_count_terminal_word(noun.trim()), suffix)
 }
 
+fn extremum_value_scope(value: &Value) -> Option<&ObjectFilter> {
+    match value.unhinted() {
+        Value::GreatestPower(scope)
+        | Value::GreatestToughness(scope)
+        | Value::GreatestManaValue(scope)
+        | Value::LeastPower(scope)
+        | Value::LeastToughness(scope)
+        | Value::LeastManaValue(scope) => Some(scope),
+        _ => None,
+    }
+}
+
+fn explicit_extremum_scope(filter: &ObjectFilter) -> Option<&ObjectFilter> {
+    [&filter.power, &filter.toughness, &filter.mana_value]
+        .into_iter()
+        .flatten()
+        .find_map(|comparison| {
+            let Comparison::EqualExpr(value) = comparison else {
+                return None;
+            };
+            if value.has_surface_hint(crate::ValueSurfaceHint::ExtremumImplicitScope) {
+                None
+            } else {
+                extremum_value_scope(value)
+            }
+        })
+}
+
+fn describe_extremum_scope(filter: &ObjectFilter) -> String {
+    let is_tagged_set = filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject);
+    if is_tagged_set && filter.has_explicit_card_noun() {
+        "those cards".to_string()
+    } else {
+        describe_count_filter_subject(filter)
+    }
+}
+
+fn describe_extremum_filter_comparison(
+    comparison: &Comparison,
+    characteristic: &str,
+) -> Option<String> {
+    let Comparison::EqualExpr(value) = comparison else {
+        return None;
+    };
+    let (direction, value_characteristic, scope) = match value.unhinted() {
+        Value::GreatestPower(scope) => ("greatest", "power", scope),
+        Value::GreatestToughness(scope) => ("greatest", "toughness", scope),
+        Value::GreatestManaValue(scope) => ("greatest", "mana value", scope),
+        Value::LeastPower(scope) => ("least", "power", scope),
+        Value::LeastToughness(scope) => ("lowest", "toughness", scope),
+        Value::LeastManaValue(scope) => ("lowest", "mana value", scope),
+        _ => return None,
+    };
+    if characteristic != value_characteristic {
+        return None;
+    }
+
+    let mut description = format!("with the {direction} {characteristic}");
+    if !value.has_surface_hint(crate::ValueSurfaceHint::ExtremumImplicitScope) {
+        description.push_str(" among ");
+        description.push_str(&describe_extremum_scope(scope));
+    }
+    if value.has_surface_hint(crate::ValueSurfaceHint::ExtremumTiedShort) {
+        description.push_str(&format!(" or tied for {direction}"));
+    } else if value.has_surface_hint(crate::ValueSurfaceHint::ExtremumTiedForCharacteristic) {
+        description.push_str(&format!(" or tied for the {direction} {characteristic}"));
+    }
+    Some(description)
+}
+
 fn describe_counter_holder(spec: &ChooseSpec) -> String {
     if let Some(surface) = spec.source_reference_surface() {
         return surface.display_text();
@@ -3242,6 +3495,34 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CardTypesAmong(filter) => {
                 format!("the number of card types among {}", filter.description())
             }
+            Value::GreatestPower(filter) => {
+                format!(
+                    "the greatest power among {}",
+                    describe_count_filter_subject(filter)
+                )
+            }
+            Value::GreatestToughness(filter) => format!(
+                "the greatest toughness among {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::GreatestManaValue(filter) => format!(
+                "the greatest mana value among {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::LeastPower(filter) => {
+                format!(
+                    "the least power among {}",
+                    describe_count_filter_subject(filter)
+                )
+            }
+            Value::LeastToughness(filter) => format!(
+                "the lowest toughness among {}",
+                describe_count_filter_subject(filter)
+            ),
+            Value::LeastManaValue(filter) => format!(
+                "the lowest mana value among {}",
+                describe_count_filter_subject(filter)
+            ),
             Value::StaticAbilitiesAmong { filter, abilities } => {
                 let names = abilities
                     .iter()
@@ -3462,7 +3743,7 @@ mod tests {
         PlayerFilter, PtReference, StackObjectKind, TaggedObjectConstraint, TaggedOpbjectRelation,
         describe_comparison, describe_mana_value_comparison,
     };
-    use crate::{CardType, ObjectId, Subtype, TagKey, Value, ValueSurfaceHint, Zone};
+    use crate::{CardType, CounterType, ObjectId, Subtype, TagKey, Value, ValueSurfaceHint, Zone};
 
     #[test]
     fn object_ref_helpers_preserve_payloads() {
@@ -3608,6 +3889,30 @@ mod tests {
     }
 
     #[test]
+    fn plural_counter_surface_renders_without_changing_filter_equality() {
+        let semantic_filter = ObjectFilter::default()
+            .with_type(CardType::Creature)
+            .you_control()
+            .with_counter_type(CounterType::PlusOnePlusOne);
+        let mut surfaced_filter = semantic_filter.clone();
+        surfaced_filter.set_counter_requirement_surface(true, true);
+
+        assert_eq!(semantic_filter, surfaced_filter);
+        assert_eq!(
+            semantic_filter.description(),
+            "creature you control with a +1/+1 counter on it"
+        );
+        assert_eq!(
+            surfaced_filter.description(),
+            "creature you control with +1/+1 counters on them"
+        );
+
+        let mut any_counter = ObjectFilter::permanent().with_any_counter();
+        any_counter.set_counter_requirement_surface(true, true);
+        assert_eq!(any_counter.description(), "permanent with counters on them");
+    }
+
+    #[test]
     fn branch_scoped_type_union_factors_shared_card_domain() {
         let mut filter = ObjectFilter {
             zone: Some(Zone::Graveyard),
@@ -3627,6 +3932,27 @@ mod tests {
         assert_eq!(
             filter.description(),
             "artifact or non-aura enchantment card in your graveyard"
+        );
+    }
+
+    #[test]
+    fn branch_scoped_type_union_does_not_repeat_a_shared_card_noun() {
+        let mut creature_card = ObjectFilter::default().with_type(CardType::Creature);
+        creature_card.set_explicit_card_noun(true);
+        let filter = ObjectFilter {
+            zone: Some(Zone::Library),
+            owner: Some(PlayerFilter::You),
+            any_of: vec![
+                ObjectFilter::default().with_type(CardType::Artifact),
+                creature_card,
+            ],
+            ..Default::default()
+        }
+        .with_union_connective(ObjectFilterUnionConnective::AndOr);
+
+        assert_eq!(
+            filter.description(),
+            "artifact and/or creature card in your library"
         );
     }
 

@@ -151,6 +151,10 @@ pub struct TargetRequirement {
     pub max_targets: Option<usize>,
     /// Requirements in the same group must select different player targets.
     pub distinct_player_group: Option<usize>,
+    /// Amount to divide among this requirement's selected targets during announcement.
+    pub distribution_value: Option<crate::effect::Value>,
+    /// Minimum amount assigned to each selected target.
+    pub distribution_min_per_target: u32,
 }
 
 impl TargetRequirement {
@@ -164,6 +168,8 @@ impl TargetRequirement {
             min_targets: 1,
             max_targets: Some(1),
             distinct_player_group: None,
+            distribution_value: None,
+            distribution_min_per_target: 1,
         }
     }
 
@@ -177,6 +183,8 @@ impl TargetRequirement {
             min_targets: 0,
             max_targets: None,
             distinct_player_group: None,
+            distribution_value: None,
+            distribution_min_per_target: 1,
         }
     }
 
@@ -196,6 +204,8 @@ impl TargetRequirement {
             min_targets: min,
             max_targets: max,
             distinct_player_group: None,
+            distribution_value: None,
+            distribution_min_per_target: 1,
         }
     }
 

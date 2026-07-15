@@ -2927,6 +2927,10 @@ fn parse_predicate_supports_source_has_keyword() -> Result<(), CardTextError> {
             crate::static_abilities::StaticAbilityId::Defender,
         ),
         (
+            "If it has defender",
+            crate::static_abilities::StaticAbilityId::Defender,
+        ),
+        (
             "If this source has flying",
             crate::static_abilities::StaticAbilityId::Flying,
         ),
@@ -2945,6 +2949,139 @@ fn parse_predicate_supports_source_has_keyword() -> Result<(), CardTextError> {
         );
     }
     Ok(())
+}
+
+#[test]
+fn source_keyword_condition_filter_requires_one_complete_source_keyword_clause() {
+    let defender = lex_line("it has defender", 0).expect("condition fixture should lex");
+    let filter = parse_source_keyword_condition_filter(&defender)
+        .expect("source keyword condition should parse");
+    assert_eq!(
+        filter.static_abilities,
+        vec![crate::static_abilities::StaticAbilityId::Defender]
+    );
+
+    for text in ["creatures have defender", "it has defender and flying"] {
+        let tokens = lex_line(text, 0).expect("negative condition fixture should lex");
+        assert!(
+            parse_source_keyword_condition_filter(&tokens).is_none(),
+            "unexpected source keyword condition parse for {text:?}"
+        );
+    }
+}
+
+#[test]
+fn parse_predicate_intervening_if_low_score_cohort_is_typed() {
+    let cases = [
+        ("Adrestia", "an Assassin crewed it this turn"),
+        ("Anti-Venom, Horrifying Healer", "he was cast"),
+        (
+            "Balthier and Fran",
+            "it's the first combat phase of the turn",
+        ),
+        (
+            "Call of the Full Moon",
+            "a player cast two or more spells last turn",
+        ),
+        (
+            "Chainer, Nightmare Adept",
+            "you didn't cast it from your hand",
+        ),
+        ("Cryptolith Fragment", "each player has 10 or less life"),
+        ("Earthbind", "enchanted creature has flying"),
+        (
+            "Exterminator Magmarch",
+            "another opponent controls one or more nonland permanents that spell could target",
+        ),
+        ("Feast on the Fallen", "an opponent lost life last turn"),
+        ("First Response", "you lost life last turn"),
+        ("Glademuse", "it's not their turn"),
+        ("Harsh Mentor", "it isn't a mana ability"),
+        (
+            "Historian's Wisdom",
+            "enchanted permanent is a creature with the greatest power among creatures on the battlefield",
+        ),
+        ("Hixus, Prison Warden", "Hixus entered this turn"),
+        (
+            "Inga and Esika",
+            "three or more mana from creatures was spent to cast it",
+        ),
+        ("Jace, Mirror Mage", "Jace was kicked"),
+        (
+            "Liberator, Urza's Battlethopter",
+            "the amount of mana spent to cast that spell is greater than Liberator's power",
+        ),
+        ("March of the World Ooze", "it's not their turn"),
+        ("Mercadian Atlas", "you didn't play a land this turn"),
+        (
+            "O-Kagachi, Vengeful Kami",
+            "that player attacked you during their last turn",
+        ),
+        ("Paladin of Atonement", "you lost life last turn"),
+        ("Palani's Hatcher", "you control one or more Eggs"),
+        (
+            "Phage the Untouchable",
+            "you didn't cast it from your hand",
+        ),
+        ("Pollywog Symbiote", "it has mutate"),
+        ("Price of Glory", "it's not that player's turn"),
+        (
+            "Ran and Shaw",
+            "you cast them and there are three or more Dragon and/or Lesson cards in your graveyard",
+        ),
+        ("Rapid Augmenter", "it wasn't cast"),
+        ("Ray of Frost", "enchanted creature is red"),
+        ("Regna, the Redeemer", "your team gained life this turn"),
+        (
+            "Satoru, the Infiltrator",
+            "none of them were cast or no mana was spent to cast them",
+        ),
+        ("Scytheclaw Raptor", "it's not their turn"),
+        ("Taeko, the Patient Avalanche", "it didn't die"),
+        ("Taigam, Ojutai Master", "Taigam attacked this turn"),
+        (
+            "Tokka & Rahzar, Terrible Twos",
+            "the amount of mana spent to cast it was less than its mana value",
+        ),
+        (
+            "Triskaidekaphile",
+            "you have exactly thirteen cards in your hand",
+        ),
+        (
+            "Vazi, Keen Negotiator",
+            "mana from a Treasure was spent to cast it or activate it",
+        ),
+        (
+            "Visions of Phyrexia",
+            "you didn't play a card from exile this turn",
+        ),
+        ("Volition Reins", "enchanted permanent is tapped"),
+        (
+            "Wall of Caltrops",
+            "at least one other Wall creature is blocking that creature and no non-Wall creatures are blocking that creature",
+        ),
+    ];
+
+    let failures = cases
+        .into_iter()
+        .filter_map(|(card_name, text)| {
+            let result =
+                crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+                    card_name,
+                    || {
+                        let tokens = lex_line(text, 0)?;
+                        parse_predicate(&tokens)
+                    },
+                );
+            result.err().map(|error| format!("{card_name}: {error}"))
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        failures.is_empty(),
+        "unmodeled intervening-if predicates:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[test]

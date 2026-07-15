@@ -2,7 +2,9 @@ use winnow::Parser;
 use winnow::combinator::{alt, repeat};
 use winnow::error::{ContextError, ErrMode};
 
-use super::super::compile_support::effects_reference_it_tag;
+use super::super::compile_support::{
+    effects_have_cross_arm_tag_dependency, effects_reference_it_tag,
+};
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::effects::{
     chain_carry as chain_grammar, for_each_shapes, parse_additional_phases_shape,
@@ -75,6 +77,33 @@ fn leading_have_introduces_causative_player(tokens: &[OwnedLexToken]) -> bool {
 
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
+}
+
+fn parse_quantified_participant_subject_effect(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    // Some quantified-player clauses describe one coordinated choice across
+    // multiple zones.  Preserve those full-clause specialists before the
+    // generic fanout path strips the participant subject and reparses the
+    // remainder as one object filter (which would intersect the zone arms).
+    if let Some(effect) =
+        super::zone_handlers::parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(
+            tokens,
+        )
+    {
+        return Ok(Some(effect));
+    }
+
+    let Some(shape) = for_each_shapes::parse_participant_clause_shape(tokens) else {
+        return Ok(None);
+    };
+    if !shape.participant_is_actor {
+        return Ok(None);
+    }
+    if let Some(effect) = super::parse_for_each_opponent_clause(tokens)? {
+        return Ok(Some(effect));
+    }
+    super::parse_for_each_player_clause(tokens)
 }
 
 fn parse_choose_land_of_each_basic_land_type_segment(
@@ -302,34 +331,20 @@ pub(crate) fn preserve_coordinated_effect_chain_surface(
         return effects;
     }
 
-    // Generic promotion is intentionally limited to the one independently
-    // verified local-player action family. Other conjunctions have specialist
-    // renderers or carry choice, iteration, or result-flow semantics that are
-    // lost when a display boundary is inferred solely from punctuation.
-    let [
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::GainLife { .. },
-            ..
-        }),
-        EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Suspect { .. },
-            ..
-        }),
-    ] = effects.as_slice()
-    else {
-        return effects;
-    };
-
-    // Pronouns and tagged filters/values in a later action consume an earlier
-    // result. Keep that action chain flat so ordinary lowering can transport
-    // the antecedent instead of forcing a display boundary around it.
-    if effects_reference_it_tag(&effects[1..]) {
+    // The grammar above proves this was a top-level source conjunction and
+    // rejects card-type lists, quoted text, shared subjects, and every clause
+    // containing an explicit "then". Keep that authored relationship as
+    // typed surface metadata for every semantic action family. The sequence
+    // still executes its children in order, so reference flow between arms is
+    // preserved without asking the renderer to infer coordination later.
+    if effects.len() < 2 {
         return effects;
     }
 
     vec![EffectAst::Coordinated {
         effects,
         leading_duration,
+        result_conjunction: false,
     }]
 }
 
@@ -357,10 +372,20 @@ fn parse_effect_chain_uncoordinated_lexed(
     if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(tokens) {
         let mut count_words = vec!["for", "each"];
         count_words.extend(crate::runtime_backend::token_word_refs(shape.filter_tokens));
+        let effect_words = crate::runtime_backend::token_word_refs(shape.effect_tokens);
+        let has_that_player_payload = effect_words
+            .windows(2)
+            .any(|window| window == ["that", "player"]);
         if let Some((count, used)) =
             crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
             && used == count_words.len()
             && !matches!(count.unhinted(), Value::Count(_))
+            && !(has_that_player_payload
+                && matches!(
+                    count.unhinted(),
+                    Value::PendingPriorEffectMetric(query)
+                        if query.action == Some(ironsmith_core::PriorEffectAction::Tapped)
+                ))
         {
             let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
             if effects.is_empty() {
@@ -574,6 +599,89 @@ fn parse_effect_chain_uncoordinated_lexed(
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
+pub(crate) fn preserve_result_conjunction_body_lexed(
+    trailing_tokens: &[OwnedLexToken],
+    effects: &mut Vec<EffectAst>,
+) {
+    let Some(grammar_leading_duration) =
+        chain_grammar::coordinated_effect_chain_leading_duration(trailing_tokens)
+    else {
+        return;
+    };
+
+    if let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            result_conjunction,
+            ..
+        },
+    ] = effects.as_slice()
+    {
+        if effects_have_cross_arm_tag_dependency(coordinated) {
+            // A stale result-only boundary must not hide a semantic pipeline
+            // from the ordinary specialist lowerers.
+            if *result_conjunction {
+                let Some(EffectAst::Coordinated {
+                    effects: nested, ..
+                }) = effects.pop()
+                else {
+                    unreachable!("matched one coordinated effect above")
+                };
+                *effects = nested;
+            }
+            return;
+        }
+
+        let [
+            EffectAst::Coordinated {
+                leading_duration,
+                result_conjunction,
+                ..
+            },
+        ] = effects.as_mut_slice()
+        else {
+            unreachable!("matched one coordinated effect above")
+        };
+        *leading_duration |= grammar_leading_duration;
+        *result_conjunction = true;
+        return;
+    }
+
+    if effects.len() > 1 && !effects_have_cross_arm_tag_dependency(effects) {
+        let coordinated = std::mem::take(effects);
+        effects.push(EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: grammar_leading_duration,
+            result_conjunction: true,
+        });
+    }
+}
+
+pub(crate) fn preserve_leading_result_coordination_lexed(
+    tokens: &[OwnedLexToken],
+    effects: &mut Vec<EffectAst>,
+) {
+    let Some(prefix) = split_leading_result_prefix_lexed(tokens) else {
+        return;
+    };
+
+    let nested = match (prefix.kind, effects.as_mut_slice()) {
+        (LeadingResultPrefixKind::If, [EffectAst::IfResult { predicate, effects }])
+            if predicate == &prefix.predicate =>
+        {
+            effects
+        }
+        (LeadingResultPrefixKind::When, [EffectAst::WhenResult { predicate, effects }])
+            if predicate == &prefix.predicate =>
+        {
+            effects
+        }
+        _ => return,
+    };
+
+    preserve_result_conjunction_body_lexed(prefix.trailing_tokens, nested);
+}
+
 pub(crate) fn parse_destroy_then_temporary_cant_attack_block_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -699,9 +807,10 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     {
         return Ok(effects);
     }
-    if let Some(effects) =
+    if let Some(mut effects) =
         parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
     {
+        preserve_leading_result_coordination_lexed(tokens, &mut effects);
         return Ok(effects);
     }
     if let Some(effects) = run_subject_verb_primitives_lexed(
@@ -779,6 +888,9 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             effects.extend(parse_effect_chain_inner_lexed(clause)?);
         }
         return Ok(effects);
+    }
+    if let Some(effect) = parse_quantified_participant_subject_effect(tokens)? {
+        return Ok(vec![effect]);
     }
 
     let choose_then_exile_reference = parse_choose_then_exile_reference_shape(tokens).is_some();
@@ -859,27 +971,30 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             verb_idx == 0 && matches!(verb, Verb::Gain | Verb::Lose)
         });
         let carry_leading_duration = leading_duration.is_some();
-        let segment_effects =
-            if let Some(effects) = parse_sentence_return_with_counters_on_it_lexed(&segment)? {
-                Some(effects)
-            } else if let Some(effects) =
-                parse_sentence_put_onto_battlefield_with_counters_on_it_lexed(&segment)?
-            {
-                Some(effects)
-            } else if let Some(prefix) = split_leading_result_prefix_lexed(&segment) {
-                Some(vec![match prefix.kind {
-                    LeadingResultPrefixKind::If => EffectAst::IfResult {
-                        predicate: prefix.predicate,
-                        effects: parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
-                    },
-                    LeadingResultPrefixKind::When => EffectAst::WhenResult {
-                        predicate: prefix.predicate,
-                        effects: parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
-                    },
-                }])
-            } else {
-                parse_sentence_exile_source_with_counters_lexed(&segment)?
-            };
+        let segment_effects = if let Some(effect) =
+            parse_quantified_participant_subject_effect(&segment)?
+        {
+            Some(vec![effect])
+        } else if let Some(effects) = parse_sentence_return_with_counters_on_it_lexed(&segment)? {
+            Some(effects)
+        } else if let Some(effects) =
+            parse_sentence_put_onto_battlefield_with_counters_on_it_lexed(&segment)?
+        {
+            Some(effects)
+        } else if let Some(prefix) = split_leading_result_prefix_lexed(&segment) {
+            Some(vec![match prefix.kind {
+                LeadingResultPrefixKind::If => EffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects: parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
+                },
+                LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects: parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
+                },
+            }])
+        } else {
+            parse_sentence_exile_source_with_counters_lexed(&segment)?
+        };
         if let Some(segment_effects) = segment_effects {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
@@ -1064,6 +1179,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         return Ok(vec![EffectAst::Coordinated {
             effects,
             leading_duration: false,
+            result_conjunction: false,
         }]);
     }
     if chain_grammar::coordinated_source_damage_then_gain(tokens)
@@ -1072,6 +1188,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         return Ok(vec![EffectAst::Coordinated {
             effects,
             leading_duration: false,
+            result_conjunction: false,
         }]);
     }
     if let Some(leading_duration) =
@@ -1090,6 +1207,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         return Ok(vec![EffectAst::Coordinated {
             effects,
             leading_duration,
+            result_conjunction: false,
         }]);
     }
     Ok(effects)
@@ -1155,6 +1273,7 @@ fn wrap_leading_coordinated_target_actions(
     effects.push(EffectAst::Coordinated {
         effects: coordinated,
         leading_duration: false,
+        result_conjunction: false,
     });
     effects.extend(remainder);
 }
@@ -1206,7 +1325,8 @@ fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
         else {
             return;
         };
-        *count = match count.unhinted() {
+        let hints = count.surface_hints().to_vec();
+        let bound = match count.unhinted() {
             Value::EventValue(crate::effect::EventValueSpec::Amount) => {
                 Value::PendingEffectMetric {
                     source: ironsmith_core::EffectMetricSource::Outcome,
@@ -1222,6 +1342,7 @@ fn bind_adjacent_discard_count_draws(effects: &mut [EffectAst]) {
             }
             _ => return,
         };
+        *count = bound.with_surface_hints(hints);
     }
 
     for index in 0..effects.len().saturating_sub(1) {
@@ -2376,7 +2497,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         return Some(CarryContext::ForEachOpponent);
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::TargetOnly { target } = &subject_verb.action
+        && let SubjectVerbActionAst::TargetOnly { target, .. } = &subject_verb.action
         && let Some(context) = player_target_carry_context(target)
     {
         return Some(context);
@@ -2721,6 +2842,20 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     clause_tokens: &[OwnedLexToken],
 ) {
     let clause_head = chain_grammar::parse_carry_clause_head_tokens(clause_tokens);
+    let clause_words = TokenWordView::new(clause_tokens).word_refs();
+    let imperative_collection_move = clause_words
+        .iter()
+        .copied()
+        .skip_while(|word| matches!(*word, "then" | "and"))
+        .next()
+        == Some("put")
+        && matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone { .. },
+                ..
+            })
+        );
     let explicitly_conjugated_player_action = clause_tokens.first().is_some_and(|token| {
         token.is_word("draws") || token.is_word("scries") || token.is_word("surveils")
     });
@@ -2777,14 +2912,15 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                         | SubjectVerbActionAst::Surveil { .. },
                 })
             );
-            is_implicit_vision_effect
-                && matches!(
-                    clause_head,
-                    chain_grammar::CarryClauseHead::Draw
-                        | chain_grammar::CarryClauseHead::Scry
-                        | chain_grammar::CarryClauseHead::Surveil
-                )
-                && !explicitly_conjugated_player_action
+            imperative_collection_move
+                || (is_implicit_vision_effect
+                    && matches!(
+                        clause_head,
+                        chain_grammar::CarryClauseHead::Draw
+                            | chain_grammar::CarryClauseHead::Scry
+                            | chain_grammar::CarryClauseHead::Surveil
+                    )
+                    && !explicitly_conjugated_player_action)
         }
     };
     if should_skip {

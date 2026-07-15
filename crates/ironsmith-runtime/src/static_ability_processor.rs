@@ -242,6 +242,9 @@ pub fn generate_continuous_effects_from_static_abilities(
     // Iterate over all objects and apply static abilities only in zones where they function.
     for object_id in object_ids {
         if let Some(object) = game.object(object_id) {
+            if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
+                continue;
+            }
             let mut object_effects = Vec::new();
             let mut next_group_ordinal = 1;
             let zone = object.zone;
@@ -333,6 +336,10 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
             continue;
         };
         seen.insert(object_id);
+        if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object_id) {
+            cache.per_source.remove(&object_id);
+            continue;
+        }
         let zone = object.zone;
         let controller = game.controller_of(object);
         let key = SourceStaticEffectsKey {

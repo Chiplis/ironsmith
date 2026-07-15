@@ -543,7 +543,12 @@ pub(crate) fn run_vote(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let players = active_players_in_vote_order(game, ctx.controller);
+    let starting_player = if effect.starting_with_controller {
+        ctx.controller
+    } else {
+        game.turn.active_player
+    };
+    let players = active_players_in_vote_order(game, starting_player);
     match &effect.choice {
         VoteChoice::NamedOptions(options) => {
             if options.is_empty() {

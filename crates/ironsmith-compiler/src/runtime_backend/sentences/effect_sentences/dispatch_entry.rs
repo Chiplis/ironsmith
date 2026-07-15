@@ -595,24 +595,37 @@ fn preserve_leading_result_prefix_for_sequence(
     let Some(prefix) = split_leading_result_prefix_lexed(sentence_tokens) else {
         return;
     };
-    let already_preserved = matches!(
-        (prefix.kind, effects.as_slice()),
+
+    match (prefix.kind, effects.as_mut_slice()) {
         (
             LeadingResultPrefixKind::If,
-            [EffectAst::IfResult { predicate, .. }]
-        ) if *predicate == prefix.predicate
-    ) || matches!(
-        (prefix.kind, effects.as_slice()),
+            [
+                EffectAst::IfResult {
+                    predicate,
+                    effects: nested,
+                },
+            ],
+        ) if predicate == &prefix.predicate => {
+            super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, nested);
+            return;
+        }
         (
             LeadingResultPrefixKind::When,
-            [EffectAst::WhenResult { predicate, .. }]
-        ) if *predicate == prefix.predicate
-    );
-    if already_preserved {
-        return;
+            [
+                EffectAst::WhenResult {
+                    predicate,
+                    effects: nested,
+                },
+            ],
+        ) if predicate == &prefix.predicate => {
+            super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, nested);
+            return;
+        }
+        _ => {}
     }
 
-    let nested = std::mem::take(effects);
+    let mut nested = std::mem::take(effects);
+    super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, &mut nested);
     effects.push(match prefix.kind {
         LeadingResultPrefixKind::If => EffectAst::IfResult {
             predicate: prefix.predicate,
@@ -1391,6 +1404,58 @@ pub(crate) fn with_where_x_surface_hints(
 fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn scope_partitioned_prior_metric_followup(
+        previous_effects: &[EffectAst],
+        sentence_tokens: &[OwnedLexToken],
+        sentence_effects: &mut Vec<EffectAst>,
+    ) {
+        fn pending_prior_metric_query_mut(
+            value: &mut Value,
+        ) -> Option<&mut ironsmith_core::PriorEffectMetricQuery> {
+            match value {
+                Value::PendingPriorEffectMetric(query) => Some(query),
+                Value::SurfaceHinted { value, .. }
+                | Value::Scaled(value, _)
+                | Value::DividedRoundedDown(value, _)
+                | Value::HalfRoundedDown(value) => pending_prior_metric_query_mut(value),
+                _ => None,
+            }
+        }
+
+        if !contains_token_word_sequence(sentence_tokens, &["that", "player"])
+            || !matches!(
+                previous_effects.last(),
+                Some(EffectAst::ForEachPlayer { .. })
+            )
+        {
+            return;
+        }
+        let [EffectAst::RepeatEffects { count, .. }] = sentence_effects.as_mut_slice() else {
+            return;
+        };
+        let Some(query) = pending_prior_metric_query_mut(count) else {
+            return;
+        };
+        if query.source != ironsmith_core::EffectMetricSource::AffectedObjects
+            || query.metric != ironsmith_core::EffectMetric::Count
+            || query.action.is_none()
+            || query.player.is_some()
+        {
+            return;
+        }
+
+        query.player = Some(PlayerFilter::IteratedPlayer);
+        let repeat = sentence_effects
+            .pop()
+            .expect("single repeat effect was matched above");
+        sentence_effects.push(EffectAst::ForEachPlayer {
+            effects: vec![repeat],
+        });
+        parse_trace::event(
+            "partitioned prior-effect repeat scoped to the preceding each-player result",
+        );
+    }
+
     fn annotate_counter_followup_surface(effects: &mut [EffectAst], hint: ValueSurfaceHint) {
         fn annotate(effect: &mut EffectAst, hint: ValueSurfaceHint) {
             if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1428,6 +1493,9 @@ fn parse_effect_sentences_from_sentence_inputs(
                 Value::GreatestPower(filter)
                 | Value::GreatestToughness(filter)
                 | Value::GreatestManaValue(filter)
+                | Value::LeastPower(filter)
+                | Value::LeastToughness(filter)
+                | Value::LeastManaValue(filter)
                 | Value::TotalPower(filter)
                 | Value::TotalToughness(filter)
                 | Value::TotalManaValue(filter)
@@ -1545,6 +1613,69 @@ fn parse_effect_sentences_from_sentence_inputs(
         effects.push(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             vec![GrantedAbilityAst::from(keyword)],
+            Until::Forever,
+        ));
+        Ok(Some(effects))
+    }
+
+    fn parse_tagged_exact_type_with_quoted_ability_sentence(
+        tokens: &[OwnedLexToken],
+    ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+        let Some(shape) = effect_grammar::sentence_predicate_shapes::parse_tagged_exact_type_with_quoted_ability_tokens(tokens)
+        else {
+            return Ok(None);
+        };
+        // Slice the quoted payload from the original token stream. This keeps
+        // non-word cost tokens such as `{T}` and the comma that follows them;
+        // the predicate shape only needs the payload to prove the sentence
+        // form and should not be the source of the granted ability's costs.
+        let first_quote = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Quote)
+            .ok_or_else(|| {
+                CardTextError::ParseError(
+                    "exact type-setting clause is missing its opening quote".to_string(),
+                )
+            })?;
+        let second_quote = tokens
+            .iter()
+            .enumerate()
+            .skip(first_quote + 1)
+            .find_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index))
+            .ok_or_else(|| {
+                CardTextError::ParseError(
+                    "exact type-setting clause is missing its closing quote".to_string(),
+                )
+            })?;
+        let quoted_ability_tokens = &tokens[first_quote + 1..second_quote];
+        let clause_words = crate::runtime_backend::token_word_refs(tokens);
+        let (abilities, _) = super::gain_ability::parse_granted_abilities_for_gain_clause(
+            quoted_ability_tokens,
+            &clause_words,
+            false,
+        )?;
+        if abilities.is_empty() {
+            return Err(CardTextError::ParseError(
+                "exact type-setting clause has an unsupported quoted ability".to_string(),
+            ));
+        }
+
+        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+        let mut effects = vec![EffectAst::subject_verb_set_card_types(
+            target.clone(),
+            shape.card_types,
+            Until::Forever,
+        )];
+        if !shape.subtypes.is_empty() {
+            effects.push(EffectAst::subject_verb_add_subtypes(
+                target.clone(),
+                shape.subtypes,
+                Until::Forever,
+            ));
+        }
+        effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            target,
+            abilities,
             Until::Forever,
         ));
         Ok(Some(effects))
@@ -1681,6 +1812,25 @@ fn parse_effect_sentences_from_sentence_inputs(
             }
             effects.append(&mut matched.effects);
             sentence_idx += matched.consumed_sentences;
+            continue;
+        }
+
+        if let Some(mut exact_type_effects) =
+            parse_tagged_exact_type_with_quoted_ability_sentence(sentence)?
+        {
+            // "If you do, return that card ... . It's ..." keeps the
+            // characteristic-setting sentence inside the successful-result
+            // branch and binds "it" to the object returned by that branch.
+            if let Some(EffectAst::IfResult {
+                effects: branch, ..
+            }) = effects.last_mut()
+            {
+                branch.append(&mut exact_type_effects);
+            } else {
+                effects.append(&mut exact_type_effects);
+            }
+            carried_context = None;
+            sentence_idx += 1;
             continue;
         }
 
@@ -1914,7 +2064,7 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effects: if_result_effects,
             } = effect
         {
-            if matches!(*predicate, IfResultPredicate::Did)
+            if matches!(&*predicate, IfResultPredicate::Did)
                 && matches!(previous_effect, EffectAst::UnlessPays { .. })
             {
                 *predicate = IfResultPredicate::DidNot;
@@ -1947,6 +2097,12 @@ fn parse_effect_sentences_from_sentence_inputs(
                 continue;
             }
         }
+
+        scope_partitioned_prior_metric_followup(
+            &effects,
+            &parse_plan.tokens,
+            &mut sentence_effects,
+        );
 
         if try_merge_otherwise_into_previous_conditional(&mut effects, &sentence_effects) {
             sentence_idx += parse_plan.consumed_sentences;
@@ -3375,6 +3531,16 @@ mod tests {
         else {
             panic!("expected a typed result branch, got {parsed:#?}");
         };
+        let [
+            crate::cards::builders::EffectAst::Coordinated {
+                effects,
+                leading_duration: false,
+                result_conjunction: false,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected the conjoined rewards to retain coordination: {effects:#?}");
+        };
         assert_eq!(
             effects.len(),
             2,
@@ -3411,6 +3577,36 @@ mod tests {
                 && lowered_debug.contains("Trample"),
             "lowered branch must retain the clash condition and both rewards: {lowered_debug}"
         );
+    }
+
+    #[test]
+    fn leading_if_you_do_sequence_retains_the_conjoined_result_boundary() {
+        let tokens = lex_line(
+            "You may pay {1}. If you do, draw a card and gain 2 life.",
+            0,
+        )
+        .expect("coordinated result sequence should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("coordinated result sequence should parse");
+        let Some(crate::cards::builders::EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects,
+        }) = parsed.last()
+        else {
+            panic!("expected an if-result branch, got {parsed:#?}");
+        };
+        let [
+            crate::cards::builders::EffectAst::Coordinated {
+                effects: coordinated,
+                leading_duration: false,
+                result_conjunction: true,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one coordinated result body, got {effects:#?}");
+        };
+        assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
     }
 
     #[test]
@@ -3723,13 +3919,13 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Goad { target, .. }
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
             | SubjectVerbActionAst::Regenerate { target, .. }
             | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::PhaseOut { target }
+            | SubjectVerbActionAst::PhaseOut { target, .. }
             | SubjectVerbActionAst::PhaseIn { target }
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
@@ -3759,7 +3955,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
             | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
             | SubjectVerbActionAst::MoveToZone { target, .. }
-            | SubjectVerbActionAst::TargetOnly { target }
+            | SubjectVerbActionAst::TargetOnly { target, .. }
             | SubjectVerbActionAst::Pump { target, .. }
             | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
@@ -4595,6 +4791,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::Goad {
                 target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::Suspect {
                 target: effect_target,
@@ -4614,6 +4811,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::PhaseOut {
                 target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::PhaseIn {
                 target: effect_target,
@@ -4664,6 +4862,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::TargetOnly {
                 target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::Connive {
                 target: effect_target,
@@ -4968,6 +5167,7 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. }
         | EffectAst::VoteOption { effects, .. } => Some(effects),
         _ => None,
     }

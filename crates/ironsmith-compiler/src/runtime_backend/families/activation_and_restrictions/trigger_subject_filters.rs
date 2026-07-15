@@ -355,6 +355,18 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
 
     let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = subject_words.to_word_refs();
+    let intrinsic_attachment_state = subject_words
+        .iter()
+        .enumerate()
+        .find_map(|(idx, word)| {
+            if !matches!(*word, "enchanted" | "equipped") {
+                return None;
+            }
+            idx.checked_sub(1)
+                .and_then(|prev| subject_words.get(prev))
+                .is_some_and(|copula| matches!(*copula, "is" | "are" | "that's" | "thats"))
+                .then_some(*word)
+        });
     if let Some(filter) = parse_source_or_another_trigger_subject_filter_lexed(subject_tokens)? {
         return Ok(Some(filter));
     }
@@ -450,6 +462,21 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
             if let Some(controller) = controller_override {
                 filter.controller = Some(controller);
                 filter.zone.get_or_insert(Zone::Battlefield);
+            }
+            if let Some(tag) = intrinsic_attachment_state
+                && !filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == tag
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+                    tag: crate::tag::TagKey::from(tag),
+                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            }
+            if intrinsic_attachment_state.is_some() {
+                filter.set_relative_attachment_state_surface(true);
             }
             Some(filter)
         })

@@ -1214,11 +1214,36 @@ pub(super) fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast(
         "expected counter-gated free-cast clause in compiled output, got {rendered}"
     );
 
-    let ability_debug = format!("{:?}", def.abilities);
+    let counter_gated_filter = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(&activated.effects),
+            _ => None,
+        })
+        .flat_map(|program| program.all_effects())
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        .flat_map(|may| may.effects.iter())
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+                .map(|cast| &cast.filter)
+        })
+        .expect("Brain in a Jar should lower to a matching-spell cast effect");
+    let has_counter_gate = counter_gated_filter.mana_value_eq_counters_on_source
+        == Some(crate::object::CounterType::Charge)
+        || matches!(
+            counter_gated_filter.mana_value.as_ref(),
+            Some(crate::filter::Comparison::EqualExpr(value))
+                if matches!(
+                    value.unhinted(),
+                    crate::effect::Value::CountersOn(spec, Some(crate::object::CounterType::Charge))
+                        if matches!(spec.base(), ChooseSpec::Source)
+                )
+        );
     assert!(
-        ability_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
-            && ability_debug.contains("mana_value_eq_counters_on_source: Some(Charge)"),
-        "expected Brain in a Jar to lower to a charge-counter-gated free-cast effect, got {ability_debug}"
+        has_counter_gate,
+        "expected Brain in a Jar to lower to a charge-counter-gated free-cast effect, got {counter_gated_filter:#?}"
     );
 }
 

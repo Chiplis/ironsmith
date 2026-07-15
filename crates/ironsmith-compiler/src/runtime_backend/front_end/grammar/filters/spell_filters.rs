@@ -3,13 +3,17 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if let Some(filter) = parse_domain_union_object_filter_lexed(tokens, other) {
-        return Ok(filter);
-    }
-    if let Some(filter) = parse_simple_object_filter_lexed(tokens, other) {
-        return Ok(filter);
-    }
-    parse_object_filter(tokens, other)
+    let mut filter = if let Some(filter) = parse_domain_union_object_filter_lexed(tokens, other) {
+        filter
+    } else if let Some(filter) = parse_extremum_object_filter_lexed(tokens, other)? {
+        filter
+    } else if let Some(filter) = parse_simple_object_filter_lexed(tokens, other) {
+        filter
+    } else {
+        parse_object_filter(tokens, other)?
+    };
+    preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+    Ok(filter)
 }
 
 pub(crate) fn parse_spell_filter_with_grammar_entrypoint_lexed(

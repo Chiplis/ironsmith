@@ -6,6 +6,43 @@ use winnow::error::ModalResult;
 use winnow::token::any;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OrderedChooseAllShape<'a> {
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) repeated_filter_tokens: &'a [OwnedLexToken],
+}
+
+/// Parse "choose <objects> one at a time until each <object> has been chosen".
+/// Both object descriptions are retained so semantic lowering can validate
+/// that the stopping condition names the same set as the choice itself.
+pub(crate) fn parse_ordered_choose_all_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<OrderedChooseAllShape<'_>> {
+    let (_, after_choose) =
+        primitives::parse_prefix(trim_lexed_commas(tokens), primitives::kw("choose"))?;
+    let (separator, _, after_separator) = primitives::find_prefix(after_choose, || {
+        primitives::phrase(&["one", "at", "a", "time", "until", "each"])
+    })?;
+    let filter_tokens = trim_lexed_commas(after_choose.get(..separator)?);
+    let (repeated_filter_tokens, ()) =
+        primitives::split_lexed_once_before_suffix(after_separator, 1, || {
+            (
+                alt((primitives::kw("has"), primitives::kw("have"))),
+                primitives::phrase(&["been", "chosen"]),
+                primitives::sentence_end(),
+            )
+                .void()
+        })?;
+    let repeated_filter_tokens = trim_lexed_commas(repeated_filter_tokens);
+    if filter_tokens.is_empty() || repeated_filter_tokens.is_empty() {
+        return None;
+    }
+    Some(OrderedChooseAllShape {
+        filter_tokens,
+        repeated_filter_tokens,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TaggedSharesCardTypeConditionShape<'a> {
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
@@ -128,22 +165,24 @@ pub(crate) enum GoadTargetShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PassiveGoadShape<'a> {
     pub(crate) target: GoadTargetShape<'a>,
+    pub(crate) for_rest_of_game: bool,
 }
 
 pub(crate) fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<PassiveGoadShape<'_>> {
     let (subject_tokens, tail_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("is").void())?;
-    primitives::parse_all(
+    let for_rest_of_game = primitives::parse_all(
         trim_lexed_commas(tail_tokens),
         (
             alt((primitives::kw("goaded"), primitives::kw("goad"))),
             opt(primitives::any_phrase(&[
                 &["for", "the", "rest", "of", "the", "game"],
                 &["for", "the", "rest", "of", "this", "game"],
-            ])),
+            ]))
+            .map(|duration| duration.is_some()),
             primitives::sentence_end(),
         )
-            .void(),
+            .map(|(_, for_rest_of_game, _)| for_rest_of_game),
         "passive goad shape",
     )
     .ok()?;
@@ -167,6 +206,7 @@ pub(crate) fn parse_passive_goad_shape(tokens: &[OwnedLexToken]) -> Option<Passi
         } else {
             GoadTargetShape::Target(subject_tokens)
         },
+        for_rest_of_game,
     })
 }
 

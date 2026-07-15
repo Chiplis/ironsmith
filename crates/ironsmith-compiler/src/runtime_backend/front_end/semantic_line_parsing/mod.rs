@@ -91,3 +91,68 @@ use super::parser_support::split_tokens_for_parse;
 use super::reference_model::ReferenceEnv;
 use super::restriction_support::apply_pending_mana_restrictions;
 use super::util::{join_sentences_with_period, parse_level_up_line_lexed};
+
+/// Parse one complete effect body while retaining every source sentence whose
+/// boundary is stable under the same joint parse.
+///
+/// Parsing each sentence in isolation loses the discourse context needed by
+/// followups such as "it", "those cards", and "this way". Instead, parse
+/// successively longer prefixes and compare them with the corresponding
+/// prefix of the whole-body AST. This keeps one shared semantic parse while
+/// proving exactly where a later sentence did not rewrite or absorb an
+/// earlier effect. Any cross-sentence structural rewrite falls back to the
+/// ordinary flat program.
+fn parse_effect_sentences_preserving_source_boundaries(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let parsed_together = parse_effect_sentences_lexed(tokens)?;
+    let sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .map(|sentence| sentence.to_vec())
+        .collect::<Vec<_>>();
+    if sentences.len() < 2 {
+        let Some(sentence) = sentences.first() else {
+            return Ok(parsed_together);
+        };
+        return Ok(
+            crate::runtime_backend::effect_sentences::preserve_coordinated_effect_chain_surface(
+                sentence,
+                parsed_together,
+            ),
+        );
+    }
+
+    let mut groups = Vec::with_capacity(sentences.len());
+    let mut previous_effect_count = 0usize;
+    for prefix_len in 1..=sentences.len() {
+        let prefix_tokens = join_sentences_with_period(&sentences[..prefix_len]);
+        let Ok(parsed_prefix) = parse_effect_sentences_lexed(&prefix_tokens) else {
+            return Ok(parsed_together);
+        };
+        let prefix_effect_count = parsed_prefix.len();
+        if prefix_effect_count <= previous_effect_count
+            || prefix_effect_count > parsed_together.len()
+            || parsed_prefix.as_slice() != &parsed_together[..prefix_effect_count]
+        {
+            return Ok(parsed_together);
+        }
+
+        let sentence_effects = parsed_together[previous_effect_count..prefix_effect_count].to_vec();
+        let sentence_effects =
+            crate::runtime_backend::effect_sentences::preserve_coordinated_effect_chain_surface(
+                &sentences[prefix_len - 1],
+                sentence_effects,
+            );
+        groups.push(EffectAst::SourceSentence {
+            effects: sentence_effects,
+        });
+        previous_effect_count = prefix_effect_count;
+    }
+
+    if previous_effect_count == parsed_together.len() {
+        Ok(groups)
+    } else {
+        Ok(parsed_together)
+    }
+}

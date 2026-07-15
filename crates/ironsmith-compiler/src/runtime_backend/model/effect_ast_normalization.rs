@@ -122,6 +122,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
     }
+    correlate_split_for_each_player_choice_complements(effects);
     bind_counted_set_followups(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
@@ -136,6 +137,153 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
         *effects = rewritten;
     }
     effects.retain(|effect| !is_noop_effect(effect));
+}
+
+fn source_sentence_for_each_player_effects_mut(
+    effect: &mut EffectAst,
+) -> Option<&mut Vec<EffectAst>> {
+    match effect {
+        EffectAst::ForEachPlayer { effects } => Some(effects),
+        EffectAst::SourceSentence { effects } => {
+            let [EffectAst::ForEachPlayer { effects }] = effects.as_mut_slice() else {
+                return None;
+            };
+            Some(effects)
+        }
+        _ => None,
+    }
+}
+
+fn common_object_choice_tag(effects: &[EffectAst]) -> Option<crate::tag::TagKey> {
+    let mut common = None;
+    for effect in effects {
+        let EffectAst::ChooseObjects { tag, .. } = effect else {
+            return None;
+        };
+        if let Some(expected) = common.as_ref()
+            && expected != tag
+        {
+            return None;
+        }
+        common = Some(tag.clone());
+    }
+    common
+}
+
+fn replace_correlated_filter_tag(
+    filter: &mut crate::filter::ObjectFilter,
+    old: &crate::tag::TagKey,
+    new: &crate::tag::TagKey,
+) -> bool {
+    let mut replaced = false;
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag == *old {
+            constraint.tag = new.clone();
+            replaced = true;
+        }
+    }
+    for comparison in &mut filter.no_shared_creature_types_with {
+        let comparison_replaced = replace_correlated_filter_tag(comparison, old, new);
+        if comparison_replaced && comparison.controller.is_none() {
+            // The durable tag contains one choice set per player.  Restrict a
+            // relational comparison to the choice made for the active player
+            // iteration instead of comparing against every player's choice.
+            comparison.controller = Some(crate::filter::PlayerFilter::IteratedPlayer);
+        }
+        replaced |= comparison_replaced;
+    }
+    if let Some(targets) = filter.targets_object.as_deref_mut() {
+        replaced |= replace_correlated_filter_tag(targets, old, new);
+    }
+    if let Some(targets) = filter.targets_only_object.as_deref_mut() {
+        replaced |= replace_correlated_filter_tag(targets, old, new);
+    }
+    if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
+        replaced |= replace_correlated_filter_tag(attached_to, old, new);
+    }
+    for branch in &mut filter.any_of {
+        replaced |= replace_correlated_filter_tag(branch, old, new);
+    }
+    replaced
+}
+
+fn split_player_complement_filter_mut(
+    effects: &mut [EffectAst],
+) -> Option<&mut crate::filter::ObjectFilter> {
+    let [EffectAst::SubjectVerb(subject_verb)] = effects else {
+        return None;
+    };
+    match &mut subject_verb.action {
+        SubjectVerbActionAst::Sacrifice { filter, .. }
+        | SubjectVerbActionAst::SacrificeAll { filter } => Some(filter),
+        _ => None,
+    }
+}
+
+/// Link a player-by-player choice sentence to a following player-by-player
+/// complement sentence.  A durable tag accumulates all locked-in choices;
+/// the complement filter then excludes that chosen set.  This preserves the
+/// required two-phase ordering (all choices first, then the action) without
+/// collapsing the sentences into a sequential choose/action loop.
+fn correlate_split_for_each_player_choice_complements(effects: &mut [EffectAst]) {
+    for index in 0..effects.len().saturating_sub(1) {
+        let (before, after) = effects.split_at_mut(index + 1);
+        let Some(choice_effects) = source_sentence_for_each_player_effects_mut(&mut before[index])
+        else {
+            continue;
+        };
+        if choice_effects.is_empty() {
+            continue;
+        }
+        let Some(original_tag) = common_object_choice_tag(choice_effects) else {
+            continue;
+        };
+        let Some(complement_effects) = source_sentence_for_each_player_effects_mut(&mut after[0])
+        else {
+            continue;
+        };
+        let Some(complement_filter) = split_player_complement_filter_mut(complement_effects) else {
+            continue;
+        };
+        if complement_filter.controller != Some(crate::filter::PlayerFilter::IteratedPlayer)
+            || !complement_filter.other
+        {
+            continue;
+        }
+
+        let durable_tag = if original_tag.as_str() == IT_TAG {
+            crate::tag::TagKey::from("chosen_for_each_player")
+        } else {
+            original_tag.clone()
+        };
+        for effect in choice_effects {
+            let EffectAst::ChooseObjects { filter, tag, .. } = effect else {
+                continue;
+            };
+            replace_correlated_filter_tag(filter, &original_tag, &durable_tag);
+            *tag = durable_tag.clone();
+        }
+        replace_correlated_filter_tag(complement_filter, &original_tag, &durable_tag);
+        if !complement_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.tag == durable_tag
+                    && constraint.relation
+                        == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+            })
+        {
+            complement_filter
+                .tagged_constraints
+                .push(crate::filter::TaggedObjectConstraint {
+                    tag: durable_tag,
+                    relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+        }
+        // `other` was an unresolved surface relation to the chosen set.  Once
+        // encoded explicitly it must not also exempt the source permanent.
+        complement_filter.other = false;
+    }
 }
 
 fn count_filter(value: &Value) -> Option<&crate::filter::ObjectFilter> {
@@ -231,6 +379,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. }
         | EffectAst::VoteOption { effects, .. }
         | EffectAst::ManaRestricted { effects, .. } => normalize_effects_vec(effects),
         EffectAst::UnlessAction {
@@ -292,7 +441,7 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     Some(vec![EffectAst::RepeatProcess {
         effects: body,
         continue_effect_index,
-        continue_predicate: *predicate,
+        continue_predicate: predicate.clone(),
     }])
 }
 

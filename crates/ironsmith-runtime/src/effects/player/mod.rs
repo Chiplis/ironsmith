@@ -93,6 +93,7 @@ pub use extra_turn_after_next_turn::ExtraTurnAfterNextTurnEffect;
 pub use flip_coin::FlipCoinEffect;
 pub use grant::GrantEffect;
 pub use grant_by_spec::GrantBySpecEffect;
+pub(crate) use grant_by_spec::next_turn_number_for_player;
 pub use grant_next_spell_ability::GrantNextSpellAbilityEffect;
 pub use grant_next_spell_cost_reduction::GrantNextSpellCostReductionEffect;
 pub use grant_play_tagged::{GrantPlayTaggedDuration, GrantPlayTaggedEffect};

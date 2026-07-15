@@ -309,21 +309,21 @@ fn static_abilities_for_object(
         .unwrap_or_default()
 }
 
-fn max_creatures_can_attack_each_combat(game: &GameState) -> Option<usize> {
+pub(crate) fn max_creatures_can_attack_each_combat(game: &GameState) -> Option<usize> {
     battlefield_static_abilities(game)
         .iter()
         .filter_map(|ability| ability.max_creatures_can_attack_each_combat())
         .min()
 }
 
-fn max_creatures_can_block_each_combat(game: &GameState) -> Option<usize> {
+pub(crate) fn max_creatures_can_block_each_combat(game: &GameState) -> Option<usize> {
     battlefield_static_abilities(game)
         .iter()
         .filter_map(|ability| ability.max_creatures_can_block_each_combat())
         .min()
 }
 
-fn max_creatures_can_attack_defending_player_each_combat(
+pub(crate) fn max_creatures_can_attack_defending_player_each_combat(
     game: &GameState,
     defending_player: PlayerId,
 ) -> Option<usize> {
@@ -612,26 +612,21 @@ pub fn declare_blockers(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
 ) -> Result<(), CombatError> {
+    declare_blockers_internal(game, combat, declarations, true)
+}
+
+fn declare_blockers_internal(
+    game: &GameState,
+    combat: &mut CombatState,
+    declarations: Vec<(ObjectId, ObjectId)>,
+    enforce_requirements: bool,
+) -> Result<(), CombatError> {
     let all_effects = game.all_continuous_effects();
 
     // Group blockers by attacker for menace validation
     let mut blockers_by_attacker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
     let mut attackers_by_blocker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
     let mut blocker_counts: HashMap<ObjectId, usize> = HashMap::new();
-
-    fn max_attackers_this_blocker_can_block(
-        game: &GameState,
-        blocker_id: ObjectId,
-        effects: &[crate::continuous::ContinuousEffect],
-    ) -> usize {
-        let static_abilities = static_abilities_for_object(game, blocker_id, effects);
-
-        let extra: usize = static_abilities
-            .iter()
-            .filter_map(|a| a.additional_blockable_attackers())
-            .sum();
-        1usize.saturating_add(extra)
-    }
 
     // First pass: validate all blockers
     for (blocker_id, attacker_id) in &declarations {
@@ -675,6 +670,15 @@ pub fn declare_blockers(
             .object(*attacker_id)
             .ok_or(CombatError::NotOnBattlefield(*attacker_id))?;
 
+        if defending_player_for_attacker(game, combat, *attacker_id)
+            != Some(game.controller_of(blocker))
+        {
+            return Err(CombatError::CreatureCannotBlock {
+                blocker: *blocker_id,
+                attacker: *attacker_id,
+            });
+        }
+
         // Check if blocker can legally block the attacker (evasion, protection, etc.)
         if !can_block(attacker, blocker, game) {
             return Err(CombatError::CreatureCannotBlock {
@@ -717,6 +721,17 @@ pub fn declare_blockers(
     propagate_banding_blocks(combat, &mut blockers_by_attacker);
 
     let blocking_creature_count = blocker_counts.len();
+    if blocking_creature_count == 1
+        && let Some(&blocker) = blocker_counts.keys().next()
+        && !game.can_block_alone(blocker)
+    {
+        let attacker = attackers_by_blocker
+            .get(&blocker)
+            .and_then(|attackers| attackers.first())
+            .copied()
+            .unwrap_or(blocker);
+        return Err(CombatError::CreatureCannotBlock { blocker, attacker });
+    }
     // With no declared blockers, every global "at most N creatures can
     // block" restriction is vacuously satisfied. Avoid deriving the static
     // abilities of the whole battlefield just to rediscover that fact.
@@ -755,107 +770,29 @@ pub fn declare_blockers(
         }
     }
 
-    // Enforce "must be blocked if able" requirements.
-    for attacker_info in &combat.attackers {
-        let attacker_id = attacker_info.creature;
-        if !game.must_be_blocked(attacker_id)
-            || blockers_by_attacker
-                .get(&attacker_id)
-                .is_some_and(|blockers| !blockers.is_empty())
-        {
-            continue;
-        }
-
-        let Some(attacker) = game.object(attacker_id) else {
-            continue;
-        };
-        let defending_player = match attacker_info.target {
-            AttackTarget::Player(player_id) => player_id,
-            AttackTarget::Planeswalker(planeswalker_id) => game
-                .object(planeswalker_id)
-                .map(|planeswalker| game.controller_of(planeswalker))
-                .unwrap_or(game.turn.active_player),
-        };
-        let has_legal_blocker = game.battlefield.iter().copied().any(|blocker_id| {
-            let Some(blocker) = game.object(blocker_id) else {
-                return false;
-            };
-            blocker.zone == Zone::Battlefield
-                && game.controller_of(blocker) == defending_player
-                && game.object_has_card_type_with_effects(
-                    blocker_id,
-                    crate::types::CardType::Creature,
-                    &all_effects,
-                )
-                && !game.is_tapped(blocker_id)
-                && !game.object_has_ability_with_effects(
-                    blocker_id,
-                    &StaticAbility::cant_block(),
-                    &all_effects,
-                )
-                && game.can_block(blocker_id)
-                && game.can_block_attacker(blocker_id, attacker_id)
-                && game.can_be_blocked(attacker_id)
-                && can_block(attacker, blocker, game)
-        });
-
-        if has_legal_blocker {
-            return Err(CombatError::NotEnoughBlockers {
-                attacker: attacker_id,
-                required: minimum_blockers_with_game(attacker, game),
-                provided: 0,
-            });
-        }
-    }
-
-    // Enforce "must block specific attacker if able" requirements.
-    for (&blocker_id, required_attackers) in
-        &game.effect_store.cant_effects.must_block_specific_attackers
-    {
-        let Some(blocker) = game.object(blocker_id) else {
-            continue;
-        };
-        if blocker.zone != Zone::Battlefield
-            || !game.object_has_card_type_with_effects(
-                blocker_id,
-                crate::types::CardType::Creature,
+    if enforce_requirements {
+        let requirements = blocking_requirements(game, combat, &all_effects);
+        let requirements_obeyed = blocking_requirement_score(
+            combat,
+            &requirements,
+            &blockers_by_attacker,
+            &attackers_by_blocker,
+        );
+        if block_declaration_obeying_more_requirements_exists(
+            game,
+            combat,
+            &all_effects,
+            &requirements,
+            requirements_obeyed,
+        ) {
+            return Err(first_unsatisfied_block_requirement_error(
+                game,
+                combat,
                 &all_effects,
-            )
-            || game.is_tapped(blocker_id)
-        {
-            continue;
-        }
-
-        for &required_attacker in required_attackers {
-            if !is_attacking(combat, required_attacker) {
-                continue;
-            }
-            let Some(attacker) = game.object(required_attacker) else {
-                continue;
-            };
-
-            let can_legally_block_required = can_block(attacker, blocker, game)
-                && game.can_block_attacker(blocker_id, required_attacker)
-                && game.can_block(blocker_id)
-                && game.can_be_blocked(required_attacker)
-                && !game.object_has_ability_with_effects(
-                    blocker_id,
-                    &StaticAbility::cant_block(),
-                    &all_effects,
-                );
-            if !can_legally_block_required {
-                continue;
-            }
-
-            let declared_required = attackers_by_blocker
-                .get(&blocker_id)
-                .is_some_and(|attackers| attackers.contains(&required_attacker));
-            if !declared_required {
-                return Err(CombatError::MustBlockRequirementNotMet {
-                    blocker: blocker_id,
-                    attacker: required_attacker,
-                });
-            }
+                &requirements,
+                &blockers_by_attacker,
+                &attackers_by_blocker,
+            ));
         }
     }
 
@@ -865,6 +802,450 @@ pub fn declare_blockers(
     }
 
     Ok(())
+}
+
+fn max_attackers_this_blocker_can_block(
+    game: &GameState,
+    blocker_id: ObjectId,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> usize {
+    let extra = static_abilities_for_object(game, blocker_id, effects)
+        .iter()
+        .filter_map(|ability| ability.additional_blockable_attackers())
+        .sum::<usize>();
+    1usize.saturating_add(extra)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockingRequirement {
+    AttackerMustBeBlocked(ObjectId),
+    BlockerMustBlock(ObjectId),
+    BlockerMustBlockAttacker {
+        blocker: ObjectId,
+        attacker: ObjectId,
+    },
+}
+
+fn game_may_have_must_block_requirements(
+    game: &GameState,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> bool {
+    use crate::static_abilities::StaticAbilityId;
+
+    let raw_ability_can_require_or_grant_blocking = game.battlefield.iter().copied().any(|id| {
+        game.object(id).is_some_and(|object| {
+            object.abilities.iter().any(|ability| {
+                let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+                    return false;
+                };
+                matches!(
+                    ability.id(),
+                    StaticAbilityId::MustBlock
+                        | StaticAbilityId::GrantAbility
+                        | StaticAbilityId::AttachedAbilityGrant
+                        | StaticAbilityId::GrantObjectAbilityForFilter
+                )
+            })
+        })
+    });
+
+    raw_ability_can_require_or_grant_blocking
+        || effects
+            .iter()
+            .any(|effect| effect.modification.layer() == crate::continuous::Layer::Ability)
+}
+
+fn blocking_requirements(
+    game: &GameState,
+    combat: &CombatState,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> Vec<BlockingRequirement> {
+    let mut requirements = Vec::new();
+    let defending_players = combat
+        .attackers
+        .iter()
+        .filter_map(|attacker| defending_player_for_attack_target(game, &attacker.target))
+        .collect::<HashSet<_>>();
+
+    for attacker in &combat.attackers {
+        if game.must_be_blocked(attacker.creature) {
+            requirements.push(BlockingRequirement::AttackerMustBeBlocked(
+                attacker.creature,
+            ));
+        }
+    }
+
+    if game_may_have_must_block_requirements(game, effects) {
+        for &blocker in &game.battlefield {
+            let Some(object) = game.object(blocker) else {
+                continue;
+            };
+            if defending_players.contains(&game.controller_of(object)) {
+                let requirement_count = static_abilities_for_object(game, blocker, effects)
+                    .iter()
+                    .filter(|ability| {
+                        ability.id() == crate::static_abilities::StaticAbilityId::MustBlock
+                    })
+                    .count();
+                requirements.extend(std::iter::repeat_n(
+                    BlockingRequirement::BlockerMustBlock(blocker),
+                    requirement_count,
+                ));
+            }
+        }
+    }
+
+    for (&blocker, attackers) in &game.effect_store.cant_effects.must_block_specific_attackers {
+        for &attacker in attackers {
+            if is_attacking(combat, attacker) {
+                requirements
+                    .push(BlockingRequirement::BlockerMustBlockAttacker { blocker, attacker });
+            }
+        }
+    }
+
+    requirements
+}
+
+fn propagated_block_maps(
+    combat: &CombatState,
+    blockers_by_attacker: &HashMap<ObjectId, Vec<ObjectId>>,
+) -> (
+    HashMap<ObjectId, Vec<ObjectId>>,
+    HashMap<ObjectId, Vec<ObjectId>>,
+) {
+    let mut propagated = blockers_by_attacker.clone();
+    propagate_banding_blocks(combat, &mut propagated);
+    let mut attackers_by_blocker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
+    for (&attacker, blockers) in &propagated {
+        for &blocker in blockers {
+            let attackers = attackers_by_blocker.entry(blocker).or_default();
+            if !attackers.contains(&attacker) {
+                attackers.push(attacker);
+            }
+        }
+    }
+    (propagated, attackers_by_blocker)
+}
+
+fn block_requirement_is_obeyed(
+    requirement: BlockingRequirement,
+    blockers_by_attacker: &HashMap<ObjectId, Vec<ObjectId>>,
+    attackers_by_blocker: &HashMap<ObjectId, Vec<ObjectId>>,
+) -> bool {
+    match requirement {
+        BlockingRequirement::AttackerMustBeBlocked(attacker) => blockers_by_attacker
+            .get(&attacker)
+            .is_some_and(|blockers| !blockers.is_empty()),
+        BlockingRequirement::BlockerMustBlock(blocker) => attackers_by_blocker
+            .get(&blocker)
+            .is_some_and(|attackers| !attackers.is_empty()),
+        BlockingRequirement::BlockerMustBlockAttacker { blocker, attacker } => attackers_by_blocker
+            .get(&blocker)
+            .is_some_and(|attackers| attackers.contains(&attacker)),
+    }
+}
+
+fn blocking_requirement_score(
+    combat: &CombatState,
+    requirements: &[BlockingRequirement],
+    blockers_by_attacker: &HashMap<ObjectId, Vec<ObjectId>>,
+    _attackers_by_blocker: &HashMap<ObjectId, Vec<ObjectId>>,
+) -> usize {
+    let (blockers_by_attacker, attackers_by_blocker) =
+        propagated_block_maps(combat, blockers_by_attacker);
+    requirements
+        .iter()
+        .filter(|&&requirement| {
+            block_requirement_is_obeyed(requirement, &blockers_by_attacker, &attackers_by_blocker)
+        })
+        .count()
+}
+
+fn legal_block_edge(
+    game: &GameState,
+    combat: &CombatState,
+    effects: &[crate::continuous::ContinuousEffect],
+    blocker_id: ObjectId,
+    attacker_id: ObjectId,
+) -> bool {
+    let (Some(blocker), Some(attacker)) = (game.object(blocker_id), game.object(attacker_id))
+    else {
+        return false;
+    };
+    blocker.zone == Zone::Battlefield
+        && attacker.zone == Zone::Battlefield
+        && is_attacking(combat, attacker_id)
+        && defending_player_for_attacker(game, combat, attacker_id)
+            == Some(game.controller_of(blocker))
+        && game.object_has_card_type_with_effects(
+            blocker_id,
+            crate::types::CardType::Creature,
+            effects,
+        )
+        && !game.is_tapped(blocker_id)
+        && !game.object_has_ability_with_effects(blocker_id, &StaticAbility::cant_block(), effects)
+        && game.can_block_attacker(blocker_id, attacker_id)
+        && game.can_be_blocked(attacker_id)
+        && can_block(attacker, blocker, game)
+}
+
+fn attackers_share_band(combat: &CombatState, first: ObjectId, second: ObjectId) -> bool {
+    first == second
+        || combat
+            .attacking_bands
+            .iter()
+            .any(|band| band.contains(&first) && band.contains(&second))
+}
+
+fn block_edge_can_obey_requirement(
+    combat: &CombatState,
+    edge: (ObjectId, ObjectId),
+    requirement: BlockingRequirement,
+) -> bool {
+    let (blocker, attacker) = edge;
+    match requirement {
+        BlockingRequirement::AttackerMustBeBlocked(required_attacker) => {
+            attackers_share_band(combat, attacker, required_attacker)
+        }
+        BlockingRequirement::BlockerMustBlock(required_blocker) => blocker == required_blocker,
+        BlockingRequirement::BlockerMustBlockAttacker {
+            blocker: required_blocker,
+            attacker: required_attacker,
+        } => {
+            blocker == required_blocker && attackers_share_band(combat, attacker, required_attacker)
+        }
+    }
+}
+
+fn block_declaration_obeying_more_requirements_exists(
+    game: &GameState,
+    combat: &CombatState,
+    effects: &[crate::continuous::ContinuousEffect],
+    requirements: &[BlockingRequirement],
+    baseline: usize,
+) -> bool {
+    if baseline >= requirements.len() {
+        return false;
+    }
+
+    let mut legal_edges = Vec::new();
+    for &blocker in &game.battlefield {
+        for attacker in &combat.attackers {
+            let edge = (blocker, attacker.creature);
+            if legal_block_edge(game, combat, effects, blocker, attacker.creature) {
+                legal_edges.push(edge);
+            }
+        }
+    }
+    let requirement_relevant_attackers = legal_edges
+        .iter()
+        .filter(|&&edge| {
+            requirements
+                .iter()
+                .any(|&requirement| block_edge_can_obey_requirement(combat, edge, requirement))
+        })
+        .map(|&(_, attacker)| attacker)
+        .collect::<HashSet<_>>();
+    let mut candidates = legal_edges
+        .into_iter()
+        .filter(|&(blocker, attacker)| {
+            requirements.iter().any(|&requirement| {
+                block_edge_can_obey_requirement(combat, (blocker, attacker), requirement)
+            }) || requirement_relevant_attackers
+                .iter()
+                .any(|&relevant| attackers_share_band(combat, attacker, relevant))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|&(blocker, attacker)| {
+        let covered = requirements
+            .iter()
+            .filter(|&&requirement| {
+                block_edge_can_obey_requirement(combat, (blocker, attacker), requirement)
+            })
+            .count();
+        (std::cmp::Reverse(covered), blocker.0, attacker.0)
+    });
+
+    fn maps_for_declarations(
+        declarations: &[(ObjectId, ObjectId)],
+    ) -> (
+        HashMap<ObjectId, Vec<ObjectId>>,
+        HashMap<ObjectId, Vec<ObjectId>>,
+    ) {
+        let mut blockers_by_attacker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
+        let mut attackers_by_blocker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
+        for &(blocker, attacker) in declarations {
+            blockers_by_attacker
+                .entry(attacker)
+                .or_default()
+                .push(blocker);
+            attackers_by_blocker
+                .entry(blocker)
+                .or_default()
+                .push(attacker);
+        }
+        (blockers_by_attacker, attackers_by_blocker)
+    }
+
+    fn search(
+        game: &GameState,
+        combat: &CombatState,
+        effects: &[crate::continuous::ContinuousEffect],
+        requirements: &[BlockingRequirement],
+        candidates: &[(ObjectId, ObjectId)],
+        index: usize,
+        declarations: &mut Vec<(ObjectId, ObjectId)>,
+        baseline: usize,
+    ) -> bool {
+        let (blockers_by_attacker, attackers_by_blocker) = maps_for_declarations(declarations);
+        let score = blocking_requirement_score(
+            combat,
+            requirements,
+            &blockers_by_attacker,
+            &attackers_by_blocker,
+        );
+        if score > baseline {
+            let mut candidate_combat = combat.clone();
+            if declare_blockers_internal(game, &mut candidate_combat, declarations.clone(), false)
+                .is_ok()
+            {
+                return true;
+            }
+        }
+        if index == candidates.len() {
+            return false;
+        }
+
+        let (propagated_blockers, propagated_attackers) =
+            propagated_block_maps(combat, &blockers_by_attacker);
+        let optimistic_score = requirements
+            .iter()
+            .filter(|&&requirement| {
+                block_requirement_is_obeyed(
+                    requirement,
+                    &propagated_blockers,
+                    &propagated_attackers,
+                ) || candidates[index..]
+                    .iter()
+                    .any(|&edge| block_edge_can_obey_requirement(combat, edge, requirement))
+            })
+            .count();
+        if optimistic_score <= baseline {
+            return false;
+        }
+
+        let (blocker, attacker) = candidates[index];
+        let blocker_count = attackers_by_blocker.get(&blocker).map_or(0, Vec::len);
+        let attacker_count = blockers_by_attacker.get(&attacker).map_or(0, Vec::len);
+        let distinct_blockers = attackers_by_blocker.len();
+        let introduces_blocker = !attackers_by_blocker.contains_key(&blocker);
+        let within_global_cap = max_creatures_can_block_each_combat(game)
+            .is_none_or(|maximum| distinct_blockers + usize::from(introduces_blocker) <= maximum);
+        let within_blocker_capacity =
+            blocker_count < max_attackers_this_blocker_can_block(game, blocker, effects);
+        let within_attacker_capacity = game
+            .object(attacker)
+            .and_then(|object| maximum_blockers(object, game))
+            .is_none_or(|maximum| attacker_count < maximum);
+
+        if within_global_cap && within_blocker_capacity && within_attacker_capacity {
+            declarations.push((blocker, attacker));
+            if search(
+                game,
+                combat,
+                effects,
+                requirements,
+                candidates,
+                index + 1,
+                declarations,
+                baseline,
+            ) {
+                return true;
+            }
+            declarations.pop();
+        }
+
+        search(
+            game,
+            combat,
+            effects,
+            requirements,
+            candidates,
+            index + 1,
+            declarations,
+            baseline,
+        )
+    }
+
+    search(
+        game,
+        combat,
+        effects,
+        requirements,
+        &candidates,
+        0,
+        &mut Vec::new(),
+        baseline,
+    )
+}
+
+fn first_unsatisfied_block_requirement_error(
+    game: &GameState,
+    combat: &CombatState,
+    effects: &[crate::continuous::ContinuousEffect],
+    requirements: &[BlockingRequirement],
+    blockers_by_attacker: &HashMap<ObjectId, Vec<ObjectId>>,
+    _attackers_by_blocker: &HashMap<ObjectId, Vec<ObjectId>>,
+) -> CombatError {
+    let (blockers_by_attacker, attackers_by_blocker) =
+        propagated_block_maps(combat, blockers_by_attacker);
+    for &requirement in requirements {
+        if block_requirement_is_obeyed(requirement, &blockers_by_attacker, &attackers_by_blocker) {
+            continue;
+        }
+        match requirement {
+            BlockingRequirement::AttackerMustBeBlocked(attacker) => {
+                let can_obey = game.battlefield.iter().copied().any(|blocker| {
+                    combat.attackers.iter().any(|candidate| {
+                        attackers_share_band(combat, candidate.creature, attacker)
+                            && legal_block_edge(game, combat, effects, blocker, candidate.creature)
+                    })
+                });
+                if !can_obey {
+                    continue;
+                }
+                let required = game
+                    .object(attacker)
+                    .map(|object| minimum_blockers_with_game(object, game))
+                    .unwrap_or(1);
+                return CombatError::NotEnoughBlockers {
+                    attacker,
+                    required,
+                    provided: 0,
+                };
+            }
+            BlockingRequirement::BlockerMustBlockAttacker { blocker, attacker } => {
+                let can_obey = combat.attackers.iter().any(|candidate| {
+                    attackers_share_band(combat, candidate.creature, attacker)
+                        && legal_block_edge(game, combat, effects, blocker, candidate.creature)
+                });
+                if !can_obey {
+                    continue;
+                }
+                return CombatError::MustBlockRequirementNotMet { blocker, attacker };
+            }
+            BlockingRequirement::BlockerMustBlock(blocker) => {
+                if let Some(attacker) = combat.attackers.iter().find_map(|attacker| {
+                    legal_block_edge(game, combat, effects, blocker, attacker.creature)
+                        .then_some(attacker.creature)
+                }) {
+                    return CombatError::MustBlockRequirementNotMet { blocker, attacker };
+                }
+            }
+        }
+    }
+    unreachable!("a better blocking declaration requires an unsatisfied requirement")
 }
 
 /// Records an attacking band for the current combat.
@@ -1103,6 +1484,26 @@ pub fn get_damage_assignment_order(combat: &CombatState, attacker: ObjectId) -> 
         .unwrap_or_else(|| get_blockers(combat, attacker).to_vec())
 }
 
+/// Return the defending player associated with an attack target.
+pub fn defending_player_for_attack_target(
+    game: &GameState,
+    target: &AttackTarget,
+) -> Option<PlayerId> {
+    match target {
+        AttackTarget::Player(player) => Some(*player),
+        AttackTarget::Planeswalker(planeswalker) => game.controller_of_id(*planeswalker),
+    }
+}
+
+/// Return the defending player associated with an attacking creature.
+pub fn defending_player_for_attacker(
+    game: &GameState,
+    combat: &CombatState,
+    attacker: ObjectId,
+) -> Option<PlayerId> {
+    defending_player_for_attack_target(game, get_attack_target(combat, attacker)?)
+}
+
 /// Returns all players being attacked (defending players).
 ///
 /// In a 2-player game, this is typically just the opponent.
@@ -1255,6 +1656,211 @@ mod tests {
 
         declare_blockers(&mut game, &mut combat, Vec::new())
             .expect("no block should be required when no creature can block");
+    }
+
+    #[test]
+    fn conflicting_must_be_blocked_requirements_use_the_maximum_satisfiable_count() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = game.create_object_from_card(
+            &creature_card("First Required Block", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let second = game.create_object_from_card(
+            &creature_card("Second Required Block", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let blocker = game.create_object_from_card(
+            &creature_card("Only Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(first);
+        game.remove_summoning_sickness(second);
+        game.effect_store.cant_effects.must_be_blocked.insert(first);
+        game.effect_store
+            .cant_effects
+            .must_be_blocked
+            .insert(second);
+
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![
+                (first, AttackTarget::Player(bob)),
+                (second, AttackTarget::Player(bob)),
+            ],
+        )
+        .expect("both attackers should be declared");
+
+        declare_blockers(&game, &mut combat, vec![(blocker, first)]).expect(
+            "one blocker may obey either one of two mutually exclusive blocking requirements",
+        );
+    }
+
+    #[test]
+    fn conflicting_specific_must_block_requirements_respect_blocker_capacity() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = game.create_object_from_card(
+            &creature_card("First Forced Target", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let second = game.create_object_from_card(
+            &creature_card("Second Forced Target", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let blocker = game.create_object_from_card(
+            &creature_card("One-Capacity Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(first);
+        game.remove_summoning_sickness(second);
+        game.effect_store
+            .cant_effects
+            .must_block_specific_attackers
+            .entry(blocker)
+            .or_default()
+            .extend([first, second]);
+
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![
+                (first, AttackTarget::Player(bob)),
+                (second, AttackTarget::Player(bob)),
+            ],
+        )
+        .expect("both attackers should be declared");
+
+        declare_blockers(&game, &mut combat, vec![(blocker, first)]).expect(
+            "a one-capacity blocker may obey either one of two conflicting specific requirements",
+        );
+    }
+
+    #[test]
+    fn must_block_can_require_an_optional_second_blocker_for_menace() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(
+            &creature_card("Menacing Attacker", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(attacker)
+            .expect("attacker exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::menace()));
+        let required_blocker = game.create_object_from_card(
+            &creature_card("Required Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        game.object_mut(required_blocker)
+            .expect("blocker exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::must_block()));
+        let optional_blocker = game.create_object_from_card(
+            &creature_card("Optional Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(attacker);
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![(attacker, AttackTarget::Player(bob))],
+        )
+        .expect("attacker should be declared");
+
+        assert!(
+            declare_blockers(&game, &mut combat.clone(), Vec::new()).is_err(),
+            "the must-block requirement can be obeyed by also declaring the optional blocker"
+        );
+        declare_blockers(
+            &game,
+            &mut combat,
+            vec![(required_blocker, attacker), (optional_blocker, attacker)],
+        )
+        .expect("both blockers satisfy menace and the maximum blocking requirement count");
+    }
+
+    #[test]
+    fn blocker_optimizer_counts_multiple_requirements_on_one_creature() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(
+            &creature_card("Attacker", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let two_requirements = game.create_object_from_card(
+            &creature_card("Twice Required Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        let one_requirement = game.create_object_from_card(
+            &creature_card("Once Required Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        for _ in 0..2 {
+            game.object_mut(two_requirements)
+                .expect("blocker exists")
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::must_block()));
+        }
+        game.object_mut(one_requirement)
+            .expect("blocker exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::must_block()));
+        let limiter = game.create_object_from_card(
+            &enchantment_card("One Blocker Limit"),
+            bob,
+            Zone::Battlefield,
+        );
+        game.object_mut(limiter)
+            .expect("limiter exists")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                StaticAbility::max_blockers_each_combat(1),
+            ));
+        game.remove_summoning_sickness(attacker);
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![(attacker, AttackTarget::Player(bob))],
+        )
+        .expect("attacker should be declared");
+
+        assert!(
+            declare_blockers(
+                &game,
+                &mut combat.clone(),
+                vec![(one_requirement, attacker)]
+            )
+            .is_err(),
+            "one obeyed requirement is illegal when two can be obeyed"
+        );
+        declare_blockers(&game, &mut combat, vec![(two_requirements, attacker)])
+            .expect("the blocker obeying two requirements should be the legal blocker");
     }
 
     #[test]

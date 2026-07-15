@@ -210,6 +210,17 @@ pub(super) fn attacking_defending_player_for_object(
     }
 }
 
+pub(super) fn attacking_player_for_object(
+    object_id: ObjectId,
+    game: &crate::game_state::GameState,
+) -> Option<PlayerId> {
+    let combat = game.combat.as_ref()?;
+    match crate::combat_state::get_attack_target(combat, object_id)? {
+        crate::combat_state::AttackTarget::Player(player_id) => Some(*player_id),
+        crate::combat_state::AttackTarget::Planeswalker(_) => None,
+    }
+}
+
 #[allow(dead_code)]
 pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
     match filter {
@@ -400,7 +411,7 @@ pub(super) fn alternative_cast_matches_kind(
         (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. }) => true,
         (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
         (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
-        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart) => true,
+        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart { .. }) => true,
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
         (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
         (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
@@ -696,9 +707,13 @@ pub(super) fn snapshot_has_tap_activated_ability(
 }
 
 #[allow(dead_code)]
-pub(super) fn describe_counter_constraint(constraint: CounterConstraint) -> String {
+pub(super) fn describe_counter_constraint(constraint: CounterConstraint, plural: bool) -> String {
     match constraint {
+        CounterConstraint::Any if plural => "counters".to_string(),
         CounterConstraint::Any => "a counter".to_string(),
+        CounterConstraint::Typed(counter_type) if plural => {
+            format!("{} counters", counter_type.description())
+        }
         CounterConstraint::Typed(counter_type) => {
             format!("a {} counter", counter_type.description())
         }
@@ -787,6 +802,24 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::CardTypesAmong(filter) => {
                 format!("the number of card types among {}", filter.description())
+            }
+            Value::GreatestPower(filter) => {
+                format!("the greatest power among {}", filter.description())
+            }
+            Value::GreatestToughness(filter) => {
+                format!("the greatest toughness among {}", filter.description())
+            }
+            Value::GreatestManaValue(filter) => {
+                format!("the greatest mana value among {}", filter.description())
+            }
+            Value::LeastPower(filter) => {
+                format!("the least power among {}", filter.description())
+            }
+            Value::LeastToughness(filter) => {
+                format!("the lowest toughness among {}", filter.description())
+            }
+            Value::LeastManaValue(filter) => {
+                format!("the lowest mana value among {}", filter.description())
             }
             Value::DistinctPowers(filter) => {
                 format!(

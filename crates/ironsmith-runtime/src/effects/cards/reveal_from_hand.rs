@@ -266,6 +266,12 @@ impl EffectExecutor for RevealSourceFromHandEffect {
             entry.push(snapshot.clone());
         }
 
+        if self.duration
+            == ironsmith_core::RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand
+        {
+            game.reveal_hand_card_until_upkeep_ends(source_id);
+        }
+
         let event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::CardRevealedEvent::new(
                 ctx.controller,
@@ -477,6 +483,26 @@ mod tests {
             *zone == Zone::Hand && *public && cards.as_slice() == [source]
         }));
         assert_eq!(dm.calls.len(), 2);
+        assert!(!game.is_hand_card_revealed_until_upkeep_ends(source));
+    }
+
+    #[test]
+    fn forecast_reveal_persists_until_the_source_leaves_hand() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(101), "Forecast Card").build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Hand);
+
+        let cost = Cost::effect(RevealSourceFromHandEffect::until_upkeep_ends_or_leaves_hand());
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = CostContext::new(source, alice, &mut dm);
+
+        assert_eq!(cost.pay(&mut game, &mut ctx), Ok(CostPaymentResult::Paid));
+        assert!(game.is_hand_card_revealed_until_upkeep_ends(source));
+
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("Forecast source should move");
+        assert!(!game.is_hand_card_revealed_until_upkeep_ends(source));
     }
 
     #[test]

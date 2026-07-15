@@ -1,0 +1,35 @@
+use ironsmith_compiler::cards::CardDefinitionBuilder;
+use ironsmith_compiler::effect::Value;
+use ironsmith_compiler::ids::CardId;
+use ironsmith_compiler::types::CardType;
+
+#[test]
+fn kicked_choose_any_number_lowers_to_typed_conditional_mode_range() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Conditional Mode Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Kicker {2}{G}\n\
+             Choose one. If this spell was kicked, choose any number instead.\n\
+             • You gain 1 life.\n\
+             • You gain 2 life.\n\
+             • You gain 3 life.",
+        )
+        .expect("conditional modal header should compile");
+    let modal = definition
+        .spell_effect
+        .as_ref()
+        .and_then(|program| {
+            program.all_effects().into_iter().find_map(|effect| {
+                effect.downcast_ref::<ironsmith_compiler::effects::ChooseModeEffect>()
+            })
+        })
+        .expect("spell should contain a typed modal effect");
+    let range = modal
+        .conditional_mode_range
+        .as_ref()
+        .expect("kicker-dependent range should be retained structurally");
+
+    assert!(range.required_optional_cost.eq_ignore_ascii_case("Kicker"));
+    assert_eq!(range.min_modes, Value::Fixed(0));
+    assert_eq!(range.max_modes, Value::Fixed(3));
+}

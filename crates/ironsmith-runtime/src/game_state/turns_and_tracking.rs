@@ -1,60 +1,66 @@
 use super::*;
 
 impl GameState {
+    /// Keep a Forecast source publicly revealed while it remains in hand and
+    /// the current upkeep continues (CR 702.57b).
+    pub fn reveal_hand_card_until_upkeep_ends(&mut self, object_id: ObjectId) -> bool {
+        if !self
+            .object(object_id)
+            .is_some_and(|object| object.zone == Zone::Hand)
+        {
+            return false;
+        }
+        self.turn_store
+            .forecast_revealed_hand_cards
+            .insert(object_id)
+    }
+
+    pub fn is_hand_card_revealed_until_upkeep_ends(&self, object_id: ObjectId) -> bool {
+        self.turn_store
+            .forecast_revealed_hand_cards
+            .contains(&object_id)
+            && self
+                .object(object_id)
+                .is_some_and(|object| object.zone == Zone::Hand)
+    }
+
+    pub(crate) fn clear_forecast_revealed_hand_cards(&mut self) {
+        self.turn_store.forecast_revealed_hand_cards.clear();
+    }
+
     /// Advances to the next turn.
     ///
     /// Turn order rules:
-    /// 1. If there are extra turns queued, the first one is taken instead of normal turn order
-    /// 2. If the next player should skip their turn, they are skipped (and removed from skip list)
+    /// 1. If there are extra turns queued, the most recently created one is considered first
+    /// 2. If any candidate turn should be skipped, it is skipped (and removed from the skip list)
     /// 3. Otherwise, proceed to the next player in turn order
     pub fn next_turn(&mut self) {
-        // Check for extra turns first (Time Walk, etc.)
-        let next_player = if !self.turn_store.extra_turns.is_empty() {
-            // Take the first extra turn from the queue
-            self.turn_store.extra_turns.remove(0)
-        } else {
-            // Find next player in turn order
-            let current_index = self
-                .turn_store
-                .turn_order
-                .iter()
-                .position(|&p| p == self.turn.active_player)
-                .unwrap_or(0);
+        let current_index = self
+            .turn_store
+            .turn_order
+            .iter()
+            .position(|&player| player == self.turn.active_player)
+            .unwrap_or(0);
+        let mut normal_index = (current_index + 1) % self.turn_store.turn_order.len();
+        let next_player = loop {
+            let candidate = if let Some(extra_turn) = self.turn_store.extra_turns.pop() {
+                extra_turn
+            } else {
+                let player = self.turn_store.turn_order[normal_index];
+                normal_index = (normal_index + 1) % self.turn_store.turn_order.len();
+                player
+            };
 
-            let mut next_index = (current_index + 1) % self.turn_store.turn_order.len();
-            let start_index = next_index;
-
-            // Find next valid player (skip players who left or should skip their turn)
-            loop {
-                let candidate = self.turn_store.turn_order[next_index];
-
-                // Check if player is still in game
-                let is_in_game = self.player(candidate).is_some_and(|p| p.is_in_game());
-
-                if is_in_game {
-                    // Check if this player should skip their turn
-                    if self.turn_store.skip_next_turn.remove(&candidate) {
-                        // Player skips this turn, continue to next player
-                        next_index = (next_index + 1) % self.turn_store.turn_order.len();
-                        if next_index == start_index {
-                            // Wrapped around - all players are skipping (shouldn't happen)
-                            break;
-                        }
-                        continue;
-                    }
-                    // Found a valid player
-                    break;
-                }
-
-                // Player has left, skip to next
-                next_index = (next_index + 1) % self.turn_store.turn_order.len();
-                if next_index == start_index {
-                    // All other players have left
-                    break;
-                }
+            if !self
+                .player(candidate)
+                .is_some_and(|player| player.is_in_game())
+            {
+                continue;
             }
-
-            self.turn_store.turn_order[next_index]
+            if self.turn_store.skip_next_turn.remove(&candidate) {
+                continue;
+            }
+            break candidate;
         };
 
         // Reset turn state
@@ -70,6 +76,7 @@ impl GameState {
         self.turn_store.skip_current_turn_main_phases.clear();
         self.turn_store.no_combat_damage_this_turn.clear();
         self.turn_store.no_combat_damage_this_combat.clear();
+        self.clear_forecast_revealed_hand_cards();
 
         // Clear turn-based tracking
         self.turn_store.entered_battlefield_last_turn = self
@@ -77,7 +84,8 @@ impl GameState {
             .turn_history
             .entered_battlefield_snapshots_this_turn();
         self.turn_store.spells_cast_last_turn_total =
-            self.turn_store.turn_history.clear_for_new_turn();
+            self.turn_store.turn_history.total_spells_cast_this_turn();
+        self.turn_store.previous_turn_history = std::mem::take(&mut self.turn_store.turn_history);
         let spells_cast_last_turn = self.turn_store.spells_cast_last_turn_total;
         if self.has_day_night && self.is_night {
             if spells_cast_last_turn >= 2 {
@@ -106,6 +114,11 @@ impl GameState {
             player.begin_turn();
         }
         self.record_turn_start_hand_sizes();
+
+        // Turn-relative durations can change control exactly at this boundary.
+        // Reconcile them before the untap step establishes which permanents
+        // have been continuously controlled since this turn began (CR 302.6).
+        self.reconcile_continuous_control_changes();
     }
 
     pub fn record_turn_start_hand_sizes(&mut self) {
@@ -1225,19 +1238,33 @@ impl GameState {
             // Try to find the commander object - it might be on battlefield,
             // in command zone, or elsewhere
             if let Some(obj) = self.object(commander_id) {
-                identity = identity.union(obj.color_identity());
+                identity = identity.union(self.commander_object_color_identity(obj));
             } else {
                 // Commander might have moved zones and have a different ID.
                 // Search through all objects for one with matching stable_id
                 for obj in self.objects.values() {
                     if obj.stable_id == StableId::from(commander_id) {
-                        identity = identity.union(obj.color_identity());
+                        identity = identity.union(self.commander_object_color_identity(obj));
                         break;
                     }
                 }
             }
         }
 
+        identity
+    }
+
+    fn commander_object_color_identity(
+        &self,
+        object: &crate::object::Object,
+    ) -> crate::color::ColorSet {
+        let mut identity = object.color_identity();
+        if let Some(other_face) = self.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(),
+            object.other_face,
+        ) {
+            identity = identity.union(other_face.card.color_identity());
+        }
         identity
     }
 
@@ -1370,12 +1397,15 @@ impl GameState {
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
                 Self::filter_reads_tapped_state(filter)
             }
-            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
-                attachment,
-                attached_to,
+            crate::ConditionExpr::AttachmentCount {
+                attachment, host, ..
             } => {
                 Self::filter_reads_tapped_state(attachment)
-                    || Self::filter_reads_tapped_state(attached_to)
+                    || matches!(
+                        host,
+                        ironsmith_core::AttachmentConditionHost::Matching(filter)
+                            if Self::filter_reads_tapped_state(filter)
+                    )
             }
             crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_tapped_state(filter)
@@ -1481,12 +1511,15 @@ impl GameState {
             | crate::ConditionExpr::PlayerTaggedObjectMatches { filter, .. } => {
                 Self::filter_reads_face_down_state(filter)
             }
-            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
-                attachment,
-                attached_to,
+            crate::ConditionExpr::AttachmentCount {
+                attachment, host, ..
             } => {
                 Self::filter_reads_face_down_state(attachment)
-                    || Self::filter_reads_face_down_state(attached_to)
+                    || matches!(
+                        host,
+                        ironsmith_core::AttachmentConditionHost::Matching(filter)
+                            if Self::filter_reads_face_down_state(filter)
+                    )
             }
             crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_face_down_state(filter)
@@ -1598,12 +1631,15 @@ impl GameState {
             | crate::ConditionExpr::SourceCrewedByExactly { filter, .. } => {
                 Self::filter_reads_summoning_sickness_state(filter)
             }
-            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
-                attachment,
-                attached_to,
+            crate::ConditionExpr::AttachmentCount {
+                attachment, host, ..
             } => {
                 Self::filter_reads_summoning_sickness_state(attachment)
-                    || Self::filter_reads_summoning_sickness_state(attached_to)
+                    || matches!(
+                        host,
+                        ironsmith_core::AttachmentConditionHost::Matching(filter)
+                            if Self::filter_reads_summoning_sickness_state(filter)
+                    )
             }
             crate::ConditionExpr::CountComparison { count, .. }
             | crate::ConditionExpr::CountParity { count, .. } => {
@@ -1722,5 +1758,54 @@ impl GameState {
             }
             _ => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::{LinkedFaceLayout, PowerToughness};
+    use crate::cards::CardDefinitionBuilder;
+    use crate::color::Color;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::types::CardType;
+    use crate::zone::Zone;
+
+    #[test]
+    fn commander_color_identity_unions_both_linked_faces() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let front_id = CardId::from_raw(90_001);
+        let back_id = CardId::from_raw(90_002);
+
+        let front = CardDefinitionBuilder::new(front_id, "Front Commander")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::White]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .other_face(back_id)
+            .other_face_name("Back Commander")
+            .linked_face_layout(LinkedFaceLayout::TransformLike)
+            .build();
+        let back = CardDefinitionBuilder::new(back_id, "Back Commander")
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Black]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .other_face(front_id)
+            .other_face_name("Front Commander")
+            .linked_face_layout(LinkedFaceLayout::TransformLike)
+            .build();
+        game.register_linked_face_definition(&front);
+        game.register_linked_face_definition(&back);
+
+        let commander = game.create_object_from_definition(&front, alice, Zone::Command);
+        game.player_mut(alice)
+            .expect("Alice should exist")
+            .add_commander(commander);
+
+        let identity = game.get_commander_color_identity(alice);
+        assert!(identity.contains(Color::White));
+        assert!(identity.contains(Color::Black));
+        assert_eq!(identity.count(), 2);
     }
 }

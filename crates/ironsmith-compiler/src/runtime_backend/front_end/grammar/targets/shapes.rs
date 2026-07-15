@@ -49,7 +49,9 @@ pub(crate) enum EnchantedObjectTargetKind {
 pub(crate) enum TargetUnionShape {
     PriorPlayerOrPlaneswalker,
     AttackedPlayerOrPlaneswalker,
+    BattleOrOpponent,
     CreatureOrPlayer,
+    PermanentOrPlayer,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +65,25 @@ pub(crate) fn parse_chosen_object_target(
 ) -> Option<ChosenObjectTarget<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
+    // Postpositive oracle surface: "creature(s) chosen this way". Keep the
+    // object head as the executable filter and attach the accumulated chosen
+    // set below, just as for the older "chosen creature(s)" surface.
+    if let Some(chosen_word_idx) = words
+        .windows(3)
+        .position(|window| window == ["chosen", "this", "way"])
+        && chosen_word_idx > 0
+        && chosen_word_idx + 3 == words.len()
+    {
+        let token_end = view
+            .token_start_indices()
+            .get(chosen_word_idx)
+            .copied()
+            .unwrap_or(tokens.len());
+        let filter_tokens = trim_comma_edges(tokens.get(..token_end)?);
+        if !filter_tokens.is_empty() {
+            return Some(ChosenObjectTarget { filter_tokens });
+        }
+    }
     let meaningful = words
         .iter()
         .copied()
@@ -124,8 +145,29 @@ pub(crate) fn parse_target_union_shape(words: &[&str]) -> Option<TargetUnionShap
     {
         return Some(TargetUnionShape::AttackedPlayerOrPlaneswalker);
     }
-    phrase_choice_present(words, CREATURE_OR_PLAYER_PHRASES)
-        .then_some(TargetUnionShape::CreatureOrPlayer)
+    if [
+        &["battle", "or", "opponent"][..],
+        &["battles", "or", "opponents"][..],
+        &["opponent", "or", "battle"][..],
+        &["opponents", "or", "battles"][..],
+    ]
+    .iter()
+    .any(|phrase| exact_phrase(words, phrase))
+    {
+        return Some(TargetUnionShape::BattleOrOpponent);
+    }
+    if phrase_choice_present(words, CREATURE_OR_PLAYER_PHRASES) {
+        return Some(TargetUnionShape::CreatureOrPlayer);
+    }
+    [
+        &["permanent", "or", "player"][..],
+        &["permanents", "or", "players"][..],
+        &["player", "or", "permanent"][..],
+        &["players", "or", "permanents"][..],
+    ]
+    .iter()
+    .any(|phrase| exact_phrase(words, phrase))
+    .then_some(TargetUnionShape::PermanentOrPlayer)
 }
 
 fn exact_phrase(words: &[&str], expected: &[&str]) -> bool {
@@ -247,6 +289,14 @@ mod tests {
         assert_eq!(
             parse_target_union_shape(&["creature", "and", "or", "player"]),
             Some(TargetUnionShape::CreatureOrPlayer)
+        );
+        assert_eq!(
+            parse_target_union_shape(&["battle", "or", "opponent"]),
+            Some(TargetUnionShape::BattleOrOpponent)
+        );
+        assert_eq!(
+            parse_target_union_shape(&["permanent", "or", "player"]),
+            Some(TargetUnionShape::PermanentOrPlayer)
         );
     }
 

@@ -2159,6 +2159,7 @@ fn pay_activation_card_choice_without_execution_context(
             cost,
             card_type,
             description,
+            ..
         } => {
             let candidates = legal_exile_from_graveyard_cards(game, cost_ctx.payer, *card_type);
             let Some(target_id) = choose_single_cost_object(

@@ -563,18 +563,102 @@ impl GameState {
         self.battlefield_flags.phased_out.contains(&id)
     }
 
+    #[cfg(test)]
     pub(crate) fn phased_out_ids(&self) -> impl Iterator<Item = ObjectId> + '_ {
         self.battlefield_flags.phased_out.iter().copied()
     }
 
+    pub(crate) fn directly_phased_out_under(
+        &self,
+        controller: PlayerId,
+    ) -> impl Iterator<Item = ObjectId> + '_ {
+        self.battlefield_flags
+            .phased_out_under_controller
+            .iter()
+            .filter(move |(id, phased_controller)| {
+                **phased_controller == controller
+                    && !self.battlefield_flags.indirectly_phased_out.contains(id)
+                    && !self.is_phase_out_held(**id)
+            })
+            .map(|(id, _)| *id)
+    }
+
+    /// Prevent a directly phased-out permanent from phasing in during untap
+    /// until the specified source leaves the battlefield.
+    pub fn hold_phased_out_until_source_leaves(&mut self, permanent: ObjectId, source: ObjectId) {
+        if !self.is_phased_out(permanent) {
+            return;
+        }
+        self.battlefield_flags_mut()
+            .phase_out_holds_by_source
+            .entry(source)
+            .or_default()
+            .insert(permanent);
+    }
+
+    fn is_phase_out_held(&self, permanent: ObjectId) -> bool {
+        self.battlefield_flags
+            .phase_out_holds_by_source
+            .values()
+            .any(|held| held.contains(&permanent))
+    }
+
+    /// Release every permanent held phased out by a source that is leaving.
+    pub(crate) fn release_phase_out_holds_for_source(&mut self, source: ObjectId) {
+        let held = self
+            .battlefield_flags_mut()
+            .phase_out_holds_by_source
+            .remove(&source)
+            .unwrap_or_default();
+        for permanent in held {
+            self.phase_in(permanent);
+        }
+    }
+
     /// Phase out a permanent.
     pub fn phase_out(&mut self, id: ObjectId) {
+        let Some(controller) = self.current_controller(id) else {
+            return;
+        };
+        self.phase_out_with_attachment_tree(id, controller, false);
+    }
+
+    fn phase_out_with_attachment_tree(
+        &mut self,
+        id: ObjectId,
+        phased_out_under: PlayerId,
+        indirectly: bool,
+    ) {
+        if self.is_phased_out(id)
+            || self
+                .object(id)
+                .is_none_or(|object| object.zone != Zone::Battlefield)
+        {
+            return;
+        }
+        let attachments = self
+            .object(id)
+            .map(|object| object.attachments.clone())
+            .unwrap_or_default();
         let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
         let permanent_snapshot = self
             .object(id)
             .map(|object| self.cached_object_snapshot_with_calculated_characteristics(object));
         self.mark_continuous_state_dirty();
         if self.battlefield_flags_mut().phased_out.insert(id) {
+            self.battlefield_flags_mut()
+                .phased_out_under_controller
+                .insert(id, phased_out_under);
+            if indirectly {
+                self.battlefield_flags_mut()
+                    .indirectly_phased_out
+                    .insert(id);
+            } else {
+                self.battlefield_flags_mut()
+                    .indirectly_phased_out
+                    .remove(&id);
+            }
+            self.remove_object_from_combat_for_phasing(id);
             if let Some(snapshot) = permanent_snapshot {
                 self.record_ui_effect_event(
                     "phase_out",
@@ -599,16 +683,66 @@ impl GameState {
                 self.queue_trigger_event(provenance, event);
             }
         }
+
+        for attachment in attachments {
+            self.phase_out_with_attachment_tree(attachment, phased_out_under, true);
+        }
     }
 
     /// Phase in a permanent.
     pub fn phase_in(&mut self, id: ObjectId) {
+        if self.is_phase_out_held(id) {
+            return;
+        }
+        let attachments = self
+            .object(id)
+            .map(|object| object.attachments.clone())
+            .unwrap_or_default();
         self.mark_continuous_state_dirty();
-        if self.battlefield_flags_mut().phased_out.remove(&id)
-            && let Some(stable_id) = self.object(id).map(|o| o.stable_id)
-        {
+        let phased_in = self.battlefield_flags_mut().phased_out.remove(&id);
+        if phased_in {
+            let flags = self.battlefield_flags_mut();
+            flags.phased_out_under_controller.remove(&id);
+            flags.indirectly_phased_out.remove(&id);
+            for held in flags.phase_out_holds_by_source.values_mut() {
+                held.remove(&id);
+            }
+        }
+        if phased_in && let Some(stable_id) = self.object(id).map(|o| o.stable_id) {
             self.record_ui_effect_event("phase_in", None, None, vec![stable_id], None, None);
         }
+        for attachment in attachments {
+            if self.is_phased_out(attachment)
+                && self
+                    .battlefield_flags
+                    .indirectly_phased_out
+                    .contains(&attachment)
+            {
+                self.phase_in(attachment);
+            }
+        }
+    }
+
+    fn remove_object_from_combat_for_phasing(&mut self, id: ObjectId) {
+        let Some(combat) = self.combat.as_mut() else {
+            return;
+        };
+        combat.attackers.retain(|attacker| attacker.creature != id);
+        combat.blockers.remove(&id);
+        combat.damage_assignment_order.remove(&id);
+        combat
+            .attacking_bands
+            .iter_mut()
+            .for_each(|band| band.retain(|member| *member != id));
+        combat.attacking_bands.retain(|band| !band.is_empty());
+        combat.had_to_attack_this_combat.remove(&id);
+        for blockers in combat.blockers.values_mut() {
+            blockers.retain(|blocker| *blocker != id);
+        }
+        for order in combat.damage_assignment_order.values_mut() {
+            order.retain(|object| *object != id);
+        }
+        self.clear_ninjutsu_attack_targets_for(id);
     }
 
     /// Check if a card is exiled via madness.
@@ -731,6 +865,7 @@ impl GameState {
             let flags = self.battlefield_flags_mut();
             flags.tapped_permanents.remove(&id);
             flags.summoning_sick.remove(&id);
+            flags.controller_at_last_refresh.remove(&id);
             flags.damage_marked.remove(&id);
             flags.monstrous.remove(&id);
             flags.suspected.remove(&id);
@@ -746,6 +881,15 @@ impl GameState {
             flags.transform_count.remove(&id);
             flags.mutation_count.remove(&id);
             flags.phased_out.remove(&id);
+            flags.phased_out_under_controller.remove(&id);
+            flags.indirectly_phased_out.remove(&id);
+            flags.phase_out_holds_by_source.remove(&id);
+            for held in flags.phase_out_holds_by_source.values_mut() {
+                held.remove(&id);
+            }
+            flags
+                .phase_out_holds_by_source
+                .retain(|_, held| !held.is_empty());
         }
         self.exile_tracking_mut().imprinted_cards.remove(&id);
         self.object_annotations_mut().noted_life_totals.remove(&id);
@@ -1603,6 +1747,19 @@ impl GameState {
     /// Take all pending trigger events (empties the queue).
     pub fn take_pending_trigger_events(&mut self) -> Vec<crate::triggers::TriggerEvent> {
         std::mem::take(&mut self.effect_store.pending_trigger_events)
+    }
+
+    pub(crate) fn defer_trigger_entries(
+        &mut self,
+        entries: impl IntoIterator<Item = crate::triggers::TriggeredAbilityEntry>,
+    ) {
+        self.effect_store.pending_trigger_entries.extend(entries);
+    }
+
+    pub(crate) fn take_pending_trigger_entries(
+        &mut self,
+    ) -> Vec<crate::triggers::TriggeredAbilityEntry> {
+        std::mem::take(&mut self.effect_store.pending_trigger_entries)
     }
 
     pub(crate) fn remove_pending_trigger_events_matching_from(

@@ -9,7 +9,9 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::runtime_backend::object_filters::{parse_object_filter, parse_object_filter_lexed};
+use crate::runtime_backend::object_filters::{
+    parse_object_filter, parse_object_filter_lexed, parse_object_filter_words,
+};
 use crate::runtime_backend::util::{
     trim_commas, trim_edge_punctuation, trim_edge_punctuation_tokens,
 };
@@ -188,10 +190,33 @@ fn pending_aggregate_metric_value(
     value_kind: value_helper_shapes::AggregateValueKind,
     object_words: &[&str],
 ) -> Option<Value> {
-    Some(Value::PendingEffectMetric {
-        source: value_helper_shapes::parse_prior_effect_metric_source(object_words)?,
-        metric: aggregate_effect_metric(aggregate, value_kind),
-    })
+    let source = value_helper_shapes::parse_prior_effect_metric_source(object_words)?;
+    let metric = aggregate_effect_metric(aggregate, value_kind);
+    let this_way_start = object_words
+        .windows(2)
+        .position(|window| window == ["this", "way"]);
+    if let Some(this_way_start) = this_way_start {
+        let subject = &object_words[..this_way_start];
+        if let Some((action, action_start)) =
+            value_helper_shapes::parse_prior_effect_action(subject)
+        {
+            let mut query =
+                ironsmith_core::PriorEffectMetricQuery::new(source, metric).with_action(action);
+            let filter_words = &subject[..action_start];
+            if !filter_words.is_empty() {
+                let mut filter = parse_object_filter_words(filter_words, false).ok()?;
+                if filter_words
+                    .iter()
+                    .any(|word| matches!(*word, "card" | "cards"))
+                {
+                    filter.set_explicit_card_noun(true);
+                }
+                query = query.with_filter(filter);
+            }
+            return Some(Value::PendingPriorEffectMetric(query));
+        }
+    }
+    Some(Value::PendingEffectMetric { source, metric })
 }
 
 fn aggregate_filter_value(
@@ -331,6 +356,35 @@ fn parse_spell_cast_history_count(
         }));
     }
     None
+}
+
+/// Build the historical spell count used by an ordinal triggering-spell gate.
+///
+/// Unlike an ordinary "spells you've cast this turn" value, this count stops
+/// at the cast event which caused the current trigger. That event boundary is
+/// important: spells cast while the trigger is waiting on the stack must not
+/// change whether the triggering spell was first, second, and so on.
+pub(crate) fn parse_triggering_spell_history_count_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let tokens = trim_edge_punctuation(tokens);
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    if words.is_empty() {
+        return None;
+    }
+
+    let mut filter = history_filter_from_word_prefix(tokens, &word_view, words.len())?;
+    let exclude_source = filter.other || words.contains(&"other");
+    filter.other = false;
+    Some(Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
+        player: PlayerFilter::You,
+        filter,
+        from_zone: None,
+        from_outside_hand: false,
+        exclude_source,
+        before_triggering_spell: true,
+    }))
 }
 
 /// Parse noun phrases whose numeric meaning comes from retained turn events.
@@ -848,6 +902,14 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
         return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(value) = parse_aggregate_scope_value_lexed(&filter_tokens) {
+        return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
+    }
+    let mut for_each_words = vec!["for", "each"];
+    for_each_words.extend(filter_words.iter().copied());
+    if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
+        super::count_shapes::parse_for_each_count_value_words(&for_each_words)
+        && used == for_each_words.len()
+    {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     if let Some(distinct_filter_tokens) =
@@ -1548,6 +1610,26 @@ mod tests {
         assert!(filter.token);
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.name, None);
+    }
+
+    #[test]
+    fn equal_to_number_of_tapped_this_way_keeps_typed_action() {
+        let value = parse_equal_to_number_of_filter_value(&lex_words(
+            "equal to the number of creatures tapped this way",
+        ))
+        .expect("tapped-this-way equal count should parse");
+        let Value::SurfaceHinted { value, hints } = value else {
+            panic!("expected equal-to surface hint");
+        };
+        assert_eq!(hints, vec![ValueSurfaceHint::EqualTo]);
+        let Value::PendingPriorEffectMetric(query) = *value else {
+            panic!("expected typed tapped prior-effect metric");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Tapped)
+        );
+        assert_eq!(query.metric, EffectMetric::Count);
     }
 
     #[test]

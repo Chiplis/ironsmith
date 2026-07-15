@@ -196,8 +196,13 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
                     name_override_surface,
                     add_supertypes,
                     remove_supertypes,
+                    add_card_types,
+                    set_card_types,
+                    add_subtypes,
+                    set_subtypes,
                     granted_abilities,
                     set_base_power_toughness,
+                    copy_exception_surface,
                 },
             ..
         }),
@@ -241,8 +246,13 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
         name_override_surface.clone(),
         add_supertypes.clone(),
         remove_supertypes.clone(),
+        add_card_types.clone(),
+        set_card_types.clone(),
+        add_subtypes.clone(),
+        set_subtypes.clone(),
         granted_abilities.clone(),
         set_base_power_toughness.clone(),
+        copy_exception_surface.clone(),
     );
     Ok(Some(compile_effect(&rewritten, ctx)?))
 }
@@ -472,11 +482,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 |ctx| {
                     ctx.last_effect_id = Some(condition);
                     ctx.bind_unbound_x_to_last_effect =
-                        *predicate != IfResultPredicate::AcceptedChoice;
+                        predicate != &IfResultPredicate::AcceptedChoice;
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;
-            let predicate = effect_predicate_from_if_result(*predicate);
+            let predicate = effect_predicate_from_if_result(predicate.clone());
             let effect = Effect::if_then(condition, predicate, inner_effects);
             (vec![effect], inner_choices)
         }
@@ -492,7 +502,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;
-            let predicate = effect_predicate_from_if_result(*predicate);
+            let predicate = effect_predicate_from_if_result(predicate.clone());
             let effect =
                 Effect::reflexive_trigger(condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())
@@ -662,7 +672,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::repeat_process(
                 body_effects,
                 condition,
-                effect_predicate_from_if_result(*continue_predicate),
+                effect_predicate_from_if_result(continue_predicate.clone()),
             );
             (vec![effect], choices)
         }

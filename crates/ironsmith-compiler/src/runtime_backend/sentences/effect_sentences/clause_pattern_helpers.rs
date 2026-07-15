@@ -238,6 +238,7 @@ pub(crate) fn parse_copy_spell_clause(
         return Ok(Some(EffectAst::Coordinated {
             effects: vec![first, second],
             leading_duration: false,
+            result_conjunction: false,
         }));
     }
     if copy_shape.simple_reference {
@@ -298,8 +299,15 @@ pub(crate) fn parse_copy_spell_clause(
                     clause_text
                 )));
             }
-            let count_filter = parse_object_filter(count_filter_clause.tokens(), false)?;
-            count = Value::Count(count_filter);
+            count = if let Some(history_count) =
+                crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(
+                    count_filter_clause.tokens(),
+                )
+            {
+                history_count
+            } else {
+                Value::Count(parse_object_filter(count_filter_clause.tokens(), false)?)
+            };
         }
         let target = target_from_shape(clause_shapes::parse_copy_target_shape_tokens(
             copy_target_tail,
@@ -367,8 +375,15 @@ pub(crate) fn parse_copy_spell_clause(
                 clause_text
             )));
         }
-        let count_filter = parse_object_filter(count_filter_clause.tokens(), false)?;
-        count = Value::Count(count_filter);
+        count = if let Some(history_count) =
+            crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(
+                count_filter_clause.tokens(),
+            )
+        {
+            history_count
+        } else {
+            Value::Count(parse_object_filter(count_filter_clause.tokens(), false)?)
+        };
         copy_target_tail = &copy_target_tail[..for_each_idx];
     }
 
@@ -505,6 +520,18 @@ fn parse_counter_ability_target_phrase(
     );
     Ok(Some(wrap_target_count(target, shape.target_count)))
 }
+
+fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    if let Some(filter) = clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
+        return Ok(TargetAst::ObjectOrPlayer(
+            filter,
+            PlayerFilter::You,
+            None,
+        ));
+    }
+    parse_target_phrase(tokens)
+}
+
 pub(crate) fn parse_prevent_all_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -529,7 +556,7 @@ pub(crate) fn parse_prevent_all_damage_clause(
             ))
         }
         clause_shapes::PreventAllDamageShape::ToTarget { target_tokens } => {
-            let target = parse_target_phrase(target_tokens)?;
+            let target = parse_prevention_target_phrase(target_tokens)?;
             Ok(Some(EffectAst::subject_verb_prevent_all_damage_to_target(
                 target,
                 Until::EndOfTurn,
@@ -539,10 +566,9 @@ pub(crate) fn parse_prevent_all_damage_clause(
             target_tokens,
             source,
         } => {
-            let target = parse_target_phrase(target_tokens)?;
+            let target = parse_prevention_target_phrase(target_tokens)?;
             match source {
-                clause_shapes::PreventAllDamageSourceShape::Choice
-                | clause_shapes::PreventAllDamageSourceShape::ChoiceSharingActivationManaColor => {
+                clause_shapes::PreventAllDamageSourceShape::Choice => {
                     if !matches!(target, TargetAst::Player(PlayerFilter::You, _)) {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported prevent-all damage source choice target (clause: '{}')",
@@ -557,7 +583,31 @@ pub(crate) fn parse_prevent_all_damage_clause(
                         ),
                     ))
                 }
+                clause_shapes::PreventAllDamageSourceShape::ChoiceSharingActivationManaColor => {
+                    if !matches!(target, TargetAst::Player(PlayerFilter::You, _)) {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported prevent-all damage source choice target (clause: '{}')",
+                            clause_text
+                        )));
+                    }
+                    Ok(Some(
+                        EffectAst::subject_verb_prevent_all_damage_to_target_with_mana_color_source_choice(
+                            target,
+                            Until::EndOfTurn,
+                        ),
+                    ))
+                }
                 clause_shapes::PreventAllDamageSourceShape::Filter(source_tokens) => {
+                    if starts_with_target_indicator(source_tokens) {
+                        let source_target = parse_target_phrase(source_tokens)?;
+                        return Ok(Some(
+                            EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
+                                target,
+                                source_target,
+                                Until::EndOfTurn,
+                            ),
+                        ));
+                    }
                     let source_filter_target = parse_target_phrase(source_tokens)?;
                     let TargetAst::Object(source_filter, _, _) = source_filter_target else {
                         return Err(CardTextError::ParseError(format!(
@@ -606,6 +656,14 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
     };
     let source = match shape.source {
         clause_shapes::DamageSourceShape::Choice => PreventNextTimeDamageSourceAst::Choice,
+        clause_shapes::DamageSourceShape::ChoiceMatching(filter) => {
+            // A non-targeted object AST with no reference span is reserved here
+            // for a filtered source choice made as this effect resolves.
+            PreventNextTimeDamageSourceAst::Target(TargetAst::Object(filter, None, None))
+        }
+        clause_shapes::DamageSourceShape::Target(source_tokens) => {
+            PreventNextTimeDamageSourceAst::Target(parse_target_phrase(source_tokens)?)
+        }
         clause_shapes::DamageSourceShape::Tagged {
             card_type,
             source_tokens,
@@ -708,6 +766,22 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         } => {
             let source = match source {
                 clause_shapes::DamageSourceShape::Choice => PreventNextTimeDamageSourceAst::Choice,
+                // Redirect effects do not yet expose a filtered-choice runtime
+                // shape. Keep their prior choice semantics while prevention
+                // effects preserve the filter structurally.
+                clause_shapes::DamageSourceShape::ChoiceMatching(_) => {
+                    PreventNextTimeDamageSourceAst::Choice
+                }
+                clause_shapes::DamageSourceShape::Target(source_tokens) => {
+                    let source_target = parse_target_phrase(source_tokens)?;
+                    let TargetAst::Object(filter, _, _) = source_target else {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported redirected damage source target (clause: '{}')",
+                            clause_text
+                        )));
+                    };
+                    PreventNextTimeDamageSourceAst::Filter(filter)
+                }
                 clause_shapes::DamageSourceShape::Tagged {
                     card_type,
                     source_tokens,

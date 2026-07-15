@@ -2150,9 +2150,10 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     assert!(
         matches!(
             this_case_enters,
-            Ok(crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(
-                crate::target::SourceReferenceSurface::ThisPermanentType(ref surface),
-            )) if surface == "this case"
+            Ok(crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface {
+                surface: crate::target::SourceReferenceSurface::ThisPermanentType(ref surface),
+                ..
+            }) if surface == "this case"
         ),
         "expected this Case ETB to parse as a source ETB trigger, got {this_case_enters:?}"
     );
@@ -2167,7 +2168,7 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 if matches!(
                     left.as_ref(),
                     crate::cards::builders::TriggerSpec::ThisEntersBattlefield
-                        | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(_)
+                        | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface { .. }
                 )
                     && matches!(
                         right.as_ref(),
@@ -2189,7 +2190,7 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 if matches!(
                     left.as_ref(),
                     crate::cards::builders::TriggerSpec::ThisEntersBattlefield
-                        | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(_)
+                        | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface { .. }
                 )
                     && matches!(
                         right.as_ref(),
@@ -2423,9 +2424,10 @@ pub(super) fn rewrite_lexed_trigger_clause_resolves_double_slash_source_name_etb
     assert!(
         matches!(
             parsed,
-            Ok(crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(
-                crate::target::SourceReferenceSurface::ShortName(ref surface)
-            )) if surface == "SP//dr"
+            Ok(crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface {
+                surface: crate::target::SourceReferenceSurface::ShortName(ref surface),
+                ..
+            }) if surface == "SP//dr"
         ),
         "expected SP//dr source ETB trigger with surface, got {parsed:?}"
     );

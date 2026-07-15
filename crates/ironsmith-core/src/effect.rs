@@ -8,7 +8,7 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
 use crate::types::{CardType, Subtype, Supertype};
-use crate::value_model::{Restriction, Value};
+use crate::value_model::{PriorEffectAction, Restriction, Value};
 use crate::{Color, ColorSet, CounterType, SourceReferenceSurface};
 
 mod ascend;
@@ -126,10 +126,70 @@ pub enum EffectPredicate {
     HappenedNotReplaced,
     ExcessDamageDealt,
     DealtDamageToPlayer,
-    AffectedObjectMatchesCardType { card_type: CardType, negated: bool },
+    AffectedObjectMatchesCardType {
+        card_type: CardType,
+        negated: bool,
+    },
+    /// A result predicate over the captured objects produced by one prior
+    /// action, preserving the authored `... this way` relationship.
+    ///
+    /// Unlike the legacy card-type-only predicate, this retains the complete
+    /// object filter plus voice and quantifier presentation. Runtime matching
+    /// is still performed against the antecedent's last-known-information
+    /// memory rather than live objects.
+    PriorEffectResult(PriorEffectResultSurface),
     Value(crate::effect_model::Comparison),
     Chosen,
     WasDeclined,
+}
+
+/// Authored grammatical subject for a prior-result predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PriorEffectResultActor {
+    /// Passive surface such as "a creature card is exiled this way."
+    Passive,
+    /// Active controller surface such as "you discard a card this way."
+    You,
+    /// Active iterated-player surface such as "that player discards a card this way."
+    ThatPlayer,
+    /// Reflexive source surface such as "it connives this way."
+    It,
+}
+
+/// Authored cardinality for a prior-result predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PriorEffectResultQuantifier {
+    /// An ordinary singular result ("a creature card").
+    One,
+    /// An explicit nonzero plural result ("one or more nonland cards").
+    OneOrMore,
+    /// The action itself is the predicate and has no object noun surface.
+    ActionOnly,
+}
+
+/// Typed presentation and filtering data for a `... this way` result gate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PriorEffectResultSurface {
+    pub action: PriorEffectAction,
+    pub filter: ObjectFilter,
+    pub actor: PriorEffectResultActor,
+    pub quantifier: PriorEffectResultQuantifier,
+}
+
+impl PriorEffectResultSurface {
+    pub fn new(
+        action: PriorEffectAction,
+        filter: ObjectFilter,
+        actor: PriorEffectResultActor,
+        quantifier: PriorEffectResultQuantifier,
+    ) -> Self {
+        Self {
+            action,
+            filter,
+            actor,
+            quantifier,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,6 +211,7 @@ pub enum ReplacementApplyMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventNextTimeDamageSource {
     Choice,
+    ChoiceMatching(crate::filter_model::ObjectFilter),
     Target(ChooseSpec),
     Filter(crate::filter_model::ObjectFilter),
 }
@@ -158,6 +219,7 @@ pub enum PreventNextTimeDamageSource {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventNextTimeDamageTarget {
     AnyTarget,
+    Omitted,
     You,
     Target(ChooseSpec),
 }
@@ -693,11 +755,25 @@ pub struct NoteLifeTotalEffect;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetOnlyEffect {
     pub target: ChooseSpec,
+    /// Whether this target declaration was an authored standalone clause
+    /// (for example, "Choose target opponent.") rather than a synthetic
+    /// prelude introduced by lowering so later effects can share a target.
+    pub explicit_declaration: bool,
 }
 
 impl TargetOnlyEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            explicit_declaration: false,
+        }
+    }
+
+    pub fn explicit(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            explicit_declaration: true,
+        }
     }
 }
 
@@ -986,6 +1062,32 @@ pub struct EffectMode<E> {
     pub effects: Vec<E>,
 }
 
+/// A mode-selection range enabled by a later optional-cost announcement.
+///
+/// CR 601.4 allows an earlier mode choice to consider an optional cost that
+/// will be chosen later in the same proposal (for example, kicker enabling
+/// "choose any number instead").
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalModeRange {
+    pub required_optional_cost: crate::cost_model::OptionalCostRef,
+    pub min_modes: Value,
+    pub max_modes: Value,
+}
+
+impl ConditionalModeRange {
+    pub fn new(
+        required_optional_cost: impl Into<crate::cost_model::OptionalCostRef>,
+        min_modes: impl Into<Value>,
+        max_modes: impl Into<Value>,
+    ) -> Self {
+        Self {
+            required_optional_cost: required_optional_cost.into(),
+            min_modes: min_modes.into(),
+            max_modes: max_modes.into(),
+        }
+    }
+}
+
 impl<E> EffectMode<E> {
     pub fn new(source_text: impl Into<String>, effects: Vec<E>) -> Self {
         Self {
@@ -1014,6 +1116,8 @@ pub struct ChooseModeEffect<E> {
     pub disallow_previously_chosen_modes_this_turn: bool,
     /// Each chosen mode must declare a player target different from every other chosen mode.
     pub distinct_player_targets_per_mode: bool,
+    /// Alternate mode range that becomes legal if a later optional cost is announced.
+    pub conditional_mode_range: Option<ConditionalModeRange>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -1035,6 +1139,7 @@ impl<E> ChooseModeEffect<E> {
             disallow_previously_chosen_modes: false,
             disallow_previously_chosen_modes_this_turn: false,
             distinct_player_targets_per_mode: false,
+            conditional_mode_range: None,
         }
     }
 
@@ -1089,6 +1194,11 @@ impl<E> ChooseModeEffect<E> {
 
     pub fn with_distinct_player_targets_per_mode(mut self) -> Self {
         self.distinct_player_targets_per_mode = true;
+        self
+    }
+
+    pub fn with_conditional_mode_range(mut self, range: ConditionalModeRange) -> Self {
+        self.conditional_mode_range = Some(range);
         self
     }
 }
@@ -1345,12 +1455,29 @@ impl RevealTaggedEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RevealSourceFromHandDuration {
+    #[default]
+    Momentary,
+    UntilUpkeepEndsOrLeavesHand,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RevealSourceFromHandEffect;
+pub struct RevealSourceFromHandEffect {
+    pub duration: RevealSourceFromHandDuration,
+}
 
 impl RevealSourceFromHandEffect {
     pub fn new() -> Self {
-        Self
+        Self {
+            duration: RevealSourceFromHandDuration::Momentary,
+        }
+    }
+
+    pub fn until_upkeep_ends_or_leaves_hand() -> Self {
+        Self {
+            duration: RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand,
+        }
     }
 }
 
@@ -1588,6 +1715,9 @@ impl ShuffleHandAndGraveyardIntoLibraryEffect {
 pub enum ExiledWithSourceSubjectSurface {
     AllCards,
     EachCard,
+    /// "The owner of each card exiled with this source puts that card on the
+    /// bottom of their library."
+    OwnerOfEachCard,
     OneCard,
     TheExiledCard,
     TheExiledCards,
@@ -1835,6 +1965,70 @@ pub enum MoveToZoneVerbSurface {
     Return,
 }
 
+/// Oracle presentation retained for counters that are part of a one-shot
+/// battlefield-entry event.
+///
+/// Every variant has the same executable meaning: the counters are supplied
+/// to ETB replacement processing before the object changes zones. The surface
+/// only records how the originating sentence related the entry condition to
+/// the move.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BattlefieldEntryCounterSurface {
+    /// "It enters with ..."
+    Inline,
+    /// "If a creature enters this way, it enters with ..."
+    IfObjectEntersThisWay,
+    /// "If it enters as a creature, it enters with ..."
+    IfItEntersAsObject,
+    /// "It enters with ... if it's a creature."
+    ItEntersIfObject,
+    /// "If <condition>, that creature enters with ..."
+    ThatObjectEntersIfCondition,
+}
+
+/// Counters supplied as part of a one-shot move onto the battlefield.
+///
+/// This is distinct from [`PutCountersEffect`]: these counters exist on the
+/// enter event itself, so replacement effects such as Doubling Season see and
+/// modify them at the correct time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BattlefieldEntryCounterSpec {
+    pub counter_type: crate::counter::CounterType,
+    pub amount: Value,
+    /// A resolution-time gate known before the zone change (for example,
+    /// whether green mana was spent to cast the resolving spell).
+    pub condition: Option<crate::value_model::Condition>,
+    /// Characteristics the entering object must have for this counter grant.
+    pub object_filter: Option<ObjectFilter>,
+    pub surface: BattlefieldEntryCounterSurface,
+}
+
+impl BattlefieldEntryCounterSpec {
+    pub fn new(
+        counter_type: crate::counter::CounterType,
+        amount: impl Into<Value>,
+        surface: BattlefieldEntryCounterSurface,
+    ) -> Self {
+        Self {
+            counter_type,
+            amount: amount.into(),
+            condition: None,
+            object_filter: None,
+            surface,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::value_model::Condition) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+
+    pub fn for_matching_object(mut self, filter: ObjectFilter) -> Self {
+        self.object_filter = Some(filter);
+        self
+    }
+}
+
 /// How a multi-card move to the top or bottom of a library is ordered.
 ///
 /// The choosing player is explicit because the player performing the
@@ -1869,6 +2063,12 @@ pub struct MoveToZoneEffect {
     pub destination_player_reference_surface: Option<DestinationPlayerReferenceSurface>,
     pub exiled_with_source_surface: Option<ExiledWithSourceMoveSurface>,
     pub battlefield_controller: BattlefieldController,
+    /// Whether the oracle text explicitly named the battlefield controller.
+    /// This affects presentation only; `battlefield_controller` remains the
+    /// executable controller choice.
+    pub controller_surface_explicit: bool,
+    /// Counters that are part of this object's battlefield-entry event.
+    pub enters_with_counters: Vec<BattlefieldEntryCounterSpec>,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
     pub attack_target_mode: Option<MoveToZoneAttackTargetMode>,
@@ -1895,6 +2095,8 @@ impl MoveToZoneEffect {
             destination_player_reference_surface: None,
             exiled_with_source_surface: None,
             battlefield_controller: BattlefieldController::Preserve,
+            controller_surface_explicit: false,
+            enters_with_counters: Vec::new(),
             enters_tapped: false,
             enters_attacking: false,
             attack_target_mode: None,
@@ -1959,6 +2161,7 @@ impl MoveToZoneEffect {
 
     pub fn under_owner_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::Owner;
+        self.controller_surface_explicit = true;
         self
     }
 
@@ -1969,6 +2172,12 @@ impl MoveToZoneEffect {
 
     pub fn under_you_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::You;
+        self.controller_surface_explicit = true;
+        self
+    }
+
+    pub fn with_entry_counter(mut self, counter: BattlefieldEntryCounterSpec) -> Self {
+        self.enters_with_counters.push(counter);
         self
     }
 
@@ -2748,11 +2957,16 @@ impl DetainEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GoadEffect {
     pub target: ChooseSpec,
+    pub duration: Until,
 }
 
 impl GoadEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self::with_duration(target, Until::YourNextTurn)
+    }
+
+    pub fn with_duration(target: ChooseSpec, duration: Until) -> Self {
+        Self { target, duration }
     }
 }
 
@@ -3469,6 +3683,9 @@ pub struct ExileUntilEffect {
     pub duration: ExileUntilDuration,
     pub return_zone: crate::zone::Zone,
     pub face_down: bool,
+    /// Preserve the older two-sentence Oracle surface that explicitly says
+    /// to return the exiled card when the source leaves the battlefield.
+    pub explicit_return_surface: bool,
 }
 
 impl ExileUntilEffect {
@@ -3478,11 +3695,17 @@ impl ExileUntilEffect {
             duration,
             return_zone: crate::zone::Zone::Battlefield,
             face_down: false,
+            explicit_return_surface: false,
         }
     }
 
     pub fn with_face_down(mut self, face_down: bool) -> Self {
         self.face_down = face_down;
+        self
+    }
+
+    pub fn with_explicit_return_surface(mut self, explicit: bool) -> Self {
+        self.explicit_return_surface = explicit;
         self
     }
 
@@ -3647,6 +3870,10 @@ pub struct VoteEffect<E> {
     pub controller_extra_votes: u32,
     pub controller_optional_extra_votes: u32,
     pub secret: bool,
+    /// Whether the vote starts with the effect's controller before proceeding
+    /// in turn order. This is executable vote-order semantics, not merely a
+    /// rendering hint.
+    pub starting_with_controller: bool,
 }
 
 impl<E> VoteEffect<E> {
@@ -3656,6 +3883,7 @@ impl<E> VoteEffect<E> {
             controller_extra_votes,
             controller_optional_extra_votes: 0,
             secret: false,
+            starting_with_controller: false,
         }
     }
 
@@ -3669,6 +3897,7 @@ impl<E> VoteEffect<E> {
             controller_extra_votes,
             controller_optional_extra_votes,
             secret: false,
+            starting_with_controller: false,
         }
     }
 
@@ -3694,6 +3923,7 @@ impl<E> VoteEffect<E> {
             controller_extra_votes,
             controller_optional_extra_votes: 0,
             secret: false,
+            starting_with_controller: false,
         }
     }
 
@@ -3722,6 +3952,7 @@ impl<E> VoteEffect<E> {
             controller_extra_votes,
             controller_optional_extra_votes,
             secret: false,
+            starting_with_controller: false,
         }
     }
 
@@ -3747,6 +3978,7 @@ impl<E> VoteEffect<E> {
             controller_extra_votes,
             controller_optional_extra_votes,
             secret: false,
+            starting_with_controller: false,
         }
     }
 
@@ -3755,11 +3987,16 @@ impl<E> VoteEffect<E> {
     }
 
     pub fn councils_dilemma(options: Vec<VoteOption<E>>) -> Self {
-        Self::with_optional_extra(options, 0, 1)
+        Self::with_optional_extra(options, 0, 1).starting_with_controller(true)
     }
 
     pub fn with_secret(mut self, secret: bool) -> Self {
         self.secret = secret;
+        self
+    }
+
+    pub fn starting_with_controller(mut self, starting_with_controller: bool) -> Self {
+        self.starting_with_controller = starting_with_controller;
         self
     }
 }

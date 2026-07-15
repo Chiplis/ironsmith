@@ -394,6 +394,14 @@ fn is_prevent_damage_source_head_word(word: &str) -> bool {
     matches!(word, "target" | "that" | "this" | "it")
 }
 
+fn is_prevent_damage_explicit_target_source(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    words.iter().any(|word| *word == "target")
+        && !words
+            .windows(3)
+            .any(|window| window == ["other", "than", "target"])
+}
+
 fn is_prevent_damage_explicit_reference_word(word: &str) -> bool {
     matches!(word, "this" | "that" | "it")
 }
@@ -940,6 +948,28 @@ const PREVENT_DAMAGE_TO_AND_BY_PREFIXES: &[&[&str]] =
     &[&["that", "would", "be", "dealt", "to", "and", "dealt", "by"]];
 const PREVENT_DAMAGE_TO_PREFIXES: &[&[&str]] = &[&["that", "would", "be", "dealt", "to"]];
 
+fn parse_prevent_damage_source_excluding_target(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(crate::target::ObjectFilter, TargetAst)>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    let Some(marker) = primitives::parse_word_sequence_span(&words, &["other", "than"]) else {
+        return Ok(None);
+    };
+    let Some(source_clause) = clause.between_word_range(0, marker.start) else {
+        return Ok(None);
+    };
+    let Some(excluded_clause) = clause.after_words(marker.start + marker.len) else {
+        return Ok(None);
+    };
+    if source_clause.trimmed().tokens().is_empty() || excluded_clause.trimmed().tokens().is_empty() {
+        return Ok(None);
+    }
+    let source_filter = parse_object_filter(source_clause.trimmed().tokens(), false)?;
+    let excluded_target = parse_target_phrase(excluded_clause.trimmed().tokens())?;
+    Ok(Some((source_filter, excluded_target)))
+}
+
 pub(crate) fn parse_prevent_damage_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -999,16 +1029,29 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     if let Some((_, source_tokens)) =
         primitives::strip_lexed_prefix_phrases(&core_tokens, PREVENT_DAMAGE_BY_PREFIXES)
     {
+        if let Some((source_filter, excluded_target)) =
+            parse_prevent_damage_source_excluding_target(source_tokens)?
+        {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter_excluding_target(
+                    source_filter,
+                    excluded_target,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
         if source_tokens
             .first()
             .and_then(OwnedLexToken::as_word)
             .is_some_and(is_prevent_damage_source_head_word)
+            || is_prevent_damage_explicit_target_source(source_tokens)
         {
             let (source, has_color_condition) =
                 parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
             return Ok(Some(prevent_damage_effect_with_optional_condition(
                 source,
                 has_color_condition,
+                false,
             )));
         }
         if let Ok(source_filter) = parse_object_filter(source_tokens, false) {
@@ -1024,6 +1067,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
             has_color_condition,
+            false,
         )));
     }
 
@@ -1035,6 +1079,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
             has_color_condition,
+            false,
         )));
     }
 
@@ -1055,6 +1100,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
             .first()
             .and_then(OwnedLexToken::as_word)
             .is_some_and(is_prevent_damage_source_head_word)
+            && !is_prevent_damage_explicit_target_source(source_tokens)
             && let Ok(source_filter) = parse_object_filter(source_tokens, false)
         {
             return Ok(Some(
@@ -1075,6 +1121,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
             has_color_condition,
+            true,
         )));
     }
 
@@ -1111,9 +1158,11 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
 
     let source = parse_target_phrase(tokens)?;
     match source {
-        TargetAst::Source(_) | TargetAst::Object(_, _, _) | TargetAst::Tagged(_, _) => {
-            Ok((source, has_color_condition))
-        }
+        TargetAst::Source(_)
+        | TargetAst::Object(_, _, _)
+        | TargetAst::Tagged(_, _)
+        | TargetAst::WithCount(_, _)
+        | TargetAst::WithCountValue(_, _, _) => Ok((source, has_color_condition)),
         _ => Err(CardTextError::ParseError(format!(
             "unsupported prevent-all source target '{}'",
             token_word_refs(tokens).join(" ")
@@ -1124,15 +1173,23 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
 fn prevent_damage_effect_with_optional_condition(
     source: TargetAst,
     has_color_condition: bool,
+    source_would_deal_surface: bool,
 ) -> EffectAst {
     let condition_filter = match &source {
         TargetAst::Object(filter, _, _) => Some(filter.clone()),
         _ => None,
     };
-    let prevent = EffectAst::subject_verb_prevent_all_combat_damage_from_source(
-        source,
-        crate::effect::Until::EndOfTurn,
-    );
+    let prevent = if source_would_deal_surface {
+        EffectAst::subject_verb_prevent_all_combat_damage_source_would_deal(
+            source,
+            crate::effect::Until::EndOfTurn,
+        )
+    } else {
+        EffectAst::subject_verb_prevent_all_combat_damage_from_source(
+            source,
+            crate::effect::Until::EndOfTurn,
+        )
+    };
     if has_color_condition {
         let predicate = condition_filter.map_or_else(
             || {
@@ -1442,6 +1499,23 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             .any(|phrase| primitives::find_phrase_start(tokens, phrase).is_some())
     }
 
+    fn nested_iterated_object_filter(effect: &EffectAst) -> Option<ObjectFilter> {
+        if let EffectAst::ForEachObject { filter, .. } = effect {
+            return Some(filter.clone());
+        }
+        let mut found = None;
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects(
+            effect,
+            true,
+            |nested| {
+                if found.is_none() {
+                    found = nested.iter().find_map(nested_iterated_object_filter);
+                }
+            },
+        );
+        found
+    }
+
     if parse_each_chosen_player_search_put_top_shape(tokens).is_some() {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(Zone::Library);
@@ -1484,6 +1558,15 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         search_library_subject_player_iteration_filter_lexed(subject_tokens);
     let iterated_subject_filter =
         parse_search_library_iterated_object_subject_lexed(subject_tokens)?;
+    // A leading `for each <object>` clause is parsed as an effect prelude and
+    // therefore removed from `subject_tokens`.  It still supplies the
+    // contextual player for possessives in the search body (for example,
+    // "that player's library" after iterating permanents a targeted opponent
+    // controls).
+    let leading_iterated_subject_filter = leading_effects
+        .iter()
+        .rev()
+        .find_map(nested_iterated_object_filter);
     let chooser = if player_iteration_filter.is_some() {
         PlayerAst::That
     } else {
@@ -1514,7 +1597,23 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     };
     let player = subject_routing.player;
     let search_player_target = subject_routing.search_player_target;
-    let forced_library_owner = subject_routing.forced_library_owner;
+    let mut forced_library_owner = subject_routing.forced_library_owner;
+    // In an object iteration, "that player's library" refers to the
+    // controller of the current iterand.  Preserve a statically constrained
+    // controller (for example, a targeted opponent) so the collected search
+    // results can be followed by one shuffle for that player; otherwise keep
+    // the current object identity explicit through the scoped `__it__` tag.
+    if let Some(iterated_filter) = iterated_subject_filter
+        .as_ref()
+        .or(leading_iterated_subject_filter.as_ref())
+        && (matches!(forced_library_owner, Some(PlayerFilter::IteratedPlayer))
+            || (forced_library_owner.is_none()
+                && matches!(player, PlayerAst::That | PlayerAst::ItsController)))
+    {
+        forced_library_owner = Some(iterated_filter.controller.clone().unwrap_or_else(|| {
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+        }));
+    }
     let search_zones_override = subject_routing.search_zones_override;
     if search_library_has_unsupported_top_position_probe_lexed(search_tokens) {
         return Err(CardTextError::ParseError(format!(

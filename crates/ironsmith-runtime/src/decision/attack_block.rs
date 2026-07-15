@@ -153,12 +153,9 @@ fn can_declare_attack_target_preview(
     });
 
     total_generic_cost == 0
-        || game.can_pay_mana_cost(
-            game.controller_of(attacker),
-            None,
-            &generic_mana_cost(total_generic_cost),
-            0,
-        )
+        || view
+            .potential_mana(game.controller_of(attacker))
+            .can_pay(&generic_mana_cost(total_generic_cost), 0)
 }
 
 /// Compute legal attackers for the active player.
@@ -323,6 +320,11 @@ pub fn compute_legal_blockers(
     // For each attacker, find creatures that can block it
     for attacker_info in &combat.attackers {
         let attacker_id = attacker_info.creature;
+        if crate::combat_state::defending_player_for_attack_target(game, &attacker_info.target)
+            != Some(defending_player)
+        {
+            continue;
+        }
         let Some(attacker) = game.object(attacker_id) else {
             continue;
         };

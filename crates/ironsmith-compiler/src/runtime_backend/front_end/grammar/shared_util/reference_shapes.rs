@@ -427,6 +427,11 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
     }
     if permission_shapes::exact_words(words, &["decayed"]) {
         Some(Marker("decayed"))
+    } else if permission_shapes::exact_words(words, &["mutate"]) {
+        // Costed keyword markers retain their full printed surface (for
+        // example, `Mutate {4}{B}`), while ObjectFilter marker matching is
+        // deliberately word-aware.  Keep the semantic marker cost-agnostic.
+        Some(Marker("mutate"))
     } else if permission_shapes::exact_words(words, &["toxic"]) {
         Some(Marker("toxic"))
     } else if permission_shapes::exact_words(words, &["islandwalk"]) {

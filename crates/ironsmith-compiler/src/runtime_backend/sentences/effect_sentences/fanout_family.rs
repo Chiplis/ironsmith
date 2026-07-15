@@ -118,6 +118,7 @@ pub(crate) fn parse_serial_target_pt_modifiers_sentence(
     Ok(Some(vec![EffectAst::Coordinated {
         effects,
         leading_duration: true,
+        result_conjunction: false,
     }]))
 }
 
@@ -772,6 +773,7 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
         return Ok(Some(vec![EffectAst::Coordinated {
             effects,
             leading_duration: false,
+            result_conjunction: false,
         }]));
     }
 
@@ -791,6 +793,7 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
     Ok(Some(vec![EffectAst::Coordinated {
         effects,
         leading_duration: false,
+        result_conjunction: false,
     }]))
 }
 
@@ -916,6 +919,7 @@ mod coordinated_target_tests {
             EffectAst::Coordinated {
                 effects,
                 leading_duration: true,
+                result_conjunction: false,
             },
         ] = parsed.as_slice()
         else {

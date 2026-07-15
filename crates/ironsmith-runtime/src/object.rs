@@ -375,6 +375,17 @@ pub struct BestowCastState {
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
 }
 
+/// Original spell program restored when a spell modified by splice leaves the stack.
+///
+/// Splice is a text-changing effect on the spell, not a change to the physical
+/// card's copiable values outside the stack (CR 702.47c, 702.47e). Keeping the
+/// pre-splice program on the object also lets spell copies inherit the active
+/// overlay and then shed it through the ordinary stack-to-zone transition.
+#[derive(Debug, Clone)]
+pub struct SpliceCastState {
+    pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
+}
+
 /// Stored copiable fields needed to restore a card after a face-down cast.
 #[derive(Debug, Clone)]
 pub struct FaceDownCastState {
@@ -464,6 +475,8 @@ pub struct Object {
     // Spell-related state
     /// Spell effects (for instants/sorceries)
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
+    /// Pre-splice program while this object is a spell on the stack.
+    pub splice_cast_state: Option<Box<SpliceCastState>>,
     /// For Auras: what this card can enchant (used for non-target attachments)
     pub aura_attach_filter: Option<SharedValue<AuraAttachmentFilter>>,
     /// Original copiable fields to restore if this permanent ends bestow.
@@ -638,6 +651,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
+            splice_cast_state: None,
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
@@ -714,6 +728,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
+            splice_cast_state: None,
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
@@ -941,6 +956,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
+            splice_cast_state: None,
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
@@ -1008,6 +1024,7 @@ impl Object {
             attachments: Vec::new(),
             // Note: spell_effect is copiable for spell copies
             spell_effect,
+            splice_cast_state: None,
             aura_attach_filter,
             bestow_cast_state: None,
             face_down_cast_state: source.face_down_cast_state.clone(),
@@ -1072,6 +1089,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: source.spell_effect.clone(),
+            splice_cast_state: source.splice_cast_state.clone(),
             aura_attach_filter: source.aura_attach_filter.clone(),
             bestow_cast_state: source.bestow_cast_state.clone(),
             face_down_cast_state: source.face_down_cast_state.clone(),
@@ -1135,6 +1153,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
+            splice_cast_state: None,
             aura_attach_filter: shared_optional_value(copiable.aura_attach_filter.clone()),
             bestow_cast_state: None,
             face_down_cast_state: None,
@@ -1197,6 +1216,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: None,
+            splice_cast_state: None,
             aura_attach_filter: None,
             bestow_cast_state: None,
             face_down_cast_state: None,
@@ -1369,6 +1389,26 @@ impl Object {
         self.card_types = restore.card_types;
         self.subtypes = restore.subtypes;
         self.aura_attach_filter = restore.aura_attach_filter;
+        self.spell_effect = restore.spell_effect;
+        true
+    }
+
+    /// Begin the stack-only text-changing overlay created by splice.
+    pub fn begin_splice_cast_overlay(&mut self) -> bool {
+        if self.splice_cast_state.is_some() {
+            return false;
+        }
+        self.splice_cast_state = Some(Box::new(SpliceCastState {
+            spell_effect: self.spell_effect.clone(),
+        }));
+        true
+    }
+
+    /// End the splice overlay and restore the physical card's original program.
+    pub fn end_splice_cast_overlay(&mut self) -> bool {
+        let Some(restore) = self.splice_cast_state.take() else {
+            return false;
+        };
         self.spell_effect = restore.spell_effect;
         true
     }
@@ -1834,6 +1874,7 @@ impl Object {
             attached_to: None,
             attachments: Vec::new(),
             spell_effect: handles.spell_effect.clone(),
+            splice_cast_state: None,
             aura_attach_filter: handles.aura_attach_filter.clone(),
             bestow_cast_state: None,
             face_down_cast_state: None,

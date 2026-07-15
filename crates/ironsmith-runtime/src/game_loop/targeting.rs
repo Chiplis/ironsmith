@@ -88,10 +88,6 @@ pub(super) fn queue_triggers_from_event(
             trigger_queue.add(trigger);
         }
     }
-
-    if let Some(cast) = event.downcast::<crate::events::spells::SpellCastEvent>() {
-        game.consume_temporary_spell_ability_grants_for_spell(cast.spell, cast.caster);
-    }
 }
 
 /// Queue trigger matches for each event in this list.
@@ -124,7 +120,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
 
     let trigger_groups = check_triggers_batch(game, &events);
     let mut speed_controllers = std::collections::HashSet::new();
-    for (event, triggers) in events.iter().zip(trigger_groups) {
+    for triggers in trigger_groups {
         for trigger in triggers {
             if crate::triggers::check::is_speed_rule_trigger(&trigger) {
                 if !speed_controllers.insert(trigger.controller) {
@@ -133,10 +129,6 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 game.mark_speed_increase_triggered_this_turn(trigger.controller);
             }
             trigger_queue.add(trigger);
-        }
-
-        if let Some(cast) = event.downcast::<crate::events::spells::SpellCastEvent>() {
-            game.consume_temporary_spell_ability_grants_for_spell(cast.spell, cast.caster);
         }
     }
 }
@@ -278,6 +270,16 @@ pub(super) fn queue_ability_activated_event(
         .rev()
         .find(|entry| entry.is_ability && entry.object_id == source)
         .is_some_and(|entry| entry.activation_cost_has_x);
+    let mana_sources_tag =
+        crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+    let mana_sources_spent = game
+        .stack
+        .iter()
+        .rev()
+        .find(|entry| entry.is_ability && entry.object_id == source)
+        .and_then(|entry| entry.tagged_objects.get(&mana_sources_tag))
+        .cloned()
+        .unwrap_or_default();
     let event_provenance = game
         .provenance_graph_mut()
         .alloc_root_event(crate::events::EventKind::AbilityActivated);
@@ -287,7 +289,8 @@ pub(super) fn queue_ability_activated_event(
             .with_activation_cost_has_x(activation_cost_has_x)
             .with_activation_cost_has_tap(activation_cost_has_tap)
             .with_x_value(x_value)
-            .with_snapshot(snapshot),
+            .with_snapshot(snapshot)
+            .with_mana_sources_spent(mana_sources_spent),
         event_provenance,
     );
     queue_triggers_from_event(game, trigger_queue, event, true);
@@ -523,6 +526,10 @@ fn simultaneous_rule_ltb_batch_events(pending_events: &[TriggerEvent]) -> Vec<Tr
 }
 
 pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    for entry in game.take_pending_trigger_entries() {
+        trigger_queue.add(entry);
+    }
+
     let mut one_or_more_zone_changes_seen = HashSet::new();
     loop {
         let pending_events = game.take_pending_trigger_events();
@@ -810,6 +817,26 @@ pub(super) fn resolve_modal_mode_counts(
     {
         let all_modes = modal.modes.len();
         return (all_modes, all_modes);
+    }
+
+    if let Some(range) = modal.conditional_mode_range
+        && source_id
+            .and_then(|id| game.object(id))
+            .is_some_and(|source| {
+                source
+                    .optional_costs_paid
+                    .was_paid_label(range.required_optional_cost.clone())
+            })
+    {
+        let max_modes = resolve_modal_count_value_for_source(
+            game,
+            source_id,
+            &range.max_modes,
+            modal.modes.len(),
+        );
+        let min_modes =
+            resolve_modal_count_value_for_source(game, source_id, &range.min_modes, max_modes);
+        return (min_modes, max_modes);
     }
 
     let max_modes = resolve_modal_count_value_for_source(
@@ -1152,6 +1179,45 @@ fn modal_effect_has_legal_targets_internal_with_view(
     }
 }
 
+fn distribution_supports_minimum_target_count(
+    game: &GameState,
+    extracted: &ExtractedTarget<'_>,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    legal_targets: &[Target],
+    min_targets: usize,
+) -> bool {
+    let Some(value) = extracted.distribution_value else {
+        return true;
+    };
+    if min_targets == 0 {
+        return true;
+    }
+    let Some(source) = source_id else {
+        return true;
+    };
+
+    let resolved_targets = legal_targets
+        .iter()
+        .take(min_targets)
+        .map(|target| match target {
+            Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
+            Target::Player(id) => crate::effects::ResolvedTarget::Player(*id),
+        })
+        .collect::<Vec<_>>();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, caster, &mut decision_maker)
+        .with_targets(resolved_targets);
+    ctx.x_value = game.object(source).and_then(|object| object.x_value);
+    let Ok(total) = crate::effects::helpers::resolve_value(game, value, &ctx) else {
+        return true;
+    };
+    let required = extracted
+        .distribution_min_per_target
+        .saturating_mul(min_targets as u32);
+    total.max(0) as u32 >= required
+}
+
 fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     game: &GameState,
     effect: &Effect,
@@ -1220,8 +1286,9 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             return true;
         }
         declare_target(&extracted, declared_targets);
+        let (min_targets, _) = resolved_target_bounds(game, &extracted, caster, source_id);
         // For "any number" effects, we can cast even with no legal targets.
-        if extracted.min_targets == 0 {
+        if min_targets == 0 {
             return true;
         }
         let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
@@ -1232,7 +1299,15 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             None,
             view,
         );
-        return legal_targets.len() >= extracted.min_targets;
+        return legal_targets.len() >= min_targets
+            && distribution_supports_minimum_target_count(
+                game,
+                &extracted,
+                caster,
+                source_id,
+                &legal_targets,
+                min_targets,
+            );
     }
 
     true
@@ -1403,6 +1478,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 min_targets: 1,
                 max_targets: Some(1),
                 count_value: None,
+                distribution_value: None,
+                distribution_min_per_target: 1,
                 reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
             };
             declare_target(&profile, declared_targets);
@@ -1418,6 +1495,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     min_targets: 1,
                     max_targets: Some(1),
                     distinct_player_group: None,
+                    distribution_value: None,
+                    distribution_min_per_target: 1,
                 });
             }
         }
@@ -1453,6 +1532,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 min_targets,
                 max_targets,
                 distinct_player_group: None,
+                distribution_value: extracted.distribution_value.cloned(),
+                distribution_min_per_target: extracted.distribution_min_per_target,
             });
         }
     }
@@ -1524,6 +1605,8 @@ fn extract_target_requirements_from_iterated_effect(
             min_targets: extracted.min_targets,
             max_targets: extracted.max_targets,
             count_value: extracted.count_value,
+            distribution_value: extracted.distribution_value,
+            distribution_min_per_target: extracted.distribution_min_per_target,
             reuse_policy: extracted.reuse_policy,
         };
         if profile_reuses_declared_target(&profile, declared_targets) {
@@ -1549,6 +1632,8 @@ fn extract_target_requirements_from_iterated_effect(
                 min_targets,
                 max_targets,
                 distinct_player_group: None,
+                distribution_value: extracted.distribution_value.cloned(),
+                distribution_min_per_target: extracted.distribution_min_per_target,
             });
         }
         return;
@@ -1581,6 +1666,10 @@ fn specialize_iterated_player_choose_spec(spec: &ChooseSpec, player: PlayerId) -
         ChooseSpec::Object(filter) => {
             ChooseSpec::Object(specialize_iterated_player_object_filter(filter, player))
         }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => ChooseSpec::ObjectOrPlayer(
+            specialize_iterated_player_object_filter(object_filter, player),
+            specialize_iterated_player_filter(player_filter, player),
+        ),
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
             ChooseSpec::PlayerOrPlaneswalker(specialize_iterated_player_filter(filter, player))
         }
@@ -1781,6 +1870,8 @@ fn count_target_selection_slots_from_effect_internal(
                 min_targets: 1,
                 max_targets: Some(1),
                 count_value: None,
+                distribution_value: None,
+                distribution_min_per_target: 1,
                 reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
             };
             declare_target(&profile, declared_targets);
@@ -2026,6 +2117,10 @@ fn effect_has_new_cast_time_target_selection(effect: &Effect) -> bool {
 fn target_spec_references_previous_target_tag(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Object(filter) => object_filter_references_previous_target_tag(filter),
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            object_filter_references_previous_target_tag(object_filter)
+                || player_filter_references_previous_target_tag(player_filter)
+        }
         ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
             player_filter_references_previous_target_tag(filter)
         }
@@ -2714,6 +2809,10 @@ fn replace_damaged_player_choose_spec(spec: &mut crate::target::ChooseSpec, play
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             replace_damaged_player_object_filter(filter, player);
         }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            replace_damaged_player_object_filter(object_filter, player);
+            replace_damaged_player_filter(player_filter, player);
+        }
         ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
             replace_damaged_player_filter(filter, player);
         }
@@ -2782,6 +2881,10 @@ fn choose_spec_for_resolution_target_validation(
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
             ChooseSpec::PlayerOrPlaneswalker(player_filter_for_resolution_target_validation(filter))
         }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => ChooseSpec::ObjectOrPlayer(
+            object_filter.clone(),
+            player_filter_for_resolution_target_validation(player_filter),
+        ),
         _ => spec.clone(),
     }
 }

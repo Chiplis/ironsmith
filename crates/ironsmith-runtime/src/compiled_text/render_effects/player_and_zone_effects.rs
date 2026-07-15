@@ -731,8 +731,41 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay) {
         return Some("card drawn this way".to_string());
     }
+    // Let typed prior-effect metrics render their own filter below.  A broad
+    // "cards revealed this way" hint is useful for an unfiltered reveal, but
+    // it must not erase distinctions such as "nonland card revealed this
+    // way".
+    if value.has_surface_hint(ValueSurfaceHint::CardsPutIntoYourGraveyardThisWay) {
+        return Some("creature card put into your graveyard this way".to_string());
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CardsLookedAtWhileScryingThisWay) {
+        return Some("card looked at while scrying this way".to_string());
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CreaturesBlockingIt) {
+        return match value.unhinted() {
+            Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }) => {
+                Some("creature blocking it beyond the first".to_string())
+            }
+            Value::EventValueOffset(
+                EventValueSpec::BlockersBeyondFirst { multiplier: 1 },
+                1,
+            ) => Some("creature blocking it".to_string()),
+            _ => None,
+        };
+    }
+    if value.has_surface_hint(ValueSurfaceHint::CreaturesChosenBeforeIt) {
+        return Some("creature chosen before it".to_string());
+    }
     match value.unhinted() {
-        Value::Count(filter) => Some(describe_for_each_filter(filter)),
+        Value::Count(filter) => Some(
+            describe_prior_effect_source_count_basis(filter, false)
+                .unwrap_or_else(|| describe_for_each_filter(filter)),
+        ),
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
+            if query.metric == crate::effect::EffectMetric::Count =>
+        {
+            Some(describe_prior_effect_metric_basis(query, false))
+        }
         Value::BasicLandTypesAmong(filter) => Some(describe_basic_land_types_among(filter)),
         Value::CreatureTypesAmong(filter) => Some(format!(
             "creature type among {}",
@@ -745,6 +778,18 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::ColorsAmong(filter) => Some(describe_colors_among(filter)),
         Value::ColorsOfManaSpentToCastThisSpell => {
             Some("color of mana spent to cast this spell".to_string())
+        }
+        Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+        } => {
+            let mut source = source_filter.description();
+            if *include_source_noun {
+                source.push_str(" source");
+            }
+            Some(format!(
+                "mana from {source} that was spent to cast this spell"
+            ))
         }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         Value::CreaturesDiedThisTurnControlledBy(controller) => {
@@ -1247,6 +1292,15 @@ pub(super) fn describe_revealed_keyword_choice_selection(
 }
 
 pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEffect) -> String {
+    if choose.count_value.as_ref().is_some_and(|value| {
+        value.has_surface_hint(ValueSurfaceHint::ChooseAllInOrder)
+    }) {
+        let singular = describe_for_each_count_filter(&choose.filter);
+        let plural = pluralize_noun_phrase(&singular);
+        return format!(
+            "{plural} one at a time until each {singular} has been chosen"
+        );
+    }
     if choose.top_only {
         if let Some(exact) = choose_exact_count(choose) {
             if exact > 1 {
@@ -1271,39 +1325,28 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return selection;
     }
 
-    let mut described_filter = choose.filter.clone();
-    let greatest_suffix = match (
-        described_filter.mana_value.clone(),
-        described_filter.power.clone(),
-    ) {
-        (Some(crate::filter::Comparison::EqualExpr(value)), _)
-            if matches!(value.unhinted(), Value::GreatestManaValue(_)) =>
-        {
-            let Value::GreatestManaValue(scope) = value.unhinted() else {
-                unreachable!()
-            };
-            described_filter.mana_value = None;
-            Some(format!(
-                " with the greatest mana value among {}",
-                describe_for_each_count_filter(scope)
-                    .replace("that player controls", "they control")
-            ))
-        }
-        (_, Some(crate::filter::Comparison::EqualExpr(value)))
-            if matches!(value.unhinted(), Value::GreatestPower(_)) =>
-        {
-            let Value::GreatestPower(scope) = value.unhinted() else {
-                unreachable!()
-            };
-            described_filter.power = None;
-            Some(format!(
-                " with the greatest power among {}",
-                describe_for_each_count_filter(scope)
-                    .replace("that player controls", "they control")
-            ))
-        }
-        _ => None,
-    };
+    let described_filter = choose.filter.clone();
+    let has_extremum = [
+        &described_filter.power,
+        &described_filter.toughness,
+        &described_filter.mana_value,
+    ]
+    .into_iter()
+    .flatten()
+    .any(|comparison| {
+        let crate::filter::Comparison::EqualExpr(value) = comparison else {
+            return false;
+        };
+        matches!(
+            value.unhinted(),
+            Value::GreatestPower(_)
+                | Value::GreatestToughness(_)
+                | Value::GreatestManaValue(_)
+                | Value::LeastPower(_)
+                | Value::LeastToughness(_)
+                | Value::LeastManaValue(_)
+        )
+    });
     let filter_text = described_filter
         .zone
         .or(choose.zone)
@@ -1318,8 +1361,8 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         .unwrap_or(filter_text.as_str())
         .trim()
         .to_string();
-    if let Some(suffix) = greatest_suffix {
-        card_desc.push_str(&suffix);
+    if has_extremum {
+        card_desc = card_desc.replace("that player controls", "they control");
     }
     for owner_prefix in [
         "target player's ",
@@ -1601,7 +1644,17 @@ pub(super) fn describe_choose_exile_then_put_counter(
     exile: &crate::effects::ExileEffect,
     put: &crate::effects::PutCountersEffect,
 ) -> Option<String> {
-    if !matches!(&put.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    let counter_follows_chosen_object = matches!(
+        &put.target,
+        ChooseSpec::Tagged(tag) if tag == &choose.tag
+    );
+    let counter_follows_source_exiled_object =
+        matches!(
+            &put.target,
+            ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        ) && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str());
+    if (!counter_follows_chosen_object && !counter_follows_source_exiled_object)
+        || !choose.count.is_single()
         || put.target_count.is_some()
         || put.distributed
     {
@@ -1885,6 +1938,7 @@ pub(super) fn describe_exiled_with_source_move(
     let subject = match surface.subject {
         SubjectSurface::AllCards => "all cards",
         SubjectSurface::EachCard => "each card",
+        SubjectSurface::OwnerOfEachCard => "each card",
         SubjectSurface::OneCard => "a card",
         SubjectSurface::TheExiledCard => "the exiled card",
         SubjectSurface::TheExiledCards => "the exiled cards",
@@ -1895,6 +1949,11 @@ pub(super) fn describe_exiled_with_source_move(
         ReferenceSurface::It => " exiled with it".to_string(),
         ReferenceSurface::Omitted => String::new(),
     };
+    if surface.subject == SubjectSurface::OwnerOfEachCard && zone == Zone::Library {
+        return format!(
+            "The owner of each card{source} puts that card on the bottom of their library"
+        );
+    }
     let zone_noun = match zone {
         Zone::Hand => "hand",
         Zone::Graveyard => "graveyard",
@@ -2072,6 +2131,21 @@ pub(super) fn describe_move_to_battlefield_with_additional_counters(
         "It enters"
     };
 
+    if move_to_zone.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Return
+        && matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == "triggering"
+        )
+    {
+        let move_text = describe_effect(&Effect::new(move_to_zone.clone()))
+            .trim_end_matches('.')
+            .to_string();
+        return Some(format!(
+            "{move_text} and put {} on it",
+            describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type)
+        ));
+    }
+
     Some(format!(
         "Put {target_text} onto the battlefield{controller_suffix}. {entering_subject} with an additional {} counter on it",
         describe_counter_type(put_counters.counter_type),
@@ -2158,6 +2232,92 @@ pub(super) fn describe_return_from_graveyard_with_counters(effects: &[Effect]) -
     text.push_str(&counter_text);
     text.push_str(" on it");
     Some(text)
+}
+
+fn battlefield_entry_object_noun(filter: Option<&ObjectFilter>) -> String {
+    filter
+        .map(|filter| strip_leading_article(&filter.description()).to_string())
+        .filter(|description| !description.is_empty())
+        .unwrap_or_else(|| "permanent".to_string())
+}
+
+fn battlefield_entry_counter_phrase(
+    counter: &ironsmith_core::BattlefieldEntryCounterSpec,
+    additional: bool,
+) -> String {
+    let counter_type = describe_counter_type(counter.counter_type);
+    let modifier = if additional { "additional " } else { "" };
+    match counter.amount.unhinted() {
+        Value::Fixed(1) => {
+            let article = if additional { "an" } else { "a" };
+            format!("{article} {modifier}{counter_type} counter")
+        }
+        Value::Fixed(amount) if *amount > 1 => {
+            let amount = number_word(*amount).unwrap_or_else(|| amount.to_string());
+            format!("{amount} {modifier}{counter_type} counters")
+        }
+        amount => format!(
+            "{} {modifier}{counter_type} counters",
+            describe_value(amount)
+        ),
+    }
+}
+
+pub(super) fn append_battlefield_entry_counter_surface(
+    base: String,
+    counters: &[ironsmith_core::BattlefieldEntryCounterSpec],
+) -> String {
+    let mut rendered = base.trim_end_matches('.').to_string();
+    for counter in counters {
+        let noun = battlefield_entry_object_noun(counter.object_filter.as_ref());
+        let additional = counter
+            .amount
+            .has_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
+        let counter_phrase = battlefield_entry_counter_phrase(counter, additional);
+        let clause = match counter.surface {
+            ironsmith_core::BattlefieldEntryCounterSurface::Inline => {
+                rendered.push_str(" with ");
+                rendered.push_str(&counter_phrase);
+                rendered.push_str(" on it");
+                continue;
+            }
+            ironsmith_core::BattlefieldEntryCounterSurface::IfObjectEntersThisWay => {
+                let counter_phrase = battlefield_entry_counter_phrase(counter, true);
+                format!(
+                    "If {}, it enters with {counter_phrase} on it",
+                    with_indefinite_article(&format!("{noun} enters this way"))
+                )
+            }
+            ironsmith_core::BattlefieldEntryCounterSurface::IfItEntersAsObject => {
+                let counter_phrase = battlefield_entry_counter_phrase(counter, true);
+                format!(
+                    "If it enters as {}, it enters with {counter_phrase} on it",
+                    with_indefinite_article(&noun)
+                )
+            }
+            ironsmith_core::BattlefieldEntryCounterSurface::ItEntersIfObject => {
+                let counter_phrase = battlefield_entry_counter_phrase(counter, true);
+                format!(
+                    "It enters with {counter_phrase} on it if it's {}",
+                    with_indefinite_article(&noun)
+                )
+            }
+            ironsmith_core::BattlefieldEntryCounterSurface::ThatObjectEntersIfCondition => {
+                let counter_phrase = battlefield_entry_counter_phrase(counter, true);
+                let condition = counter
+                    .condition
+                    .as_ref()
+                    .map(describe_condition)
+                    .unwrap_or_else(|| "the condition is met".to_string());
+                format!(
+                    "If {condition}, that {noun} enters with {counter_phrase} on it"
+                )
+            }
+        };
+        rendered.push_str(". ");
+        rendered.push_str(&clause);
+    }
+    rendered
 }
 
 pub(super) fn tagged_return_all_from_graveyard(
@@ -2315,7 +2475,7 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
         crate::effects::BattlefieldController::Preserve => String::new(),
         crate::effects::BattlefieldController::Owner => " under its owner's control".to_string(),
         crate::effects::BattlefieldController::You => {
-            if chooser == "you" {
+            if chooser == "you" && !move_to_zone.controller_surface_explicit {
                 String::new()
             } else {
                 " under your control".to_string()

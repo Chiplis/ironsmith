@@ -1,6 +1,6 @@
 //! Tap effect implementation.
 
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -34,6 +34,8 @@ impl EffectExecutor for TapEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut events = Vec::new();
+        let mut tapped_objects = Vec::new();
+        let mut tapped_object_memory = Vec::new();
         let result_policy = if self.target.is_target() && self.target.is_single() {
             ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
         } else {
@@ -48,7 +50,15 @@ impl EffectExecutor for TapEffect {
             result_policy,
             |game, _ctx, object_id| {
                 if game.object(object_id).is_some() && !game.is_tapped(object_id) {
+                    let memory = OutcomeObjectMemory::from_object_id(game, object_id);
                     game.tap(object_id);
+                    if !game.is_tapped(object_id) {
+                        return Ok(false);
+                    }
+                    tapped_objects.push(object_id);
+                    if let Some(memory) = memory {
+                        tapped_object_memory.push(memory);
+                    }
                     events.push(TriggerEvent::new_with_provenance(
                         PermanentTappedEvent::new(object_id),
                         provenance,
@@ -60,7 +70,13 @@ impl EffectExecutor for TapEffect {
             },
         )?;
 
-        Ok(apply_result.outcome.with_events(events))
+        let mut outcome = apply_result.outcome.with_events(events);
+        if !tapped_objects.is_empty() {
+            outcome = outcome
+                .with_affected_objects(tapped_objects)
+                .with_affected_object_memory(tapped_object_memory);
+        }
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -217,6 +233,11 @@ mod tests {
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         assert!(game.is_tapped(creature_id));
+        assert_eq!(result.affected_objects(), Some([creature_id].as_slice()));
+        assert_eq!(
+            result.affected_object_memory().map(|memory| memory.len()),
+            Some(1)
+        );
     }
 
     #[test]
@@ -236,6 +257,52 @@ mod tests {
         // Still resolves even if already tapped
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
         assert!(game.is_tapped(creature_id));
+        assert_eq!(result.affected_objects(), None);
+        assert_eq!(result.affected_object_memory(), None);
+    }
+
+    #[test]
+    fn tap_captures_affected_memory_before_tapped_state_changes_characteristics() {
+        use crate::continuous::{EffectTarget, Modification};
+        use crate::effect::{Effect, Until};
+        use crate::effects::{ApplyContinuousEffect, execute_effect};
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let permanent =
+            create_permanent(&mut game, "Conditional Land", alice, vec![CardType::Land]);
+        let mut ctx = ExecutionContext::new_default(permanent, alice);
+        let conditional_animation = Effect::new(
+            ApplyContinuousEffect::new(
+                EffectTarget::Specific(permanent),
+                Modification::AddCardTypes(vec![CardType::Creature]),
+                Until::ThisLeavesTheBattlefield,
+            )
+            .with_condition(crate::ConditionExpr::SourceIsTapped),
+        );
+        execute_effect(&mut game, &conditional_animation, &mut ctx)
+            .expect("register tapped-state animation");
+
+        assert!(
+            game.current_card_types(permanent)
+                .is_some_and(|types| !types.contains(&CardType::Creature))
+        );
+
+        let result = TapEffect::source()
+            .execute(&mut game, &mut ctx)
+            .expect("tap source");
+
+        assert!(game.is_tapped(permanent));
+        assert!(
+            game.current_card_types(permanent)
+                .is_some_and(|types| types.contains(&CardType::Creature))
+        );
+        let memory = result
+            .affected_object_memory()
+            .and_then(|memory| memory.first())
+            .expect("pre-tap affected-object memory");
+        assert!(memory.card_types.contains(&CardType::Land));
+        assert!(!memory.card_types.contains(&CardType::Creature));
     }
 
     #[test]
@@ -377,6 +444,7 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert!(game.is_tapped(creature1));
         assert!(game.is_tapped(creature2));
+        assert_eq!(result.affected_objects(), Some([creature2].as_slice()));
     }
 
     #[test]

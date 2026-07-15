@@ -2423,6 +2423,28 @@ fn parse_rejects_phase_out_until_leaves_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_untap_then_phase_out_until_source_leaves_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Out of Time Variant")
+        .parse_text(
+            "When this enchantment enters, untap all creatures, then those creatures phase out until this enchantment leaves the battlefield. Put a time counter on this enchantment for each creature that phased out this way.",
+        )
+        .expect("linked phase-out duration should parse");
+
+    let compiled = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains(
+            "untap all creatures, then those creatures phase out until this enchantment leaves the battlefield"
+        ),
+        "compiled text should preserve the linked duration: {compiled}"
+    );
+    assert!(
+        compiled.contains("for each creature that phased out this way"),
+        "follow-up count should bind to phased-out object memory: {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_rejects_same_name_as_another_in_hand_clause() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Hint Insanity Variant").parse_text(
             "Target player reveals their hand. That player discards all nonland cards with the same name as another card in their hand.",

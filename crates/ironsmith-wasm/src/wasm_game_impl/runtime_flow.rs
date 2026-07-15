@@ -389,6 +389,27 @@ impl WasmGame {
                 let answer = option_indices.first().copied() == Some(1);
                 self.runner.as_mut().unwrap().respond_boolean(answer);
             }
+            (
+                DecisionContext::SelectOptions(options_ctx),
+                UiCommand::SelectOptions { option_indices },
+            ) => {
+                let legal_indices = options_ctx
+                    .options
+                    .iter()
+                    .map(|option| option.index)
+                    .collect::<Vec<_>>();
+                validate_option_selection(
+                    options_ctx.min,
+                    Some(options_ctx.max),
+                    &option_indices,
+                    &legal_indices,
+                )
+                .map_err(|err| restore_on_err(self, pending_ctx.clone(), err))?;
+                self.runner
+                    .as_mut()
+                    .unwrap()
+                    .respond_options(option_indices);
+            }
             _ => {
                 self.pending_decision = Some(pending_ctx);
                 self.runner_pending_decision = true;
@@ -782,13 +803,15 @@ impl WasmGame {
 
         let mut live_dm = WasmReplayDecisionMaker::new(&continuation.answers);
         let result = match &continuation.root {
-            PendingPriorityContinuation::ApplyResponse(response) => apply_priority_response_with_dm(
-                &mut self.game,
-                &mut self.trigger_queue,
-                &mut self.priority_state,
-                response,
-                &mut live_dm,
-            ),
+            PendingPriorityContinuation::ApplyResponse(response) => {
+                apply_priority_response_with_dm(
+                    &mut self.game,
+                    &mut self.trigger_queue,
+                    &mut self.priority_state,
+                    response,
+                    &mut live_dm,
+                )
+            }
             PendingPriorityContinuation::ApplyDecisionContext(ctx) => {
                 apply_decision_context_with_dm(
                     &mut self.game,
@@ -1781,8 +1804,8 @@ mod live_action_rollback_tests {
     use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::cost::OptionalCostsPaid;
     use ironsmith::decision::{LegalAction, compute_legal_actions};
-    use ironsmith::decisions::context::{DecisionContext, PriorityContext};
     use ironsmith::decisions::context::SelectableOption;
+    use ironsmith::decisions::context::{DecisionContext, PriorityContext};
     use ironsmith::events::cause::EventCause;
     use ironsmith::game_loop::{CastStage, PendingCast};
     use ironsmith::game_state::{Phase, Step};
@@ -1807,7 +1830,12 @@ mod live_action_rollback_tests {
             .actions
             .iter()
             .position(&mut predicate)
-            .unwrap_or_else(|| panic!("expected matching priority action in {:?}", priority.actions));
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected matching priority action in {:?}",
+                    priority.actions
+                )
+            });
         wasm.dispatch_live_priority_response(
             pending_ctx,
             UiCommand::PriorityAction {
@@ -1819,7 +1847,9 @@ mod live_action_rollback_tests {
     }
 
     fn dispatch_pass_priority(wasm: &mut WasmGame) {
-        dispatch_priority_action_matching(wasm, |action| matches!(action, LegalAction::PassPriority));
+        dispatch_priority_action_matching(wasm, |action| {
+            matches!(action, LegalAction::PassPriority)
+        });
     }
 
     fn dispatch_select_option(wasm: &mut WasmGame, option_index: usize) {
@@ -1844,7 +1874,10 @@ mod live_action_rollback_tests {
             if matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))) {
                 return;
             }
-            if matches!(wasm.pending_decision, Some(DecisionContext::SelectOptions(_))) {
+            if matches!(
+                wasm.pending_decision,
+                Some(DecisionContext::SelectOptions(_))
+            ) {
                 dispatch_select_option(wasm, 0);
                 continue;
             }
@@ -1883,9 +1916,10 @@ mod live_action_rollback_tests {
             compute_legal_actions(&wasm.game, alice),
         )));
 
-        dispatch_priority_action_matching(&mut wasm, |action| {
-            matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == lotus)
-        });
+        dispatch_priority_action_matching(
+            &mut wasm,
+            |action| matches!(action, LegalAction::ActivateManaAbility { source, .. } if *source == lotus),
+        );
         match wasm.pending_decision.as_ref() {
             Some(DecisionContext::Colors(ctx)) => assert_eq!(ctx.player, alice),
             other => panic!("expected Black Lotus color decision, got {other:?}"),
@@ -1893,7 +1927,11 @@ mod live_action_rollback_tests {
 
         dispatch_decision_select_option(&mut wasm, 2);
 
-        let pool = &wasm.game.player(alice).expect("Alice should exist").mana_pool;
+        let pool = &wasm
+            .game
+            .player(alice)
+            .expect("Alice should exist")
+            .mana_pool;
         assert_eq!(pool.black, 3, "Black Lotus should add three black mana");
         match wasm.pending_decision.as_ref() {
             Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
@@ -1947,12 +1985,8 @@ mod live_action_rollback_tests {
         ));
         wasm.runner_awaiting_priority = true;
         wasm.priority_state.restore_priority_tracker_for_sync(1, 2);
-        wasm.game.create_hidden_card_placeholder(
-            alice,
-            Zone::Hand,
-            7,
-            "alice-slot-7".to_string(),
-        );
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Hand, 7, "alice-slot-7".to_string());
         wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
             alice,
             compute_legal_actions(&wasm.game, alice),
@@ -2042,11 +2076,15 @@ mod live_action_rollback_tests {
                 "{T}: Each player reveals the top card of their library. For each nonland permanent revealed this way, add {G} and you gain 1 life. Then each player draws a card.",
             )
             .expect("Selvala parley ability should parse");
-        let selvala_id = wasm
-            .game
-            .create_object_from_definition(&selvala, alice, Zone::Battlefield);
-        wasm.game
-            .create_hidden_card_placeholder(alice, Zone::Library, 0, "alice-slot-0".to_string());
+        let selvala_id =
+            wasm.game
+                .create_object_from_definition(&selvala, alice, Zone::Battlefield);
+        wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "alice-slot-0".to_string(),
+        );
         wasm.game
             .create_hidden_card_placeholder(bob, Zone::Library, 0, "bob-slot-0".to_string());
         wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
@@ -2109,7 +2147,9 @@ mod live_action_rollback_tests {
         );
         match wasm.pending_decision.as_ref() {
             Some(DecisionContext::Priority(priority)) => assert_eq!(priority.player, alice),
-            other => panic!("expected Alice priority after post-resolution openings, got {other:?}"),
+            other => {
+                panic!("expected Alice priority after post-resolution openings, got {other:?}")
+            }
         }
     }
 
@@ -2287,9 +2327,10 @@ mod live_action_rollback_tests {
             compute_legal_actions(&wasm.game, alice),
         )));
 
-        dispatch_priority_action_matching(&mut wasm, |action| {
-            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
-        });
+        dispatch_priority_action_matching(
+            &mut wasm,
+            |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
+        );
         dispatch_select_options_until_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);
@@ -2377,10 +2418,18 @@ mod live_action_rollback_tests {
             player.mana_pool.add(ManaSymbol::Colorless, 1);
             player.mana_pool.add(ManaSymbol::Black, 1);
         }
-        wasm.game
-            .create_hidden_card_placeholder(alice, Zone::Library, 0, "alice-slot-0".to_string());
-        wasm.game
-            .create_hidden_card_placeholder(alice, Zone::Library, 1, "alice-slot-1".to_string());
+        wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "alice-slot-0".to_string(),
+        );
+        wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            1,
+            "alice-slot-1".to_string(),
+        );
 
         wasm.priority_epoch_checkpoint = Some(wasm.capture_replay_checkpoint());
         wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
@@ -2388,9 +2437,10 @@ mod live_action_rollback_tests {
             compute_legal_actions(&wasm.game, alice),
         )));
 
-        dispatch_priority_action_matching(&mut wasm, |action| {
-            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)
-        });
+        dispatch_priority_action_matching(
+            &mut wasm,
+            |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
+        );
         dispatch_select_options_until_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);
         dispatch_pass_priority(&mut wasm);
@@ -2408,7 +2458,10 @@ mod live_action_rollback_tests {
             Some(DecisionContext::Boolean(ctx)) => {
                 assert!(
                     ctx.description.to_ascii_lowercase().contains("hidden card")
-                        || ctx.description.to_ascii_lowercase().contains("tainted pact"),
+                        || ctx
+                            .description
+                            .to_ascii_lowercase()
+                            .contains("tainted pact"),
                     "expected first Tainted Pact prompt, got {:?}",
                     ctx.description
                 );

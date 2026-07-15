@@ -204,6 +204,79 @@ pub(super) fn describe_returned_object_set_to_enchantment(effects: &[Effect]) ->
     Some("Return it to the battlefield under its owner's control. It's an enchantment".to_string())
 }
 
+/// Render a returned object that is reset to exact card types, receives
+/// subtypes, and gains one quoted ability. Exact object tags prove that all
+/// three characteristic changes apply to the newly returned object.
+pub(super) fn describe_returned_object_exact_types_with_quoted_ability(
+    effects: &[Effect],
+) -> Option<String> {
+    let [return_effect, set_type_effect, add_subtype_effect, grant_effect] = effects else {
+        return None;
+    };
+
+    let returned_tag = outer_object_tag(return_effect)?;
+    let returned = unwrap_render_wrappers(return_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if returned.zone != Zone::Battlefield || returned.to_top || returned.enters_face_down {
+        return None;
+    }
+
+    let set_type = plain_permanent_type_change(set_type_effect, returned_tag)?;
+    let Some(crate::continuous::Modification::SetCardTypes(card_types)) = &set_type.modification
+    else {
+        return None;
+    };
+    if card_types.is_empty() {
+        return None;
+    }
+
+    let add_subtype = plain_permanent_type_change(add_subtype_effect, returned_tag)?;
+    let Some(crate::continuous::Modification::AddSubtypes(subtypes)) = &add_subtype.modification
+    else {
+        return None;
+    };
+    if subtypes.is_empty() {
+        return None;
+    }
+
+    let grant = plain_permanent_type_change(grant_effect, returned_tag)?;
+    let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &grant.modification
+    else {
+        return None;
+    };
+
+    let mut descriptor = subtypes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    descriptor.extend(
+        card_types
+            .iter()
+            .map(|card_type| describe_card_type_word_local(*card_type).to_string()),
+    );
+    let descriptor = with_indefinite_article(&descriptor.join(" "));
+    let self_subject = if card_types.len() == 1 {
+        format!("this {}", describe_card_type_word_local(card_types[0]))
+    } else {
+        "this permanent".to_string()
+    };
+    let ability = describe_inline_ability_with_self_subject(ability, &self_subject)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if ability.is_empty() {
+        return None;
+    }
+    let returned = describe_effect(return_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+
+    Some(format!(
+        "{returned}. It's {descriptor} with \"{ability},\" and it loses all other card types"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

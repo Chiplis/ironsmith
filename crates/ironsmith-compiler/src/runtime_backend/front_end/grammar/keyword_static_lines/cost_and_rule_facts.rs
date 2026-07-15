@@ -146,7 +146,15 @@ pub(crate) fn parse_that_much_value_marker_tokens(tokens: &[OwnedLexToken]) -> b
     primitives::parse_prefix(tokens, primitives::phrase(&["that", "much"])).is_some()
 }
 
-pub(crate) fn parse_legend_rule_doesnt_apply_tokens(tokens: &[OwnedLexToken]) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LegendRuleScopeShape {
+    Global,
+    Controller,
+}
+
+pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<LegendRuleScopeShape> {
     let has_negative = primitives::find_prefix(tokens, || {
         alt((
             primitives::kw("doesnt").void(),
@@ -156,10 +164,17 @@ pub(crate) fn parse_legend_rule_doesnt_apply_tokens(tokens: &[OwnedLexToken]) ->
         .void()
     })
     .is_some();
-    has_negative
+    (has_negative
         && primitives::find_prefix(tokens, || primitives::phrase(&["legend", "rule"]).void())
             .is_some()
-        && primitives::find_prefix(tokens, || primitives::kw("apply").void()).is_some()
+        && primitives::find_prefix(tokens, || primitives::kw("apply").void()).is_some())
+    .then(|| {
+        if primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some() {
+            LegendRuleScopeShape::Controller
+        } else {
+            LegendRuleScopeShape::Global
+        }
+    })
 }
 
 pub(crate) fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -201,7 +216,15 @@ mod tests {
         let tokens = lex_line("Buyback costs cost 2 less.", 0).unwrap();
         assert_eq!(parse_buyback_cost_reduction_tokens(&tokens), Some(2));
         let tokens = lex_line("The legend rule doesn't apply to you.", 0).unwrap();
-        assert!(parse_legend_rule_doesnt_apply_tokens(&tokens));
+        assert_eq!(
+            parse_legend_rule_doesnt_apply_tokens(&tokens),
+            Some(LegendRuleScopeShape::Controller)
+        );
+        let tokens = lex_line("The legend rule doesn't apply.", 0).unwrap();
+        assert_eq!(
+            parse_legend_rule_doesnt_apply_tokens(&tokens),
+            Some(LegendRuleScopeShape::Global)
+        );
     }
 
     #[test]

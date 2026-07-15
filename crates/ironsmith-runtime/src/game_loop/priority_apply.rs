@@ -5,6 +5,8 @@ use crate::perf::PerfTimer;
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
     if !pending.remaining_requirements.is_empty() {
         ActivationStage::ChoosingTargets
+    } else if !pending.pending_target_distributions.is_empty() {
+        ActivationStage::ChoosingDistribution
     } else if !pending.remaining_cost_steps.is_empty()
         || pending.mana_cost_to_pay.is_some()
         || !pending.remaining_mana_pips.is_empty()
@@ -51,10 +53,12 @@ fn build_target_assignments(
         .collect())
 }
 
+#[cfg(feature = "serialization")]
 use serde::Serialize;
 use std::cell::RefCell;
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serialization", derive(Serialize))]
 pub struct PriorityActionPerfMetrics {
     pub action_kind: String,
     pub priority_result: String,
@@ -68,7 +72,8 @@ pub struct PriorityActionPerfMetrics {
     pub nested_priority_advance: Option<crate::game_loop::PriorityAdvancePerfMetrics>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serialization", derive(Serialize))]
 pub struct ManaPipPaymentPerfMetrics {
     pub pending_kind: String,
     pub remaining_pips_before: usize,
@@ -200,6 +205,16 @@ pub fn apply_priority_response_with_dm(
         return apply_targets_response(game, trigger_queue, state, targets, &mut *decision_maker);
     }
 
+    if let PriorityResponse::Distribution(distribution) = response {
+        return apply_target_distribution_response(
+            game,
+            trigger_queue,
+            state,
+            distribution,
+            &mut *decision_maker,
+        );
+    }
+
     // Handle X value selection for a pending cast
     if let PriorityResponse::XValue(x) | PriorityResponse::NumberChoice(x) = response {
         return apply_x_value_response(game, trigger_queue, state, *x, &mut *decision_maker);
@@ -210,6 +225,10 @@ pub fn apply_priority_response_with_dm(
         && (state.pending_cast.is_some() || state.pending_activation.is_some())
     {
         return apply_modes_response(game, trigger_queue, state, modes, &mut *decision_maker);
+    }
+
+    if let PriorityResponse::SpliceCards(cards) = response {
+        return apply_splice_response(game, trigger_queue, state, cards, &mut *decision_maker);
     }
 
     // Handle optional costs selection for a pending cast
@@ -590,91 +609,38 @@ pub fn apply_priority_response_with_dm(
                         controller: player,
                     });
 
-            // Get the spell's mana cost and effects, considering casting method
-            // Note: We use stack_id now since the spell has been moved to stack
-            let (mana_cost, effects) = if let Some(obj) = game.object(stack_id) {
-                let cost = crate::decision::spell_mana_cost_for_cast(
-                    game,
-                    player,
-                    obj,
-                    casting_method,
-                    *from_zone,
-                );
-                (cost, obj.spell_effect_owned().unwrap_or_default())
-            } else {
-                (None, crate::resolution::ResolutionProgram::default())
-            };
-
-            let (needs_x, min_x, max_x) = compute_spell_cast_x_bounds(
-                game,
-                player,
-                stack_id,
-                casting_method,
-                mana_cost.as_ref(),
-            );
+            let effects = game
+                .object(stack_id)
+                .map(|obj| obj.spell_effect_owned().unwrap_or_default())
+                .unwrap_or_default();
 
             let optional_costs_paid = game
                 .object(stack_id)
                 .map(|obj| obj.optional_costs_paid.clone())
                 .unwrap_or_default();
 
-            if needs_x {
-                // Extract target requirements for later (use stack_id since spell is on stack)
-                let requirements = extract_target_requirements_from_program_with_modes(
-                    game,
-                    &effects,
-                    player,
-                    Some(stack_id),
-                    None,
-                );
+            let requirements = extract_target_requirements_from_program_with_modes(
+                game,
+                &effects,
+                player,
+                Some(stack_id),
+                None,
+            );
+            let pending = PendingCast::new(
+                stack_id,
+                *from_zone,
+                player,
+                cast_provenance,
+                CastStage::ChoosingModes,
+                None,
+                requirements,
+                casting_method.clone(),
+                optional_costs_paid,
+                None,
+                stack_id,
+            );
 
-                state.pending_cast = Some(PendingCast::new(
-                    stack_id,
-                    *from_zone,
-                    player,
-                    cast_provenance,
-                    CastStage::ChoosingX,
-                    None,
-                    requirements,
-                    casting_method.clone(),
-                    optional_costs_paid,
-                    None,
-                    stack_id,
-                ));
-
-                let ctx = crate::decisions::context::NumberContext::x_value_with_min(
-                    player, stack_id, // Use stack_id
-                    min_x, max_x,
-                );
-                Ok(GameProgress::NeedsDecisionCtx(
-                    crate::decisions::context::DecisionContext::Number(ctx),
-                ))
-            } else {
-                // No X cost, check for optional costs then targets
-                let requirements = extract_target_requirements_from_program_with_modes(
-                    game,
-                    &effects,
-                    player,
-                    Some(stack_id),
-                    None,
-                );
-
-                let pending = PendingCast::new(
-                    stack_id,
-                    *from_zone,
-                    player,
-                    cast_provenance,
-                    CastStage::ChoosingModes, // Will be updated by helper
-                    None,
-                    requirements,
-                    casting_method.clone(),
-                    optional_costs_paid,
-                    None,
-                    stack_id,
-                );
-
-                check_modes_or_continue(game, trigger_queue, state, pending, &mut *decision_maker)
-            }
+            check_modes_or_continue(game, trigger_queue, state, pending, &mut *decision_maker)
         }
         LegalAction::ActivateAbility {
             source,
@@ -864,12 +830,12 @@ pub fn apply_priority_response_with_dm(
                 || mana_cost_to_pay.is_some()
             {
                 // Determine starting stage (per MTG rule 602.2b, follows 601.2b-h order)
-                // Order: X value → modes → Hybrid/Phyrexian announcement → Targets
+                // Order: modes → X value → Hybrid/Phyrexian announcement → Targets
                 // → non-mana costs → Mana payment.
-                let stage = if has_x {
-                    ActivationStage::ChoosingX
-                } else if has_modal {
+                let stage = if has_modal {
                     ActivationStage::ChoosingModes
+                } else if has_x {
+                    ActivationStage::ChoosingX
                 } else if has_hybrid_pips {
                     ActivationStage::AnnouncingCost
                 } else if !target_requirements.is_empty() {
@@ -1396,14 +1362,28 @@ pub(super) fn apply_targets_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
-        let assignments = build_target_assignments(
-            &pending.remaining_requirements,
-            targets,
-            pending.chosen_targets.len(),
-        )?;
+        let requirements = pending.remaining_requirements.clone();
+        let assignments =
+            build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
         // Combine previously chosen targets with new ones
         pending.chosen_targets.extend(targets.iter().cloned());
-        pending.chosen_target_assignments.extend(assignments);
+        pending
+            .chosen_target_assignments
+            .extend(assignments.iter().cloned());
+        if let Err(error) = append_target_distribution_requirements(
+            game,
+            pending.source,
+            pending.activator,
+            pending.x_value.and_then(|x| u32::try_from(x).ok()),
+            &pending.chosen_targets,
+            &pending.chosen_target_assignments,
+            &requirements,
+            &assignments,
+            &mut pending.pending_target_distributions,
+        ) {
+            state.rollback_action(game);
+            return Err(error);
+        }
         pending.remaining_requirements.clear();
 
         if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
@@ -1441,26 +1421,40 @@ pub(super) fn apply_targets_response(
         GameLoopError::InvalidState("No pending cast for targets response".to_string())
     })?;
 
-    let assignments = build_target_assignments(
-        &pending.remaining_requirements,
-        targets,
-        pending.chosen_targets.len(),
-    )?;
+    let requirements = pending.remaining_requirements.clone();
+    let assignments =
+        build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
 
     // Combine previously chosen targets with new ones
     let mut pending = pending;
     let mut all_targets = pending.chosen_targets.clone();
     all_targets.extend(targets.iter().cloned());
-    pending.chosen_target_assignments.extend(assignments);
+    pending
+        .chosen_target_assignments
+        .extend(assignments.iter().cloned());
+    pending.chosen_targets = all_targets.clone();
+    if let Err(error) = append_target_distribution_requirements(
+        game,
+        pending.spell_id,
+        pending.caster,
+        pending.x_value,
+        &pending.chosen_targets,
+        &pending.chosen_target_assignments,
+        &requirements,
+        &assignments,
+        &mut pending.pending_target_distributions,
+    ) {
+        state.rollback_action(game);
+        return Err(error);
+    }
     pending.remaining_requirements.clear();
 
-    // Continue to mana payment stage
-    continue_to_mana_payment(
+    // CR 601.2d announces divisions after targets and before total-cost locking.
+    continue_cast_target_distributions_or_mana_payment(
         game,
         trigger_queue,
         state,
         pending,
-        all_targets,
         decision_maker,
     )
 }
@@ -1496,19 +1490,9 @@ pub(super) fn apply_x_value_response(
             obj.x_value = Some(x_value);
         }
 
-        // Move to next stage (per MTG rule 602.2b, follows 601.2b-h order)
-        // After X: modes → Hybrid/Phyrexian announcement → Targets → non-mana costs → mana payment
-        if pending.chosen_modes.is_none()
-            && extract_modal_spec_from_program(
-                game,
-                &pending.effects,
-                pending.activator,
-                pending.source,
-            )
-            .is_some()
-        {
-            pending.stage = ActivationStage::ChoosingModes;
-        } else if !pending.pending_hybrid_pips.is_empty() {
+        // Modes have already been announced. Continue with payment-symbol
+        // announcements, targets, and the locked payment transaction.
+        if !pending.pending_hybrid_pips.is_empty() {
             // Hybrid pips were populated at activation start
             pending.stage = ActivationStage::AnnouncingCost;
         } else if pending.hybrid_choices.is_empty() {
@@ -1548,6 +1532,6 @@ pub(super) fn apply_x_value_response(
         obj.x_value = Some(x_value);
     }
 
-    // Check for optional costs, then continue to targeting or finalization
-    check_optional_costs_or_continue(game, trigger_queue, state, pending, decision_maker)
+    // Modes and alternative/additional costs were announced before X.
+    continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
 }

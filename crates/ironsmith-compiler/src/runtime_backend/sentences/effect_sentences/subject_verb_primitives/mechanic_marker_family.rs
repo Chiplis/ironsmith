@@ -731,6 +731,16 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         parse_delayed_when_that_dies_this_turn_sentence
     ),
     primitive!(
+        "delayed-when-that-leaves-battlefield",
+        735,
+        PostDiagnostic,
+        &[
+            LexRuleHeadHint::Single("when"),
+            LexRuleHeadHint::Single("whenever"),
+        ],
+        parse_delayed_when_that_leaves_battlefield_sentence
+    ),
+    primitive!(
         "delayed-trigger-this-turn",
         740,
         PostDiagnostic,

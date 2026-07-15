@@ -61,9 +61,11 @@ pub(crate) fn parse_carried_conditional_anthem_grant_line(
         return Ok(None);
     };
     let subject = parse_anthem_subject(shape.subject_tokens)?;
-    let condition = crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
+    let condition = crate::ConditionExpr::AttachmentCount {
         attachment: shape.condition.attachment_filter,
-        attached_to: shape.condition.attached_to_filter,
+        host: ironsmith_core::AttachmentConditionHost::Matching(shape.condition.attached_to_filter),
+        comparison: shape.condition.comparison,
+        display: shape.condition.display,
     };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let Some(granted_tail) =
@@ -355,7 +357,10 @@ pub(crate) fn parse_anthem_and_keyword_line(
                         clause_words.join(" ")
                     )));
                 }
-                clause.condition = Some(condition);
+                clause.condition = Some(bind_attachment_condition_to_subject(
+                    condition,
+                    &clause.subject,
+                ));
             }
             let mut result = vec![build_anthem_static_ability(&clause).into()];
             if let Some(ability) = granted_activated_ability {
@@ -420,14 +425,17 @@ pub(crate) fn parse_anthem_and_keyword_line(
                 clause_words.join(" ")
             )));
         }
-        clause.condition = Some(condition);
+        clause.condition = Some(bind_attachment_condition_to_subject(
+            condition,
+            &clause.subject,
+        ));
     }
     let mut result = vec![build_anthem_static_ability(&clause).into()];
     for action in keyword_actions {
         result.push(grant_keyword_action_for_anthem_subject(&clause, action));
     }
     if let Some(additions) = trailing_type_color_addition {
-        push_type_color_additions_for_anthem_subject(&mut result, &clause, additions)?;
+        push_type_color_additions_for_anthem_subject(&mut result, &clause, additions);
     }
 
     if let Some(ability) = granted_activated_ability {
@@ -533,41 +541,41 @@ fn push_type_color_additions_for_anthem_subject(
     result: &mut Vec<StaticAbilityAst>,
     clause: &ParsedAnthemClause,
     additions: TypeColorAdditionClause,
-) -> Result<(), CardTextError> {
+) {
     let filter = anthem_subject_filter(&clause.subject);
     let condition = clause.condition.clone();
-    let mut push_static = |ability: StaticAbility| -> Result<(), CardTextError> {
+    let mut push_static = |ability: StaticAbility| {
         let ast: StaticAbilityAst = ability.into();
         result.push(match &condition {
-            Some(condition) => add_static_ability_ast_condition(ast, condition.clone())?,
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ast),
+                condition: condition.clone(),
+            },
             None => ast,
         });
-        Ok(())
     };
 
     if !additions.set_colors.is_empty() {
         push_static(StaticAbility::set_colors(
             filter.clone(),
             additions.set_colors,
-        ))?;
+        ));
     }
     if !additions.added_colors.is_empty() {
         push_static(StaticAbility::add_colors(
             filter.clone(),
             additions.added_colors,
-        ))?;
+        ));
     }
     if !additions.card_types.is_empty() {
         push_static(StaticAbility::add_card_types(
             filter.clone(),
             additions.card_types,
-        ))?;
+        ));
     }
     if !additions.subtypes.is_empty() {
-        push_static(StaticAbility::add_subtypes(filter, additions.subtypes))?;
+        push_static(StaticAbility::add_subtypes(filter, additions.subtypes));
     }
-
-    Ok(())
 }
 
 fn merge_static_ability_ast_conditions(
@@ -1300,6 +1308,19 @@ pub(crate) fn parse_heterogeneous_granted_tail(
         };
         let segment = segment.body_tokens.to_vec();
 
+        if matches!(
+            crate::runtime_backend::token_word_refs(&segment).as_slice(),
+            ["lose" | "loses", "all", "other", "abilities"]
+        ) {
+            parsed.removes_all_other_abilities = true;
+            continue;
+        }
+
+        if let Some(additions) = parse_type_color_addition_clause(&segment)? {
+            parsed.type_color_additions.push(additions);
+            continue;
+        }
+
         if let Some((ability, display)) =
             parse_granted_object_ability_segment(&segment, clause_words, attached_subject)?
         {
@@ -1391,6 +1412,8 @@ pub(crate) fn parse_heterogeneous_granted_tail(
     if parsed.granted_static.is_empty()
         && parsed.granted_keyword_actions.is_empty()
         && parsed.granted_object_abilities.is_empty()
+        && !parsed.removes_all_other_abilities
+        && parsed.type_color_additions.is_empty()
     {
         return Ok(None);
     }
@@ -1412,6 +1435,17 @@ pub(crate) fn lower_granted_tail_for_anthem_subject(
         set_quantifier_surface: None,
     };
     let mut granted = Vec::new();
+    if granted_tail.removes_all_other_abilities {
+        let remove: StaticAbilityAst =
+            StaticAbility::remove_all_abilities(anthem_subject_filter(subject)).into();
+        granted.push(match condition {
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(remove),
+                condition: condition.clone(),
+            },
+            None => remove,
+        });
+    }
     if !granted_tail.granted_static.is_empty() {
         granted.extend(grant_static_anthem_abilities_for_subject(
             &wrapper_clause,
@@ -1430,6 +1464,9 @@ pub(crate) fn lower_granted_tail_for_anthem_subject(
             ability,
             display,
         ));
+    }
+    for additions in granted_tail.type_color_additions {
+        push_type_color_additions_for_anthem_subject(&mut granted, &wrapper_clause, additions);
     }
     granted
 }
@@ -2415,6 +2452,29 @@ pub(crate) fn parse_has_base_power_toughness_static_line(
     }
 }
 
+pub(crate) fn parse_has_base_power_toughness_and_type_color_addition_static_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(shape) =
+        anthem_grant_grammar::parse_base_power_toughness_type_addition_shape(tokens)
+    else {
+        return Ok(None);
+    };
+    let Some(additions) = parse_type_color_addition_clause(shape.addition_tokens)? else {
+        return Ok(None);
+    };
+    let subject = parse_anthem_subject(shape.subject_tokens)?;
+    let set_base = StaticAbility::set_base_power_toughness(
+        anthem_subject_filter(&subject),
+        shape.power,
+        shape.toughness,
+    );
+    let clause = fixed_anthem_clause(subject, 0, 0, None);
+    let mut compiled = vec![set_base.into()];
+    push_type_color_additions_for_anthem_subject(&mut compiled, &clause, additions);
+    Ok(Some(compiled))
+}
+
 pub(crate) fn parse_isnt_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2756,6 +2816,8 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 continue;
             }
         };
+        let condition =
+            condition.map(|condition| bind_attachment_condition_to_subject(condition, &subject));
         let granted = lower_granted_tail_for_anthem_subject(&subject, &condition, granted_tail)
             .into_iter()
             .map(|ability| with_leading_set_quantifier_surface(ability, &subject_tokens))
@@ -2864,6 +2926,116 @@ fn player_counter_conditions_lower_for_conditional_anthems() {
         .expect("route conditional anthem")
         .expect("typed conditional anthem should reach static-line lowering");
     assert_eq!(routed.len(), 2, "{routed:#?}");
+}
+
+#[test]
+fn generic_leading_as_long_as_conditions_every_thunderfoot_sibling() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "As long as you control your commander, this creature gets +2/+2 and other creatures you control get +2/+2 and have trample.",
+        0,
+    )
+    .expect("lex lieutenant static line");
+
+    let baseline =
+        parse_static_ability_ast_line_lexed_single_without_leading_condition(&tokens)
+            .expect("parse existing lieutenant shape")
+            .expect("existing lieutenant shape should parse");
+    assert_eq!(baseline.len(), 3, "{baseline:#?}");
+    assert_eq!(
+        baseline
+            .iter()
+            .map(static_ability_ast_has_explicit_condition)
+            .collect::<Vec<_>>(),
+        [true, false, false],
+        "the existing compound parser should expose the missing sibling conditions"
+    );
+
+    let routed = parse_static_ability_ast_line_lexed(&tokens)
+        .expect("route lieutenant static line")
+        .expect("lieutenant static line should parse");
+    assert_eq!(routed.len(), 3, "{routed:#?}");
+    assert!(
+        routed
+            .iter()
+            .all(static_ability_ast_has_explicit_condition),
+        "every sibling must retain the commander condition: {routed:#?}"
+    );
+    let debug = format!("{routed:#?}");
+    assert_eq!(debug.matches("you control your commander").count(), 3, "{debug}");
+}
+
+#[test]
+fn generic_leading_as_long_as_wraps_explicit_subject_static_families() {
+    for (text, condition_fragments) in [
+        (
+            "As long as it's your turn and you control an Army, this is an artifact creature.",
+            &["YourTurn", "Army"][..],
+        ),
+        (
+            "As long as you control eight or more permanents named Phoenix Fleet Airship, this Vehicle is an artifact creature.",
+            &["Phoenix Fleet Airship", "GreaterThanOrEqual(8)"][..],
+        ),
+        (
+            "As long as there are four or more quest counters on this enchantment, untap all creatures you control during each other player's untap step.",
+            &["Quest", "GreaterThanOrEqual(4)"][..],
+        ),
+        (
+            "As long as this creature has a conqueror counter on it, nonbasic lands are Mountains.",
+            &["conqueror", "GreaterThanOrEqual(1)"][..],
+        ),
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
+            .unwrap_or_else(|err| panic!("lex explicit-subject condition '{text}': {err}"));
+        let routed = parse_static_ability_ast_line_lexed(&tokens)
+            .unwrap_or_else(|err| panic!("route explicit-subject condition '{text}': {err}"))
+            .unwrap_or_else(|| panic!("explicit-subject condition should parse: {text}"));
+        assert!(
+            !routed.is_empty()
+                && routed
+                    .iter()
+                    .all(static_ability_ast_has_explicit_condition),
+            "every emitted static sibling must be conditioned for '{text}': {routed:#?}"
+        );
+        let debug = format!("{routed:#?}");
+        for fragment in condition_fragments {
+            assert!(
+                debug.contains(fragment),
+                "condition fragment '{fragment}' was lost for '{text}': {debug}"
+            );
+        }
+    }
+}
+
+#[test]
+fn generic_leading_as_long_as_preserves_specialized_condition_controls() {
+    for text in [
+        "As long as it's your turn, this creature has first strike.",
+        "As long as this creature is in your graveyard, each Human creature you control enters with an additional +1/+1 counter on it.",
+        "As long as this enchantment has seven or more quest counters on it, creatures you control get +5/+5.",
+        "As long as enchanted creature is black, it gets +1/+1 and has wither.",
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
+            .unwrap_or_else(|err| panic!("lex specialized condition '{text}': {err}"));
+        let baseline =
+            parse_static_ability_ast_line_lexed_single_without_leading_condition(&tokens)
+                .unwrap_or_else(|err| panic!("parse specialized condition '{text}': {err}"));
+        let routed = parse_static_ability_ast_line_lexed_single(&tokens)
+            .unwrap_or_else(|err| panic!("route specialized condition '{text}': {err}"));
+        assert_eq!(routed, baseline, "generic prefix must not steal '{text}'");
+    }
+
+    for text in [
+        "This creature has reach as long as it has a +1/+1 counter on it.",
+        "When this creature enters, target Forest becomes a 4/5 green Treefolk creature for as long as this creature remains on the battlefield.",
+        "Gain control of target artifact for as long as you control this creature.",
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
+            .unwrap_or_else(|err| panic!("lex non-prefix duration '{text}': {err}"));
+        assert!(
+            split_as_long_as_condition_prefix_lexed(&tokens).is_none(),
+            "generic leading-condition path must ignore trailing/duration text: {text}"
+        );
+    }
 }
 
 #[test]
@@ -3024,14 +3196,74 @@ fn attached_conditional_anthem_continuations_lower_typed_conditions() {
         .expect("carried conditional grant should be recognized");
     assert_eq!(abilities.len(), 3, "{abilities:#?}");
     let debug = format!("{abilities:#?}");
-    assert!(
-        debug.contains("MatchingObjectAttachedToMatchingObject"),
-        "{debug}"
-    );
+    assert!(debug.contains("AttachmentCount"), "{debug}");
     let routed = parse_static_ability_ast_line_lexed(&tokens)
         .expect("route carried conditional grant")
         .expect("static line router should recognize carried conditional grant");
     assert_eq!(routed.len(), 3, "{routed:#?}");
+}
+
+#[test]
+fn attachment_count_conditions_bind_typed_hosts_for_target_cards() {
+    let cases = [
+        (
+            "Balan has double strike as long as two or more Equipment are attached to it.",
+            &["AttachmentCount", "host: Source", "GreaterThanOrEqual(2)"][..],
+        ),
+        (
+            "Equipped creature has double strike as long as two or more Equipment are attached to it.",
+            &[
+                "AttachmentCount",
+                "SourceAttachedObject",
+                "GreaterThanOrEqual(2)",
+                "equipped",
+            ][..],
+        ),
+        (
+            "As long as another Aura is attached to enchanted creature, it has first strike and lifelink.",
+            &[
+                "AttachmentCount",
+                "SourceAttachedObject",
+                "other: true",
+                "enchanted",
+                "FirstStrike",
+                "Lifelink",
+            ][..],
+        ),
+        (
+            "Equipped creature gets +2/+0. It gets an additional +0/+2 and has first strike as long as an Equipment named Groom's Finery is attached to a creature you control.",
+            &[
+                "AttachmentCount",
+                "Matching(",
+                "grooms finery",
+                "GreaterThanOrEqual(1)",
+            ][..],
+        ),
+        (
+            "Equipped creature gets +2/+0. It gets an additional +0/+2 and has deathtouch as long as an Equipment named Bride's Gown is attached to a creature you control.",
+            &[
+                "AttachmentCount",
+                "Matching(",
+                "brides gown",
+                "GreaterThanOrEqual(1)",
+            ][..],
+        ),
+    ];
+
+    for (text, expected_fragments) in cases {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
+            .unwrap_or_else(|error| panic!("lex attachment condition '{text}': {error}"));
+        let abilities = parse_static_ability_ast_line_lexed(&tokens)
+            .unwrap_or_else(|error| panic!("parse attachment condition '{text}': {error}"))
+            .unwrap_or_else(|| panic!("attachment condition should route: {text}"));
+        let debug = format!("{abilities:#?}");
+        for fragment in expected_fragments {
+            assert!(
+                debug.contains(fragment),
+                "missing '{fragment}' for '{text}': {debug}"
+            );
+        }
+    }
 }
 
 #[test]

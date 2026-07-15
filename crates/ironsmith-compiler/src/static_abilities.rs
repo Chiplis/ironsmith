@@ -6,8 +6,8 @@ pub use ironsmith_core::{
     CostReduction, CostReductionManaCost, CounterRemovalFollowUp, DefendingPlayerAttackCondition,
     EnterAsCopyLinkedExilePairSpec, GraveyardCountMetric, LandwalkKind, ManaSpendPermission,
     OptionalLifeAdditionalCost, PregameActionKind, PregameBeginOnBattlefieldSpec,
-    PregameRevealFromOpeningHandSpec, RemoveCardTypesForFilter, SetColorsForFilter,
-    StaticAbilityId, ThisSpellCastRestrictionKind, ThisSpellCastTiming,
+    PregameRevealFromOpeningHandSpec, RemoveCardTypesForFilter, SetColorsForFilter, SpliceQuality,
+    SpliceSpec, StaticAbilityId, ThisSpellCastRestrictionKind, ThisSpellCastTiming,
 };
 
 pub const PREVENT_ALL_DAMAGE_DEALT_BY_THIS_PERMANENT: StaticAbilityId =

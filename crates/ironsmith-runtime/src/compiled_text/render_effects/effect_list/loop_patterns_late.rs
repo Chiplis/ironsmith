@@ -619,7 +619,11 @@
             let trigger_text = schedule.trigger.display().to_ascii_lowercase();
             if choose_targets_schedule_trigger(choose, schedule)
                 && (trigger_text.contains("this creature attacks and isn't blocked")
-                    || trigger_text.contains("this creature attacks and isnt blocked"))
+                    || trigger_text.contains("this creature attacks and isnt blocked")
+                    || (schedule.target_tag.as_ref().is_some_and(|tag| {
+                        tag.as_str().contains("targeted")
+                    }) && (trigger_text.contains("creature dies")
+                        || trigger_text.contains("creature is put into a graveyard"))))
             {
                 let rendered = describe_effect(filtered[idx + 1]);
                 if !rendered.is_empty() {
@@ -910,8 +914,8 @@
         }
         if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
-            && let Some(move_back) =
-                filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(move_back) = unwrap_basic_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(compact) = describe_exile_then_return(tagged, move_back)
         {
             parts.push(compact);
@@ -3231,7 +3235,7 @@
             && if_effect.else_.is_empty()
         {
             let setup = describe_effect(filtered[idx]);
-            let followup = lowercase_first(&describe_effect_list(&if_effect.then));
+            let followup = lowercase_first(&describe_result_branch_effect_list(&if_effect.then));
             if !setup.is_empty() && !followup.is_empty() {
                 let condition = describe_may_have_source_deal_damage_condition(may, if_effect)
                     .unwrap_or_else(|| match may.decider.as_ref() {

@@ -676,6 +676,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_has_base_power_toughness_and_granted_keywords_static_line
         ),
         multi_static_ability_ast_passthrough_rule!(
+            parse_has_base_power_toughness_and_type_color_addition_static_line
+        ),
+        multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_and_granted_ability_static_line
         ),
         multi_static_ability_ast_passthrough_rule!(
@@ -740,6 +743,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(
             parse_subject_are_card_types_in_addition_to_their_other_types_line
         ),
+        single_static_ability_ast_rule!(parse_subject_is_card_types_line),
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
         multi_static_ability_ast_rule!(parse_all_are_pt_color_type_addition_line),
@@ -1241,6 +1245,66 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let existing = parse_static_ability_ast_line_lexed_single_without_leading_condition(tokens)?;
+    let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens) else {
+        return Ok(existing);
+    };
+
+    // Existing narrow parsers already bind many leading conditions correctly.
+    // Keep those typed shapes (and their surface hints) instead of wrapping them
+    // a second time. The generic path is for lines whose original parse leaves
+    // at least one emitted sibling unconditional or consumes condition words as
+    // part of the affected subject.
+    if existing.as_ref().is_some_and(|abilities| {
+        !abilities.is_empty()
+            && abilities
+                .iter()
+                .all(static_ability_ast_has_explicit_condition)
+    }) {
+        return Ok(existing);
+    }
+
+    // A pronoun here gets its semantic subject from the condition clause (for
+    // example, "enchanted creature is black, it gets ..."). Those lines need
+    // the attached-subject parsers; stripping the prefix would turn `it` into
+    // the source and silently retarget the continuous effect.
+    if leading_condition_remainder_has_dependent_subject(spec.remainder_tokens) {
+        return Ok(existing);
+    }
+
+    let Ok(condition) = parse_static_condition_clause(spec.condition_tokens) else {
+        return Ok(existing);
+    };
+    // Source-zone conditions also determine where the ability functions. Their
+    // specialized parsers intentionally lower that information into functional
+    // zones rather than a battlefield conditional wrapper.
+    if static_condition_references_source_outside_battlefield(&condition) {
+        return Ok(existing);
+    }
+
+    let Some(abilities) = parse_static_ability_ast_line_lexed_single_without_leading_condition(
+        spec.remainder_tokens,
+    )?
+    else {
+        return Ok(existing);
+    };
+    if abilities.is_empty() {
+        return Ok(existing);
+    }
+
+    let mut conditioned = Vec::with_capacity(abilities.len());
+    for ability in abilities {
+        let Ok(ability) = add_static_ability_ast_condition(ability, condition.clone()) else {
+            return Ok(existing);
+        };
+        conditioned.push(ability);
+    }
+    Ok(Some(conditioned))
+}
+
+fn parse_static_ability_ast_line_lexed_single_without_leading_condition(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if looks_like_trigger_intro_tokens(tokens) || looks_like_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
@@ -1256,6 +1320,91 @@ fn parse_static_ability_ast_line_lexed_single(
     }
 
     parse_static_ability_ast_line_lowered(tokens)
+}
+
+fn leading_condition_remainder_has_dependent_subject(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    matches!(
+        words.first().copied(),
+        Some(
+            "it" | "its"
+                | "it's"
+                | "they"
+                | "them"
+                | "their"
+                | "that"
+                | "those"
+                | "these"
+                | "he"
+                | "him"
+                | "his"
+                | "she"
+                | "her"
+                | "both"
+        )
+    ) || matches!(
+        words.as_slice(),
+        [
+            "each" | "all" | "one" | "any" | "some",
+            "of",
+            "them" | "those" | "these",
+            ..
+        ]
+    )
+}
+
+fn static_condition_references_source_outside_battlefield(
+    condition: &crate::ConditionExpr,
+) -> bool {
+    match condition {
+        crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            ..
+        } => {
+            filter.source
+                && filter
+                    .zone
+                    .as_ref()
+                    .is_some_and(|zone| *zone != Zone::Battlefield)
+        }
+        crate::ConditionExpr::SourceIsInZone(zone) => *zone != Zone::Battlefield,
+        crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+            static_condition_references_source_outside_battlefield(left)
+                || static_condition_references_source_outside_battlefield(right)
+        }
+        crate::ConditionExpr::Not(inner) => {
+            static_condition_references_source_outside_battlefield(inner)
+        }
+        _ => false,
+    }
+}
+
+fn static_ability_ast_has_explicit_condition(ability: &StaticAbilityAst) -> bool {
+    match ability {
+        StaticAbilityAst::ConditionalStaticAbility { .. }
+        | StaticAbilityAst::LabeledConditionalStaticAbility { .. }
+        | StaticAbilityAst::ConditionalKeywordAction { .. } => true,
+        StaticAbilityAst::WithSetQuantifierSurface { ability, .. } => {
+            static_ability_ast_has_explicit_condition(ability)
+        }
+        StaticAbilityAst::GrantStaticAbility { condition, .. }
+        | StaticAbilityAst::GrantKeywordAction { condition, .. }
+        | StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. }
+        | StaticAbilityAst::AttachedKeywordActionGrant { condition, .. }
+        | StaticAbilityAst::AttachedChosenLandwalkGrant { condition, .. }
+        | StaticAbilityAst::GrantObjectAbility { condition, .. }
+        | StaticAbilityAst::AttachedObjectAbilityGrant { condition, .. } => condition.is_some(),
+        StaticAbilityAst::Static(ability) => match &ability.payload {
+            ironsmith_core::StaticAbilityPayload::Conditional { .. } => true,
+            ironsmith_core::StaticAbilityPayload::Anthem(anthem) => anthem.condition.is_some(),
+            ironsmith_core::StaticAbilityPayload::GrantAbility(grant) => grant.condition.is_some(),
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+                grant.condition.is_some()
+            }
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 fn looks_like_player_counter_gain_effect_tokens(tokens: &[OwnedLexToken]) -> bool {

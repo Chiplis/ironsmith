@@ -468,8 +468,19 @@ fn parse_get_pump_clause(
         parser_trace("parse_get_pump_clause:subject-shape-miss", subject_tokens);
         return Ok(None);
     };
-    let collapsed_modifier_tail = collapse_leading_signed_pt_modifier_tokens(action_tokens);
-    let modifier_tail = collapsed_modifier_tail.as_deref().unwrap_or(action_tokens);
+    let (modifier_tokens, additional_modifier) = match action_tokens {
+        [first, second, rest @ ..]
+            if first.as_word() == Some("an") && second.as_word() == Some("additional") =>
+        {
+            (rest, true)
+        }
+        [first, rest @ ..] if first.as_word() == Some("additional") => (rest, true),
+        _ => (action_tokens, false),
+    };
+    let collapsed_modifier_tail = collapse_leading_signed_pt_modifier_tokens(modifier_tokens);
+    let modifier_tail = collapsed_modifier_tail
+        .as_deref()
+        .unwrap_or(modifier_tokens);
 
     if let Some(modifier) = clause_grammar::parse_discarded_this_way_modifier_shape(modifier_tail) {
         let target = parse_target_phrase(subject_shape.subject_tokens)?;
@@ -499,6 +510,11 @@ fn parse_get_pump_clause(
         count = parse_get_for_each_count_value(for_each_tokens)?;
     }
     if let Some(count) = count {
+        let count = if additional_modifier {
+            count.with_surface_hint(ValueSurfaceHint::AdditionalPowerToughnessModifier)
+        } else {
+            count
+        };
         let power_per = match power {
             Value::Fixed(value) => value,
             _ => {
@@ -517,14 +533,185 @@ fn parse_get_pump_clause(
                 )));
             }
         };
-        let target = parse_target_phrase(subject_shape.subject_tokens)?;
-        return Ok(Some(EffectAst::subject_verb_pump_for_each(
-            power_per,
-            toughness_per,
-            target,
-            count,
-            subject_shape.duration.unwrap_or(Until::EndOfTurn),
-        )));
+        let duration = subject_shape.duration.unwrap_or(Until::EndOfTurn);
+        if count.has_surface_hint(ValueSurfaceHint::CreaturesChosenBeforeIt)
+            && subject_shape
+                .subject_tokens
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .any(|word| word == "those")
+        {
+            return Ok(Some(EffectAst::ForEachTagged {
+                tag: TagKey::from(IT_TAG),
+                effects: vec![EffectAst::subject_verb_pump_for_each(
+                    power_per,
+                    toughness_per,
+                    TargetAst::Tagged(
+                        TagKey::from(IT_TAG),
+                        span_from_tokens(subject_shape.subject_tokens),
+                    ),
+                    count,
+                    duration,
+                )],
+            }));
+        }
+        let scale_count = |per: i32| match per {
+            0 => Value::Fixed(0),
+            1 => count.clone().with_surface_hint(ValueSurfaceHint::ForEach),
+            multiplier => Value::Scaled(Box::new(count.clone()), multiplier)
+                .with_surface_hint(ValueSurfaceHint::ForEach),
+        };
+        let mut effect = match subject_shape.kind {
+            clause_grammar::PumpSubjectKind::Tagged => EffectAst::subject_verb_pump_for_each(
+                power_per,
+                toughness_per,
+                TargetAst::Tagged(
+                    TagKey::from(IT_TAG),
+                    span_from_tokens(subject_shape.subject_tokens),
+                ),
+                count,
+                duration,
+            ),
+            clause_grammar::PumpSubjectKind::DemonstrativeTarget
+                if subject_shape
+                    .subject_tokens
+                    .iter()
+                    .filter_map(OwnedLexToken::as_word)
+                    .any(|word| word == "those") =>
+            {
+                let filter = match parse_target_phrase(subject_shape.subject_tokens)? {
+                    TargetAst::Object(filter, None, _) => filter,
+                    TargetAst::Tagged(tag, _) => ObjectFilter::tagged(tag),
+                    _ => return Ok(None),
+                };
+                EffectAst::subject_verb_pump_all(
+                    filter,
+                    scale_count(power_per),
+                    scale_count(toughness_per),
+                    duration,
+                )
+            }
+            clause_grammar::PumpSubjectKind::DemonstrativeTarget => {
+                EffectAst::subject_verb_pump_for_each(
+                    power_per,
+                    toughness_per,
+                    parse_target_phrase(subject_shape.subject_tokens)?,
+                    count,
+                    duration,
+                )
+            }
+            clause_grammar::PumpSubjectKind::ControlledFilter {
+                filter_tokens,
+                controller,
+            } => {
+                let Ok(mut filter) = parse_object_filter(filter_tokens, false) else {
+                    return Ok(None);
+                };
+                if filter == ObjectFilter::default() {
+                    return Ok(None);
+                }
+                filter.controller = Some(controller);
+                EffectAst::subject_verb_pump_all(
+                    filter,
+                    scale_count(power_per),
+                    scale_count(toughness_per),
+                    duration,
+                )
+            }
+            clause_grammar::PumpSubjectKind::DirectTarget(target_tokens) => {
+                EffectAst::subject_verb_pump_for_each(
+                    power_per,
+                    toughness_per,
+                    parse_target_phrase(target_tokens)?,
+                    count,
+                    duration,
+                )
+            }
+            clause_grammar::PumpSubjectKind::Equipped => EffectAst::subject_verb_pump_for_each(
+                power_per,
+                toughness_per,
+                TargetAst::Tagged(
+                    TagKey::from("equipped"),
+                    span_from_tokens(subject_shape.subject_tokens),
+                ),
+                count,
+                duration,
+            ),
+            clause_grammar::PumpSubjectKind::Enchanted => EffectAst::subject_verb_pump_for_each(
+                power_per,
+                toughness_per,
+                TargetAst::Tagged(
+                    TagKey::from("enchanted"),
+                    span_from_tokens(subject_shape.subject_tokens),
+                ),
+                count,
+                duration,
+            ),
+            clause_grammar::PumpSubjectKind::FilterCandidate {
+                filter_tokens,
+                mentions_this,
+                disallowed_pronoun,
+                demonstrative_reference,
+            } => {
+                if demonstrative_reference {
+                    return Ok(None);
+                }
+                let definite_singular_antecedent = subject_shape
+                    .subject_tokens
+                    .iter()
+                    .filter_map(OwnedLexToken::as_word)
+                    .eq(["the", "creature"]);
+                if definite_singular_antecedent {
+                    EffectAst::subject_verb_pump_for_each(
+                        power_per,
+                        toughness_per,
+                        TargetAst::Tagged(
+                            TagKey::from(IT_TAG),
+                            span_from_tokens(subject_shape.subject_tokens),
+                        ),
+                        count,
+                        duration,
+                    )
+                } else {
+                    let Ok(filter) = parse_object_filter(filter_tokens, false) else {
+                        return Ok(None);
+                    };
+                    if filter == ObjectFilter::default()
+                        || (mentions_this && !filter.other)
+                        || (disallowed_pronoun && !filter.other)
+                    {
+                        return Ok(None);
+                    }
+                    EffectAst::subject_verb_pump_all(
+                        filter,
+                        scale_count(power_per),
+                        scale_count(toughness_per),
+                        duration,
+                    )
+                }
+            }
+        };
+        let set_quantifier_surface = match subject_shape
+            .subject_tokens
+            .first()
+            .and_then(OwnedLexToken::as_word)
+        {
+            Some("all") => Some(ironsmith_core::SetQuantifierSurface::All),
+            Some("each") | Some("those") => Some(ironsmith_core::SetQuantifierSurface::Each),
+            _ => None,
+        };
+        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PumpAll {
+                    set_quantifier_surface: surface,
+                    ..
+                },
+            ..
+        }) = &mut effect
+        {
+            *surface = set_quantifier_surface;
+        }
+        return Ok(Some(effect));
     }
 
     let (power, toughness, parsed_duration, condition) =
@@ -1078,6 +1265,26 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    if let Some(shape) = clause_grammar::parse_ordered_choose_all_shape(tokens) {
+        let filter = parse_object_filter(shape.filter_tokens, false)?;
+        let repeated_filter = parse_object_filter(shape.repeated_filter_tokens, false)?;
+        if filter != repeated_filter {
+            return Err(CardTextError::ParseError(format!(
+                "ordered choice stopping filter differs from chosen filter (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        return Ok(EffectAst::ChooseObjects {
+            filter: filter.clone(),
+            count: ChoiceCount::dynamic_x(),
+            count_value: Some(
+                Value::Count(filter).with_surface_hint(ValueSurfaceHint::ChooseAllInOrder),
+            ),
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+
     if let Some(shape) = clause_grammar::parse_choose_target_shape(tokens)
         && let Ok(target) = parse_target_phrase(shape.target_tokens)
     {
@@ -1089,7 +1296,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         if player_target
             || clause_grammar::parse_clause_subject_verb_shape(shape.target_tokens).is_none()
         {
-            return Ok(EffectAst::subject_verb_target_only(target));
+            return Ok(EffectAst::subject_verb_explicit_target_only(target));
         }
     }
 
@@ -1537,7 +1744,12 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         )));
     }
 
-    Ok(Some(EffectAst::subject_verb_goad(target)))
+    let duration = if shape.for_rest_of_game {
+        Until::Forever
+    } else {
+        Until::YourNextTurn
+    };
+    Ok(Some(EffectAst::subject_verb_goad_for(target, duration)))
 }
 
 fn parse_hexproof_targeting_override_clause(
@@ -1570,6 +1782,39 @@ mod tests {
 
     fn lex_tail(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).expect("lex test tail")
+    }
+
+    #[test]
+    fn only_authored_choose_target_clauses_are_explicit_declarations() {
+        let authored = parse_effect_clause(&lex_tail("Choose target opponent."))
+            .expect("parse authored target declaration");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    explicit_declaration: true,
+                    ..
+                },
+            ..
+        }) = authored
+        else {
+            panic!("expected explicit target declaration");
+        };
+
+        let synthetic = EffectAst::subject_verb_target_only(TargetAst::Player(
+            PlayerFilter::target_opponent(),
+            None,
+        ));
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::TargetOnly {
+                    explicit_declaration: false,
+                    ..
+                },
+            ..
+        }) = synthetic
+        else {
+            panic!("expected synthetic target prelude");
+        };
     }
 
     #[test]
@@ -1712,7 +1957,7 @@ mod tests {
             };
             let [
                 EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::TargetOnly { target },
+                    action: SubjectVerbActionAst::TargetOnly { target, .. },
                     ..
                 }),
                 EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {

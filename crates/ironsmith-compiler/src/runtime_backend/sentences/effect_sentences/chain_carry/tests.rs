@@ -8,10 +8,278 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::super::super::lexer::lex_line;
+use super::super::parse_effect_sentence_inner_lexed;
 use super::{
-    parse_effect_chain_lexed, parse_effect_clause_with_trailing_if_lexed,
-    parse_effect_sentence_lexed, parse_leading_player_may_lexed, starts_like_create_fragment_lexed,
+    parse_effect_chain_lexed, parse_effect_chain_with_subject_verb_primitives_lexed,
+    parse_effect_clause_with_trailing_if_lexed, parse_effect_sentence_lexed,
+    parse_leading_player_may_lexed, starts_like_create_fragment_lexed,
 };
+
+#[test]
+fn effect_sentence_inner_preserves_coordinated_if_result_body() {
+    let tokens = lex_line(
+        "If you do, put a +1/+1 counter on it and tap up to one target creature defending player controls.",
+        0,
+    )
+    .expect("Aetherstorm Roc result clause should lex");
+
+    let effects = parse_effect_sentence_inner_lexed(&tokens)
+        .expect("Aetherstorm Roc result clause should parse through sentence dispatch");
+    let [
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one if-result wrapper, got {effects:#?}");
+    };
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated_effects,
+            leading_duration: false,
+            result_conjunction: true,
+        },
+    ] = conditional_effects.as_slice()
+    else {
+        panic!("expected one coordinated result body, got {conditional_effects:#?}");
+    };
+    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+}
+
+#[test]
+fn hollow_specter_dependent_result_arms_stay_flat() {
+    let tokens = lex_line(
+        "If you do, that player reveals X cards from their hand and you choose one of them.",
+        0,
+    )
+    .expect("Hollow Specter result clause should lex");
+
+    let effects = parse_effect_sentence_inner_lexed(&tokens)
+        .expect("Hollow Specter result clause should parse through sentence dispatch");
+    let [
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one if-result wrapper, got {effects:#?}");
+    };
+    assert_eq!(conditional_effects.len(), 2, "{conditional_effects:#?}");
+    assert!(
+        conditional_effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::Coordinated { .. })),
+        "the revealed-card dependency must remain visible to the flat specialist: {conditional_effects:#?}"
+    );
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::RevealCardsFromHand { tag, .. },
+        ..
+    }) = &conditional_effects[0]
+    else {
+        panic!("expected the first arm to reveal tagged hand cards: {conditional_effects:#?}");
+    };
+    let EffectAst::ChooseObjects { filter, .. } = &conditional_effects[1] else {
+        panic!("expected the second arm to choose from those cards: {conditional_effects:#?}");
+    };
+    assert!(
+        filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag.as_str()),
+        "the second arm must consume the first arm's reveal tag: {conditional_effects:#?}"
+    );
+}
+
+#[test]
+fn moku_safe_existing_coordination_becomes_a_result_conjunction() {
+    let tokens = lex_line(
+        "If you do, this gets +2/+1 and creatures you control gain haste until end of turn.",
+        0,
+    )
+    .expect("Moku result clause should lex");
+
+    let effects = parse_effect_sentence_inner_lexed(&tokens)
+        .expect("Moku result clause should parse through sentence dispatch");
+    let [
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one if-result wrapper, got {effects:#?}");
+    };
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated_effects,
+            leading_duration: false,
+            result_conjunction: true,
+        },
+    ] = conditional_effects.as_slice()
+    else {
+        panic!(
+            "expected Moku's safe authored 'and' body to be a result conjunction: {conditional_effects:#?}"
+        );
+    };
+    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+    let debug = format!("{coordinated_effects:#?}");
+    assert!(debug.contains("Pump"), "{debug}");
+    assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
+}
+
+#[test]
+fn ulalek_then_body_stays_an_ordinary_coordinated_specialist() {
+    let tokens = lex_line(
+        "If you do, copy all spells you control, then copy all other activated and triggered abilities you control.",
+        0,
+    )
+    .expect("Ulalek result clause should lex");
+
+    let effects = parse_effect_sentence_inner_lexed(&tokens)
+        .expect("Ulalek result clause should parse through sentence dispatch");
+    let [
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one if-result wrapper, got {effects:#?}");
+    };
+    let [
+        EffectAst::Coordinated {
+            result_conjunction: false,
+            ..
+        },
+    ] = conditional_effects.as_slice()
+    else {
+        panic!(
+            "expected Ulalek's specialist 'then' body to remain ordinary: {conditional_effects:#?}"
+        );
+    };
+}
+
+#[test]
+fn leading_if_result_scopes_every_coordinated_effect_arm() {
+    let tokens = lex_line("If you do, draw a card and gain 2 life.", 0)
+        .expect("coordinated if-result clause should lex");
+
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("coordinated if-result clause should parse");
+    let [
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one if-result wrapper, got {effects:#?}");
+    };
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated_effects,
+            leading_duration: false,
+            result_conjunction: true,
+        },
+    ] = conditional_effects.as_slice()
+    else {
+        panic!("expected coordinated result body, got {conditional_effects:#?}");
+    };
+    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+}
+
+#[test]
+fn leading_when_result_scopes_every_coordinated_effect_arm() {
+    let tokens = lex_line("When you do, draw a card and gain 2 life.", 0)
+        .expect("coordinated when-result clause should lex");
+
+    let effects = parse_effect_chain_with_subject_verb_primitives_lexed(&tokens)
+        .expect("coordinated when-result clause should parse through subject/verb dispatch");
+    let [
+        EffectAst::WhenResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one when-result wrapper, got {effects:#?}");
+    };
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated_effects,
+            leading_duration: false,
+            result_conjunction: true,
+        },
+    ] = conditional_effects.as_slice()
+    else {
+        panic!("expected coordinated result body, got {conditional_effects:#?}");
+    };
+    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+}
+
+#[test]
+fn effect_sentence_inner_preserves_overseer_counter_grant_coordination() {
+    let tokens = lex_line(
+        "When you do, put a +1/+1 counter on each creature you control and they gain vigilance until end of turn.",
+        0,
+    )
+    .expect("Overseer-style result clause should lex");
+
+    let effects = parse_effect_sentence_inner_lexed(&tokens)
+        .expect("Overseer-style result clause should parse through sentence dispatch");
+    let [
+        EffectAst::WhenResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: conditional_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one when-result wrapper, got {effects:#?}");
+    };
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated_effects,
+            leading_duration: false,
+            result_conjunction: true,
+        },
+    ] = conditional_effects.as_slice()
+    else {
+        panic!("expected one coordinated result body, got {conditional_effects:#?}");
+    };
+    assert_eq!(coordinated_effects.len(), 2, "{coordinated_effects:#?}");
+    let debug = format!("{coordinated_effects:#?}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+}
+
+#[test]
+fn direct_counter_followup_preserves_its_authored_conjunction() {
+    let tokens = lex_line(
+        "Put a +1/+1 counter on it and it gains haste until end of turn.",
+        0,
+    )
+    .expect("counter-followup conjunction should lex");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("counter-followup conjunction should parse through sentence dispatch");
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+            result_conjunction: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one coordinated counter-followup clause, got {effects:#?}");
+    };
+    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
+    let debug = format!("{coordinated:#?}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+}
 
 #[test]
 fn absolving_lammasu_one_clause_actions_keep_coordinated_surface() {
@@ -27,6 +295,7 @@ fn absolving_lammasu_one_clause_actions_keep_coordinated_surface() {
         EffectAst::Coordinated {
             effects: coordinated,
             leading_duration: false,
+            result_conjunction: false,
         },
     ] = effects.as_slice()
     else {
@@ -261,6 +530,7 @@ fn source_damage_then_keyword_grant_keeps_coordinated_surface() {
         EffectAst::Coordinated {
             effects: coordinated,
             leading_duration: false,
+            result_conjunction: false,
         },
     ] = effects.as_slice()
     else {
@@ -286,6 +556,7 @@ fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
         EffectAst::Coordinated {
             effects: coordinated,
             leading_duration: false,
+            result_conjunction: false,
         },
     ] = effects.as_slice()
     else {
@@ -822,5 +1093,213 @@ fn or_action_clause_preserves_secondary_or_inside_sacrifice_filter() {
     assert!(
         debug.contains("Planeswalker"),
         "expected sacrifice filter to keep planeswalker branch, got {debug}"
+    );
+}
+
+#[test]
+fn quantified_opponent_subject_uses_typed_fanout() {
+    let tokens = lex_line("Each opponent draws a card.", 0).expect("fanout should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("fanout should parse");
+    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+        panic!("expected opponent fanout, got {effects:#?}");
+    };
+    assert!(matches!(
+        nested.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { .. },
+            ..
+        })]
+    ));
+}
+
+#[test]
+fn quantified_player_subject_uses_typed_fanout() {
+    let tokens = lex_line("Each player gains 1 life.", 0).expect("fanout should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("fanout should parse");
+    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+        panic!("expected player fanout, got {effects:#?}");
+    };
+    assert!(matches!(
+        nested.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainLife { .. },
+            ..
+        })]
+    ));
+}
+
+#[test]
+fn quantified_player_across_zone_choice_stays_a_union() {
+    let tokens = lex_line(
+        "Each player exiles X permanents they control and/or cards from their hand.",
+        0,
+    )
+    .expect("across-zone fanout should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("across-zone fanout should parse");
+    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+        panic!("expected player fanout, got {effects:#?}");
+    };
+    let [
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count_value,
+            zones,
+            ..
+        },
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Exile { .. },
+            ..
+        }),
+    ] = nested.as_slice()
+    else {
+        panic!("expected one coordinated across-zone exile choice, got {nested:#?}");
+    };
+
+    assert_eq!(count_value, &Some(Value::X));
+    assert_eq!(
+        zones,
+        &[crate::zone::Zone::Hand, crate::zone::Zone::Battlefield]
+    );
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(filter.any_of.iter().any(|arm| {
+        arm.zone == Some(crate::zone::Zone::Hand)
+            && arm.owner == Some(crate::target::PlayerFilter::IteratedPlayer)
+            && arm.controller.is_none()
+    }));
+    assert!(filter.any_of.iter().any(|arm| {
+        arm.zone == Some(crate::zone::Zone::Battlefield)
+            && arm.controller == Some(crate::target::PlayerFilter::IteratedPlayer)
+            && arm.owner.is_none()
+    }));
+}
+
+#[test]
+fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
+    let tokens = lex_line(
+        "Put a despair counter on this enchantment, then each player exiles X permanents they control and/or cards from their hand, where X is the number of despair counters on this enchantment.",
+        0,
+    )
+    .expect("Descent into Madness body should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Descent into Madness body should parse through sentence dispatch");
+    let [_, EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+        panic!("expected counter placement followed by player fanout, got {effects:#?}");
+    };
+    let [
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count_value: Some(count_value),
+            zones,
+            ..
+        },
+        _,
+    ] = nested.as_slice()
+    else {
+        panic!("expected Descent's coordinated across-zone choice, got {nested:#?}");
+    };
+
+    assert_eq!(
+        zones,
+        &[crate::zone::Zone::Hand, crate::zone::Zone::Battlefield]
+    );
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(matches!(
+        count_value.unhinted(),
+        Value::CountersOnSource(crate::object::CounterType::Named(name)) if name == "despair"
+    ));
+    assert!(
+        !filter.any_of.iter().any(|arm| {
+            arm.zone == Some(crate::zone::Zone::Hand)
+                && arm.controller == Some(crate::target::PlayerFilter::IteratedPlayer)
+                && !arm.card_types.is_empty()
+        }),
+        "the hand and battlefield arms were intersected: {filter:#?}"
+    );
+}
+
+#[test]
+fn quantified_other_player_subject_uses_not_you_filter() {
+    let tokens =
+        lex_line("Each other player draws a card.", 0).expect("filtered fanout should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("filtered fanout should parse");
+    let [
+        EffectAst::ForEachPlayersFiltered {
+            filter,
+            effects: nested,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected filtered player fanout, got {effects:#?}");
+    };
+    assert_eq!(filter, &crate::target::PlayerFilter::NotYou);
+    assert!(matches!(
+        nested.as_slice(),
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { .. },
+            ..
+        })]
+    ));
+}
+
+#[test]
+fn quantified_other_player_may_stays_inside_filtered_fanout() {
+    let tokens = lex_line("Each other player may draw three cards.", 0)
+        .expect("optional filtered fanout should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("optional filtered fanout should parse");
+    let [
+        EffectAst::ForEachPlayersFiltered {
+            filter,
+            effects: nested,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected filtered player fanout, got {effects:#?}");
+    };
+    assert_eq!(filter, &crate::target::PlayerFilter::NotYou);
+    assert!(matches!(nested.as_slice(), [EffectAst::May { .. }]));
+}
+
+#[test]
+fn quantified_shared_subject_chain_stays_in_one_fanout() {
+    let tokens = lex_line("Each opponent draws a card and gains 2 life.", 0)
+        .expect("shared-subject fanout should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("shared-subject fanout should parse");
+    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+        panic!("expected one opponent fanout, got {effects:#?}");
+    };
+    assert!(matches!(
+        nested.as_slice(),
+        [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GainLife { .. },
+                ..
+            })
+        ]
+    ));
+}
+
+#[test]
+fn quantified_subject_tail_stays_nested_after_prior_actions() {
+    let tokens = lex_line(
+        "Copy that spell, you may choose new targets for the copy, and each opponent draws a card.",
+        0,
+    )
+    .expect("nested fanout tail should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("nested fanout tail should parse");
+    assert!(
+        effects.iter().any(
+            |effect| matches!(effect, EffectAst::ForEachOpponent { effects } if matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Draw { .. },
+                    ..
+                })]
+            ))
+        ),
+        "expected a typed opponent fanout after the copy actions, got {effects:#?}"
     );
 }

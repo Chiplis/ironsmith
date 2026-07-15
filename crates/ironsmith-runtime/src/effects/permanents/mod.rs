@@ -217,7 +217,7 @@ pub use meld::MeldEffect;
 pub use monstrosity::MonstrosityEffect;
 pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 pub use phase_in::PhaseInEffect;
-pub use phase_out::PhaseOutEffect;
+pub use phase_out::{PhaseOutDuration, PhaseOutEffect};
 pub use put_sticker::PutStickerEffect;
 pub use reconfigure::ReconfigureEffect;
 pub use regenerate::RegenerateEffect;

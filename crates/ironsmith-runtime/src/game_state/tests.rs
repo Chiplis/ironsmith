@@ -530,6 +530,7 @@ fn auspicious_starrix_mutation_count_tracks_recorded_mutate_events() {
     for _ in 0..2 {
         game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
             crate::events::other::MutatedEvent::new(starrix, alice),
+            crate::provenance::ProvNodeId::default(),
         ));
     }
     assert_eq!(game.mutation_count(starrix), 2);

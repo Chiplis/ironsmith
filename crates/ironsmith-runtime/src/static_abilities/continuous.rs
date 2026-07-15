@@ -209,6 +209,21 @@ fn split_subject_suffix(subject: &str) -> (&str, &str) {
 
 fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     let mut subject = subject_text(filter);
+    if filter.has_relative_attachment_state_surface()
+        && let Some(attachment) = filter.tagged_constraints.iter().find_map(|constraint| {
+            (constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+                .then_some(constraint.tag.as_str())
+                .filter(|tag| matches!(*tag, "enchanted" | "equipped"))
+        })
+    {
+        let without_article = strip_plural_subject_article(&subject);
+        if let Some(base) = without_article.strip_prefix(&format!("{attachment} ")) {
+            return format!(
+                "{} that are {attachment}",
+                pluralize_subject_clause(base)
+            );
+        }
+    }
     if subject.starts_with("another ") {
         subject = subject.replacen("another ", "other ", 1);
     }
@@ -1206,6 +1221,21 @@ fn flatten_static_condition_and(
     }
 }
 
+fn describe_source_keyword_condition(filter: &ObjectFilter) -> Option<String> {
+    if filter.static_abilities.len() + filter.ability_markers.len() != 1 {
+        return None;
+    }
+    let mut unqualified = filter.clone();
+    unqualified.static_abilities.clear();
+    unqualified.ability_markers.clear();
+    if unqualified != ObjectFilter::default() {
+        return None;
+    }
+    let description = filter.description();
+    let keyword = description.strip_prefix("permanent with ")?;
+    (!keyword.is_empty()).then(|| format!("as long as it has {keyword}"))
+}
+
 pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
     match condition {
         crate::ConditionExpr::And(_, _) => {
@@ -1233,6 +1263,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
         {
             "during turns other than yours".to_string()
+        }
+        crate::ConditionExpr::SourceMatches(filter) => describe_source_keyword_condition(filter)
+            .unwrap_or_else(|| format!("as long as {condition:?}")),
+        crate::ConditionExpr::AttachmentCount { display, .. } => {
+            format!("as long as {display}")
         }
         crate::ConditionExpr::SourceIsEquipped => {
             "as long as this creature is equipped".to_string()
@@ -2495,12 +2530,12 @@ impl StaticAbilityKind for Anthem {
                 },
             ) if power_count == toughness_count && *power == 1 && *toughness == 1 => {
                 if self.count_uses_where_x {
-                    return format!(
+                    format!(
                         "{subject} {verb} +X/+X, where X is {}",
                         describe_anthem_where_x_count_expression(power_count),
-                    );
-                }
-                if let Some(count_subject) = describe_anthem_for_each_count_expression(power_count)
+                    )
+                } else if let Some(count_subject) =
+                    describe_anthem_for_each_count_expression(power_count)
                 {
                     if matches!(power_count, AnthemCountExpression::CommanderCastCount(_))
                         && !self.source_only
@@ -2508,23 +2543,23 @@ impl StaticAbilityKind for Anthem {
                         && self.filter.controller == Some(crate::target::PlayerFilter::You)
                         && self.filter.card_types == vec![CardType::Creature]
                     {
-                        return format!("Creatures you control get +1/+1 for each {count_subject}");
+                        format!("Creatures you control get +1/+1 for each {count_subject}")
+                    } else {
+                        format!("{subject} {verb} +1/+1 for each {count_subject}")
                     }
-                    return format!("{subject} {verb} +1/+1 for each {count_subject}");
-                }
-                // The original oracle wrote "for each …" (no "where X is" clause):
-                // prefer the "for each" surface for counts the primary helper can't
-                // express on its own, such as cards in a graveyard.
-                if !self.count_uses_where_x
-                    && let Some(count_subject) =
-                        describe_anthem_for_each_graveyard_count_expression(power_count)
+                } else if let Some(count_subject) =
+                    describe_anthem_for_each_graveyard_count_expression(power_count)
                 {
-                    return format!("{subject} {verb} +1/+1 for each {count_subject}");
+                    // The original oracle wrote "for each …" (no "where X is" clause):
+                    // prefer the "for each" surface for counts the primary helper can't
+                    // express on its own, such as cards in a graveyard.
+                    format!("{subject} {verb} +1/+1 for each {count_subject}")
+                } else {
+                    format!(
+                        "{subject} {verb} +X/+X, where X is {}",
+                        describe_anthem_where_x_count_expression(power_count),
+                    )
                 }
-                format!(
-                    "{subject} {verb} +X/+X, where X is {}",
-                    describe_anthem_where_x_count_expression(power_count),
-                )
             }
             (
                 AnthemValue::PerCount {
@@ -4260,17 +4295,29 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
 pub struct SetCardTypesForFilter {
     pub filter: ObjectFilter,
     pub card_types: Vec<CardType>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl SetCardTypesForFilter {
     pub fn new(filter: ObjectFilter, card_types: Vec<CardType>) -> Self {
-        Self { filter, card_types }
+        Self {
+            filter,
+            card_types,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
 impl PartialEq for SetCardTypesForFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.filter == other.filter && self.card_types == other.card_types
+        self.filter == other.filter
+            && self.card_types == other.card_types
+            && self.condition == other.condition
     }
 }
 
@@ -4282,19 +4329,44 @@ impl StaticAbilityKind for SetCardTypesForFilter {
     fn display(&self) -> String {
         let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
-        let types = self
+        let mut types = self
             .card_types
             .iter()
-            .map(|card_type| {
-                let name = card_type.name();
-                if verb == "are" {
-                    simple_pluralize(name)
-                } else {
-                    name.to_string()
-                }
-            })
+            .map(|card_type| card_type.name().to_string())
             .collect::<Vec<_>>();
-        format!("{subject} {verb} {}", join_with_and(&types))
+        if verb == "are"
+            && let Some(last) = types.last_mut()
+        {
+            *last = simple_pluralize(last);
+        }
+        let type_phrase = types.join(" ");
+        let type_phrase = if verb == "are" || type_phrase.is_empty() {
+            type_phrase
+        } else {
+            format!("{} {type_phrase}", indefinite_article_for(&type_phrase))
+        };
+        let mut text = format!("{subject} {verb} {type_phrase}");
+        if let Some(condition) = &self.condition {
+            let condition_text =
+                normalize_source_counter_condition_text(&describe_static_condition(condition));
+            if static_condition_is_during_your_turn(condition) {
+                return format!("During your turn, {text}");
+            }
+            if condition_text.starts_with("as long as ") {
+                return format!("{condition_text}, {text}");
+            }
+            text.push(' ');
+            text.push_str(&condition_text);
+        }
+        text
+    }
+
+    fn prefers_card_name_subject(&self) -> bool {
+        self.filter.source && self.filter.source_surface.is_none()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -4303,7 +4375,7 @@ impl StaticAbilityKind for SetCardTypesForFilter {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        vec![
+        vec![effect_with_optional_static_condition(
             ContinuousEffect::new(
                 source,
                 controller,
@@ -4311,7 +4383,8 @@ impl StaticAbilityKind for SetCardTypesForFilter {
                 Modification::SetCardTypes(self.card_types.clone()),
             )
             .with_source_type(EffectSourceType::StaticAbility),
-        ]
+            &self.condition,
+        )]
     }
 }
 

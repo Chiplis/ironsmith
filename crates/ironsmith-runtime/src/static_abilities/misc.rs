@@ -129,6 +129,9 @@ fn enters_with_counters_where_x_value(count: &Value) -> Option<String> {
                 | Value::GreatestPower(_)
                 | Value::GreatestToughness(_)
                 | Value::GreatestManaValue(_)
+                | Value::LeastPower(_)
+                | Value::LeastToughness(_)
+                | Value::LeastManaValue(_)
         );
     prefers_where_x.then(|| describe_value(count))
 }
@@ -150,7 +153,7 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
                     collect_terms(left, terms);
                     collect_terms(right, terms);
                 }
-                term => terms.push(term),
+                _ => terms.push(value),
             }
         }
 
@@ -176,6 +179,16 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
         }
         if let Some(history_basis) = describe_turn_history_for_each_basis(value) {
             return Some(history_basis);
+        }
+        if value.has_surface_hint(ValueSurfaceHint::PermanentsSacrificedThisWay) {
+            let kind = value.surface_hints().iter().find_map(|hint| match hint {
+                ValueSurfaceHint::SacrificedObject(kind) => Some(*kind),
+                _ => None,
+            });
+            let noun = kind
+                .unwrap_or(ironsmith_core::SacrificedObjectKind::Permanent)
+                .noun();
+            return Some((1, format!("{noun} sacrificed this way")));
         }
 
         match value.unhinted() {
@@ -2637,6 +2650,46 @@ impl StaticAbilityKind for PreventAllDamageToSelfByCreatures {
     }
 }
 
+/// Prevent damage to this permanent from sources matching a typed filter and
+/// optional combat relation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllDamageToSelfFromSourcesMatching {
+    pub spec: ironsmith_core::PreventAllDamageToSelfFromSourcesMatchingSpec,
+}
+
+impl PreventAllDamageToSelfFromSourcesMatching {
+    pub fn new(spec: ironsmith_core::PreventAllDamageToSelfFromSourcesMatchingSpec) -> Self {
+        Self { spec }
+    }
+}
+
+impl StaticAbilityKind for PreventAllDamageToSelfFromSourcesMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllDamageToSelfFromSourcesMatching
+    }
+
+    fn display(&self) -> String {
+        self.spec.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageToSelfFromSourceFilterMatcher::with_constraints(
+                self.spec.source_filter.clone(),
+                self.spec.combat_only,
+                self.spec.source_relation,
+            ),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
 /// "If a matching source would deal damage to you, prevent N of that damage."
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreventDamageToYouFromSourceFilter {
@@ -3756,6 +3809,20 @@ impl StaticAbilityKind for LegendRuleDoesntApply {
 
     fn display(&self) -> String {
         "The legend rule doesn't apply".to_string()
+    }
+}
+
+/// The legend rule doesn't apply to permanents the source's controller controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LegendRuleDoesntApplyToController;
+
+impl StaticAbilityKind for LegendRuleDoesntApplyToController {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LegendRuleDoesntApplyToController
+    }
+
+    fn display(&self) -> String {
+        "The legend rule doesn't apply to permanents you control".to_string()
     }
 }
 

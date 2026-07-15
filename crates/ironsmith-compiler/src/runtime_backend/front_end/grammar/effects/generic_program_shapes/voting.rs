@@ -66,6 +66,49 @@ pub(crate) struct NamedVoteOptionEffectsShape<'a> {
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct VotedAgainstYouEffectsShape<'a> {
+    pub(crate) effect_tokens: &'a [OwnedLexToken],
+}
+
+pub(crate) fn parse_voted_against_you_effects_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<VotedAgainstYouEffectsShape<'_>> {
+    // This shape is also used from a trigger payload whose sentence boundary
+    // has already been consumed. Parse the typed relational prefix and hand
+    // the remaining action clause back to ordinary effect parsing instead of
+    // requiring a second synthetic sentence terminator.
+    let (_, rest) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&[
+                "each", "opponent", "who", "voted", "for", "a", "choice",
+            ]),
+            // Quantified player lowering scopes the action to an iterated
+            // player by rewriting `each opponent` to this contextual subject
+            // before sentence dispatch. Retain the typed vote predicate when
+            // receiving that equivalent internal surface.
+            primitives::phrase(&[
+                "that", "players", "who", "voted", "for", "a", "choice",
+            ]),
+        ))
+        .void(),
+    )?;
+    let (_, rest) = primitives::parse_prefix(rest, primitives::kw("you").void())?;
+    let (_, rest) = primitives::parse_prefix(
+        rest,
+        alt((
+            alt((primitives::kw("didn't"), primitives::kw("didnt"))).void(),
+            primitives::phrase(&["did", "not"]).void(),
+            primitives::phrase(&["didn", "t"]).void(),
+        )),
+    )?;
+    let (_, effect_tokens) =
+        primitives::parse_prefix(rest, primitives::phrase(&["vote", "for"]).void())?;
+    let effect_tokens = crate::runtime_backend::front_end::lexer::trim_lexed_commas(effect_tokens);
+    (!effect_tokens.is_empty()).then_some(VotedAgainstYouEffectsShape { effect_tokens })
+}
+
 fn vote_word<'a>(input: &mut LexStream<'a>) -> ModalResult<()> {
     alt((primitives::kw("vote"), primitives::kw("votes")))
         .void()

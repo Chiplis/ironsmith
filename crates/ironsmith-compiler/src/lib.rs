@@ -97,7 +97,8 @@ pub use front_end::{
 };
 pub use ids::{CardId, ObjectId, PlayerId, StableId};
 pub use ironsmith_core::{
-    Condition as ConditionExpr, SourceCounterThresholdSurface, WorkspaceSplitMarker,
+    AttachmentConditionHost, Condition as ConditionExpr, SourceCounterThresholdSurface,
+    WorkspaceSplitMarker,
 };
 pub use model::{
     AdditionalCostChoiceOptionAst, AnnotatedEffect, AnnotatedEffectSequence, ClashOpponentAst,

@@ -1,4 +1,4 @@
-use ironsmith_core::EffectMetricSource;
+use ironsmith_core::{EffectMetricSource, PriorEffectAction};
 
 use crate::effect::Value;
 use crate::object::CounterType;
@@ -166,6 +166,63 @@ pub(crate) fn parse_prior_effect_metric_source(words: &[&str]) -> Option<EffectM
         EffectMetricSource::ChosenObjects
     } else {
         EffectMetricSource::AffectedObjects
+    })
+}
+
+/// Parse the passive action at the end of a `... this way` object phrase and
+/// return the word index where that action starts.
+///
+/// Keeping the action typed lets reference resolution bind numeric queries to
+/// an exact producer while rendering preserves the authored relationship
+/// without inferring semantics from a generated tag name.
+pub(crate) fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, usize)> {
+    const PATTERNS: &[(&[&str], PriorEffectAction)] = &[
+        (&["phased", "out"], PriorEffectAction::PhasedOut),
+        (
+            &["put", "onto", "the", "battlefield"],
+            PriorEffectAction::PutOntoBattlefield,
+        ),
+        (
+            &["put", "onto", "battlefield"],
+            PriorEffectAction::PutOntoBattlefield,
+        ),
+        (&["put", "into", "exile"], PriorEffectAction::Exiled),
+        (&["dealt", "damage"], PriorEffectAction::DealtDamage),
+        (&["counters", "put"], PriorEffectAction::CountersPut),
+        (&["counter", "put"], PriorEffectAction::CountersPut),
+        (&["searched", "for"], PriorEffectAction::Searched),
+        (&["cast"], PriorEffectAction::Cast),
+        (&["chosen"], PriorEffectAction::Chosen),
+        (&["connived"], PriorEffectAction::Connived),
+        (&["countered"], PriorEffectAction::Countered),
+        (&["destroyed"], PriorEffectAction::Destroyed),
+        (&["discarded"], PriorEffectAction::Discarded),
+        (&["drawn"], PriorEffectAction::Drawn),
+        (&["exiled"], PriorEffectAction::Exiled),
+        (&["goaded"], PriorEffectAction::Goaded),
+        (&["milled"], PriorEffectAction::Milled),
+        (&["prevented"], PriorEffectAction::Prevented),
+        (&["removed"], PriorEffectAction::Removed),
+        (&["returned"], PriorEffectAction::Returned),
+        (&["revealed"], PriorEffectAction::Revealed),
+        (&["sacrificed"], PriorEffectAction::Sacrificed),
+        (&["searched"], PriorEffectAction::Searched),
+        (&["shuffled"], PriorEffectAction::Shuffled),
+        (&["tapped"], PriorEffectAction::Tapped),
+    ];
+
+    PATTERNS.iter().find_map(|(suffix, action)| {
+        if !permission_shapes::suffix_words(words, suffix) {
+            return None;
+        }
+        let mut action_start = words.len().saturating_sub(suffix.len());
+        if action_start > 0 && matches!(words[action_start - 1], "is" | "are" | "was" | "were") {
+            action_start -= 1;
+        }
+        if action_start > 0 && words[action_start - 1] == "that" {
+            action_start -= 1;
+        }
+        Some((*action, action_start))
     })
 }
 

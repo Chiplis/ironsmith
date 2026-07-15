@@ -94,6 +94,55 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         ));
     }
 
+    if surface::exact_any(
+        clause,
+        &[
+            &[
+                "a",
+                "creature",
+                "entered",
+                "the",
+                "battlefield",
+                "under",
+                "an",
+                "opponents",
+                "control",
+                "this",
+                "turn",
+            ],
+            &[
+                "a",
+                "creature",
+                "entered",
+                "battlefield",
+                "under",
+                "an",
+                "opponents",
+                "control",
+                "this",
+                "turn",
+            ],
+            &[
+                "a",
+                "creature",
+                "entered",
+                "under",
+                "an",
+                "opponents",
+                "control",
+                "this",
+                "turn",
+            ],
+        ],
+    ) {
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::Opponent);
+        return Some(value_at_least(
+            Value::TurnHistoryCount(TurnHistoryCount::EnteredBattlefield(filter)),
+            1,
+        ));
+    }
+
     if surface::exact(
         clause,
         &[
@@ -739,6 +788,83 @@ fn parse_all_controlled_objects_share_color_gate(tokens: &[OwnedLexToken]) -> Op
 
 fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
+
+    if let Some(relation) = parse_has_relation_clauses(tokens)
+        && surface::exact_any(
+            relation.subject_clause,
+            &[
+                &["enchanted", "creature"],
+                &["enchanted", "permanent"],
+            ],
+        )
+    {
+        let words = relation.tail_clause.word_refs();
+        if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(&words)
+            && consumed == words.len()
+        {
+            let mut filter = if surface::exact(
+                relation.subject_clause,
+                &["enchanted", "creature"],
+            ) {
+                ObjectFilter::creature()
+            } else {
+                ObjectFilter::permanent()
+            };
+            apply_filter_keyword_constraint(&mut filter, constraint, false);
+            return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
+        }
+    }
+
+    if let Some(relation) = parse_copula_relation_clauses(tokens)
+        && surface::exact_any(
+            relation.subject_clause,
+            &[
+                &["enchanted", "creature"],
+                &["enchanted", "permanent"],
+            ],
+        )
+    {
+        let mut filter = if surface::exact(
+            relation.subject_clause,
+            &["enchanted", "creature"],
+        ) {
+            ObjectFilter::creature()
+        } else {
+            ObjectFilter::permanent()
+        };
+        let tail = relation.tail_clause;
+        if tail.word_refs().len() == 1
+            && let Some(color) = tail.token(0).and_then(|token| parse_color(token.parser_text()))
+        {
+            filter.colors = Some(color);
+            return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
+        }
+        if surface::exact(tail, &["tapped"]) {
+            filter.tapped = true;
+            return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
+        }
+        if surface::exact_any(
+            tail,
+            &[
+                &[
+                    "a", "creature", "with", "the", "greatest", "power", "among",
+                    "creatures", "on", "the", "battlefield",
+                ],
+                &[
+                    "a", "creature", "with", "greatest", "power", "among", "creatures",
+                    "on", "battlefield",
+                ],
+            ],
+        ) {
+            let global_creatures = ObjectFilter::creature().in_zone(Zone::Battlefield);
+            filter = global_creatures.clone();
+            filter.power = Some(crate::filter::Comparison::EqualExpr(Box::new(
+                Value::GreatestPower(global_creatures),
+            )));
+            return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
+        }
+    }
+
     if let Some(relation) = parse_copula_relation_clauses(tokens)
         && surface::exact_any(
             relation.subject_clause,

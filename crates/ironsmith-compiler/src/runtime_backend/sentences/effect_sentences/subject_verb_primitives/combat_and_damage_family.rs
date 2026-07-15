@@ -1,6 +1,8 @@
+use super::super::zone_handlers::parse_return;
 use super::*;
 use crate::runtime_backend::front_end::grammar::effects::combat_damage_family_shapes as combat_shapes;
 use crate::runtime_backend::front_end::grammar::effects::delayed_step_shapes as delayed_shapes;
+use crate::runtime_backend::front_end::lexer::trim_lexed_commas;
 const TRANSFORM_WORD: &str = "transform";
 const CONVERT_WORD: &str = "convert";
 const DISTRIBUTE_WORD: &str = "distribute";
@@ -310,6 +312,46 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
 pub(crate) fn parse_sentence_return_multiple_targets(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // A single printed "return" can coordinate objects with different
+    // destinations, as in "Return this card to its owner's hand and [a]
+    // creature card ... to the battlefield under your control." Try each
+    // conjunction boundary as two complete return clauses before applying
+    // the shared-destination grammar below. Reusing `parse_return` keeps each
+    // destination's zone and controller typed independently.
+    let tokens = clause.tokens();
+    if tokens.first().and_then(OwnedLexToken::as_word) == Some("return") {
+        for and_idx in 2..tokens.len().saturating_sub(1) {
+            if tokens[and_idx].as_word() != Some("and") {
+                continue;
+            }
+            let left = trim_lexed_commas(&tokens[1..and_idx]);
+            let right = trim_lexed_commas(&tokens[and_idx + 1..]);
+            if left.is_empty() || right.is_empty() {
+                continue;
+            }
+            let distinct_destination_zones =
+                crate::runtime_backend::front_end::grammar::effects::parse_return_clause_shape(
+                    left,
+                )
+                .zip(
+                    crate::runtime_backend::front_end::grammar::effects::parse_return_clause_shape(
+                        right,
+                    ),
+                )
+                .is_some_and(|(left, right)| left.destination.zone != right.destination.zone);
+            if !distinct_destination_zones {
+                continue;
+            }
+            if let (Ok(left), Ok(right)) = (parse_return(left), parse_return(right)) {
+                return Ok(Some(vec![EffectAst::Coordinated {
+                    effects: vec![left, right],
+                    leading_duration: false,
+                    result_conjunction: false,
+                }]));
+            }
+        }
+    }
+
     let Some(shape) = combat_shapes::parse_return_multiple_targets_shape(clause.tokens()) else {
         return Ok(None);
     };
@@ -398,6 +440,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
     Ok(Some(vec![EffectAst::Coordinated {
         effects,
         leading_duration: false,
+        result_conjunction: false,
     }]))
 }
 
@@ -694,4 +737,75 @@ pub(super) fn delayed_next_step_marker(
 ) -> Option<(usize, usize, DelayedNextStepKind, PlayerAst)> {
     delayed_shapes::parse_delayed_timing_marker_shape(clause.tokens())
         .map(|shape| (shape.start_word, shape.end_word, shape.step, shape.player))
+}
+
+#[cfg(test)]
+mod coordinated_return_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn preserves_distinct_destinations_and_controller_in_coordinated_return() {
+        let tokens = lex_line(
+            "return this card to its owner's hand and up to one creature card milled this way to the battlefield under your control",
+            0,
+        )
+        .expect("lex coordinated return");
+        let effects =
+            parse_sentence_return_multiple_targets(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("parse coordinated return")
+                .expect("coordinated return shape");
+        let [EffectAst::Coordinated { effects, .. }] = effects.as_slice() else {
+            panic!("expected one coordinated return");
+        };
+        let [hand, battlefield] = effects.as_slice() else {
+            panic!("expected two return branches");
+        };
+
+        assert!(matches!(
+            hand,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToHand { .. },
+                ..
+            })
+        ));
+        assert!(matches!(
+            battlefield,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToBattlefield {
+                    controller: ReturnControllerAst::You,
+                    ..
+                },
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn same_destination_coordinated_return_preserves_explicit_target() {
+        let tokens = lex_line(
+            "return this creature to its owner's hand and return target griffin card from your graveyard to your hand",
+            0,
+        )
+        .expect("lex coordinated return");
+        let effects =
+            parse_sentence_return_multiple_targets(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("parse coordinated return")
+                .expect("coordinated return shape");
+        let [EffectAst::Coordinated { effects, .. }] = effects.as_slice() else {
+            panic!("expected one coordinated return");
+        };
+        let [
+            _,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnToHand { target, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected a second return-to-hand action");
+        };
+
+        assert!(matches!(target, TargetAst::Object(_, Some(_), _)));
+    }
 }

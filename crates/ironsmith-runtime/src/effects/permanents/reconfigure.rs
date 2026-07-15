@@ -61,6 +61,8 @@ impl EffectExecutor for ReconfigureEffect {
             min_targets: 0,
             max_targets: Some(1),
             count_value: None,
+            distribution_value: None,
+            distribution_min_per_target: 1,
             reuse_policy: TargetReusePolicy::ReuseCompatiblePrevious,
         })
     }

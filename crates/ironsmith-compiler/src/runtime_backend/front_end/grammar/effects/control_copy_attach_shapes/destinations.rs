@@ -42,6 +42,47 @@ pub(crate) struct IntoDestinationShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) struct SourceExiledOwnerLibraryBottomShape<'a> {
+    pub(crate) source_tokens: &'a [OwnedLexToken],
+}
+
+pub(crate) fn parse_source_exiled_owner_library_bottom_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceExiledOwnerLibraryBottomShape<'_>> {
+    let tokens = trim_lexed_commas(tokens);
+    let (_, after_prefix) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["the", "owner", "of", "each", "card", "exiled", "with"])
+            .void(),
+    )?;
+    let (puts_index, _, trailing) = primitives::find_prefix(after_prefix, || {
+        (
+            primitives::phrase(&["puts", "that", "card", "on"]),
+            opt(primitives::kw("the")),
+            primitives::phrase(&["bottom", "of", "their", "library"]),
+        )
+            .void()
+    })?;
+    if !crate::runtime_backend::token_word_refs(trailing).is_empty() {
+        return None;
+    }
+    let source_tokens = trim_lexed_commas(after_prefix.get(..puts_index)?);
+    (!source_tokens.is_empty()).then_some(SourceExiledOwnerLibraryBottomShape { source_tokens })
+}
+
+pub(crate) fn contains_source_exiled_owner_library_bottom_shape(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    permission_shapes::contains_tokens(
+        tokens,
+        &["owner", "of", "each", "card", "exiled", "with"],
+    ) && permission_shapes::contains_tokens(
+        tokens,
+        &["that", "card", "on", "the", "bottom", "of", "their", "library"],
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum DestinationFirstTargetShape<'a> {
     Objects(&'a [OwnedLexToken]),
     Attached {
@@ -333,6 +374,17 @@ pub(crate) fn parse_onto_clause_shape(tokens: &[OwnedLexToken]) -> Option<OntoCl
         target_tokens,
         destination_tokens: trim_lexed_commas(destination_tokens),
     })
+}
+
+pub(crate) fn target_names_unowned_shared_zone(tokens: &[OwnedLexToken]) -> bool {
+    [
+        &["from", "a", "graveyard"][..],
+        &["from", "any", "graveyard"][..],
+        &["from", "a", "library"][..],
+        &["from", "any", "library"][..],
+    ]
+    .iter()
+    .any(|phrase| permission_shapes::contains_tokens(tokens, phrase))
 }
 
 fn token_is_ignored(token: &OwnedLexToken) -> bool {

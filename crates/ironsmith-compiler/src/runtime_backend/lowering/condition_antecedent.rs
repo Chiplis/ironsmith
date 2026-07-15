@@ -208,6 +208,7 @@ fn target_establishes_body_object_antecedent(target: &TargetAst) -> bool {
         TargetAst::Source(_)
         | TargetAst::AnyTarget(_)
         | TargetAst::AnyOtherTarget(_)
+        | TargetAst::ObjectOrPlayer(_, _, _)
         | TargetAst::Object(_, _, _) => true,
         TargetAst::Tagged(tag, _) => tag.as_str() != IT_TAG,
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
@@ -239,7 +240,7 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::GrantToTarget { target, .. }
             | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
-            | SubjectVerbActionAst::TargetOnly { target } => {
+            | SubjectVerbActionAst::TargetOnly { target, .. } => {
                 target_establishes_body_object_antecedent(target)
             }
             // These actions export a generated or selected object set when a
@@ -292,7 +293,7 @@ fn bind_condition_antecedent_in_effect(
             | SubjectVerbActionAst::GrantToTarget { target, .. }
             | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
-            | SubjectVerbActionAst::TargetOnly { target } => {
+            | SubjectVerbActionAst::TargetOnly { target, .. } => {
                 bind_condition_antecedent_in_target(target, antecedent, mode);
             }
             _ => {}

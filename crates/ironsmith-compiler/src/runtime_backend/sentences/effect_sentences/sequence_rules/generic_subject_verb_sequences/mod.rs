@@ -476,44 +476,38 @@ pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
         return Ok(None);
     };
 
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::PreventNextTimeDamage {
-                follow_up_effects, ..
-            },
-        ..
-    }) = first_effect
-    else {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = first_effect else {
         return Ok(None);
+    };
+    let follow_up_effects = match action {
+        SubjectVerbActionAst::PreventNextTimeDamage {
+            follow_up_effects, ..
+        }
+        | SubjectVerbActionAst::PreventDamage {
+            follow_up_effects, ..
+        } => follow_up_effects,
+        _ => return Ok(None),
     };
     if !follow_up_effects.is_empty() {
         return Ok(None);
     }
 
-    let Ok(second_effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 1].lowered())
-    else {
-        return Ok(None);
-    };
-    let [second_effect] = second_effects.as_slice() else {
-        return Ok(None);
-    };
-    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        subject:
-            SubjectVerbSubjectAst {
-                player: PlayerAst::You,
-                ..
-            },
-        action: SubjectVerbActionAst::GainLife { amount },
-    }) = second_effect
-    else {
-        return Ok(None);
-    };
-    if !matches!(amount, Value::EventValue(EventValueSpec::Amount)) {
+    if !sequence_grammar::parse_prevention_gain_life_followup_shape(
+        sentences[sentence_idx + 1].lowered(),
+    ) {
         return Ok(None);
     }
 
-    follow_up_effects.push(second_effect.clone());
+    // The exact sequence shape above establishes both the affected player and
+    // the event-relative amount.  Construct that typed follow-up directly:
+    // parsing the sentence in isolation loses the prevention-event context.
+    follow_up_effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::You,
+        SubjectVerbActionAst::GainLife {
+            amount: Value::EventValue(EventValueSpec::Amount),
+        },
+    ));
     Ok(Some(first_effects))
 }
 

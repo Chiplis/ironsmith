@@ -257,6 +257,13 @@ fn prevention_target_from_non_choice_target(
                 resolve_it_tag(filter, &current_reference_env(ctx))?,
             ))
         }
+        TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, explicit_target_span)
+            if explicit_target_span.is_none() =>
+        {
+            Ok(ironsmith_core::PreventionTarget::YouAndPermanentsMatching(
+                resolve_it_tag(filter, &current_reference_env(ctx))?,
+            ))
+        }
         _ => Err(CardTextError::ParseError(
             "unsupported prevent-all damage protected target with source filter".to_string(),
         )),
@@ -362,7 +369,9 @@ fn retarget_target_is_bare_it(target: &TargetAst) -> bool {
 
 fn target_is_any_damage_target(target: &TargetAst) -> bool {
     match target {
-        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_) => true,
+        TargetAst::AnyTarget(_)
+        | TargetAst::AnyOtherTarget(_)
+        | TargetAst::ObjectOrPlayer(_, _, _) => true,
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_is_any_damage_target(inner)
         }
@@ -418,6 +427,7 @@ fn compile_effect_inner(
     if let EffectAst::Coordinated {
         effects,
         leading_duration,
+        result_conjunction,
     } = effect
     {
         // A coordinated clause establishes its own target-reference scope.
@@ -432,7 +442,9 @@ fn compile_effect_inner(
         ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
         let (effects, choices) = compiled?;
         let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
-        let sequence = if *leading_duration {
+        let sequence = if *result_conjunction {
+            crate::effects::SequenceEffect::result_conjunction(effects, *leading_duration)
+        } else if *leading_duration {
             crate::effects::SequenceEffect::coordinated_with_leading_duration(effects)
         } else {
             crate::effects::SequenceEffect::coordinated(effects)
@@ -812,6 +824,9 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
@@ -819,6 +834,9 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter)
         | Value::PlayersWhoControlMoreThanYou(filter) => {
+            collect_object_filter_player_target_choices(filter, choices);
+        }
+        Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
             collect_object_filter_player_target_choices(filter, choices);
         }
         Value::StaticAbilitiesAmong { filter, .. } => {

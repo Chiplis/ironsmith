@@ -37,6 +37,32 @@ fn anthem_scales_per_affected_objects_controller_hand() {
 }
 
 #[test]
+fn equal_per_count_anthem_keeps_trailing_graveyard_condition() {
+    let count = AnthemCountExpression::MatchingFilter(
+        ObjectFilter::permanent()
+            .controlled_by(PlayerFilter::Opponent)
+            .with_colors(crate::color::ColorSet::BLACK),
+    );
+    let anthem = Anthem::for_source(0, 0)
+        .with_values(
+            AnthemValue::scaled(1, count.clone()),
+            AnthemValue::scaled(1, count),
+        )
+        .with_condition(crate::ConditionExpr::ValueComparison {
+            left: Value::CardsInGraveyard(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(7),
+        });
+
+    let display = anthem.display();
+    assert!(display.contains("for each black permanent"), "{display}");
+    assert!(
+        display.ends_with(" as long as there are seven or more cards in your graveyard"),
+        "{display}"
+    );
+}
+
+#[test]
 fn source_only_conditions_use_same_source_pronouns() {
     assert_eq!(
         Anthem::for_source(1, 0)
@@ -51,6 +77,21 @@ fn source_only_conditions_use_same_source_pronouns() {
             .display(),
         "this creature has first strike as long as it's equipped"
     );
+
+    let mut defender = ObjectFilter::default();
+    defender.static_abilities.push(StaticAbilityId::Defender);
+    let condition = crate::ConditionExpr::SourceMatches(defender);
+    let grant =
+        GrantAbility::source(StaticAbility::indestructible()).with_condition(condition.clone());
+    assert_eq!(
+        grant.display(),
+        "this creature has indestructible as long as it has defender"
+    );
+
+    let game = GameState::new(vec!["Alice".to_string()], 20);
+    let effects = grant.generate_effects(ObjectId::from_raw(1), PlayerId::from_index(0), &game);
+    assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].condition, Some(condition));
 }
 
 #[test]
@@ -70,6 +111,29 @@ fn non_source_grants_keep_explicit_condition_source() {
 fn test_remove_supertypes_display_mentions_scope_and_supertype() {
     let remove = RemoveSupertypesForFilter::new(ObjectFilter::land(), vec![Supertype::Snow]);
     assert_eq!(remove.display(), "All lands are no longer snow");
+}
+
+#[test]
+fn conditioned_set_card_types_reaches_the_generated_continuous_effect() {
+    let condition = crate::ConditionExpr::YourTurn;
+    let ability = SetCardTypesForFilter::new(
+        ObjectFilter::source(),
+        vec![CardType::Artifact, CardType::Creature],
+    )
+    .with_condition(condition.clone());
+
+    let display = ability.display();
+    assert!(display.starts_with("During your turn, "), "{display}");
+    assert!(display.ends_with("is an artifact creature"), "{display}");
+
+    let game = GameState::new(vec!["Alice".to_string()], 20);
+    let effects = ability.generate_effects(ObjectId::from_raw(1), PlayerId::from_index(0), &game);
+    assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].condition, Some(condition));
+    assert_eq!(
+        effects[0].modification,
+        Modification::SetCardTypes(vec![CardType::Artifact, CardType::Creature])
+    );
 }
 
 #[test]

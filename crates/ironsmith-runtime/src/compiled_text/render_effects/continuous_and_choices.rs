@@ -1613,7 +1613,7 @@ pub(crate) fn describe_if_didnt_put_card_into_hand_this_way(
         return None;
     }
 
-    let then_text = describe_effect_list(&if_effect.then);
+    let then_text = describe_result_branch_effect_list(&if_effect.then);
     if then_text.is_empty() {
         return None;
     }
@@ -2954,7 +2954,8 @@ pub(crate) fn describe_tagged_mill_then_put_milled_card_into_hand_with_fallback(
     } else {
         "If you can't"
     };
-    let then_text = lowercase_first(describe_effect_list(&if_effect.then).trim_end_matches('.'));
+    let then_text =
+        lowercase_first(describe_result_branch_effect_list(&if_effect.then).trim_end_matches('.'));
     if then_text.is_empty() {
         return None;
     }

@@ -106,6 +106,10 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     }
 
     let filter_end = value_boundary(&words[idx..]) + idx;
+    let count_words = &words[idx..filter_end];
+    if let Some(exact) = parse_exact_dynamic_count_basis(count_words, filter_end) {
+        return Some(exact);
+    }
     if let Some(value) =
         value_helper_shapes::parse_aggregate_scope_value_words(&words[idx..filter_end])
     {
@@ -126,6 +130,84 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDrawnThisWay),
                 filter_end,
             ));
+        }
+        if exact_one_of(
+            this_way_subject,
+            &[
+                &["creature", "card", "put", "into", "your", "graveyard"],
+                &["creature", "cards", "put", "into", "your", "graveyard"],
+            ],
+        ) {
+            let mut filter = parse_object_filter_words(&["creature", "card"], false).ok()?;
+            filter.set_explicit_card_noun(true);
+            return Some((
+                Value::PendingPriorEffectMetric(
+                    ironsmith_core::PriorEffectMetricQuery::new(
+                        ironsmith_core::EffectMetricSource::AffectedObjects,
+                        ironsmith_core::EffectMetric::Count,
+                    )
+                    .with_filter(filter)
+                    .with_action(ironsmith_core::PriorEffectAction::Milled),
+                )
+                .with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::CardsPutIntoYourGraveyardThisWay,
+                ),
+                filter_end,
+            ));
+        }
+        // A typed `... this way` object count binds to the exact producer's
+        // captured result memory.  Keep the authored action on the query so
+        // both runtime evaluation and compiled text distinguish, for example,
+        // cards exiled by this instruction from every card currently in exile.
+        if let Some((action, action_start)) =
+            value_helper_shapes::parse_prior_effect_action(this_way_subject)
+        {
+            let mut filter_words = &this_way_subject[..action_start];
+            let player = if permission_shapes::suffix_words(filter_words, &["they"])
+                || permission_shapes::suffix_words(filter_words, &["their"])
+            {
+                filter_words = &filter_words[..filter_words.len() - 1];
+                Some(PlayerFilter::IteratedPlayer)
+            } else if permission_shapes::suffix_words(filter_words, &["you"])
+                || permission_shapes::suffix_words(filter_words, &["your"])
+            {
+                filter_words = &filter_words[..filter_words.len() - 1];
+                Some(PlayerFilter::You)
+            } else if permission_shapes::suffix_words(filter_words, &["that", "player"])
+            {
+                filter_words = &filter_words[..filter_words.len() - 2];
+                Some(PlayerFilter::IteratedPlayer)
+            } else {
+                None
+            };
+            if !filter_words.is_empty()
+                && let Ok(mut filter) = parse_object_filter_words(filter_words, head.other)
+            {
+                if filter_words
+                    .iter()
+                    .any(|word| matches!(*word, "card" | "cards"))
+                {
+                    filter.set_explicit_card_noun(true);
+                }
+                let mut query = ironsmith_core::PriorEffectMetricQuery::new(
+                        ironsmith_core::EffectMetricSource::AffectedObjects,
+                        ironsmith_core::EffectMetric::Count,
+                    )
+                    .with_filter(filter)
+                    .with_action(action);
+                if let Some(player) = player {
+                    query = query.with_player(player);
+                }
+                let value = Value::PendingPriorEffectMetric(query);
+                let value = if action == ironsmith_core::PriorEffectAction::Discarded {
+                    value.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay)
+                } else if action == ironsmith_core::PriorEffectAction::Revealed {
+                    value.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsRevealedThisWay)
+                } else {
+                    value
+                };
+                return Some((value, filter_end));
+            }
         }
         let has_explicit_card_noun = this_way_subject
             .iter()
@@ -150,7 +232,6 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         }
     }
 
-    let count_words = &words[idx..filter_end];
     if let Some(player) = value_helper_shapes::parse_party_size_player(count_words) {
         return Some((Value::PartySize(player), filter_end));
     }
@@ -251,6 +332,103 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
 
     let filter = parse_object_filter_words(&words[idx..filter_end], head.other).ok()?;
     Some((Value::Count(filter), filter_end))
+}
+
+fn parse_exact_dynamic_count_basis(words: &[&str], consumed: usize) -> Option<(Value, usize)> {
+    let value = if exact_one_of(
+        words,
+        &[
+            &["card", "that", "player", "has", "drawn", "this", "turn"],
+            &["cards", "that", "player", "has", "drawn", "this", "turn"],
+        ],
+    ) {
+        Value::MaxCardsDrawnThisTurn(PlayerFilter::IteratedPlayer)
+    } else if exact_one_of(
+        words,
+        &[
+            &[
+                "modified", "creature", "you", "controlled", "as", "you", "cast", "this",
+                "spell",
+            ],
+            &[
+                "modified", "creatures", "you", "controlled", "as", "you", "cast", "this",
+                "spell",
+            ],
+        ],
+    ) {
+        Value::Count(crate::target::ObjectFilter::tagged(TagKey::from(
+            ironsmith_core::CAST_MODIFIED_CREATURES_TAG,
+        )))
+    } else if exact_one_of(
+        words,
+        &[
+            &["creature", "chosen", "before", "it"],
+            &["creatures", "chosen", "before", "it"],
+        ],
+    ) {
+        Value::Count(crate::target::ObjectFilter::tagged(TagKey::from(
+            ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG,
+        )))
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::CreaturesChosenBeforeIt)
+    } else if exact_one_of(
+        words,
+        &[
+            &["creature", "blocking", "it"],
+            &["creatures", "blocking", "it"],
+        ],
+    ) {
+        Value::EventValueOffset(
+            ironsmith_core::EventValueSpec::BlockersBeyondFirst { multiplier: 1 },
+            1,
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::CreaturesBlockingIt)
+    } else if exact_one_of(
+        words,
+        &[
+            &[
+                "creature", "blocking", "it", "beyond", "the", "first",
+            ],
+            &[
+                "creatures", "blocking", "it", "beyond", "the", "first",
+            ],
+        ],
+    ) {
+        Value::EventValue(ironsmith_core::EventValueSpec::BlockersBeyondFirst { multiplier: 1 })
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CreaturesBlockingIt)
+    } else if exact_one_of(
+        words,
+        &[
+            &[
+                "card", "looked", "at", "while", "scrying", "this", "way",
+            ],
+            &[
+                "cards", "looked", "at", "while", "scrying", "this", "way",
+            ],
+        ],
+    ) {
+        Value::EventValue(ironsmith_core::EventValueSpec::Amount).with_surface_hint(
+            ironsmith_core::ValueSurfaceHint::CardsLookedAtWhileScryingThisWay,
+        )
+    } else if exact_one_of(
+        words,
+        &[
+            &[
+                "mana", "from", "a", "treasure", "that", "was", "spent", "to", "cast",
+                "this", "spell",
+            ],
+            &[
+                "mana", "from", "a", "treasure", "spent", "to", "cast", "this", "spell",
+            ],
+        ],
+    ) {
+        Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter: parse_object_filter_words(&["treasure"], false).ok()?,
+            include_source_noun: false,
+        }
+    } else {
+        return None;
+    };
+    Some((value, consumed))
 }
 
 fn parse_for_each_head(words: &[&str]) -> Option<ForEachHead> {
@@ -418,9 +596,55 @@ mod tests {
         ])
         .expect("nonland cards discarded this way count");
         assert_eq!(used, 7);
-        let Value::Count(filter) = value else {
-            panic!("expected tagged object count");
+        assert!(value.has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay));
+        let Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+            panic!("expected typed discarded-object count");
         };
-        assert!(filter.has_explicit_card_noun());
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Discarded)
+        );
+        assert!(
+            query
+                .filter
+                .as_ref()
+                .is_some_and(ObjectFilter::has_explicit_card_noun)
+        );
+    }
+
+    #[test]
+    fn types_plain_tapped_counts_but_leaves_player_partitioned_counts_unbound() {
+        let (value, used) =
+            parse_for_each_count_value_words(&["for", "each", "creature", "tapped", "this", "way"])
+                .expect("creatures tapped this way count");
+        assert_eq!(used, 6);
+        let Value::PendingPriorEffectMetric(query) = value else {
+            panic!("expected typed prior-effect metric");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Tapped)
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+        assert_eq!(
+            query.filter.expect("creature filter").card_types,
+            [crate::types::CardType::Creature],
+        );
+
+        let (partitioned, used) = parse_for_each_count_value_words(&[
+            "for",
+            "each",
+            "creature",
+            "they",
+            "controlled",
+            "that",
+            "was",
+            "tapped",
+            "this",
+            "way",
+        ])
+        .expect("player-partitioned tapped count retains legacy form");
+        assert_eq!(used, 10);
+        assert!(!matches!(partitioned, Value::PendingPriorEffectMetric(_)));
     }
 }

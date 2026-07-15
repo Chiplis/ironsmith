@@ -38,6 +38,7 @@ pub(crate) enum RemoveClauseShape<'a> {
         counter_descriptor: &'a [OwnedLexToken],
         target_tokens: &'a [OwnedLexToken],
         source_like_target: bool,
+        leave_one: bool,
     },
     Counters {
         amount: Value,
@@ -218,10 +219,19 @@ pub(crate) fn parse_remove_clause_shape(
     }
 
     if let Some(((), after_all)) = primitives::parse_prefix(tokens, primitives::kw("all").void())
+        && let (leave_one, after_quantity) =
+            if let Some(((), rest)) = primitives::parse_prefix(
+                after_all,
+                primitives::phrase(&["but", "one"]).void(),
+            ) {
+                (true, rest)
+            } else {
+                (false, after_all)
+            }
         && let Some((counter_idx, (), after_counter)) =
-            primitives::find_prefix(after_all, || counter_word)
+            primitives::find_prefix(after_quantity, || counter_word)
     {
-        let counter_descriptor = trim_lexed_commas(&after_all[..counter_idx]);
+        let counter_descriptor = trim_lexed_commas(&after_quantity[..counter_idx]);
         let target_tokens = if let Some(((), rest)) =
             primitives::parse_prefix(after_counter, primitives::kw("from").void())
         {
@@ -233,6 +243,7 @@ pub(crate) fn parse_remove_clause_shape(
             counter_descriptor,
             target_tokens,
             source_like_target: source_like_remove_target(target_tokens),
+            leave_one,
         });
     }
 

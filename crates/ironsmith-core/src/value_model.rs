@@ -4,10 +4,25 @@ use crate::{
     ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, StaticAbilityId, Subtype, TagKey,
     ValueComparisonOperator, Zone,
 };
+
 use crate::{
     ChooseSpec, ChooseSpecSurfaceHint, Color, ColorSet, SacrificedObjectKind,
     SourceReferenceSurface,
 };
+
+/// Selects the object whose attachments are counted by an attachment
+/// relationship condition.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttachmentConditionHost {
+    /// Count attachments on the ability's source object.
+    Source,
+    /// Count attachments on the permanent the Aura or Equipment source is
+    /// attached to.
+    SourceAttachedObject,
+    /// Count attachments on each matching battlefield object, succeeding when
+    /// at least one host satisfies the comparison.
+    Matching(ObjectFilter),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EffectMetricSource {
@@ -46,6 +61,79 @@ pub enum EffectMetric {
     OtherNumber,
 }
 
+/// The authored action that produced a prior-effect metric query.
+///
+/// This is presentation metadata for phrases such as "creatures destroyed
+/// this way". Runtime identity comes from the exact producer [`EffectId`], not
+/// from guessing an action from a generated tag name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PriorEffectAction {
+    Cast,
+    Chosen,
+    Connived,
+    Countered,
+    CountersPut,
+    DealtDamage,
+    Destroyed,
+    Discarded,
+    Drawn,
+    Exiled,
+    Goaded,
+    Milled,
+    PhasedOut,
+    Prevented,
+    PutOntoBattlefield,
+    Removed,
+    Returned,
+    Revealed,
+    Sacrificed,
+    Searched,
+    Shuffled,
+    Tapped,
+}
+
+/// A metric over the last-known-information memory emitted by one exact
+/// producer effect.
+///
+/// `filter` is evaluated against captured object memory rather than live game
+/// objects. `player` optionally selects a per-player memory partition before
+/// the filter and aggregate are applied.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PriorEffectMetricQuery {
+    pub source: EffectMetricSource,
+    pub metric: EffectMetric,
+    pub filter: Option<ObjectFilter>,
+    pub player: Option<PlayerFilter>,
+    pub action: Option<PriorEffectAction>,
+}
+
+impl PriorEffectMetricQuery {
+    pub fn new(source: EffectMetricSource, metric: EffectMetric) -> Self {
+        Self {
+            source,
+            metric,
+            filter: None,
+            player: None,
+            action: None,
+        }
+    }
+
+    pub fn with_filter(mut self, filter: ObjectFilter) -> Self {
+        self.filter = Some(filter);
+        self
+    }
+
+    pub fn with_player(mut self, player: PlayerFilter) -> Self {
+        self.player = Some(player);
+        self
+    }
+
+    pub fn with_action(mut self, action: PriorEffectAction) -> Self {
+        self.action = Some(action);
+        self
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueSurfaceHint {
     WhereXIs,
@@ -60,6 +148,20 @@ pub enum ValueSurfaceHint {
     /// Preserve a sentence boundary before a counter-placement follow-up.
     /// This is presentation metadata only; the numeric value is unchanged.
     CounterFollowupSeparateSentence,
+    /// Preserve the authored word "additional" in a battlefield-entry
+    /// counter clause. This is presentation metadata only; the numeric value
+    /// is unchanged.
+    AdditionalEntryCounter,
+    /// The extremum comparison set is implicit in the selected object filter
+    /// ("with the greatest power"), so rendering should not append an
+    /// explicit "among ..." clause.
+    ExtremumImplicitScope,
+    /// Preserve an explicit full tie clause such as "or tied for the greatest
+    /// power" after an extremum predicate.
+    ExtremumTiedForCharacteristic,
+    /// Preserve the shortened tie clause used after an explicit comparison
+    /// set ("or tied for greatest").
+    ExtremumTiedShort,
     /// Preserve an authored full or short card-name subject on a static
     /// enters-with-counters clause. The counter value remains unchanged.
     SourceNameSubject,
@@ -77,10 +179,32 @@ pub enum ValueSurfaceHint {
     /// This is presentation metadata only; resolving the value still yields
     /// the same number of cards.
     AdditionalCards,
+    /// Preserve an authored "that many cards" reference after the numeric
+    /// value has been bound to the preceding effect's outcome.
+    ThatManyCards,
+    /// Preserve an authored "as many cards as ... this way" reference after
+    /// the numeric value has been bound to the preceding effect's outcome.
+    AsManyCardsThisWay,
     CardsDrawnThisWay,
     CardsRevealedThisWay,
+    /// Preserve the authored "put into your graveyard this way" surface for
+    /// a prior mill outcome. The underlying action remains a typed mill so
+    /// reference resolution still binds to the exact producing effect.
+    CardsPutIntoYourGraveyardThisWay,
     CardsExiledThisWay,
     CardsDiscardedThisWay,
+    /// Preserve the blocker-count basis used by a becomes-blocked trigger.
+    CreaturesBlockingIt,
+    /// Preserve the Scry event's authored magnitude description.
+    CardsLookedAtWhileScryingThisWay,
+    /// Preserve the relative ordering clause on an ordered object iteration.
+    CreaturesChosenBeforeIt,
+    /// A dynamic object-choice count which chooses the complete matching set
+    /// while preserving the chooser's explicit order.
+    ChooseAllInOrder,
+    /// Preserve "an additional" on a power/toughness modifier. This is
+    /// presentation metadata only; the numeric modifier is unchanged.
+    AdditionalPowerToughnessModifier,
     /// Preserve an explicit reference to damage dealt when the runtime value
     /// is supplied by the triggering event's generic numeric payload.
     DamageDealt,
@@ -204,6 +328,9 @@ pub enum Value {
     GreatestPower(ObjectFilter),
     GreatestToughness(ObjectFilter),
     GreatestManaValue(ObjectFilter),
+    LeastPower(ObjectFilter),
+    LeastToughness(ObjectFilter),
+    LeastManaValue(ObjectFilter),
     Min(Box<Value>, Box<Value>),
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
@@ -221,6 +348,12 @@ pub enum Value {
     PlayersBeingAttacked,
     CountPlayers(PlayerFilter),
     PlayersWhoControlMoreThanYou(ObjectFilter),
+    /// The number of players whose matching-object count exceeds yours by at
+    /// least `minimum_difference`.
+    PlayersWhoControlAtLeastMoreThanYou {
+        filter: ObjectFilter,
+        minimum_difference: u32,
+    },
     PartySize(PlayerFilter),
     SourcePower,
     SourceToughness,
@@ -313,6 +446,14 @@ pub enum Value {
         metric: EffectMetric,
         offset: i32,
     },
+    /// A filtered metric bound to one exact prior producer effect.
+    PriorEffectMetric {
+        effect_id: EffectId,
+        query: PriorEffectMetricQuery,
+    },
+    /// Parse-time form of [`Value::PriorEffectMetric`]. Reference resolution
+    /// binds it to the nearest compatible memory-producing effect.
+    PendingPriorEffectMetric(PriorEffectMetricQuery),
     EventValue(EventValueSpec),
     EventValueOffset(EventValueSpec, i32),
     WasKicked,
@@ -902,6 +1043,41 @@ pub enum SourceCounterThresholdSurface {
     ThereAreOn(SourceReferenceSurface),
 }
 
+/// Typed predicates that depend on a triggering event, the current combat, or
+/// the current/immediately previous turn's event history. These are grouped
+/// under one condition family so intervening-if clauses can retain actor,
+/// origin-zone, source-reference, and grouped-event semantics without falling
+/// back to untyped text.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TurnHistoryCondition {
+    SpellsCastLastTurnAtLeast(u32),
+    SourceCrewedByAtLeast { count: u32, filter: ObjectFilter },
+    SourceWasCast { surface: SourceReferenceSurface },
+    SourceWasCastByController { surface: SourceReferenceSurface },
+    SourceWasKicked { surface: SourceReferenceSurface },
+    SourceEnteredBattlefieldThisTurn { surface: SourceReferenceSurface },
+    SourceAttackedThisTurn { surface: SourceReferenceSurface },
+    TriggeringObjectWasCast,
+    TriggeringObjectWasCastFromZone(Zone),
+    PlayerPlayedLandThisTurn(PlayerFilter),
+    TriggeringObjectDied,
+    PlayerPlayedCardFromZoneThisTurn { player: PlayerFilter, zone: Zone },
+    TriggeringPlayerAttackedControllerLastTurn,
+    PlayerLostLifeLastTurn(PlayerFilter),
+    TriggeringPlayersTurn { definite_player: bool },
+    ControllerTeamGainedLifeThisTurn,
+    TriggeringObjectsNoneWereCastOrNoManaSpent,
+    ManaFromSourceSpentOnTriggeringAction { source_filter: ObjectFilter },
+    AllPlayersLifeAtMost(i32),
+    AnotherOpponentControlsPotentialTarget { filter: ObjectFilter },
+    TriggeringAttackerBlockers {
+        required: ObjectFilter,
+        required_count: u32,
+        prohibited: ObjectFilter,
+    },
+    TriggeringAbilityIsManaAbility,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     YouControl(ObjectFilter),
@@ -1121,10 +1297,13 @@ pub enum Condition {
     /// The battlefield object this Aura or Equipment source is attached to
     /// matches the filter.
     AttachedToSourceMatches(ObjectFilter),
-    /// A matching battlefield object is attached to another matching object.
-    MatchingObjectAttachedToMatchingObject {
+    /// A numeric count of matching attachments on one semantically selected
+    /// host satisfies the authored comparison.
+    AttachmentCount {
         attachment: ObjectFilter,
-        attached_to: ObjectFilter,
+        host: AttachmentConditionHost,
+        comparison: Comparison,
+        display: String,
     },
     SourceHasNoCounter(CounterType),
     SourceHasCounterAtLeast {
@@ -1239,6 +1418,7 @@ pub enum Condition {
     SourceIsAttacking,
     SourceIsBlocking,
     SourceIsSoulbondPaired,
+    TurnHistory(TurnHistoryCondition),
     PlayerGraveyardHasCardsAtLeast {
         player: crate::PlayerId,
         count: usize,

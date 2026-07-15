@@ -2324,6 +2324,41 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn result_conjunction_preserves_safe_and_dependent_specialist_surfaces() {
+        let hollow_text = "Flying\nWhenever this creature deals combat damage to a player, you may pay {X}. If you do, that player reveals X cards from their hand and you choose one of them. That player discards that card.";
+        let hollow = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Hollow Specter")
+            .card_types(vec![CardType::Creature])
+            .parse_text(hollow_text)
+            .expect("Hollow Specter control should compile");
+        assert_eq!(compiled_text_lines(&hollow).join("\n"), hollow_text);
+
+        let moku_text = "Whenever you cast a noncreature spell, you may pay {1}. If you do, Moku gets +2/+1 and creatures you control gain haste until end of turn.";
+        let moku = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Moku, Meandering Drummer",
+        )
+        .card_types(vec![CardType::Creature])
+        .parse_text(moku_text)
+        .expect("Moku control should compile");
+        assert_eq!(
+            compiled_text_lines(&moku).join("\n"),
+            "Whenever you cast a noncreature spell, you may pay {1}. If you do, this creature gets +2/+1 until end of turn and creatures you control gain haste until end of turn."
+        );
+
+        let ulalek_text = "Devoid\nWhenever you cast an Eldrazi spell, you may pay {C}{C}. If you do, copy all spells you control, then copy all other activated and triggered abilities you control. You may choose new targets for the copies.";
+        let ulalek =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Ulalek, Fused Atrocity")
+                .card_types(vec![CardType::Creature])
+                .parse_text(ulalek_text)
+                .expect("Ulalek control should compile");
+        assert_eq!(
+            compiled_text_lines(&ulalek).join("\n"),
+            "Devoid\nWhenever you cast an Eldrazi spell, you may pay {C}{C}. If you do, copy all spells you control, then copy all other activated and triggered abilities you control. You may choose new targets for the copy."
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn spellshift_compiled_text_uses_countered_spell_controller_surface() {
         let text = "Counter target instant or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast that card without paying its mana cost. Then the player shuffles.";
         let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Spellshift")

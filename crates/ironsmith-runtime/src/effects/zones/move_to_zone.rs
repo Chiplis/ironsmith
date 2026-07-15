@@ -22,7 +22,7 @@ use crate::zone::Zone;
 use super::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, finalize_zone_change_move,
     maybe_prompt_for_split_result_order, move_to_battlefield_with_options,
-    take_recorded_zone_change,
+    resolve_battlefield_entry_counters, take_recorded_zone_change,
 };
 pub use ironsmith_core::BattlefieldController;
 pub type LibraryPlacementOrder = ironsmith_core::LibraryPlacementOrder;
@@ -441,6 +441,13 @@ impl EffectExecutor for MoveToZoneEffect {
                                 self.enters_tapped,
                             ),
                         };
+                        let initial_counters = resolve_battlefield_entry_counters(
+                            game,
+                            ctx,
+                            object_id,
+                            &self.enters_with_counters,
+                        )?;
+                        let options = options.with_initial_counters(initial_counters);
                         if self.enters_face_down
                             && let Some(card) = game.object_mut(object_id)
                         {

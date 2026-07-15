@@ -49,6 +49,7 @@ fn convert_zone_change_trigger(
     if let Some(surface) = trigger.this_surface {
         out = out.this_surface(surface);
     }
+    out = out.this_subject_number(trigger.this_subject_number);
     out = out.count(convert_count_mode(trigger.count));
     out = out.cause_filter(trigger.cause_filter);
     if let Some(origin_condition) = trigger.origin_condition {

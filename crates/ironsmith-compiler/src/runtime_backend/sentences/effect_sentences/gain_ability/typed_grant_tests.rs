@@ -30,6 +30,7 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
             | EffectAst::Coordinated {
                 effects,
                 leading_duration: _,
+                result_conjunction: _,
             } => effects.iter().find_map(find_pump),
             _ => None,
         }
@@ -62,6 +63,7 @@ fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
             | EffectAst::Coordinated {
                 effects,
                 leading_duration: _,
+                result_conjunction: _,
             } => effects.iter().find_map(find_grant),
             _ => None,
         }

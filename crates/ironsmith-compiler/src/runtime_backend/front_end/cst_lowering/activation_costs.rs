@@ -58,6 +58,7 @@ pub(crate) fn lower_activation_cost_cst(
     let mut sacrifice_tag_id = 0usize;
     let mut exile_tag_id = 0usize;
     let mut return_tag_id = 0usize;
+    let mut library_tag_id = 0usize;
     for segment in &cst.segments {
         match segment {
             ActivationCostSegmentCst::Mana(cost) => {
@@ -398,6 +399,22 @@ pub(crate) fn lower_activation_cost_cst(
                 )));
                 costs.push(Cost::validated_effect(Effect::return_to_hand(
                     ObjectFilter::tagged(tag),
+                )));
+            }
+            ActivationCostSegmentCst::MoveChosenToLibraryTop { filter } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let tag = format!("library_cost_{library_tag_id}");
+                library_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter.clone(),
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::You,
+                    tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::move_to_zone(
+                    crate::target::ChooseSpec::tagged(tag),
+                    crate::zone::Zone::Library,
+                    true,
                 )));
             }
             ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard => {

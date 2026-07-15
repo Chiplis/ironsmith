@@ -346,6 +346,7 @@ pub(crate) fn apply_zone_change_with_additional_effects(
 
 pub(crate) use battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+    resolve_battlefield_entry_counters,
 };
 
 pub use destroy::DestroyEffect;

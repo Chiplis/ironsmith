@@ -77,8 +77,9 @@ use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 pub use ironsmith_core::{
-    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, GraveyardCountMetric,
+    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, EscalateSpec, GraveyardCountMetric,
     PregameActionKind, PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec,
+    SpliceQuality, SpliceSpec,
 };
 
 /// Extra condition for "Cast this spell only ..." restrictions.
@@ -295,6 +296,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// this ability's subject instead of the generic "this permanent" form.
     fn prefers_card_name_subject(&self) -> bool {
         false
+    }
+
+    /// Authored line preserved for renderers that need to recombine several
+    /// typed static abilities emitted from one characteristic-setting clause.
+    fn authored_line_surface(&self) -> Option<String> {
+        None
     }
 
     /// Clone this ability while attaching a static condition, when the concrete
@@ -965,6 +972,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Return the CR 702.47 splice descriptor, if this is a splice ability.
+    fn splice_spec(&self) -> Option<&SpliceSpec<crate::costs::Cost>> {
+        None
+    }
+
+    /// Return the CR 702.120 escalate descriptor, if this is an escalate ability.
+    fn escalate_spec(&self) -> Option<&EscalateSpec<crate::costs::Cost>> {
+        None
+    }
+
     /// Return a trigger-duplication descriptor, if this ability causes matching triggers
     /// to trigger additional times.
     fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
@@ -1184,12 +1201,27 @@ impl Clone for Box<dyn StaticAbilityKind> {
     }
 }
 
+/// Stable identity for one constructed static-ability instance.
+///
+/// Cloning a static ability preserves this identity so replacement processing
+/// can recognize it after game-state refreshes. Constructing another ability,
+/// even with identical rules text, produces a distinct identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StaticAbilityInstanceId(u64);
+
+impl StaticAbilityInstanceId {
+    fn next() -> Self {
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
 /// A wrapper around a boxed StaticAbilityKind trait object.
 ///
 /// This provides a convenient way to work with static abilities as values
 /// while maintaining the flexibility of trait objects.
 #[derive(Debug, Clone)]
-pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>);
+pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>, StaticAbilityInstanceId);
 
 impl PartialEq for StaticAbility {
     fn eq(&self, other: &Self) -> bool {
@@ -1211,7 +1243,12 @@ impl PartialEq for StaticAbility {
 impl StaticAbility {
     /// Create a new StaticAbility from any StaticAbilityKind implementation.
     pub fn new<K: StaticAbilityKind + 'static>(kind: K) -> Self {
-        StaticAbility(Arc::new(kind))
+        StaticAbility(Arc::new(kind), StaticAbilityInstanceId::next())
+    }
+
+    /// Return the identity of this constructed ability instance.
+    pub fn instance_id(&self) -> StaticAbilityInstanceId {
+        self.1
     }
 
     /// Get the ability's unique identifier.
@@ -1283,6 +1320,14 @@ impl StaticAbility {
         self.0.conditional_spell_keyword_spec()
     }
 
+    pub fn splice_spec(&self) -> Option<&SpliceSpec<crate::costs::Cost>> {
+        self.0.splice_spec()
+    }
+
+    pub fn escalate_spec(&self) -> Option<&EscalateSpec<crate::costs::Cost>> {
+        self.0.escalate_spec()
+    }
+
     pub fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
         self.0.trigger_duplication_spec()
     }
@@ -1332,6 +1377,10 @@ impl StaticAbility {
 
     pub fn prefers_card_name_subject(&self) -> bool {
         self.0.prefers_card_name_subject()
+    }
+
+    pub fn authored_line_surface(&self) -> Option<String> {
+        self.0.authored_line_surface()
     }
 
     pub fn with_condition(&self, condition: crate::ConditionExpr) -> Option<Self> {
@@ -1386,7 +1435,12 @@ impl StaticAbility {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<crate::replacement::ReplacementEffect> {
-        self.0.generate_replacement_effect(source, controller)
+        self.0
+            .generate_replacement_effect(source, controller)
+            .map(|mut effect| {
+                effect.static_ability_instance = Some(self.instance_id());
+                effect
+            })
     }
 
     // ========================================================================
@@ -2661,6 +2715,12 @@ impl StaticAbility {
         Self::new(PreventAllDamageToSelfByCreatures)
     }
 
+    pub fn prevent_all_damage_to_self_from_sources_matching(
+        spec: ironsmith_core::PreventAllDamageToSelfFromSourcesMatchingSpec,
+    ) -> Self {
+        Self::new(PreventAllDamageToSelfFromSourcesMatching::new(spec))
+    }
+
     pub fn prevent_damage_to_you_from_source_filter(
         amount: u32,
         source_filter: crate::target::ObjectFilter,
@@ -2902,6 +2962,14 @@ impl StaticAbility {
         Self::new(ConditionalSpellKeyword::new(spec))
     }
 
+    pub fn splice(spec: SpliceSpec<crate::costs::Cost>) -> Self {
+        Self::new(SpliceAbility::new(spec))
+    }
+
+    pub fn escalate(spec: EscalateSpec<crate::costs::Cost>) -> Self {
+        Self::new(EscalateAbility::new(spec))
+    }
+
     pub fn this_spell_cast_restriction(
         kind: ThisSpellCastRestrictionKind,
         display: impl Into<String>,
@@ -3070,6 +3138,10 @@ impl StaticAbility {
 
     pub fn legend_rule_doesnt_apply() -> Self {
         Self::new(LegendRuleDoesntApply)
+    }
+
+    pub fn legend_rule_doesnt_apply_to_controller() -> Self {
+        Self::new(LegendRuleDoesntApplyToController)
     }
 
     pub fn additional_land_plays(count: u32) -> Self {

@@ -32,3 +32,29 @@ fn try_map_preserves_ward_cost_alternatives() {
         ])
     );
 }
+
+#[test]
+fn try_map_preserves_full_escalate_cost_and_surface() {
+    let escalate: StaticAbility<(), (), Cost<&'static str>, ()> =
+        StaticAbility::escalate_with_cost_surface(
+            TotalCost::from_costs(vec![Cost::mana(generic_two()), Cost::effect("discard")]),
+            Some("{2}, Discard a card".to_string()),
+        );
+
+    let mapped: StaticAbility<(), (), Cost<usize>, ()> = escalate
+        .try_map(
+            |trigger| Ok::<_, ()>(trigger),
+            |effect| Ok::<_, ()>(effect),
+            |cost| cost.try_map_effect(|effect| Ok::<_, ()>(effect.len())),
+        )
+        .expect("Escalate costs should map recursively");
+
+    let StaticAbilityPayload::Escalate(spec) = mapped.payload else {
+        panic!("expected mapped Escalate payload");
+    };
+    assert_eq!(
+        spec.cost,
+        TotalCost::from_costs(vec![Cost::mana(generic_two()), Cost::effect(7usize)])
+    );
+    assert_eq!(spec.cost_surface.as_deref(), Some("{2}, Discard a card"));
+}

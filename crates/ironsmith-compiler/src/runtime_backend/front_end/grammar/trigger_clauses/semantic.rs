@@ -1451,10 +1451,24 @@ fn parse_source_or_another_trigger_subject_filters(
 
 fn this_enters_battlefield_trigger_spec(
     surface: Option<crate::target::SourceReferenceSurface>,
+    subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber,
 ) -> TriggerSpec {
     match surface {
-        Some(surface) => TriggerSpec::ThisEntersBattlefieldWithSurface(surface),
+        Some(surface) => TriggerSpec::ThisEntersBattlefieldWithSurface {
+            surface,
+            subject_number,
+        },
         None => TriggerSpec::ThisEntersBattlefield,
+    }
+}
+
+fn enter_trigger_subject_number(
+    enter_word: &str,
+) -> ironsmith_core::trigger_model::TriggerSubjectNumber {
+    if enter_word == "enter" {
+        ironsmith_core::trigger_model::TriggerSubjectNumber::Plural
+    } else {
+        ironsmith_core::trigger_model::TriggerSubjectNumber::Singular
     }
 }
 
@@ -2305,6 +2319,7 @@ pub(crate) fn parse_trigger_clause_lexed(
     if let Some(enters_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Enter)
         && trigger_pattern_accepts(&words, ENTERS_OR_LEAVES_BATTLEFIELD_SUFFIX_PATTERN)
     {
+        let subject_number = enter_trigger_subject_number(words[enters_word_idx]);
         let enters_token_idx =
             trigger_word_token_start(tokens, enters_word_idx).unwrap_or(tokens.len());
         let subject_tokens = &tokens[..enters_token_idx];
@@ -2312,7 +2327,10 @@ pub(crate) fn parse_trigger_clause_lexed(
             strip_leading_trigger_intro(subject_tokens),
         ) {
             return Ok(TriggerSpec::Either(
-                Box::new(this_enters_battlefield_trigger_spec(Some(surface.clone()))),
+                Box::new(this_enters_battlefield_trigger_spec(
+                    Some(surface.clone()),
+                    subject_number,
+                )),
                 Box::new(this_leaves_battlefield_trigger_spec(Some(surface))),
             ));
         }
@@ -2398,6 +2416,7 @@ pub(crate) fn parse_trigger_clause_lexed(
     }
 
     if let Some(enters_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Enter) {
+        let subject_number = enter_trigger_subject_number(words[enters_word_idx]);
         let enters_token_idx =
             trigger_word_token_start(tokens, enters_word_idx).unwrap_or(tokens.len());
         let origin_condition = parse_moved_or_cast_origin_condition(&words[enters_word_idx + 1..]);
@@ -2407,7 +2426,10 @@ pub(crate) fn parse_trigger_clause_lexed(
                 strip_leading_trigger_intro(subject_tokens),
             ) {
                 return Ok(TriggerSpec::Either(
-                    Box::new(this_enters_battlefield_trigger_spec(Some(surface.clone()))),
+                    Box::new(this_enters_battlefield_trigger_spec(
+                        Some(surface.clone()),
+                        subject_number,
+                    )),
                     Box::new(this_leaves_battlefield_trigger_spec(Some(surface))),
                 ));
             }
@@ -2446,6 +2468,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 return Ok(TriggerSpec::Either(
                     Box::new(this_enters_battlefield_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
+                        subject_number,
                     )),
                     Box::new(TriggerSpec::PutIntoGraveyardFromZone {
                         filter: ObjectFilter::source(),
@@ -2467,6 +2490,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 return Ok(TriggerSpec::Either(
                     Box::new(this_enters_battlefield_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
+                        subject_number,
                     )),
                     Box::new(this_transforms_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
@@ -2537,6 +2561,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                         return Ok(TriggerSpec::Either(
                             Box::new(this_enters_battlefield_trigger_spec(
                                 source_reference_surface_for_trigger_subject(left_tokens),
+                                subject_number,
                             )),
                             Box::new(right_trigger),
                         ));
@@ -2568,7 +2593,10 @@ pub(crate) fn parse_trigger_clause_lexed(
                     owner,
                 }
             } else {
-                TriggerSpec::ThisEntersBattlefieldWithSurface(surface)
+                TriggerSpec::ThisEntersBattlefieldWithSurface {
+                    surface,
+                    subject_number,
+                }
             });
         }
 

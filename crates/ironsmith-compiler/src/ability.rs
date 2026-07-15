@@ -16,7 +16,8 @@ pub type ActivatedAbility =
     ironsmith_core::ActivatedAbility<crate::effect::Effect, crate::costs::Cost>;
 pub type LevelAbility = ironsmith_core::LevelAbility<crate::static_abilities::StaticAbility>;
 pub use ironsmith_core::{
-    ActivatedPresentationLabel, ActivationTiming, ManaUsageRestriction,
+    ActivatedPresentationLabel, ActivationTiming, ManaSpendAbilityGrantDuration,
+    ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaUsageRestriction,
     ManaUsageSubtypeRequirement, PresentationKeyword, PresentationLabel, ProtectionFrom,
     RestrictedManaUnit,
 };

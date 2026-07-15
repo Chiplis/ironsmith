@@ -43,6 +43,13 @@ pub fn validate_target(
             game.can_target_player_from_source(*id, ctx.source)
                 && filter.matches_player(*id, &filter_ctx)
         }
+        (ResolvedTarget::Object(id), ChooseSpec::ObjectOrPlayer(filter, _)) => game
+            .object(*id)
+            .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
+        (ResolvedTarget::Player(id), ChooseSpec::ObjectOrPlayer(_, filter)) => {
+            game.can_target_player_from_source(*id, ctx.source)
+                && filter.matches_player(*id, &filter_ctx)
+        }
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
             game.can_target_player_from_source(*id, ctx.source)
                 && filter.matches_player(*id, &filter_ctx)

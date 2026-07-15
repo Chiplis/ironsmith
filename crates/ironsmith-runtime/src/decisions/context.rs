@@ -691,6 +691,27 @@ impl SelectOptionsContext {
         }
     }
 
+    /// Create the single pre-payment mana-ability window required by CR 601.2g.
+    pub fn mana_ability_window(
+        player: PlayerId,
+        source: ObjectId,
+        subject: impl Into<String>,
+        options: Vec<SelectableOption>,
+    ) -> Self {
+        Self {
+            player,
+            source: Some(source),
+            description: format!(
+                "Activate mana abilities before paying costs for {}",
+                subject.into()
+            ),
+            options,
+            min: 1,
+            max: 1,
+            ui_hints: DecisionUiHints::default(),
+        }
+    }
+
     /// Create a mana pip payment context.
     /// The description includes "mana pip" to trigger ManaPipPayment response type.
     pub fn mana_pip_payment(

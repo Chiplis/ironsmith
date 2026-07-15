@@ -1380,7 +1380,14 @@
         return format!("Detain {}", describe_choose_spec(&detain.target));
     }
     if let Some(goad) = effect.downcast_ref::<crate::effects::GoadEffect>() {
-        return format!("Goad {}", describe_goad_target(&goad.target));
+        let target = describe_goad_target(&goad.target);
+        return match goad.duration {
+            crate::effect::Until::Forever => format!(
+                "{} is goaded for the rest of the game",
+                capitalize_first(&target)
+            ),
+            _ => format!("Goad {target}"),
+        };
     }
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
@@ -1740,6 +1747,21 @@
         );
     }
     if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
+        if !add_any.distinct_colors
+            && add_any
+                .available_colors
+                .as_ref()
+                .is_none_or(|colors| crate::color::Color::ALL.iter().all(|c| colors.contains(c)))
+            && let Some(multiplier) = counters_removed_this_way_multiplier(&add_any.amount)
+            && multiplier > 0
+        {
+            let amount = small_number_word(multiplier as u32)
+                .unwrap_or_else(|| multiplier.to_string());
+            return format!(
+                "Add {amount} mana of any color for each counter removed this way{}",
+                describe_add_mana_destination_suffix(&add_any.player)
+            );
+        }
         if add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs)
             && !add_any.distinct_colors
             && add_any
@@ -2047,7 +2069,7 @@
                 where_x_suffix
             );
         }
-        return format!(
+        let mut rendered = format!(
             "Prevent the next {} {} that would be dealt to {} {}{}{}",
             amount_text,
             damage_text,
@@ -2056,6 +2078,10 @@
             source_text,
             where_x_suffix
         );
+        if prevention_gain_life_follow_up(&prevent_damage.follow_up_effects).is_some() {
+            rendered.push_str(". You gain life equal to the damage prevented this way");
+        }
+        return rendered;
     }
     if let Some(prevent_all_target) =
         effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()
@@ -2118,6 +2144,9 @@
             crate::effects::PreventNextTimeDamageSource::Choice => {
                 "a source of your choice".to_string()
             }
+            crate::effects::PreventNextTimeDamageSource::ChoiceMatching(filter) => {
+                describe_prevention_damage_source(filter, true)
+            }
             crate::effects::PreventNextTimeDamageSource::Target(spec) => {
                 prevent_next_time_target_source_text(spec)
             }
@@ -2127,24 +2156,20 @@
                 prevent_next_time_tagged_source_text(filter).unwrap()
             }
             crate::effects::PreventNextTimeDamageSource::Filter(filter) => {
-                let desc = filter.description();
-                if desc.is_empty() {
-                    "a source".to_string()
-                } else {
-                    format!("{desc} source")
-                }
+                describe_prevention_damage_source(filter, false)
             }
         };
         let target_text = match &prevent_next_time.target {
             crate::effects::PreventNextTimeDamageTarget::AnyTarget => "any target".to_string(),
+            crate::effects::PreventNextTimeDamageTarget::Omitted => String::new(),
             crate::effects::PreventNextTimeDamageTarget::You => "you".to_string(),
             crate::effects::PreventNextTimeDamageTarget::Target(spec) => describe_choose_spec(spec),
         };
         let omits_any_target =
             matches!(
                 prevent_next_time.target,
-                crate::effects::PreventNextTimeDamageTarget::AnyTarget
-            ) && prevent_next_time_tagged_source_text_filter(&prevent_next_time.source);
+                crate::effects::PreventNextTimeDamageTarget::Omitted
+            );
         let target_clause = if omits_any_target {
             String::new()
         } else {
@@ -2363,6 +2388,14 @@
             crate::effects::CombatDamagePreventionTarget::You => {
                 format!("Prevent all combat damage that would be dealt to you {timing}")
             }
+            crate::effects::CombatDamagePreventionTarget::From(source)
+                if prevent_combat.source_would_deal_surface =>
+            {
+                format!(
+                    "Prevent all combat damage {} would deal {timing}",
+                    describe_choose_spec(source)
+                )
+            }
             crate::effects::CombatDamagePreventionTarget::From(source) => format!(
                 "{}",
                 describe_implicit_source_combat_damage_prevention(source, &prevent_combat.until)
@@ -2375,15 +2408,48 @@
         };
     }
     if let Some(prevent_all) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
+        if let Some(source_target) = &prevent_all.source_target
+            && matches!(prevent_all.until, Until::EndOfTurn)
+        {
+            let protected = if prevent_all.protect_source {
+                "this creature".to_string()
+            } else {
+                describe_prevention_target(&prevent_all.target)
+            };
+            return format!(
+                "Prevent all damage that would be dealt to {protected} by {} this turn",
+                describe_choose_spec(source_target)
+            );
+        }
+        if let Some(excluded_source_target) = &prevent_all.excluded_source_target
+            && prevent_all.damage_filter.combat_only
+            && matches!(prevent_all.until, Until::EndOfTurn)
+            && matches!(prevent_all.target, crate::prevention::PreventionTarget::All)
+            && let Some(source_filter) = &prevent_all.damage_filter.from_source
+        {
+            let sources = pluralize_noun_phrase(
+                strip_leading_article(&source_filter.description()).trim(),
+            );
+            return format!(
+                "Prevent all combat damage that would be dealt by {sources} other than {} this turn",
+                describe_choose_spec(excluded_source_target)
+            );
+        }
         if prevent_all.source_of_your_choice && matches!(prevent_all.until, Until::EndOfTurn) {
             let protected = describe_prevention_target(&prevent_all.target);
             if prevent_all.damage_filter == crate::prevention::DamageFilter::all() {
+                let source_choice = if prevent_all.source_choice_shares_activation_mana_color {
+                    "a source of your choice that shares a color with the mana spent on this activation cost"
+                } else {
+                    "a source of your choice"
+                };
                 if matches!(prevent_all.target, crate::prevention::PreventionTarget::All) {
-                    return "Prevent all damage that would be dealt this turn by a source of your choice"
-                        .to_string();
+                    return format!(
+                        "Prevent all damage that would be dealt this turn by {source_choice}"
+                    );
                 }
                 return format!(
-                    "Prevent all damage that would be dealt to {protected} this turn by a source of your choice"
+                    "Prevent all damage that would be dealt to {protected} this turn by {source_choice}"
                 );
             }
         }
@@ -2391,6 +2457,7 @@
             && prevent_all.damage_filter.from_colors.is_none()
             && prevent_all.damage_filter.from_card_types.is_none()
             && prevent_all.damage_filter.from_specific_source.is_none()
+            && prevent_all.damage_filter.excluded_specific_source.is_none()
             && !prevent_all.damage_filter.noncombat_only;
         let damage_type = describe_damage_filter(&prevent_all.damage_filter);
         let protected = describe_prevention_target(&prevent_all.target);
@@ -2749,6 +2816,43 @@
             && (trigger_lower.contains("creature dies")
                 || trigger_lower.contains("creature is put into a graveyard"))
         {
+            if schedule
+                .target_tag
+                .as_ref()
+                .is_some_and(|tag| tag.as_str().contains("targeted"))
+                && let Some(filter) = &schedule.target_filter
+            {
+                let mut base = filter.clone();
+                base.zone = None;
+                // The destination graveyard is a trigger condition, not a
+                // targeting restriction on the permanent chosen now.
+                base.owner = None;
+                base.tagged_constraints.retain(|constraint| {
+                    !(constraint.relation
+                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        && schedule.target_tag.as_ref().is_some_and(|tag| {
+                            constraint.tag.as_str() == tag.as_str()
+                                || constraint.tag.as_str() == "__it__"
+                        }))
+                });
+                let subject = format!(
+                    "target {}",
+                    strip_leading_article(&describe_for_each_filter(&base))
+                );
+                let delayed_text = delayed_text
+                    .replacen("return it from graveyard to ", "return that card to ", 1)
+                    .replacen("return it to ", "return that card to ", 1);
+                let event = if trigger_lower.contains("put into your graveyard")
+                    || filter.owner == Some(crate::target::PlayerFilter::You)
+                {
+                    "is put into your graveyard"
+                } else if trigger_lower.contains("put into a graveyard") {
+                    "is put into a graveyard"
+                } else {
+                    "dies"
+                };
+                return format!("When {subject} {event} this turn, {delayed_text}");
+            }
             if let Some(filter) = &schedule.target_filter {
                 let subject = with_indefinite_article(&describe_for_each_filter(filter));
                 return format!(
@@ -2775,7 +2879,12 @@
                     format!("that {}", strip_leading_article(&desc))
                 })
                 .unwrap_or_else(|| "that permanent".to_string());
-            return format!("When {subject} leaves the battlefield this turn, {delayed_text}");
+            let duration = if schedule.until_end_of_turn {
+                " this turn"
+            } else {
+                ""
+            };
+            return format!("When {subject} leaves the battlefield{duration}, {delayed_text}");
         }
         if trigger_lower.starts_with("when ")
             || trigger_lower.starts_with("whenever ")
@@ -3118,6 +3227,20 @@
     if let Some(for_each_tagged_player) =
         effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect>()
     {
+        if for_each_tagged_player.tag.as_str() == "voted_against_you" {
+            let body = describe_effect_list(&for_each_tagged_player.effects);
+            let body = body.trim().trim_end_matches('.');
+            let predicate = body
+                .strip_prefix("That player ")
+                .or_else(|| body.strip_prefix("that player "))
+                .or_else(|| body.strip_prefix("They "))
+                .or_else(|| body.strip_prefix("they "))
+                .unwrap_or(body);
+            return format!(
+                "Each opponent who voted for a choice you didn't vote for {}",
+                lowercase_first(predicate)
+            );
+        }
         return format!(
             "For each tagged '{}' player, {}",
             for_each_tagged_player.tag.as_str(),
@@ -3248,6 +3371,13 @@
         return format!("Devour {}", devour.multiplier);
     }
     if let Some(exchange_life) = effect.downcast_ref::<crate::effects::ExchangeLifeTotalsEffect>() {
+        if let (PlayerFilter::Target(first), PlayerFilter::Target(second)) =
+            (&exchange_life.player1, &exchange_life.player2)
+            && matches!(first.as_ref(), PlayerFilter::Any)
+            && matches!(second.as_ref(), PlayerFilter::Any)
+        {
+            return "Two target players exchange life totals".to_string();
+        }
         return format!(
             "Exchange life totals of {} and {}",
             describe_player_filter(&exchange_life.player1),
@@ -4097,7 +4227,12 @@
                 choices, suffix
             );
         }
-        return format!("Each player votes for {}{}", choices, suffix);
+        let starting = if vote.starting_with_controller {
+            "Starting with you, "
+        } else {
+            ""
+        };
+        return format!("{starting}each player votes for {}{}", choices, suffix);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
         let repeated = describe_effect_list(&repeat.effects);
@@ -4139,6 +4274,9 @@
                 return format!("For each {basis}, {repeated}");
             }
             return format!("For each {basis}, {repeated} {multiplier} times");
+        }
+        if let Some(basis) = describe_turn_history_for_each_basis(&repeat.count) {
+            return format!("For each {basis}, {repeated}");
         }
         return format!(
             "Repeat {} {} times",

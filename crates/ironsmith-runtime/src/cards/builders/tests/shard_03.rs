@@ -3375,14 +3375,18 @@ pub(super) fn parse_splice_keyword_lines_preserve_typed_subject_cost_and_static_
             .iter()
             .find_map(|ability| match &ability.kind {
                 AbilityKind::Static(static_ability)
-                    if static_ability.id() == StaticAbilityId::KeywordMarker =>
+                    if static_ability.id() == StaticAbilityId::Splice =>
                 {
                     Some(static_ability)
                 }
                 _ => None,
             })
-            .expect("splice should lower to a supported static keyword marker");
+            .expect("splice should lower to a typed static ability");
         assert_eq!(static_ability.display(), expected_label);
+        assert!(
+            static_ability.splice_spec().is_some(),
+            "splice must retain its typed quality and cost: {def:#?}"
+        );
         assert!(
             !format!("{def:#?}").contains("KeywordFallbackText"),
             "splice must not survive as a fallback: {def:#?}"

@@ -70,7 +70,11 @@ mod tests {
 
     #[test]
     fn test_jump_start_properties() {
-        let jump_start = AlternativeCastingMethod::JumpStart;
+        let jump_start = AlternativeCastingMethod::JumpStart {
+            additional_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::discard(
+                1, None,
+            )),
+        };
 
         assert_eq!(jump_start.cast_from_zone(), Zone::Graveyard);
         assert!(jump_start.exiles_after_resolution());
@@ -87,6 +91,9 @@ mod tests {
                 vec![ManaSymbol::Black],
             ])),
             exile_count: 4,
+            additional_cost: crate::cost::TotalCost::from_cost(
+                crate::costs::Cost::exile_from_graveyard(4, None),
+            ),
         };
 
         assert_eq!(escape.cast_from_zone(), Zone::Graveyard);

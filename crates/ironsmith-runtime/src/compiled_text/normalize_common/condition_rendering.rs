@@ -270,12 +270,95 @@ fn describe_history_player_subject(player: &PlayerFilter) -> String {
     }
 }
 
+fn triggering_spell_ordinal_fragment(
+    query: &ironsmith_core::TurnHistoryCount,
+    operator: crate::effect::ValueComparisonOperator,
+    right: &Value,
+) -> Option<(PlayerFilter, String)> {
+    let ironsmith_core::TurnHistoryCount::SpellsCast {
+        player,
+        filter,
+        exclude_source,
+        before_triggering_spell: true,
+        ..
+    } = query
+    else {
+        return None;
+    };
+    if operator != crate::effect::ValueComparisonOperator::Equal {
+        return None;
+    }
+    let Value::Fixed(prior_count) = right.unhinted() else {
+        return None;
+    };
+    let ordinal = u32::try_from(*prior_count).ok()?.checked_add(1)?;
+
+    let described = describe_spell_cast_condition_object(filter);
+    let mut spell = strip_leading_article(&described).to_string();
+    if *exclude_source {
+        if let Some(surface) = filter.source_surface.as_ref() {
+            spell = format!("{spell} other than {}", surface.display_text());
+        } else if !spell.starts_with("other ") {
+            spell = format!("other {spell}");
+        }
+    }
+    Some((
+        player.clone(),
+        format!("the {} {spell}", ordinal_number_word(ordinal)),
+    ))
+}
+
+fn describe_triggering_spell_ordinal_sentence(
+    player: &PlayerFilter,
+    fragments: &[String],
+) -> String {
+    let categories = join_with_or(fragments);
+    match player {
+        PlayerFilter::You => format!("it's {categories} you've cast this turn"),
+        other => format!(
+            "it was {categories} {} cast this turn",
+            describe_history_player_subject(other)
+        ),
+    }
+}
+
+fn collect_triggering_spell_ordinal_fragments(
+    condition: &Condition,
+    fragments: &mut Vec<String>,
+) -> Option<PlayerFilter> {
+    if let Condition::Or(left, right) = condition {
+        let left_player = collect_triggering_spell_ordinal_fragments(left, fragments)?;
+        let right_player = collect_triggering_spell_ordinal_fragments(right, fragments)?;
+        return (left_player == right_player).then_some(left_player);
+    }
+    let Condition::ValueComparison {
+        left: Value::TurnHistoryCount(query),
+        operator,
+        right,
+    } = condition
+    else {
+        return None;
+    };
+    let (player, fragment) = triggering_spell_ordinal_fragment(query, *operator, right)?;
+    fragments.push(fragment);
+    Some(player)
+}
+
 fn describe_turn_history_value_comparison(
     query: &ironsmith_core::TurnHistoryCount,
     operator: crate::effect::ValueComparisonOperator,
     right: &Value,
 ) -> Option<String> {
     use crate::effect::ValueComparisonOperator::{Equal, GreaterThan, GreaterThanOrEqual};
+
+    if let Some((player, fragment)) =
+        triggering_spell_ordinal_fragment(query, operator, right)
+    {
+        return Some(describe_triggering_spell_ordinal_sentence(
+            &player,
+            &[fragment],
+        ));
+    }
 
     let Value::Fixed(count) = right.unhinted() else {
         return None;
@@ -636,6 +719,110 @@ fn describe_each_global_greatest_power_control_condition(
 
     (*global == expected_global && *controlled == expected_controlled)
         .then_some("you control each creature on the battlefield with the greatest power")
+}
+
+fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondition) -> String {
+    use ironsmith_core::TurnHistoryCondition;
+
+    match condition {
+        TurnHistoryCondition::SpellsCastLastTurnAtLeast(count) => {
+            let count = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            format!("a player cast {count} or more spells last turn")
+        }
+        TurnHistoryCondition::SourceCrewedByAtLeast { count, filter } => {
+            let crew = with_indefinite_article(strip_indefinite_article(&filter.description()));
+            if *count == 1 {
+                format!("{crew} crewed it this turn")
+            } else {
+                let count = small_number_word(*count).unwrap_or_else(|| count.to_string());
+                format!(
+                    "at least {count} {} crewed it this turn",
+                    pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
+                )
+            }
+        }
+        TurnHistoryCondition::SourceWasCast { surface } => {
+            format!("{} was cast", surface.display_text())
+        }
+        TurnHistoryCondition::SourceWasCastByController { surface } => {
+            format!("you cast {}", surface.display_text())
+        }
+        TurnHistoryCondition::SourceWasKicked { surface } => {
+            format!("{} was kicked", surface.display_text())
+        }
+        TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { surface } => {
+            format!("{} entered this turn", surface.display_text())
+        }
+        TurnHistoryCondition::SourceAttackedThisTurn { surface } => {
+            format!("{} attacked this turn", surface.display_text())
+        }
+        TurnHistoryCondition::TriggeringObjectWasCast => "it was cast".to_string(),
+        TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => {
+            format!("it was cast from your {zone}")
+        }
+        TurnHistoryCondition::PlayerPlayedLandThisTurn(player) => {
+            format!("{} played a land this turn", describe_player_filter(player))
+        }
+        TurnHistoryCondition::TriggeringObjectDied => "it died".to_string(),
+        TurnHistoryCondition::PlayerPlayedCardFromZoneThisTurn { player, zone } => format!(
+            "{} played a card from {} this turn",
+            describe_player_filter(player),
+            zone
+        ),
+        TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn => {
+            "that player attacked you during their last turn".to_string()
+        }
+        TurnHistoryCondition::PlayerLostLifeLastTurn(player) => {
+            format!("{} lost life last turn", describe_player_filter(player))
+        }
+        TurnHistoryCondition::TriggeringPlayersTurn { definite_player } => {
+            if *definite_player {
+                "it's that player's turn".to_string()
+            } else {
+                "it's their turn".to_string()
+            }
+        }
+        TurnHistoryCondition::ControllerTeamGainedLifeThisTurn => {
+            "your team gained life this turn".to_string()
+        }
+        TurnHistoryCondition::TriggeringObjectsNoneWereCastOrNoManaSpent => {
+            "none of them were cast or no mana was spent to cast them".to_string()
+        }
+        TurnHistoryCondition::ManaFromSourceSpentOnTriggeringAction { source_filter } => {
+            format!(
+                "mana from {} was spent to cast it or activate it",
+                source_filter.description()
+            )
+        }
+        TurnHistoryCondition::AllPlayersLifeAtMost(amount) => {
+            format!("each player has {amount} or less life")
+        }
+        TurnHistoryCondition::AnotherOpponentControlsPotentialTarget { filter } => {
+            let object = pluralize_noun_phrase(strip_indefinite_article(&filter.description()));
+            format!("another opponent controls one or more {object} that spell could target")
+        }
+        TurnHistoryCondition::TriggeringAttackerBlockers {
+            required,
+            required_count,
+            prohibited,
+        } => {
+            let mut required_object = required.description();
+            if let Some(rest) = required_object.strip_prefix("another ") {
+                required_object = format!("other {rest}");
+            }
+            let prohibited_object =
+                pluralize_noun_phrase(strip_indefinite_article(&prohibited.description()));
+            let count = if *required_count == 1 {
+                "at least one".to_string()
+            } else {
+                format!("at least {required_count}")
+            };
+            format!(
+                "{count} {required_object} is blocking that creature and no {prohibited_object} are blocking that creature"
+            )
+        }
+        TurnHistoryCondition::TriggeringAbilityIsManaAbility => "it is a mana ability".to_string(),
+    }
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
@@ -1514,14 +1701,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 ensure_indefinite_article(&desc)
             )
         }
-        Condition::MatchingObjectAttachedToMatchingObject {
-            attachment,
-            attached_to,
-        } => format!(
-            "{} is attached to {}",
-            with_indefinite_article(&attachment.description()),
-            with_indefinite_article(&attached_to.description())
-        ),
+        Condition::AttachmentCount { display, .. } => display.clone(),
         Condition::SourceHasNoCounter(counter_type) => {
             format!("there are no {} counters on it", counter_type.description())
         }
@@ -2216,6 +2396,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::OncePerTurn => "once per turn",
                 crate::ability::ActivationTiming::DuringYourTurn => "during your turn",
                 crate::ability::ActivationTiming::DuringOpponentsTurn => "during opponents' turns",
+                crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
+                    "during this card's owner's upkeep"
+                }
             };
             format!("timing restriction: {label}")
         }
@@ -2257,14 +2440,35 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     include_source_noun,
                 },
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-                Value::Fixed(1),
+                Value::Fixed(amount),
             ) = (left.unhinted(), operator, right.unhinted())
+                && *amount >= 1
             {
                 let mut source = source_filter.description();
                 if *include_source_noun {
                     source.push_str(" source");
                 }
-                return format!("mana from {source} was spent to cast it");
+                if *amount == 1 {
+                    return format!("mana from {source} was spent to cast it");
+                }
+                let source = pluralize_noun_phrase(strip_indefinite_article(&source));
+                let amount = u32::try_from(*amount)
+                    .ok()
+                    .and_then(small_number_word)
+                    .unwrap_or_else(|| amount.to_string());
+                return format!(
+                    "{amount} or more mana from {source} was spent to cast it"
+                );
+            }
+            if let (
+                Value::ManaSpentToCastTriggeringObject,
+                crate::effect::ValueComparisonOperator::LessThan,
+                Value::ManaValueOf(spec),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+            {
+                return "the amount of mana spent to cast it was less than its mana value"
+                    .to_string();
             }
             if let Value::TurnHistoryCount(query) = left.unhinted()
                 && let Some(rendered) =
@@ -2564,6 +2768,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsSoulbondPaired => {
             "this creature is paired with another creature".to_string()
         }
+        Condition::TurnHistory(condition) => describe_turn_history_condition(condition),
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => {
             format!("{player:?}'s graveyard has {count} or more cards")
         }
@@ -2606,6 +2811,54 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 "this source is untapped".to_string()
             } else if let Condition::YourTurn = inner.as_ref() {
                 "it is not your turn".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast,
+            ) = inner.as_ref()
+            {
+                "it wasn't cast".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::TriggeringAbilityIsManaAbility,
+            ) = inner.as_ref()
+            {
+                "it isn't a mana ability".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(
+                    Zone::Hand,
+                ),
+            ) = inner.as_ref()
+            {
+                "it wasn't cast from your hand".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::PlayerPlayedLandThisTurn(
+                    PlayerFilter::You,
+                ),
+            ) = inner.as_ref()
+            {
+                "you didn't play a land this turn".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectDied,
+            ) = inner.as_ref()
+            {
+                "it didn't die".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::PlayerPlayedCardFromZoneThisTurn {
+                    player: PlayerFilter::You,
+                    zone: Zone::Exile,
+                },
+            ) = inner.as_ref()
+            {
+                "you didn't play a card from exile this turn".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::TriggeringPlayersTurn {
+                    definite_player,
+                },
+            ) = inner.as_ref()
+            {
+                if *definite_player {
+                    "it's not that player's turn".to_string()
+                } else {
+                    "it's not their turn".to_string()
+                }
             } else if let Condition::PermanentLeftBattlefieldThisTurn = inner.as_ref() {
                 "no permanents left the battlefield this turn".to_string()
             } else if let Condition::NonlandPermanentLeftBattlefieldThisTurn = inner.as_ref() {
@@ -2781,6 +3034,30 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{} and {}", describe_condition(left), describe_condition(right))
         }
         Condition::Or(left, right) => {
+            let mut ordinal_fragments = Vec::new();
+            if let Some(left_player) =
+                collect_triggering_spell_ordinal_fragments(left, &mut ordinal_fragments)
+                && let Some(right_player) =
+                    collect_triggering_spell_ordinal_fragments(right, &mut ordinal_fragments)
+                && left_player == right_player
+                && ordinal_fragments.len() > 1
+            {
+                return describe_triggering_spell_ordinal_sentence(
+                    &left_player,
+                    &ordinal_fragments,
+                );
+            }
+            if let (
+                Condition::ThisAbilityResolvedThisTurnExactly(left_count),
+                Condition::ThisAbilityResolvedThisTurnExactly(right_count),
+            ) = (left.as_ref(), right.as_ref())
+            {
+                return format!(
+                    "this is the {} or {} time this ability has resolved this turn",
+                    ordinal_number_word(*left_count),
+                    ordinal_number_word(*right_count),
+                );
+            }
             if let (
                 Condition::ValueComparison {
                     left: Value::CardsInHand(left_player),

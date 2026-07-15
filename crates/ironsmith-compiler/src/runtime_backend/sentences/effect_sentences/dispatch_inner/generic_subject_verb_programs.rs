@@ -3,6 +3,52 @@ enum GenericPermissionVerb {
     PlayAndCast,
 }
 
+fn parse_source_exiled_owner_library_bottom_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let shape = effect_grammar::control_copy_attach_shapes::parse_source_exiled_owner_library_bottom_shape(tokens)?;
+    let source_words = crate::runtime_backend::token_word_refs(shape.source_tokens);
+    let source_surface =
+        crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+            &source_words,
+        )
+        .or_else(|| {
+            crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(
+                &source_words,
+            )
+        })?;
+    let target = TargetAst::Object(
+        ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+        None,
+        None,
+    );
+    Some(
+        EffectAst::subject_verb_move_all_to_zone(
+            target,
+            Zone::Library,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )
+        .with_exiled_with_source_surface(Some(ironsmith_core::ExiledWithSourceMoveSurface {
+            subject: ironsmith_core::ExiledWithSourceSubjectSurface::OwnerOfEachCard,
+            source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(source_surface),
+            destination: ironsmith_core::ExiledWithSourceDestinationSurface::TheirOwner,
+        })),
+    )
+}
+
+fn parse_effect_chain_preserving_source_exiled_owner_library_bottom(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_source_exiled_owner_library_bottom_subject_verb(tokens) {
+        Ok(vec![effect])
+    } else {
+        parse_effect_chain_lexed(tokens)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GenericPermissionDuration {
     UntilEndOfTurn,
@@ -131,6 +177,7 @@ enum GenericVoteProgram {
     Start {
         options: Vec<String>,
         secret: bool,
+        starting_with_controller: bool,
     },
     OptionEffects {
         option: String,
@@ -145,7 +192,15 @@ enum GenericVoteProgram {
 impl GenericVoteProgram {
     fn lower(self) -> EffectAst {
         match self {
-            Self::Start { options, secret } => EffectAst::VoteStart { options, secret },
+            Self::Start {
+                options,
+                secret,
+                starting_with_controller,
+            } => EffectAst::VoteStart {
+                options,
+                secret,
+                starting_with_controller,
+            },
             Self::OptionEffects { option, effects } => EffectAst::VoteOption { option, effects },
             Self::Extra { count, optional } => EffectAst::VoteExtra { count, optional },
         }
@@ -874,6 +929,10 @@ const EACH_PLAYER_VOTER_PATTERN: effect_grammar::EffectSequence<'static> =
         ),
         effect_grammar::EffectSequence::any_word(&["player", "players"]),
     ]);
+const STARTING_WITH_CONTROLLER_VOTER_PATTERN: effect_grammar::EffectSequence<'static> =
+    effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::phrase(&[
+        "starting", "with", "you",
+    ])]);
 const SECRET_VOTER_PATTERN: effect_grammar::EffectSequence<'static> =
     effect_grammar::EffectSequence::new(&[effect_grammar::EffectSequence::any_word(&[
         "secret", "secretly",
@@ -2370,6 +2429,83 @@ pub(crate) fn parse_choice_complement_subject_verb(
     ))
 }
 
+/// Parse the choice half of a split-sentence choice/complement program.
+///
+/// Oracle sometimes puts the choices and the complement action in separate
+/// sentences ("For each player, you choose ... . Then each player sacrifices
+/// all other ...").  The ordinary object-choice parser correctly identifies
+/// the eligible union, but a comma-separated `and` list denotes one choice per
+/// slot, not one object from the union.  Preserve those independent slots here
+/// so the later cross-sentence correlation pass can link the chosen set to the
+/// complement action.
+pub(crate) fn parse_for_each_type_slot_choice_clause(
+    tokens: &[OwnedLexToken],
+    chooser: PlayerAst,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(choose_idx) = tokens.iter().position(|token| {
+        token
+            .as_word()
+            .is_some_and(|word| matches!(word, "choose" | "chooses"))
+    }) else {
+        return Ok(None);
+    };
+    if tokens[..choose_idx].iter().any(|token| {
+        token
+            .as_word()
+            .is_some_and(|word| !matches!(word, "you" | "that" | "player" | "players"))
+    }) {
+        return Ok(None);
+    }
+
+    let choice_tokens = trim_commas(&tokens[choose_idx + 1..]);
+    if find_from_among(&choice_tokens) != Some(0)
+        || !choice_tokens.iter().any(|token| token.is_word("and"))
+        || choice_tokens
+            .iter()
+            .any(|token| token.is_word("or") || token.is_word("and/or"))
+    {
+        return Ok(None);
+    }
+    let Some(list_start) = find_list_start(&choice_tokens[2..]).map(|idx| idx + 2) else {
+        return Ok(None);
+    };
+    let base_tokens = trim_commas(choice_tokens.get(2..list_start).unwrap_or_default());
+    let list_tokens = trim_commas(choice_tokens.get(list_start..).unwrap_or_default());
+    if base_tokens.is_empty() || list_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut base_filter = parse_object_filter(&base_tokens, false)?;
+    if base_filter.controller.is_none() {
+        base_filter.controller = Some(PlayerFilter::IteratedPlayer);
+    }
+    let keep_tag = TagKey::from("chosen_for_each_player");
+    let mut choices = Vec::new();
+    for segment in split_choose_list(&list_tokens) {
+        let segment = strip_leading_articles(&segment);
+        if segment.is_empty() {
+            continue;
+        }
+        let slot_filter = parse_object_filter(&segment, false)?;
+        // This route is for independent type slots.  Leave descriptive lists
+        // with compound constraints to the ordinary single-choice parser.
+        if slot_filter.card_types.len() + slot_filter.subtypes.len() != 1 {
+            return Ok(None);
+        }
+        choices.push(EffectAst::ChooseObjects {
+            filter: merge_filters(&base_filter, &slot_filter).not_tagged(keep_tag.clone()),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: chooser.clone(),
+            tag: keep_tag.clone(),
+        });
+    }
+    if choices.len() < 2 {
+        return Ok(None);
+    }
+    Ok(Some(choices))
+}
+
 pub(crate) fn parse_triggered_spell_opponent_damage_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -2395,6 +2531,14 @@ fn choice_complement_choice_clause_from_word_order<'a>(
 pub(crate) fn parse_vote_affinity_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(shape) = effect_grammar::parse_voted_against_you_effects_shape(tokens) {
+        let effect_tokens = trim_commas(shape.effect_tokens);
+        let effects = parse_effect_chain_lexed(&effect_tokens)?;
+        return Ok(Some(vec![EffectAst::ForEachTaggedPlayer {
+            tag: TagKey::from("voted_against_you"),
+            effects,
+        }]));
+    }
     parse_you_and_each_opponent_voted_with_you_sentence(tokens)
 }
 
@@ -2408,8 +2552,20 @@ pub(crate) fn parse_vote_subject_verb(
         return Ok(Some(effect));
     }
     if let Some(effect) = parse_generic_vote_start(tokens)? {
-        if let EffectAst::VoteStart { options, secret } = effect {
-            return Ok(Some(GenericVoteProgram::Start { options, secret }.lower()));
+        if let EffectAst::VoteStart {
+            options,
+            secret,
+            starting_with_controller,
+        } = effect
+        {
+            return Ok(Some(
+                GenericVoteProgram::Start {
+                    options,
+                    secret,
+                    starting_with_controller,
+                }
+                .lower(),
+            ));
         }
         return Ok(Some(effect));
     }
@@ -2569,10 +2725,17 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
         return Ok(None);
     }
     let secret = SECRET_VOTER_PATTERN.locate_in(voters_clause).is_some();
+    let starting_with_controller = STARTING_WITH_CONTROLLER_VOTER_PATTERN
+        .locate_in(voters_clause)
+        .is_some();
 
     let option_clause = vote_options_clause_before_reveal_tail(options_clause);
     if let Some(options) = named_vote_options_from_clause(option_clause) {
-        return Ok(Some(EffectAst::VoteStart { options, secret }));
+        return Ok(Some(EffectAst::VoteStart {
+            options,
+            secret,
+            starting_with_controller,
+        }));
     }
 
     let option_tokens = option_clause.tokens().to_vec();
@@ -2591,6 +2754,7 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
                     filter,
                     exclude_voter,
                     secret,
+                    starting_with_controller,
                 }));
             }
             TargetAst::Object(filter, _, _) => {
@@ -2598,6 +2762,7 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
                     filter,
                     count: ChoiceCount::exactly(1),
                     secret,
+                    starting_with_controller,
                 }));
             }
             TargetAst::WithCount(inner, count) => {
@@ -2606,6 +2771,7 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
                         filter,
                         count,
                         secret,
+                        starting_with_controller,
                     }));
                 }
             }
@@ -2619,6 +2785,7 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
             filter,
             count: ChoiceCount::exactly(1),
             secret,
+            starting_with_controller,
         }));
     }
 
@@ -2628,7 +2795,11 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
         ));
     };
 
-    Ok(Some(EffectAst::VoteStart { options, secret }))
+    Ok(Some(EffectAst::VoteStart {
+        options,
+        secret,
+        starting_with_controller,
+    }))
 }
 
 fn parse_generic_vote_option_effects(

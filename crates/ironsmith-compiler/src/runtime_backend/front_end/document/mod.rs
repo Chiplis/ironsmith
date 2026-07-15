@@ -587,7 +587,7 @@ fn parse_labeled_conditional_replacement_sentence_split(
     }))
 }
 
-fn should_parse_next_cast_trigger_line_as_spell_effect(
+fn should_parse_delayed_trigger_line_as_spell_effect(
     preprocessed: &PreprocessedDocument,
     tokens: &[OwnedLexToken],
 ) -> bool {
@@ -616,8 +616,10 @@ fn should_parse_next_cast_trigger_line_as_spell_effect(
         )
     });
 
+    let is_delayed_effect = document_grammar::parse_next_cast_trigger_surface(tokens).is_some()
+        || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some();
     (builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type)
-        && document_grammar::parse_next_cast_trigger_surface(tokens).is_some()
+        && is_delayed_effect
 }
 
 fn looks_like_activation_cost_prefix(tokens: &[OwnedLexToken]) -> bool {
@@ -2782,6 +2784,28 @@ mod tests {
     }
 
     #[test]
+    fn trigger_sentence_chunk_splitter_keeps_delayed_leaves_followup_with_trigger() {
+        let tokens = lex_line(
+            "When this creature dies, exile it and choose target creature an opponent controls. When that creature leaves the battlefield, return this card from exile to the battlefield under its owner's control.",
+            0,
+        )
+        .expect("rewrite lexer should classify delayed leaves followup line");
+
+        let chunks = split_trigger_sentence_chunks_rewrite_lexed(&tokens)
+            .into_iter()
+            .map(|chunk| render_token_slice(&chunk))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks,
+            vec![
+                "When this creature dies, exile it and choose target creature an opponent controls. When that creature leaves the battlefield, return this card from exile to the battlefield under its owner's control"
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn trigger_sentence_chunk_splitter_keeps_one_or_more_this_way_followup_with_trigger() {
         let tokens = lex_line(
             "When this creature enters, you may sacrifice up to three Zombies. When you sacrifice one or more Zombies this way, each opponent sacrifices that many creatures of their choice.",
@@ -3386,6 +3410,10 @@ fn is_delayed_when_that_dies_this_turn_followup_sentence(tokens: &[OwnedLexToken
     document_grammar::parse_delayed_prior_object_dies_surface(tokens).is_some()
 }
 
+fn is_delayed_when_that_leaves_battlefield_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    effect_grammar::delayed_sentence_shapes::parse_delayed_tagged_leaves_shape(tokens).is_some()
+}
+
 fn is_attack_group_combat_damage_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     grammar::has_phrase(tokens, &["either", "of", "those", "creatures"])
         && grammar::has_phrase(tokens, &["deals", "combat", "damage"])
@@ -3413,7 +3441,8 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
     for sentence_tokens in sentence_tokens {
         let sentence_starts_with_trigger = line_starts_with_trigger_intro_tokens(sentence_tokens);
         let sentence_is_delayed_followup =
-            is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens);
+            is_delayed_when_that_dies_this_turn_followup_sentence(sentence_tokens)
+                || is_delayed_when_that_leaves_battlefield_followup_sentence(sentence_tokens);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty() && current_starts_with_trigger && sentence_starts_with_trigger {
@@ -3772,7 +3801,7 @@ fn try_parse_triggered_line_dispatch(
         return Ok(None);
     }
 
-    if should_parse_next_cast_trigger_line_as_spell_effect(preprocessed, &line.tokens)
+    if should_parse_delayed_trigger_line_as_spell_effect(preprocessed, &line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(line)?
     {
         return Ok(Some(LineDispatchResult::single(
@@ -4179,6 +4208,14 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
                 if normalized == LESS_THAN_ONE_MANA_REDUCTION_REMINDER {
+                    // A few inputs preserve this rules sentence on its own physical line.
+                    // Keep it attached to the preceding cost reducer so lowering can
+                    // distinguish an explicit minimum from an unbounded reduction.
+                    if let Some(RewriteLineCst::Static(previous)) = lines.last_mut()
+                        && previous.parsed.is_none()
+                    {
+                        previous.parse_tokens.extend(line.tokens.clone());
+                    }
                     idx += 1;
                     continue;
                 }

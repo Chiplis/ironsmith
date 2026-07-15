@@ -169,6 +169,11 @@ pub(super) fn parse_graveyard_threshold_predicate(
     if raw_filter_tokens.is_empty() || tokens_contain_type_marker(raw_filter_tokens) {
         return Ok(None);
     }
+    let used_and_or_connective = raw_filter_tokens.windows(2).any(|window| {
+        window[0].is_word("and") && window[1].is_word("or")
+    }) || raw_filter_tokens
+        .iter()
+        .any(|token| token.is_word("and/or"));
 
     let player = graveyard_threshold_owner_player(shape.owner);
     if constrained_player.is_some_and(|expected| expected != player) {
@@ -199,6 +204,9 @@ pub(super) fn parse_graveyard_threshold_predicate(
         filter
     };
     filter.zone = Some(Zone::Graveyard);
+    if used_and_or_connective {
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
 
     if constrained_player.is_none() {
         if let Some(owner) = player_filter_for_graveyard_threshold(&player) {

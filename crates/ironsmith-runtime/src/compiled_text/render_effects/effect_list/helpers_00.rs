@@ -1,5 +1,85 @@
 use super::*;
 
+/// Compact a source-exile followed by an authored target declaration and a
+/// delayed trigger watching that exact target:
+///
+/// `Exile it and choose target creature. When that creature leaves ...`
+///
+/// The tag relationships make this structural rather than card-specific.
+pub(crate) fn describe_exile_then_choose_delayed_leaves(effects: &[Effect]) -> Option<String> {
+    let [
+        tag_triggering_effect,
+        exile_effect,
+        target_effect,
+        schedule_effect,
+    ] = effects
+    else {
+        return None;
+    };
+    let tag_triggering =
+        tag_triggering_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let exile = unwrap_basic_tag_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if exile.zone != Zone::Exile
+        || !choose_spec_is_tagged_object(&exile.target, &tag_triggering.tag)
+    {
+        return None;
+    }
+
+    let (target_tag, target_only) = tagged_target_only_effect(target_effect)?;
+    if !target_only.explicit_declaration {
+        return None;
+    }
+
+    let schedule =
+        schedule_effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    let leaves = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::ZoneChangeTrigger>()?;
+    if schedule.target_tag.as_ref() != Some(target_tag)
+        || !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+        || !leaves.this_object
+        || !matches!(
+            leaves.from,
+            crate::triggers::ZonePattern::Specific(Zone::Battlefield)
+        )
+        || !matches!(leaves.to, crate::triggers::ZonePattern::Any)
+        || !schedule
+            .target_filter
+            .as_ref()
+            .is_some_and(|filter| filter_references_exact_tag(filter, target_tag))
+    {
+        return None;
+    }
+
+    let exile_text = describe_effect(exile_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let choose_text = describe_effect(target_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if !choose_text
+        .to_ascii_lowercase()
+        .starts_with("choose target")
+    {
+        return None;
+    }
+    let delayed_text = capitalize_first(
+        describe_effect(schedule_effect)
+            .trim()
+            .trim_end_matches('.'),
+    );
+    Some(format!(
+        "{exile_text} and {}. {delayed_text}",
+        lowercase_first(&choose_text)
+    ))
+}
+
 pub(crate) fn describe_tag_attached_tap_then_become_monarch(effects: &[Effect]) -> Option<String> {
     fn choose_spec_references_attached_tag(spec: &ChooseSpec, tag: &str) -> bool {
         match spec {
@@ -2849,6 +2929,7 @@ pub(crate) fn describe_council_vote_winners_exile(effects: &[&Effect]) -> Option
     };
     if count.min != 1
         || count.max != Some(1)
+        || !vote.starting_with_controller
         || filter.controller != Some(PlayerFilter::NotYou)
         || !filter.excluded_card_types.contains(&CardType::Land)
     {
@@ -4299,7 +4380,7 @@ pub(crate) fn describe_target_only_then_create_token_count(
     {
         return None;
     }
-    let Value::Count(filter) = &create_token.count else {
+    let Value::Count(filter) = create_token.count.unhinted() else {
         return None;
     };
     if !matches!(create_token.controller, PlayerFilter::You) {
@@ -4309,16 +4390,40 @@ pub(crate) fn describe_target_only_then_create_token_count(
     let choose_text = format!("Choose {}", describe_choose_spec(&target_only.target));
     let token_blueprint = describe_token_blueprint(&create_token.token);
     let token_phrase = pluralize_token_phrase(&token_blueprint);
+    let target_count = target_only.target.count();
+    let plural_target = target_count.max.is_none_or(|max| max > 1) || target_count.dynamic_x;
+    let target_reference = if plural_target {
+        if matches!(
+            target_only.target.base(),
+            ChooseSpec::Player(PlayerFilter::Opponent)
+        ) {
+            "those opponents"
+        } else {
+            "those players"
+        }
+    } else {
+        "that player"
+    };
+    let control_reference = if plural_target {
+        format!("{target_reference} control")
+    } else {
+        format!("{target_reference} controls")
+    };
+    let owner_reference = if plural_target {
+        format!("{target_reference} own")
+    } else {
+        format!("{target_reference} owns")
+    };
     let mut count_desc = pluralize_noun_phrase(strip_indefinite_article(
         &describe_for_each_count_filter(filter),
     ));
     count_desc = count_desc
-        .replace("target opponent controls", "that player controls")
-        .replace("target player controls", "that player controls")
-        .replace("they control", "that player controls")
-        .replace("target opponent owns", "that player owns")
-        .replace("target player owns", "that player owns")
-        .replace("they own", "that player owns");
+        .replace("target opponent controls", &control_reference)
+        .replace("target player controls", &control_reference)
+        .replace("they control", &control_reference)
+        .replace("target opponent owns", &owner_reference)
+        .replace("target player owns", &owner_reference)
+        .replace("they own", &owner_reference);
     let count_desc = count_desc.trim();
     if count_desc.is_empty() {
         return None;

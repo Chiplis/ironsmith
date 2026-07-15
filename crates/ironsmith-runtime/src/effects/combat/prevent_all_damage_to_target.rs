@@ -1,8 +1,9 @@
 //! Prevent all damage to a specific target effect implementation.
 
-use super::prevention_helpers::{register_prevention_shield, resolve_prevention_target_from_spec};
+use super::prevention_helpers::register_prevention_shield;
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::prevention::DamageFilter;
@@ -61,18 +62,42 @@ impl EffectExecutor for PreventAllDamageToTargetEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        let protected = resolve_prevention_target_from_spec(game, &self.target, ctx)?;
-        register_prevention_shield(
-            game,
-            ctx,
-            protected,
-            None,
-            self.duration.clone(),
-            self.damage_filter.clone(),
-            self.follow_up_effects.clone(),
-            ctx.targets.clone(),
-            ctx.target_assignments.clone(),
-        );
+        if let Ok(objects) = resolve_objects_from_spec(game, &self.target, ctx)
+            && !objects.is_empty()
+        {
+            for object in objects {
+                register_prevention_shield(
+                    game,
+                    ctx,
+                    crate::prevention::PreventionTarget::Permanent(object),
+                    None,
+                    self.duration.clone(),
+                    self.damage_filter.clone(),
+                    self.follow_up_effects.clone(),
+                    ctx.targets.clone(),
+                    ctx.target_assignments.clone(),
+                );
+            }
+            return Ok(EffectOutcome::resolved());
+        }
+
+        let players = resolve_players_from_spec(game, &self.target, ctx)?;
+        if players.is_empty() {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        for player in players {
+            register_prevention_shield(
+                game,
+                ctx,
+                crate::prevention::PreventionTarget::Player(player),
+                None,
+                self.duration.clone(),
+                self.damage_filter.clone(),
+                self.follow_up_effects.clone(),
+                ctx.targets.clone(),
+                ctx.target_assignments.clone(),
+            );
+        }
 
         Ok(EffectOutcome::resolved())
     }

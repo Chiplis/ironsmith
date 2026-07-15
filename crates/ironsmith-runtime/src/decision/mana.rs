@@ -449,7 +449,7 @@ pub(crate) fn alternative_cast_method_matches_kind(
         (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. }) => true,
         (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. }) => true,
         (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. }) => true,
-        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart) => true,
+        (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart { .. }) => true,
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
         (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
         (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
@@ -799,6 +799,194 @@ pub(crate) fn violates_any_cant_cast_restriction(
                 restriction.filter.matches(spell, &ctx, game)
             })
         })
+}
+
+fn optional_cost_selection_subsets(
+    optional_costs: &[crate::cost::OptionalCost],
+) -> Vec<Vec<usize>> {
+    fn visit(
+        index: usize,
+        len: usize,
+        selected: &mut Vec<usize>,
+        selections: &mut Vec<Vec<usize>>,
+    ) {
+        if index == len {
+            selections.push(selected.clone());
+            return;
+        }
+
+        visit(index + 1, len, selected, selections);
+        selected.push(index);
+        visit(index + 1, len, selected, selections);
+        selected.pop();
+    }
+
+    let mut selections = Vec::new();
+    visit(0, optional_costs.len(), &mut Vec::new(), &mut selections);
+    selections
+}
+
+/// Visit complete CR 601.2 proposals formed by the joint yes/no choices for
+/// optional costs. A repeatable cost needs only its zero- and one-payment
+/// hypotheses here: the legality predicates tested before casting begins are
+/// sensitive to whether that cost was paid, while the transaction records its
+/// exact announced count later.
+fn any_payable_optional_cost_proposal<F>(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    base_mana_cost: Option<&crate::mana::ManaCost>,
+    casting_method: &CastingMethod,
+    mut predicate: F,
+) -> bool
+where
+    F: FnMut(
+        &GameState,
+        &crate::object::Object,
+        Option<&crate::mana::ManaCost>,
+        &DerivedGameView<'_>,
+    ) -> bool,
+{
+    for selected in optional_cost_selection_subsets(&spell.optional_costs) {
+        if selected.iter().any(|&index| {
+            crate::cost::can_pay_cost_with_reason(
+                game,
+                spell.id,
+                player,
+                &spell.optional_costs[index].cost,
+                crate::costs::PaymentReason::CastSpell,
+            )
+            .is_err()
+        }) {
+            continue;
+        }
+
+        let mut hypothetical_storage = (!selected.is_empty()).then(|| game.clone());
+        if let Some(hypothetical) = hypothetical_storage.as_mut()
+            && let Some(hypothetical_spell) = hypothetical.object_mut(spell.id)
+        {
+            hypothetical_spell.optional_costs_paid =
+                crate::cost::OptionalCostsPaid::from_costs(&hypothetical_spell.optional_costs);
+            for &index in &selected {
+                hypothetical_spell.optional_costs_paid.pay_times(index, 1);
+            }
+        }
+        let hypothetical = hypothetical_storage.as_ref().unwrap_or(game);
+
+        let mut proposal = spell.clone();
+        proposal.zone = Zone::Stack;
+        proposal.optional_costs_paid =
+            crate::cost::OptionalCostsPaid::from_costs(&proposal.optional_costs);
+        for &index in &selected {
+            proposal.optional_costs_paid.pay_times(index, 1);
+        }
+
+        let mut combined_pips = base_mana_cost
+            .map(|cost| cost.pips().to_vec())
+            .unwrap_or_default();
+        for &index in &selected {
+            if let Some(optional_mana_cost) = spell.optional_costs[index].cost.mana_cost() {
+                combined_pips.extend(optional_mana_cost.pips().iter().cloned());
+            }
+        }
+        let combined_cost =
+            (!combined_pips.is_empty()).then(|| crate::mana::ManaCost::from_pips(combined_pips));
+        let hypothetical_view = DerivedGameView::new(hypothetical);
+        let effective_cost = combined_cost.as_ref().map(|cost| {
+            calculate_effective_mana_cost_with_view_for_casting_method(
+                hypothetical,
+                player,
+                &proposal,
+                cost,
+                casting_method,
+                &hypothetical_view,
+            )
+        });
+        let max_x = effective_cost
+            .as_ref()
+            .filter(|cost| cost.has_x())
+            .map(|cost| {
+                let potential = hypothetical_view.potential_mana(player);
+                let mana_spend_policy = hypothetical.mana_spend_policy(player, Some(proposal.id));
+                let allow_black_life = mana_cost_has_black_symbol(cost)
+                    && hypothetical_view.player_can_pay_black_with_life_for_reason(
+                        player,
+                        crate::costs::PaymentReason::CastSpell,
+                    );
+                potential.max_x_for_cost_with_mana_spend_policy_and_black_life(
+                    cost,
+                    &mana_spend_policy,
+                    allow_black_life,
+                )
+            })
+            .unwrap_or(0);
+
+        for x_value in 0..=max_x {
+            if effective_cost.as_ref().is_some_and(|cost| {
+                !mana_cost_can_be_paid_with_view_at_x(
+                    hypothetical,
+                    player,
+                    spell.id,
+                    cost,
+                    x_value,
+                    &hypothetical_view,
+                )
+            }) {
+                continue;
+            }
+
+            if !effective_cost.as_ref().is_some_and(|cost| cost.has_x()) {
+                if predicate(
+                    hypothetical,
+                    &proposal,
+                    effective_cost.as_ref(),
+                    &hypothetical_view,
+                ) {
+                    return true;
+                }
+                continue;
+            }
+
+            let mut x_game = hypothetical.clone();
+            let mut x_proposal = proposal.clone();
+            x_proposal.x_value = Some(x_value);
+            if let Some(game_spell) = x_game.object_mut(spell.id) {
+                game_spell.x_value = Some(x_value);
+            }
+            let x_view = DerivedGameView::new(&x_game);
+            if predicate(&x_game, &x_proposal, effective_cost.as_ref(), &x_view) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// CR 601.3a allows casting to begin when any later announcement can make the
+/// completed proposal escape a prohibition. Test optional costs jointly and X
+/// at every payable value against the spell as it would exist on the stack.
+fn every_payable_proposal_violates_cant_cast(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    mana_cost: Option<&crate::mana::ManaCost>,
+    casting_method: &CastingMethod,
+) -> bool {
+    if !violates_any_cant_cast_restriction(game, player, spell) {
+        return false;
+    }
+
+    !any_payable_optional_cost_proposal(
+        game,
+        player,
+        spell,
+        mana_cost,
+        casting_method,
+        |hypothetical, proposal, _effective_cost, _hypothetical_view| {
+            !violates_any_cant_cast_restriction(hypothetical, player, proposal)
+        },
+    )
 }
 
 pub(crate) fn is_sorcery_speed_spell(spell: &crate::object::Object) -> bool {
@@ -1362,7 +1550,7 @@ pub(crate) fn alternative_method_uses_printed_mana_cost(
 ) -> bool {
     matches!(
         method,
-        crate::alternative_cast::AlternativeCastingMethod::JumpStart
+        crate::alternative_cast::AlternativeCastingMethod::JumpStart { .. }
             | crate::alternative_cast::AlternativeCastingMethod::Escape { cost: None, .. }
     )
 }
@@ -1411,6 +1599,67 @@ pub fn can_cast_spell(
 ) -> bool {
     let view = DerivedGameView::new(game);
     can_cast_spell_with_view(game, player, spell, casting_method, &view)
+}
+
+/// Validate the fully announced CR 601.2 proposal without testing payment.
+///
+/// Unlike initial action discovery, this is deliberately strict: X, modes,
+/// optional costs, targets, and cast overlays have already been committed to
+/// the proposed stack object, so no further look-ahead is permitted here.
+pub(crate) fn completed_cast_proposal_is_legal(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    completed_cast_proposal_is_legal_with_timing_permission(
+        game,
+        player,
+        spell,
+        casting_method,
+        false,
+    )
+}
+
+/// Validate a completed proposal initiated by a resolving effect.
+///
+/// The effect supplies the permission to cast at this time, but it does not
+/// override prohibitions, cast limits, or restrictions printed on the spell.
+pub(crate) fn completed_effect_driven_cast_proposal_is_legal(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    completed_cast_proposal_is_legal_with_timing_permission(
+        game,
+        player,
+        spell,
+        casting_method,
+        true,
+    )
+}
+
+fn completed_cast_proposal_is_legal_with_timing_permission(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    timing_permission_from_effect: bool,
+) -> bool {
+    if violates_any_cant_cast_restriction(game, player, spell)
+        || violates_any_cast_limit(game, player, spell)
+        || spell.is_land()
+        || !spell_cast_restrictions_allow(game, player, spell)
+    {
+        return false;
+    }
+
+    let view = DerivedGameView::new(game);
+    let ctx = CastLegalityContext::new(game, player, &view);
+    timing_permission_from_effect
+        || has_valid_spell_timing_with_view(game, player, spell, spell.id, &view)
+        || casting_method_grants_special_timing(&ctx, spell, spell.id, casting_method)
 }
 
 /// Check whether a player could begin casting a spell from hand for suspend.
@@ -1479,70 +1728,34 @@ pub(crate) fn spell_has_legal_targets_for_cast_with_view(
     effects.is_empty() || view.spell_has_legal_targets(effects, player, Some(spell_id), None)
 }
 
-fn spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
+fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
     game: &GameState,
     spell: &crate::object::Object,
     spell_id: ObjectId,
     program_override: Option<&crate::resolution::ResolutionProgram>,
     effects_override: Option<&[crate::effect::Effect]>,
     player: PlayerId,
-    view: &DerivedGameView<'_>,
+    base_mana_cost: Option<&crate::mana::ManaCost>,
+    casting_method: &CastingMethod,
 ) -> bool {
-    if spell_has_legal_targets_for_cast_with_view(
+    any_payable_optional_cost_proposal(
         game,
-        spell,
-        spell_id,
-        program_override,
-        effects_override,
         player,
-        view,
-    ) {
-        return true;
-    }
-
-    if spell.optional_costs.is_empty() {
-        return false;
-    }
-
-    for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
-        if optional_cost.cost.mana_cost().is_some() {
-            continue;
-        }
-        if crate::cost::can_pay_cost_with_reason(
-            game,
-            spell_id,
-            player,
-            &optional_cost.cost,
-            crate::costs::PaymentReason::CastSpell,
-        )
-        .is_err()
-        {
-            continue;
-        }
-
-        let mut hypothetical = game.clone();
-        let Some(hypothetical_spell) = hypothetical.object_mut(spell_id) else {
-            continue;
-        };
-        hypothetical_spell.optional_costs_paid =
-            crate::cost::OptionalCostsPaid::from_costs(&hypothetical_spell.optional_costs);
-        hypothetical_spell.optional_costs_paid.pay_times(index, 1);
-
-        let hypothetical_view = DerivedGameView::new(&hypothetical);
-        if spell_has_legal_targets_for_cast_with_view(
-            &hypothetical,
-            spell,
-            spell_id,
-            program_override,
-            effects_override,
-            player,
-            &hypothetical_view,
-        ) {
-            return true;
-        }
-    }
-
-    false
+        spell,
+        base_mana_cost,
+        casting_method,
+        |hypothetical, proposal, _effective_cost, hypothetical_view| {
+            spell_has_legal_targets_for_cast_with_view(
+                &hypothetical,
+                proposal,
+                spell_id,
+                program_override,
+                effects_override,
+                player,
+                hypothetical_view,
+            )
+        },
+    )
 }
 
 fn mana_cost_can_be_paid_with_view(
@@ -1550,6 +1763,17 @@ fn mana_cost_can_be_paid_with_view(
     player: PlayerId,
     spell_id: ObjectId,
     cost: &crate::mana::ManaCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    mana_cost_can_be_paid_with_view_at_x(game, player, spell_id, cost, 0, view)
+}
+
+fn mana_cost_can_be_paid_with_view_at_x(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+    cost: &crate::mana::ManaCost,
+    x_value: u32,
     view: &DerivedGameView<'_>,
 ) -> bool {
     let potential = view.potential_mana(player);
@@ -1571,7 +1795,7 @@ fn mana_cost_can_be_paid_with_view(
         player,
         Some(spell_id),
         cost,
-        0,
+        x_value,
         crate::costs::PaymentReason::CastSpell,
         &mana_spend_policy,
         allow_black_life,
@@ -1579,13 +1803,12 @@ fn mana_cost_can_be_paid_with_view(
     )
 }
 
-fn effective_cost_with_affordable_non_mana_optional_cost(
+fn effective_cost_with_affordable_optional_cost_hypothesis(
     game: &GameState,
     player: PlayerId,
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
     casting_method: &CastingMethod,
-    view: &DerivedGameView<'_>,
 ) -> Option<crate::mana::ManaCost> {
     let mut spell_with_optional_costs = spell.clone();
     for (source, optional) in
@@ -1607,41 +1830,24 @@ fn effective_cost_with_affordable_non_mana_optional_cost(
             ));
     }
 
-    for (index, optional_cost) in spell_with_optional_costs.optional_costs.iter().enumerate() {
-        if optional_cost.cost.mana_cost().is_some() {
-            continue;
-        }
-        if crate::cost::can_pay_cost_with_reason(
-            game,
-            spell.id,
-            player,
-            &optional_cost.cost,
-            crate::costs::PaymentReason::CastSpell,
-        )
-        .is_err()
-        {
-            continue;
-        }
-
-        let mut hypothetical = spell_with_optional_costs.clone();
-        hypothetical.zone = Zone::Stack;
-        hypothetical.optional_costs_paid =
-            crate::cost::OptionalCostsPaid::from_costs(&hypothetical.optional_costs);
-        hypothetical.optional_costs_paid.pay_times(index, 1);
-        let reduced = calculate_effective_mana_cost_with_view_for_casting_method(
-            game,
-            player,
-            &hypothetical,
-            base_cost,
-            casting_method,
-            view,
-        );
-        if reduced != *base_cost {
-            return Some(reduced);
-        }
-    }
-
-    None
+    let mut adjusted = None;
+    any_payable_optional_cost_proposal(
+        game,
+        player,
+        &spell_with_optional_costs,
+        Some(base_cost),
+        casting_method,
+        |_hypothetical, _proposal, effective_cost, _hypothetical_view| {
+            if let Some(effective_cost) = effective_cost
+                && effective_cost != base_cost
+            {
+                adjusted = Some(effective_cost.clone());
+                return true;
+            }
+            false
+        },
+    );
+    adjusted
 }
 
 pub(crate) fn can_cast_spell_with_context(
@@ -1705,7 +1911,20 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let restrictions_started_at = PerfTimer::start();
-    if violates_any_cant_cast_restriction(game, player, spell_for_checks) {
+    let proposal_mana_cost = spell_mana_cost_for_cast(
+        game,
+        player,
+        spell_for_checks,
+        casting_method,
+        spell_for_checks.zone,
+    );
+    if every_payable_proposal_violates_cant_cast(
+        game,
+        player,
+        spell_for_checks,
+        proposal_mana_cost.as_ref(),
+        casting_method,
+    ) {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         ctx.add_total_ms(total_started_at.elapsed_ms());
         return false;
@@ -1750,14 +1969,15 @@ pub(crate) fn can_cast_spell_with_context(
         .and_then(|view| view.spell_effect.as_deref())
         .or(spell.spell_effect.as_deref());
     let has_legal_targets =
-        spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
+        spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
             game,
             spell_for_checks,
             spell.id,
             program,
             None,
             player,
-            view,
+            base_mana_cost.as_ref(),
+            casting_method,
         );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
@@ -1800,13 +2020,12 @@ pub(crate) fn can_cast_spell_with_context(
         let can_pay_effective =
             mana_cost_can_be_paid_with_view(game, player, spell.id, &effective_cost, view);
         let can_pay_with_optional_reduction = !can_pay_effective
-            && effective_cost_with_affordable_non_mana_optional_cost(
+            && effective_cost_with_affordable_optional_cost_hypothesis(
                 game,
                 player,
                 spell_for_checks,
                 base_cost,
                 casting_method,
-                view,
             )
             .is_some_and(|cost| {
                 mana_cost_can_be_paid_with_view(game, player, spell.id, &cost, view)
@@ -1946,7 +2165,13 @@ pub(crate) fn can_cast_with_cost_with_context(
     }
 
     let restrictions_started_at = PerfTimer::start();
-    if violates_any_cant_cast_restriction(game, player, spell_for_checks) {
+    if every_payable_proposal_violates_cant_cast(
+        game,
+        player,
+        spell_for_checks,
+        mana_cost,
+        casting_method,
+    ) {
         ctx.add_restrictions_ms(restrictions_started_at.elapsed_ms());
         return false;
     }
@@ -1988,14 +2213,15 @@ pub(crate) fn can_cast_with_cost_with_context(
         spell_for_checks.spell_effect.as_deref()
     };
     let has_legal_targets =
-        spell_has_legal_targets_for_cast_or_payable_non_mana_optional_cost_with_view(
+        spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
             game,
             spell_for_checks,
             spell_id,
             program,
             effects,
             player,
-            view,
+            mana_cost,
+            casting_method,
         );
     ctx.add_target_legality_ms(target_started_at.elapsed_ms());
     if !has_legal_targets {
@@ -2067,35 +2293,20 @@ pub(crate) fn can_cast_with_cost_with_context(
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
-        let potential = view.potential_mana(player);
-        let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));
-        let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending()
-            || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
-        let allow_black_life = mana_cost_has_black_symbol(&adjusted)
-            && view.player_can_pay_black_with_life_for_reason(
+        let can_pay_adjusted =
+            mana_cost_can_be_paid_with_view(game, player, spell_id, &adjusted, view);
+        let can_pay_with_optional_reduction = !can_pay_adjusted
+            && effective_cost_with_affordable_optional_cost_hypothesis(
+                game,
                 player,
-                crate::costs::PaymentReason::CastSpell,
-            );
-        if mana_cost_is_obviously_unpayable(
-            &potential,
-            &adjusted,
-            allow_any_color_for_obvious,
-            allow_black_life,
-        ) {
-            ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
-            return false;
-        }
-        if !can_pay_mana_cost_with_available_sources(
-            game,
-            player,
-            Some(spell_id),
-            &adjusted,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-            &mana_spend_policy,
-            allow_black_life,
-            view,
-        ) {
+                spell_for_checks,
+                cost,
+                casting_method,
+            )
+            .is_some_and(|optional_adjusted| {
+                mana_cost_can_be_paid_with_view(game, player, spell_id, &optional_adjusted, view)
+            });
+        if !can_pay_adjusted && !can_pay_with_optional_reduction {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             return false;
         }
@@ -2715,7 +2926,7 @@ fn apply_minimum_spell_total_mana_with_view(
 ///
 /// This handles abilities like:
 /// - Affinity for artifacts: Reduce generic cost by 1 for each artifact you control
-/// - Delve: Reduce generic cost by 1 for each card exiled from graveyard (automatic maximum)
+/// - Delve: Preview the maximum available generic reduction for action discovery
 /// - Convoke: Tap creatures to pay for mana (colored or generic)
 ///
 /// Returns the reduced mana cost.
@@ -3019,12 +3230,20 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
         view,
     );
 
-    // Check for Delve
-    let has_delve_ability = has_delve(spell);
-
-    if has_delve_ability {
-        // For Delve, we assume maximum usage (exile all cards up to generic cost remaining)
-        let graveyard_count = count_cards_in_graveyard(game, player);
+    // Action discovery previews maximum Delve usage. During the payment-stage
+    // calculation (`include_convoke_improvise_reductions == false`), Delve is
+    // instead an interactive repeatable payment in the CR 601 transaction.
+    if include_convoke_improvise_reductions && has_delve(spell) {
+        let graveyard_count = game
+            .player(player)
+            .map(|player| {
+                player
+                    .graveyard
+                    .iter()
+                    .filter(|&&card_id| card_id != spell.id)
+                    .count() as u32
+            })
+            .unwrap_or(0);
         current_cost = current_cost.reduce_generic(graveyard_count);
     }
 
@@ -3957,7 +4176,16 @@ pub fn calculate_delve_exile_count_with_targets(
     let generic_remaining = cost_after_reductions.generic_mana_total();
 
     // Get graveyard count and calculate exile amount
-    let graveyard_count = count_cards_in_graveyard(game, player);
+    let graveyard_count = game
+        .player(player)
+        .map(|player| {
+            player
+                .graveyard
+                .iter()
+                .filter(|&&card_id| card_id != spell.id)
+                .count() as u32
+        })
+        .unwrap_or(0);
 
     // Exile up to the generic mana cost (maximum Delve)
     generic_remaining.min(graveyard_count)

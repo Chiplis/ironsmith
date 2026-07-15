@@ -45,6 +45,26 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     lhs.eq_ignore_ascii_case(rhs) || normalize_name_for_match(lhs) == normalize_name_for_match(rhs)
 }
 
+fn object_mana_value_for_filter(object: &Object) -> i32 {
+    object.mana_cost.as_ref().map_or(0, |mana_cost| {
+        if object.zone == Zone::Stack {
+            mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
+        } else {
+            mana_cost.mana_value() as i32
+        }
+    })
+}
+
+fn snapshot_mana_value_for_filter(snapshot: &ObjectSnapshot) -> i32 {
+    snapshot.mana_cost.as_ref().map_or(0, |mana_cost| {
+        if snapshot.zone == Zone::Stack {
+            mana_cost.mana_value_with_x(snapshot.x_value.unwrap_or(0)) as i32
+        } else {
+            mana_cost.mana_value() as i32
+        }
+    })
+}
+
 fn object_is_enlist_eligible(game: &GameState, id: ObjectId) -> bool {
     if game.is_tapped(id) {
         return false;
@@ -151,9 +171,7 @@ impl TaggedConstraintSubject for Object {
     }
 
     fn subject_mana_value(&self) -> i32 {
-        self.mana_cost
-            .as_ref()
-            .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
+        object_mana_value_for_filter(self)
     }
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
@@ -255,10 +273,7 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
     }
 
     fn subject_mana_value(&self) -> i32 {
-        self.object
-            .mana_cost
-            .as_ref()
-            .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
+        object_mana_value_for_filter(self.object)
     }
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
@@ -366,9 +381,7 @@ impl TaggedConstraintSubject for ObjectSnapshot {
     }
 
     fn subject_mana_value(&self) -> i32 {
-        self.mana_cost
-            .as_ref()
-            .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
+        snapshot_mana_value_for_filter(self)
     }
 
     fn subject_attached_to(&self) -> Option<ObjectId> {
@@ -707,25 +720,13 @@ fn tagged_constraint_matches_subject(
             .iter()
             .any(|snapshot| snapshot.controller == subject.subject_controller()),
         TaggedOpbjectRelation::SameManaValueAsTagged => tagged_snapshots.iter().any(|snapshot| {
-            snapshot
-                .mana_cost
-                .as_ref()
-                .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
-                == subject.subject_mana_value()
+            snapshot_mana_value_for_filter(snapshot) == subject.subject_mana_value()
         }),
         TaggedOpbjectRelation::ManaValueLteTagged => tagged_snapshots.iter().any(|snapshot| {
-            subject.subject_mana_value()
-                <= snapshot
-                    .mana_cost
-                    .as_ref()
-                    .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
+            subject.subject_mana_value() <= snapshot_mana_value_for_filter(snapshot)
         }),
         TaggedOpbjectRelation::ManaValueLtTagged => tagged_snapshots.iter().any(|snapshot| {
-            subject.subject_mana_value()
-                < snapshot
-                    .mana_cost
-                    .as_ref()
-                    .map_or(0, |mana_cost| mana_cost.mana_value() as i32)
+            subject.subject_mana_value() < snapshot_mana_value_for_filter(snapshot)
         }),
         TaggedOpbjectRelation::AttachedToTaggedObject => tagged_snapshots
             .iter()
@@ -1111,7 +1112,83 @@ fn resolve_filter_comparison_rhs_value(
         }
     }
 
+    fn aggregate_tagged_snapshots<'a>(
+        filter: &ObjectFilter,
+        ctx: &'a FilterContext,
+    ) -> Option<Vec<&'a ObjectSnapshot>> {
+        let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
+            && filter
+                .tagged_constraints
+                .iter()
+                .all(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject);
+        if !only_is_tagged_constraints {
+            return None;
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let mut snapshots = Vec::new();
+        for constraint in &filter.tagged_constraints {
+            let Some(tagged) = ctx.tagged_objects.get(&constraint.tag) else {
+                continue;
+            };
+            for snapshot in tagged {
+                if seen.insert(snapshot.object_id) {
+                    snapshots.push(snapshot);
+                }
+            }
+        }
+        Some(snapshots)
+    }
+
+    fn aggregate_pt(
+        filter: &ObjectFilter,
+        game: &GameState,
+        ctx: &FilterContext,
+        power: bool,
+        greatest: bool,
+    ) -> Option<i32> {
+        if let Some(snapshots) = aggregate_tagged_snapshots(filter, ctx) {
+            let values = snapshots
+                .into_iter()
+                .filter(|snapshot| filter.matches_snapshot(snapshot, ctx, game))
+                .filter_map(|snapshot| snapshot_pt(snapshot, power));
+            return if greatest { values.max() } else { values.min() };
+        }
+
+        let values = game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| filter.matches(object, ctx, game))
+            .filter_map(|object| current_object_pt(game, object.id, power));
+        if greatest { values.max() } else { values.min() }
+    }
+
+    fn aggregate_mana_value(
+        filter: &ObjectFilter,
+        game: &GameState,
+        ctx: &FilterContext,
+        greatest: bool,
+    ) -> Option<i32> {
+        if let Some(snapshots) = aggregate_tagged_snapshots(filter, ctx) {
+            let values = snapshots
+                .into_iter()
+                .filter(|snapshot| filter.matches_snapshot(snapshot, ctx, game))
+                .map(snapshot_mana_value_for_filter);
+            return if greatest { values.max() } else { values.min() };
+        }
+
+        let values = game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| filter.matches(object, ctx, game))
+            .map(object_mana_value_for_filter);
+        if greatest { values.max() } else { values.min() }
+    }
+
     match rhs {
+        Value::SurfaceHinted { value, .. } => {
+            resolve_filter_comparison_rhs_value(value, game, ctx, stack_entry)
+        }
         Value::Fixed(value) => Some(*value),
         Value::X => resolve_x_value(game, ctx, stack_entry),
         Value::XTimes(multiplier) => {
@@ -1244,12 +1321,12 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
-        Value::GreatestPower(filter) => game
-            .objects_in_deterministic_order()
-            .into_iter()
-            .filter(|object| filter.matches(object, ctx, game))
-            .filter_map(|object| game.calculated_power(object.id).or_else(|| object.power()))
-            .max(),
+        Value::GreatestPower(filter) => aggregate_pt(filter, game, ctx, true, true),
+        Value::GreatestToughness(filter) => aggregate_pt(filter, game, ctx, false, true),
+        Value::GreatestManaValue(filter) => aggregate_mana_value(filter, game, ctx, true),
+        Value::LeastPower(filter) => aggregate_pt(filter, game, ctx, true, false),
+        Value::LeastToughness(filter) => aggregate_pt(filter, game, ctx, false, false),
+        Value::LeastManaValue(filter) => aggregate_mana_value(filter, game, ctx, false),
         Value::CountersOnSource(counter_type) => {
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
@@ -1258,7 +1335,7 @@ fn resolve_filter_comparison_rhs_value(
         Value::SourceToughness => current_object_pt(game, ctx.source?, false),
         Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
         Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
-        Value::CountersOn(spec, counter_type) => match spec.as_ref() {
+        Value::CountersOn(spec, counter_type) => match spec.base() {
             ChooseSpec::Source => {
                 let source = game.object(ctx.source?)?;
                 Some(match counter_type {
@@ -1280,7 +1357,7 @@ fn resolve_filter_comparison_rhs_value(
             }
             _ => None,
         },
-        Value::ManaValueOf(spec) => match spec.as_ref() {
+        Value::ManaValueOf(spec) => match spec.base() {
             ChooseSpec::Source => {
                 let source = game.object(ctx.source?)?;
                 Some(
@@ -1689,6 +1766,9 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object.id) {
+            return false;
+        }
         self.matches_internal(object, ctx, game, true, None)
     }
 
@@ -1699,6 +1779,9 @@ impl ObjectFilterExt for ObjectFilter {
         game: &crate::game_state::GameState,
         view: &crate::derived_view::DerivedGameView<'_>,
     ) -> bool {
+        if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object.id) {
+            return false;
+        }
         self.matches_internal(object, ctx, game, true, Some(view))
     }
 
@@ -1712,6 +1795,9 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object.id) {
+            return false;
+        }
         self.matches_internal(object, ctx, game, false, None)
     }
 
@@ -2676,8 +2762,12 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
-            let Some(defending_player) = attacking_defending_player_for_object(object.id, game)
-            else {
+            let defending_player = if self.attacking_player_only {
+                attacking_player_for_object(object.id, game)
+            } else {
+                attacking_defending_player_for_object(object.id, game)
+            };
+            let Some(defending_player) = defending_player else {
                 return false;
             };
             if !player_filter.matches_player(defending_player, ctx) {
@@ -2919,21 +3009,13 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Mana value check
         if let Some(mv_cmp) = &self.mana_value {
-            let mv = object
-                .mana_cost
-                .as_ref()
-                .map(|mc| mc.mana_value() as i32)
-                .unwrap_or(0);
+            let mv = object_mana_value_for_filter(object);
             if !mv_cmp.satisfies_with_context(mv, game, ctx, stack_entry) {
                 return false;
             }
         }
         if let Some(mana_value_parity) = self.mana_value_parity {
-            let mv = object
-                .mana_cost
-                .as_ref()
-                .map(|mc| mc.mana_value() as i32)
-                .unwrap_or(0);
+            let mv = object_mana_value_for_filter(object);
             if !mana_value_parity.matches(mv, game, ctx) {
                 return false;
             }
@@ -2946,11 +3028,7 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             let required = source.counters.get(&counter_type).copied().unwrap_or(0) as i32;
-            let mv = object
-                .mana_cost
-                .as_ref()
-                .map(|mc| mc.mana_value() as i32)
-                .unwrap_or(0);
+            let mv = object_mana_value_for_filter(object);
             if mv != required {
                 return false;
             }
@@ -3390,9 +3468,12 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
-            let Some(defending_player) =
+            let defending_player = if self.attacking_player_only {
+                attacking_player_for_object(snapshot.object_id, game)
+            } else {
                 attacking_defending_player_for_object(snapshot.object_id, game)
-            else {
+            };
+            let Some(defending_player) = defending_player else {
                 return false;
             };
             if !player_filter.matches_player(defending_player, ctx) {
@@ -3545,21 +3626,13 @@ impl ObjectFilterExt for ObjectFilter {
 
         // Mana value check
         if let Some(mv_cmp) = &self.mana_value {
-            let mv = snapshot
-                .mana_cost
-                .as_ref()
-                .map(|mc| mc.mana_value() as i32)
-                .unwrap_or(0);
+            let mv = snapshot_mana_value_for_filter(snapshot);
             if !mv_cmp.satisfies_with_context(mv, game, ctx, None) {
                 return false;
             }
         }
         if let Some(mana_value_parity) = self.mana_value_parity {
-            let mv = snapshot
-                .mana_cost
-                .as_ref()
-                .map(|mc| mc.mana_value() as i32)
-                .unwrap_or(0);
+            let mv = snapshot_mana_value_for_filter(snapshot);
             if !mana_value_parity.matches(mv, game, ctx) {
                 return false;
             }
@@ -3572,11 +3645,7 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             let required = source.counters.get(&counter_type).copied().unwrap_or(0) as i32;
-            let mv = snapshot
-                .mana_cost
-                .as_ref()
-                .map(|mc| mc.mana_value() as i32)
-                .unwrap_or(0);
+            let mv = snapshot_mana_value_for_filter(snapshot);
             if mv != required {
                 return false;
             }
@@ -4194,9 +4263,13 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = player_filter.description();
-            post_noun_qualifiers.push(format!(
-                "attacking {player_text} or a planeswalker controlled by {player_text}"
-            ));
+            if self.attacking_player_only {
+                post_noun_qualifiers.push(format!("attacking {player_text}"));
+            } else {
+                post_noun_qualifiers.push(format!(
+                    "attacking {player_text} or a planeswalker controlled by {player_text}"
+                ));
+            }
         }
         if self.in_combat_with_source {
             post_noun_qualifiers.push("blocking or blocked by this creature".to_string());
@@ -4575,15 +4648,19 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
         if let Some(counter_requirement) = self.with_counter {
+            let (plural_noun, plural_subject) = self.counter_requirement_surface();
             parts.push(format!(
-                "with {} on it",
-                describe_counter_constraint(counter_requirement)
+                "with {} on {}",
+                describe_counter_constraint(counter_requirement, plural_noun),
+                if plural_subject { "them" } else { "it" }
             ));
         }
         if let Some(counter_exclusion) = self.without_counter {
+            let (plural_noun, plural_subject) = self.counter_exclusion_surface();
             parts.push(format!(
-                "without {} on it",
-                describe_counter_constraint(counter_exclusion)
+                "without {} on {}",
+                describe_counter_constraint(counter_exclusion, plural_noun),
+                if plural_subject { "them" } else { "it" }
             ));
         }
         if let Some(total_counters_parity) = self.total_counters_parity {

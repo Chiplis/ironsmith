@@ -1832,6 +1832,15 @@ pub(super) fn describe_choose_sacrifice_then_draw_for_sacrificed(
 
     let selection = describe_sacrifice_choice_selection(choose);
 
+    if draw
+        .count
+        .has_surface_hint(ValueSurfaceHint::ThatManyCards)
+    {
+        return Some(format!(
+            "Sacrifice {selection}, then draw that many cards"
+        ));
+    }
+
     Some(format!(
         "Sacrifice {selection}. Draw a card for each permanent sacrificed this way"
     ))
@@ -3872,6 +3881,12 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
         {
             Some("Each player on your team")
         }
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Any)
+                && matches!(excluded.as_ref(), PlayerFilter::ControllerOf(_)) =>
+        {
+            Some("Each player other than its controller")
+        }
         _ => None,
     }
 }
@@ -4145,9 +4160,7 @@ pub(super) fn describe_for_players_simple_iterated_action(
         if subject == "You" {
             normalize_you_verb_phrase(rest)
         } else {
-            normalize_third_person_verb_phrase(rest)
-                .replace("that player's", &format!("{subject_lower}'s"))
-                .replace("that player", &subject_lower)
+            rewrite_iterated_player_references(&normalize_third_person_verb_phrase(rest))
         }
     ))
 }
@@ -4229,7 +4242,7 @@ pub(super) fn describe_for_players_iterated_action_sequence(
 pub(super) fn iterated_player_action_phrase(
     inner: &str,
     subject: &str,
-    subject_lower: &str,
+    _subject_lower: &str,
 ) -> Option<String> {
     let rest = inner
         .strip_prefix("that player ")
@@ -4237,12 +4250,26 @@ pub(super) fn iterated_player_action_phrase(
     if subject == "You" {
         Some(normalize_you_verb_phrase(rest))
     } else {
-        Some(
-            normalize_third_person_verb_phrase(rest)
-                .replace("that player's", &format!("{subject_lower}'s"))
-                .replace("that player", subject_lower),
-        )
+        Some(rewrite_iterated_player_references(
+            &normalize_third_person_verb_phrase(rest),
+        ))
     }
+}
+
+fn rewrite_iterated_player_references(text: &str) -> String {
+    text.replace("that player's", "their")
+        .replace("to that player", "to them")
+        .replace("for that player", "for them")
+        .replace("from that player", "from them")
+        .replace("by that player", "by them")
+        .replace("that player", "they")
+        .replace("they controls", "they control")
+        .replace("they owns", "they own")
+        .replace("they has", "they have")
+        .replace("they is", "they are")
+        .replace("they draws", "they draw")
+        .replace("they discards", "they discard")
+        .replace("they sacrifices", "they sacrifice")
 }
 
 pub(super) fn iterated_player_structural_action_phrase(

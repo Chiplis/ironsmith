@@ -209,6 +209,7 @@ pub enum Subtype {
     Druid,
     Dwarf,
     Elder,
+    Egg,
     Eldrazi,
     Hamster,
     Spawn,
@@ -515,6 +516,7 @@ impl Subtype {
             Subtype::Druid,
             Subtype::Dwarf,
             Subtype::Elder,
+            Subtype::Egg,
             Subtype::Eldrazi,
             Subtype::Hamster,
             Subtype::Spawn,
@@ -861,6 +863,7 @@ impl Subtype {
                 | Subtype::Druid
                 | Subtype::Dwarf
                 | Subtype::Elder
+                | Subtype::Egg
                 | Subtype::Eldrazi
                 | Subtype::Hamster
                 | Subtype::Spawn

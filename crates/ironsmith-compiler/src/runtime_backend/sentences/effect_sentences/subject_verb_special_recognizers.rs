@@ -187,7 +187,8 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
             SubjectVerbActionAst::Draw {
-                count: Value::EventValue(EventValueSpec::Amount),
+                count: Value::EventValue(EventValueSpec::Amount)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards),
             },
         ),
     ]))

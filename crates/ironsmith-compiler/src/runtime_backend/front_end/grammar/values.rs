@@ -21,8 +21,8 @@ use super::super::util::{
     parse_card_type as parse_shared_card_type, parse_supertype_word as parse_shared_supertype_word,
 };
 use super::super::util::{
-    parse_number_word_i32, parse_value_expr_words, source_reference_surface_for_possessive_words,
-    trim_edge_punctuation_tokens,
+    parse_number_word_i32, parse_number_word_u32, parse_value_expr_words,
+    source_reference_surface_for_possessive_words, trim_edge_punctuation_tokens,
 };
 use super::{leaf, primitives};
 
@@ -65,6 +65,7 @@ struct ValueManaValueSegmentShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PlayersWhoControlMoreValueShape<'a> {
     filter_tokens: &'a [OwnedLexToken],
+    minimum_difference_token: Option<&'a [OwnedLexToken]>,
 }
 const THAT_WORD: &str = "that";
 const MANA_VALUE_SUFFIX: &[&str] = &["mana", "value"];
@@ -76,14 +77,24 @@ fn parse_players_who_control_more_value_shape_lexed<'a>(
     opt(primitives::phrase(&["where", "x", "is"])).parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     opt(primitives::phrase(&["number", "of"])).parse_next(input)?;
-    primitives::phrase(&["players", "who", "control", "more"]).parse_next(input)?;
+    primitives::phrase(&["players", "who", "control"]).parse_next(input)?;
+    let minimum_difference_token =
+        if opt(primitives::phrase(&["at", "least"])).parse_next(input)?.is_some() {
+            Some(any.void().take().parse_next(input)?)
+        } else {
+            None
+        };
+    primitives::kw("more").parse_next(input)?;
     let filter_tokens = repeat_till(1.., any.void(), peek(primitives::phrase(&["than", "you"])))
         .map(|((), _)| ())
         .take()
         .parse_next(input)?;
     primitives::phrase(&["than", "you"]).parse_next(input)?;
     eof.void().parse_next(input)?;
-    Ok(PlayersWhoControlMoreValueShape { filter_tokens })
+    Ok(PlayersWhoControlMoreValueShape {
+        filter_tokens,
+        minimum_difference_token,
+    })
 }
 
 fn parse_players_who_control_more_value_shape(
@@ -347,7 +358,18 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
 ) -> Option<Value> {
     let shape = parse_players_who_control_more_value_shape(tokens)?;
     let filter = parse_object_filter_lexed(shape.filter_tokens, false).ok()?;
-    Some(Value::PlayersWhoControlMoreThanYou(filter))
+    let Some(minimum_difference_token) = shape.minimum_difference_token else {
+        return Some(Value::PlayersWhoControlMoreThanYou(filter));
+    };
+    let [minimum_difference_token] = minimum_difference_token else {
+        return None;
+    };
+    let minimum_difference = parse_number_word_u32(minimum_difference_token.parser_text())
+        .or_else(|| minimum_difference_token.parser_text().parse::<u32>().ok())?;
+    Some(Value::PlayersWhoControlAtLeastMoreThanYou {
+        filter,
+        minimum_difference,
+    })
 }
 
 pub(crate) fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {

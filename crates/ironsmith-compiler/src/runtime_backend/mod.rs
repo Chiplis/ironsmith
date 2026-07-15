@@ -19,6 +19,8 @@ pub(crate) mod ast;
 pub(crate) mod clause_support;
 #[path = "lowering/compile_support.rs"]
 pub(crate) mod compile_support;
+#[path = "lowering/battlefield_entry_counter_fusion.rs"]
+pub(crate) mod battlefield_entry_counter_fusion;
 #[path = "lowering/condition_antecedent.rs"]
 pub(crate) mod condition_antecedent;
 #[path = "front_end/cst.rs"]

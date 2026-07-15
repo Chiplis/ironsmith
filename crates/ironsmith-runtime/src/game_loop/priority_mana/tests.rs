@@ -725,6 +725,58 @@ fn test_bonus_mana_grants_temporary_static_ability_to_matching_spell() {
 }
 
 #[test]
+fn domri_style_bonus_mana_grants_riot_to_the_matching_creature_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source_id = game.new_object_id();
+    let restriction = ManaUsageRestriction::CastSpellWithManaBonus {
+        filter: ObjectFilter::default().with_type(CardType::Creature),
+        condition: crate::ability::ManaSpendBonusCondition::IfThatManaIsSpentOn,
+        grant_uncounterable: false,
+        enters_with_counters: vec![],
+        granted_abilities: vec![],
+        granted_keywords: vec![crate::ability::ManaSpendGrantedKeyword::Riot],
+    };
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Red,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Domri Riot Probe")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let spell_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+    let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Red, Some(spell_id))
+        .expect("bonus-bearing mana should pay for the creature spell");
+    apply_spent_mana_bonuses(&mut game, Some(spell_id), &spent);
+
+    let riot = crate::cards::builders::riot_triggered_ability();
+    assert!(
+        game.object(spell_id)
+            .expect("creature spell should remain on the stack")
+            .abilities
+            .contains(&riot),
+        "spending Domri-style mana should grant the runtime riot ability"
+    );
+
+    let permanent_id = game
+        .move_object_by_effect(spell_id, Zone::Battlefield)
+        .expect("creature spell should resolve to the battlefield");
+    assert!(
+        game.object(permanent_id)
+            .expect("resolved creature should exist")
+            .abilities
+            .contains(&riot),
+        "the granted riot ability should survive stack-to-battlefield movement"
+    );
+}
+
+#[test]
 fn arena_style_exert_mana_grants_haste_through_cast_flow() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -987,6 +1039,7 @@ fn test_pip_payment_mana_ability_restricts_any_color_choice() {
         &mut dm,
         &mut payment_trace,
         Some(&mut mana_spent),
+        None,
     )
     .expect("mana ability activation during pip payment should succeed");
 
@@ -1034,6 +1087,7 @@ fn test_black_pip_payment_options_include_phyrexian_tower_sacrifice_ability() {
         false,
         Some(yawgmoth_id),
         crate::costs::PaymentReason::ActivateAbility,
+        true,
         &mut dm,
     );
 
@@ -1143,6 +1197,7 @@ fn test_build_pip_payment_options_adds_krrik_life_for_plain_black_pip() {
         ),
         None,
         crate::costs::PaymentReason::CastSpell,
+        false,
         &mut dm,
     );
 
@@ -1169,6 +1224,7 @@ fn test_build_pip_payment_options_does_not_add_krrik_life_to_announced_phyrexian
         true,
         None,
         crate::costs::PaymentReason::CastSpell,
+        false,
         &mut dm,
     );
 

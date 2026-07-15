@@ -1680,6 +1680,21 @@ pub(super) fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_
     game.turn.priority_player = Some(alice);
 
     let brain = brain_in_a_jar_definition();
+    let matching_filter = brain
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(&activated.effects),
+            _ => None,
+        })
+        .flat_map(|program| program.all_effects())
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        .flat_map(|may| may.effects.iter())
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+        })
+        .map(|effect| effect.filter.clone())
+        .expect("Brain in a Jar should expose its counter-derived cast filter");
     let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
     let matching_spell = CardBuilder::new(CardId::from_raw(93_001), "One-Mana Instant")
         .card_types(vec![CardType::Instant])
@@ -1689,7 +1704,11 @@ pub(super) fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_
         .card_types(vec![CardType::Instant])
         .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
         .build();
-    game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let matching_id = game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let matching_stable_id = game
+        .object(matching_id)
+        .expect("matching spell should exist")
+        .stable_id;
     let nonmatching_id = game.create_object_from_card(&nonmatching_spell, alice, Zone::Hand);
     game.player_mut(alice)
         .expect("Alice should exist")
@@ -1731,6 +1750,18 @@ pub(super) fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_
         game.counter_count(brain_id, crate::object::CounterType::Charge),
         1,
         "Brain in a Jar should put a charge counter on itself before checking the free-cast gate"
+    );
+    let filter_ctx = game
+        .filter_context_for(alice, Some(brain_id))
+        .with_caster(Some(alice));
+    let matching_current_id = game
+        .find_object_by_stable_id(matching_stable_id)
+        .expect("the matching spell should retain stable identity across the cast");
+    assert!(
+        game.object(matching_current_id).is_some_and(|candidate| {
+            crate::filter::ObjectFilterExt::matches(&matching_filter, candidate, &filter_ctx, &game)
+        }),
+        "the compiled counter-derived filter must match the one-mana instant after the counter is added: {matching_filter:#?}"
     );
     assert!(
         game.stack.iter().any(|entry| {
@@ -2841,7 +2872,7 @@ pub(super) fn test_force_of_will_escape_with_spell_on_stack() {
 
     // Provide the target (Lightning Bolt on stack - spells are objects)
     let targets_response = PriorityResponse::Targets(vec![Target::Object(bolt_id)]);
-    let progress2 =
+    let mut progress2 =
         apply_priority_response(&mut game, &mut trigger_queue, &mut state, &targets_response);
 
     assert!(
@@ -2849,6 +2880,28 @@ pub(super) fn test_force_of_will_escape_with_spell_on_stack() {
         "Targeting should succeed. Got: {:?}",
         progress2
     );
+
+    // Granted Escape now pays its typed exile component through the ordinary
+    // interactive CR 601 cost transaction rather than auto-exiling the first
+    // three graveyard cards in finalization.
+    let mut dm = SelectFirstDecisionMaker;
+    for _ in 0..12 {
+        let progress = progress2.expect("granted Escape cost payment should remain valid");
+        progress2 = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            GameProgress::NeedsDecisionCtx(context) => apply_decision_context_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &context,
+                &mut dm,
+            ),
+            GameProgress::Continue => break,
+            other => panic!("unexpected granted Escape payment progress: {other:?}"),
+        };
+    }
 
     // Verify the escape cost was paid:
     // - Force of Will should now be on the stack
@@ -3275,13 +3328,20 @@ pub(super) fn test_delve_exiles_cards_on_cast() {
     game.turn.active_player = alice;
 
     // Put 7 cards in graveyard
-    let mut gy_cards = Vec::new();
-    for i in 0..7 {
-        let card = CardBuilder::new(CardId::new(), &format!("Graveyard Card {}", i))
+    let graveyard_names = [
+        "Delve Card 0",
+        "Delve Card 1",
+        "Delve Card 2",
+        "Delve Card 3",
+        "Delve Card 4",
+        "Delve Card 5",
+        "Delve Card 6",
+    ];
+    for name in graveyard_names {
+        let card = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Creature])
             .build();
-        let id = game.create_object_from_card(&card, alice, Zone::Graveyard);
-        gy_cards.push(id);
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
     }
 
     // Put Treasure Cruise in hand
@@ -3298,17 +3358,20 @@ pub(super) fn test_delve_exiles_cards_on_cast() {
     assert_eq!(game.player(alice).unwrap().graveyard.len(), 7);
     assert_eq!(game.exile.len(), 0);
 
-    // Cast Treasure Cruise
-    let mut state = PriorityLoopState::new(game.players_in_game());
-    let mut trigger_queue = crate::triggers::TriggerQueue::new();
-    let response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
-        spell_id: tc_id,
-        from_zone: Zone::Hand,
-        casting_method: CastingMethod::Normal,
-    });
-
-    let result = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &response);
-    assert!(result.is_ok(), "Casting should succeed");
+    let mut dm = NamedCastCostDecisionMaker::new(graveyard_names);
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        tc_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("Treasure Cruise Delve transaction should execute")
+    .expect("Treasure Cruise should commit after seven chosen Delve payments");
 
     // Verify 7 cards were exiled from graveyard
     assert_eq!(
@@ -3323,7 +3386,179 @@ pub(super) fn test_delve_exiles_cards_on_cast() {
     );
 
     // Treasure Cruise should be on the stack
-    assert_eq!(game.stack.len(), 1);
+    assert!(game.stack.iter().any(|entry| entry.object_id == stack_id));
+}
+
+#[test]
+pub(super) fn delve_chooses_an_exact_card_and_can_stop_below_the_maximum() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Selective Delve Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .delve()
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    for name in ["Delve Choice A", "Delve Choice B", "Delve Choice C"] {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
+    }
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let mut dm = NamedCastCostDecisionMaker::new(["Delve Choice C"]);
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("selective Delve transaction should execute")
+    .expect("one Delve payment plus available mana should commit");
+
+    assert_eq!(dm.cost_prompts.len(), 1);
+    let exiled_choice = game
+        .exile
+        .iter()
+        .copied()
+        .find(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Delve Choice C")
+        })
+        .expect("the exact selected Delve card should be exiled");
+    assert_eq!(game.exile.len(), 1, "Delve must not force its maximum");
+    assert!(
+        game.get_exiled_with_source_links(stack_id)
+            .contains(&exiled_choice)
+    );
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("Delve spell should be on the stack");
+    assert!(
+        entry
+            .tagged_objects
+            .get(&crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG))
+            .is_some_and(|cards| cards.iter().any(|card| card.name == "Delve Choice C"))
+    );
+    for name in ["Delve Choice A", "Delve Choice B"] {
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .graveyard
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name))
+        );
+    }
+}
+
+#[test]
+pub(super) fn delve_can_be_declined_entirely_when_mana_covers_the_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Declined Delve Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .delve()
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    for name in ["Kept Delve Card A", "Kept Delve Card B"] {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
+    }
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let mut dm = NamedCastCostDecisionMaker::default();
+    let result = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("declined Delve transaction should execute");
+
+    assert!(result.is_some());
+    assert!(dm.cost_prompts.is_empty());
+    assert!(game.exile.is_empty());
+    assert_eq!(game.player(alice).expect("Alice exists").graveyard.len(), 2);
+}
+
+#[test]
+pub(super) fn cancelling_partial_delve_payment_rolls_back_every_exile() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Rollback Delve Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Sorcery])
+        .delve()
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    for name in ["Rollback Delve A", "Rollback Delve B", "Rollback Delve C"] {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
+    }
+
+    let mut dm = NamedCastCostDecisionMaker::new(["Rollback Delve B", "<cancel>"]);
+    let result = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("cancelled Delve transaction should roll back cleanly");
+
+    assert!(result.is_none());
+    assert!(game.stack_is_empty());
+    assert!(game.exile.is_empty());
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").graveyard.len(), 3);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

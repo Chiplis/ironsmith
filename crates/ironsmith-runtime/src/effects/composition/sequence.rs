@@ -38,6 +38,13 @@ impl SequenceEffect {
             surface: ironsmith_core::SequenceSurface::CoordinatedLeadingDuration,
         }
     }
+
+    pub fn result_conjunction(effects: Vec<Effect>, leading_duration: bool) -> Self {
+        Self {
+            effects,
+            surface: ironsmith_core::SequenceSurface::ResultConjunction { leading_duration },
+        }
+    }
 }
 
 impl EffectExecutor for SequenceEffect {

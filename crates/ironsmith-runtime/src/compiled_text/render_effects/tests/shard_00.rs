@@ -2672,6 +2672,79 @@ pub(super) fn unowned_count_damage_keeps_where_x_surface() {
 }
 
 #[test]
+pub(super) fn angels_trumpet_tapped_metric_damage_preserves_authored_scalar_surface() {
+    let amount = Value::PriorEffectMetric {
+        effect_id: crate::effect::EffectId(0),
+        query: crate::effect::PriorEffectMetricQuery::new(
+            crate::effect::EffectMetricSource::AffectedObjects,
+            crate::effect::EffectMetric::Count,
+        )
+        .with_filter(ObjectFilter::creature())
+        .with_action(crate::effect::PriorEffectAction::Tapped),
+    };
+    let target = ChooseSpec::Player(PlayerFilter::Any);
+
+    let equal_to = Effect::deal_damage(
+        amount.clone().with_surface_hint(ValueSurfaceHint::EqualTo),
+        target.clone(),
+    );
+    assert_eq!(
+        describe_effect(&equal_to),
+        "Deal damage to a player equal to the number of creatures tapped this way"
+    );
+
+    let for_each = Effect::deal_damage(amount.with_surface_hint(ValueSurfaceHint::ForEach), target);
+    assert_eq!(
+        describe_effect(&for_each),
+        "Deal 1 damage to a player for each creature tapped this way"
+    );
+}
+
+#[test]
+pub(super) fn destroyed_metric_for_each_surfaces_render_counters_and_life_multipliers() {
+    let destroyed = Value::PriorEffectMetric {
+        effect_id: crate::effect::EffectId(0),
+        query: crate::effect::PriorEffectMetricQuery::new(
+            crate::effect::EffectMetricSource::AffectedObjects,
+            crate::effect::EffectMetric::Count,
+        )
+        .with_filter(ObjectFilter::creature())
+        .with_action(crate::effect::PriorEffectAction::Destroyed),
+    };
+
+    let counters = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        destroyed
+            .clone()
+            .with_surface_hint(ValueSurfaceHint::ForEach),
+        ChooseSpec::Source,
+    ));
+    assert_eq!(
+        describe_effect(&counters),
+        "Put a +1/+1 counter on this source for each creature destroyed this way"
+    );
+
+    let gain_one = Effect::gain_life(
+        destroyed
+            .clone()
+            .with_surface_hint(ValueSurfaceHint::ForEach),
+    );
+    assert_eq!(
+        describe_effect(&gain_one),
+        "you gain 1 life for each creature destroyed this way"
+    );
+
+    let gain_two = Effect::gain_life(
+        Value::Add(Box::new(destroyed.clone()), Box::new(destroyed))
+            .with_surface_hint(ValueSurfaceHint::ForEach),
+    );
+    assert_eq!(
+        describe_effect(&gain_two),
+        "you gain 2 life for each creature destroyed this way"
+    );
+}
+
+#[test]
 pub(super) fn dynamic_any_one_color_mana_renders_as_x_with_where_clause() {
     let effect = Effect::add_mana_of_any_one_color(Value::PowerOf(Box::new(ChooseSpec::Source)));
 
@@ -3852,9 +3925,9 @@ pub(super) fn blocks_or_becomes_blocked_preserves_one_or_more_colored_creature_s
         .with_colors(crate::color::ColorSet::BLUE.union(crate::color::ColorSet::BLACK));
     blocker.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     blocker.set_union_one_or_more(true);
-    let trigger = Trigger::either(
-        Trigger::this_blocks_object(blocker.clone()),
-        Trigger::this_becomes_blocked_by_object(blocker),
+    let trigger = crate::triggers::Trigger::either(
+        crate::triggers::Trigger::this_blocks_object(blocker.clone()),
+        crate::triggers::Trigger::this_becomes_blocked_by_object(blocker),
     );
 
     assert_eq!(
@@ -3946,6 +4019,84 @@ pub(super) fn cost_object_value_and_battlefield_exile_use_oracle_surfaces() {
     assert_eq!(
         describe_value(&red_symbols),
         "the number of red mana symbols in the sacrificed creature's mana cost"
+    );
+}
+
+#[test]
+pub(super) fn one_or_more_graveyard_exile_preserves_choice_and_target_surfaces() {
+    let graveyard_creature = ObjectFilter::creature()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    let choice =
+        ChooseSpec::Object(graveyard_creature.clone()).with_count(ChoiceCount::at_least(1));
+    assert!(!choice.is_target());
+    assert_eq!(choice.count(), ChoiceCount::at_least(1));
+    assert_eq!(
+        describe_effect(&Effect::new(crate::effects::ExileEffect::with_spec(choice))),
+        "Exile one or more creature cards from your graveyard"
+    );
+
+    let targets = ChooseSpec::target(ChooseSpec::Object(graveyard_creature))
+        .with_count(ChoiceCount::at_least(1));
+    assert!(targets.is_target());
+    assert_eq!(targets.count(), ChoiceCount::at_least(1));
+    assert_eq!(
+        describe_effect(&Effect::new(crate::effects::ExileEffect::with_spec(
+            targets
+        ))),
+        "Exile one or more target creature cards from your graveyard"
+    );
+}
+
+#[test]
+pub(super) fn tagged_graveyard_exile_preserves_random_choice_surface() {
+    let graveyard_cards = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    let choice =
+        ChooseSpec::Object(graveyard_cards).with_count(ChoiceCount::exactly(3).at_random());
+    let exile = Effect::new(crate::effects::TaggedEffect::new(
+        TagKey::from("exiled_cards"),
+        Effect::new(crate::effects::ExileEffect::with_spec(choice)),
+    ));
+
+    assert_eq!(
+        describe_effect(&exile),
+        "Exile three cards at random from your graveyard"
+    );
+}
+
+#[test]
+pub(super) fn graveyard_exile_surfaces_distinguish_single_plural_and_all_scopes() {
+    let single_graveyard = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .single_graveyard();
+    let up_to_two_single =
+        ChooseSpec::target(ChooseSpec::Object(single_graveyard)).with_count(ChoiceCount::up_to(2));
+    assert_eq!(
+        describe_effect(&Effect::new(crate::effects::ExileEffect::with_spec(
+            up_to_two_single
+        ))),
+        "Exile up to two target cards from a single graveyard"
+    );
+
+    let any_graveyards = ObjectFilter::default().in_zone(Zone::Graveyard);
+    let up_to_two_any =
+        ChooseSpec::target(ChooseSpec::Object(any_graveyards)).with_count(ChoiceCount::up_to(2));
+    assert_eq!(
+        describe_effect(&Effect::new(crate::effects::ExileEffect::with_spec(
+            up_to_two_any
+        ))),
+        "Exile up to two target cards from graveyards"
+    );
+
+    let mut all_graveyards = ObjectFilter::creature().in_zone(Zone::Graveyard);
+    all_graveyards.entered_graveyard_from_battlefield_this_turn = true;
+    assert_eq!(
+        describe_effect(&Effect::new(crate::effects::ExileEffect::with_spec(
+            ChooseSpec::All(all_graveyards)
+        ))),
+        "Exile all creature cards in all graveyards that were put there from the battlefield this turn"
     );
 }
 

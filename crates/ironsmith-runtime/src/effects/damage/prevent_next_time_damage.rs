@@ -13,6 +13,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
 };
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
@@ -22,6 +23,8 @@ use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 pub enum PreventNextTimeDamageSource {
     /// Choose a specific source as the effect resolves ("a source of your choice").
     Choice,
+    /// Choose one source matching a filter as the effect resolves.
+    ChoiceMatching(ObjectFilter),
     /// Use an already selected target as the source ("that creature").
     Target(ChooseSpec),
     /// Match any source that satisfies a filter ("a red source", "an artifact source", etc.).
@@ -33,6 +36,8 @@ pub enum PreventNextTimeDamageSource {
 pub enum PreventNextTimeDamageTarget {
     /// Any damage target.
     AnyTarget,
+    /// Any damage target, with no recipient phrase in the oracle text.
+    Omitted,
     /// Only damage that would be dealt to you.
     You,
     /// Only damage that would be dealt to a chosen target.
@@ -78,7 +83,9 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let target_constraint = match &self.target {
-            PreventNextTimeDamageTarget::AnyTarget => DamageTargetConstraint::Any,
+            PreventNextTimeDamageTarget::AnyTarget | PreventNextTimeDamageTarget::Omitted => {
+                DamageTargetConstraint::Any
+            }
             PreventNextTimeDamageTarget::You => DamageTargetConstraint::Player(ctx.controller),
             PreventNextTimeDamageTarget::Target(spec) => {
                 if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
@@ -110,7 +117,8 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             PreventNextTimeDamageSource::Filter(filter) => {
                 DamageSourceConstraint::Filter(filter.clone())
             }
-            PreventNextTimeDamageSource::Choice => {
+            choice @ (PreventNextTimeDamageSource::Choice
+            | PreventNextTimeDamageSource::ChoiceMatching(_)) => {
                 // Choose from a pragmatic union of likely "sources": stack objects + permanents.
                 // This is not perfect MTG coverage, but it captures the primary gameplay cases.
                 let mut candidates = Vec::new();
@@ -118,6 +126,13 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                 candidates.extend(game.battlefield.iter().copied());
                 candidates.sort_by_key(|id| id.0);
                 candidates.dedup();
+                if let PreventNextTimeDamageSource::ChoiceMatching(filter) = choice {
+                    let filter_ctx = ctx.filter_context(game);
+                    candidates.retain(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    });
+                }
 
                 if candidates.is_empty() {
                     return Ok(EffectOutcome::resolved());

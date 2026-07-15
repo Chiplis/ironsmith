@@ -342,6 +342,164 @@ pub(super) fn describe_effect_list_compacts_put_counters_then_grant_same_filter(
 }
 
 #[test]
+pub(super) fn ajani_style_adjacent_counter_and_grant_preserve_the_sentence_boundary() {
+    let affected = TagKey::from("counters_0");
+    let put = Effect::new(crate::effects::ForEachObject::new(
+        ObjectFilter::creature()
+            .controlled_by(PlayerFilter::You)
+            .in_zone(Zone::Battlefield),
+        vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ChooseSpec::Iterated,
+        ))],
+    ))
+    .tag(affected.clone());
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::vigilance(),
+        ),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(affected));
+    grant.set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::Each);
+
+    assert_eq!(
+        describe_effect_list(&[put, Effect::new(grant)]),
+        "Put a +1/+1 counter on each creature you control. Those creatures gain vigilance until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn coordinated_counter_and_grant_use_the_authored_conjunction() {
+    let affected = TagKey::from("counters_0");
+    let put = Effect::new(crate::effects::ForEachObject::new(
+        ObjectFilter::creature()
+            .controlled_by(PlayerFilter::You)
+            .in_zone(Zone::Battlefield),
+        vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ChooseSpec::Iterated,
+        ))],
+    ))
+    .tag(affected.clone());
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::vigilance(),
+        ),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(affected));
+    grant.set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::Each);
+    let sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+        put,
+        Effect::new(grant),
+    ]));
+
+    assert_eq!(
+        describe_effect(&sequence),
+        "Put a +1/+1 counter on each creature you control and they gain vigilance until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn adjacent_counter_then_keyword_for_same_direct_object_stays_sequential() {
+    let triggering = TagKey::from("triggering");
+    let put = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+        ChooseSpec::Tagged(triggering.clone()),
+    ));
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(triggering));
+
+    assert_eq!(
+        describe_effect_list(&[put, Effect::new(grant)]),
+        "Put a +1/+1 counter on it. It gains haste until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn adjacent_counter_then_keyword_for_exact_affected_tag_stays_sequential() {
+    let affected = TagKey::from("counters_0");
+    let put = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+        ChooseSpec::Target(Box::new(ChooseSpec::Object(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::You)
+                .in_zone(Zone::Battlefield),
+        ))),
+    ))
+    .tag(affected.clone());
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::flying(),
+        ),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(affected));
+
+    assert_eq!(
+        describe_effect_list(&[put, Effect::new(grant)]),
+        "Put a +1/+1 counter on target creature you control. It gains flying until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn coordinated_direct_counter_then_keyword_uses_the_authored_conjunction() {
+    let triggering = TagKey::from("triggering");
+    let put = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+        ChooseSpec::Tagged(triggering.clone()),
+    ));
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(triggering));
+    let sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+        put,
+        Effect::new(grant),
+    ]));
+
+    assert_eq!(
+        describe_effect(&sequence),
+        "Put a +1/+1 counter on it and it gains haste until end of turn"
+    );
+}
+
+#[test]
+pub(super) fn counter_then_keyword_compaction_rejects_a_distinct_tag() {
+    let put = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+        ChooseSpec::Tagged(TagKey::from("first_object")),
+    ));
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(crate::static_abilities::StaticAbility::haste()),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(TagKey::from("other_object")));
+
+    assert_eq!(
+        describe_put_counters_then_grant_same_filter(&[put, Effect::new(grant)]),
+        None
+    );
+}
+
+#[test]
 pub(super) fn describe_effect_list_preserves_distinct_power_choice_complement() {
     let chosen_tag = TagKey::from("chosen_power_classes");
     let filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
@@ -1036,7 +1194,7 @@ pub(super) fn target_opponent_reveal_choice_and_remainder_stay_one_collection_cl
 
     let mut filter = ObjectFilter::permanent_card().in_zone(Zone::Library);
     filter.excluded_card_types.push(CardType::Land);
-    filter.union_surface.explicit_card_noun = true;
+    filter.set_explicit_card_noun(true);
     filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
         Value::X,
     )));
@@ -2911,6 +3069,24 @@ pub(super) fn describe_effect_list_keeps_target_modifications_and_exile_permissi
         describe_effect_clause_list(&effects).as_deref(),
         Some(expected)
     );
+}
+
+#[test]
+pub(super) fn implicit_target_opponent_is_consumed_by_exile_top_action() {
+    let target = Effect::new(crate::effects::TargetOnlyEffect::new(
+        ChooseSpec::target_opponent(),
+    ));
+    let exile = Effect::new(crate::effects::ExileTopOfLibraryEffect::new(
+        Value::Fixed(3),
+        PlayerFilter::target_opponent(),
+    ));
+
+    let rendered = describe_effect_list(&[target, exile]);
+    assert_eq!(
+        rendered,
+        "Exile the top three cards of target opponent's library"
+    );
+    assert!(!rendered.contains("Choose target opponent"), "{rendered}");
 }
 
 #[test]

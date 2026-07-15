@@ -230,7 +230,12 @@ fn check_player_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
             });
         }
 
-        // Note: "drew from empty library" is tracked separately when draw happens
+        if player.attempted_draw_from_empty_library {
+            actions.push(StateBasedAction::PlayerLoses {
+                player: player.id,
+                reason: LoseReason::DrewFromEmptyLibrary,
+            });
+        }
     }
 }
 
@@ -245,7 +250,8 @@ fn check_start_engines_sbas_with_view(
         }
 
         let controls_start_your_engines = game.battlefield.iter().copied().any(|obj_id| {
-            game.current_controller(obj_id) == Some(player.id)
+            !game.is_phased_out(obj_id)
+                && game.current_controller(obj_id) == Some(player.id)
                 && view.object_has_static_ability_id(obj_id, StaticAbilityId::StartYourEngines)
         });
 
@@ -279,6 +285,9 @@ fn check_permanent_sbas_with_view(
     actions: &mut Vec<StateBasedAction>,
 ) {
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
@@ -383,7 +392,10 @@ fn check_permanent_sbas_with_view(
                     .stack
                     .iter()
                     .any(|entry| entry.chapter_ability_source == Some(obj_id));
-            if lore_count >= max_chapter && !chapter_ability_pending_or_stacked {
+            if lore_count >= max_chapter
+                && !chapter_ability_pending_or_stacked
+                && game.can_be_sacrificed(obj_id)
+            {
                 actions.push(StateBasedAction::SagaSacrifice(obj_id));
             }
         }
@@ -398,7 +410,8 @@ fn lethal_damage_threshold_for_creature(
     let creature = game.object(creature_id)?;
     let creature_controller = game.controller_of(creature);
     let uses_power = game.battlefield.iter().any(|&source_id| {
-        game.controller_of_id(source_id) == Some(creature_controller)
+        !game.is_phased_out(source_id)
+            && game.controller_of_id(source_id) == Some(creature_controller)
             && view.object_has_static_ability_id(
                 source_id,
                 StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
@@ -454,6 +467,9 @@ fn check_role_sbas_with_view(
         HashMap::new();
 
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
@@ -552,11 +568,22 @@ fn check_token_cleanup(game: &GameState, actions: &mut Vec<StateBasedAction>) {
             actions.push(StateBasedAction::TokenCeasesToExist(obj_id));
         }
     }
+
+    // CR 704.5e applies to a spell copy in every zone other than the stack,
+    // including destinations selected by a countering replacement effect.
+    for object in game.objects_in_deterministic_order() {
+        if object.kind == crate::object::ObjectKind::SpellCopy && object.zone != Zone::Stack {
+            actions.push(StateBasedAction::CopyCeasesToExist(object.id));
+        }
+    }
 }
 
 /// Check for +1/+1 and -1/-1 counter annihilation.
 fn check_counter_annihilation(game: &GameState, actions: &mut Vec<StateBasedAction>) {
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
@@ -588,10 +615,21 @@ fn check_legend_rule_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     actions: &mut Vec<StateBasedAction>,
 ) {
-    if game.battlefield.iter().copied().any(|obj_id| {
-        view.object_has_static_ability_id(obj_id, StaticAbilityId::LegendRuleDoesntApply)
-    }) {
-        return;
+    let mut exempt_controllers = HashSet::new();
+    for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
+        if view.object_has_static_ability_id(obj_id, StaticAbilityId::LegendRuleDoesntApply) {
+            return;
+        }
+        if view.object_has_static_ability_id(
+            obj_id,
+            StaticAbilityId::LegendRuleDoesntApplyToController,
+        ) && let Some(object) = game.object(obj_id)
+        {
+            exempt_controllers.insert(game.controller_of(object));
+        }
     }
 
     // Group legendary permanents by current controller and current name. Copy effects and
@@ -602,9 +640,15 @@ fn check_legend_rule_with_view(
     let mut group_indexes: crate::FxMap<(PlayerId, String), usize> = crate::FxMap::default();
 
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(chars) = view.calculated_characteristics(obj_id) else {
             continue;
         };
+        if exempt_controllers.contains(&chars.controller) {
+            continue;
+        }
 
         if chars.supertypes.contains(&Supertype::Legendary) {
             let key = (chars.controller, chars.name.to_owned_string());
@@ -694,6 +738,7 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     all_effects: &[crate::continuous::ContinuousEffect],
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> bool {
+    game.clear_empty_library_draw_attempts_since_sba();
     if actions.is_empty() {
         return false;
     }
@@ -1042,9 +1087,12 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::CountersAnnihilate { permanent, count } => {
-            if let Some(obj) = game.object_mut(permanent) {
-                obj.remove_counters(CounterType::PlusOnePlusOne, count);
-                obj.remove_counters(CounterType::MinusOneMinusOne, count);
+            for counter_type in [CounterType::PlusOnePlusOne, CounterType::MinusOneMinusOne] {
+                if let Some((_, event)) =
+                    game.remove_counters(permanent, counter_type, count, None, None)
+                {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
             }
         }
 
@@ -1057,8 +1105,23 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::SagaSacrifice(obj_id) => {
-            // Saga is sacrificed (put into graveyard) after final chapter resolves
-            game.move_object_by_sba(obj_id, Zone::Graveyard);
+            let Some(controller) = game
+                .object(obj_id)
+                .map(|object| game.current_controller(obj_id).unwrap_or(object.owner))
+            else {
+                return;
+            };
+            let mut ctx = crate::effects::ExecutionContext::new(obj_id, controller, decision_maker)
+                .with_cause(crate::events::cause::EventCause::from_sba());
+            if let Ok(outcome) = crate::effects::execute_effect(
+                game,
+                &crate::effect::Effect::sacrifice_source(),
+                &mut ctx,
+            ) {
+                for event in outcome.events {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+            }
         }
 
         StateBasedAction::CommanderReturnsToCommandZone(obj_id) => {
@@ -1150,6 +1213,37 @@ mod tests {
             .build()
     }
 
+    fn controller_legend_rule_exemption_definition(card_id: u32) -> crate::cards::CardDefinition {
+        crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::from_raw(card_id),
+            "Scoped Legend Exemption",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(
+            StaticAbility::legend_rule_doesnt_apply_to_controller(),
+        ))
+        .build()
+    }
+
+    fn create_final_chapter_saga(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+        let saga = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Saga])
+            .build();
+        let saga_id = game.create_object_from_card(&saga, owner, Zone::Battlefield);
+        game.object_mut(saga_id)
+            .expect("Saga should exist")
+            .abilities_mut()
+            .push(Ability::triggered(
+                crate::triggers::Trigger::saga_chapter(vec![1]),
+                Vec::<crate::effect::Effect>::new(),
+            ));
+        game.object_mut(saga_id)
+            .expect("Saga should exist")
+            .add_counters(CounterType::Lore, 1);
+        saga_id
+    }
+
     #[test]
     fn legend_rule_violations_use_stable_apnap_order() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -1184,6 +1278,32 @@ mod tests {
                 .collect();
             assert_eq!(order, expected);
         }
+    }
+
+    #[test]
+    fn controller_scoped_legend_rule_exemption_does_not_protect_opponents() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let alice_legend = legendary_creature_definition(411, "Alice Twin");
+        let bob_legend = legendary_creature_definition(412, "Bob Twin");
+        game.create_object_from_definition(&alice_legend, alice, Zone::Battlefield);
+        game.create_object_from_definition(&alice_legend, alice, Zone::Battlefield);
+        game.create_object_from_definition(&bob_legend, bob, Zone::Battlefield);
+        game.create_object_from_definition(&bob_legend, bob, Zone::Battlefield);
+        let exemption = controller_legend_rule_exemption_definition(413);
+        game.create_object_from_definition(&exemption, alice, Zone::Battlefield);
+
+        let violations = check_state_based_actions(&game)
+            .into_iter()
+            .filter_map(|action| match action {
+                StateBasedAction::LegendRuleViolation { player, name, .. } => Some((player, name)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(violations, vec![(bob, "Bob Twin".to_string())]);
     }
 
     #[test]
@@ -1365,6 +1485,112 @@ mod tests {
     }
 
     #[test]
+    fn counter_annihilation_queues_both_counter_removed_events() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = creature_card(408, "Counter Collision", 2, 2);
+        let permanent = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(permanent)
+            .expect("permanent should exist")
+            .add_counters(CounterType::PlusOnePlusOne, 3);
+        game.object_mut(permanent)
+            .expect("permanent should exist")
+            .add_counters(CounterType::MinusOneMinusOne, 2);
+
+        assert!(apply_state_based_actions(&mut game));
+        assert_eq!(
+            game.counter_count(permanent, CounterType::PlusOnePlusOne),
+            1
+        );
+        assert_eq!(
+            game.counter_count(permanent, CounterType::MinusOneMinusOne),
+            0
+        );
+
+        let marker_events = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<crate::events::MarkersChangedEvent>()
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(marker_events.len(), 2);
+        for counter_type in [CounterType::PlusOnePlusOne, CounterType::MinusOneMinusOne] {
+            assert!(marker_events.iter().any(|event| {
+                event.is_removed()
+                    && event.marker.as_counter() == Some(counter_type)
+                    && event.object() == Some(permanent)
+                    && event.amount == 2
+                    && event.source.is_none()
+                    && event.source_controller.is_none()
+            }));
+        }
+    }
+
+    #[test]
+    fn final_chapter_saga_sba_uses_the_sacrifice_event_pipeline() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let saga_id = create_final_chapter_saga(&mut game, alice, "Final Chapter Probe");
+
+        assert!(
+            check_state_based_actions(&game).contains(&StateBasedAction::SagaSacrifice(saga_id))
+        );
+        assert!(apply_state_based_actions(&mut game));
+
+        let moved_saga = game
+            .current_object_id_after_zone_change(saga_id)
+            .expect("the Saga should move to its owner's graveyard");
+        assert!(game.object(moved_saga).is_some_and(|object| {
+            object.zone == Zone::Graveyard && object.name == "Final Chapter Probe"
+        }));
+        assert!(game.take_pending_trigger_events().iter().any(|event| {
+            event
+                .downcast::<crate::events::permanents::SacrificeEvent>()
+                .is_some_and(|sacrifice| sacrifice.permanent == saga_id)
+        }));
+    }
+
+    #[test]
+    fn final_chapter_saga_sacrifice_honors_zone_change_replacement() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let saga_id = create_final_chapter_saga(&mut game, alice, "Replaced Saga");
+        let register =
+            crate::effect::Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+                crate::target::ChooseSpec::SpecificObject(saga_id),
+                Some(Zone::Battlefield),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                crate::effects::ReplacementApplyMode::OneShot,
+            ));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        {
+            let mut ctx = crate::effects::ExecutionContext::new(saga_id, alice, &mut dm);
+            crate::effects::execute_effect(&mut game, &register, &mut ctx)
+                .expect("replacement should register");
+        }
+
+        assert!(apply_state_based_actions_with(&mut game, &mut dm));
+        let moved_saga = game
+            .current_object_id_after_zone_change(saga_id)
+            .expect("the replacement should retain the Saga in exile");
+        assert_eq!(
+            game.object(moved_saga)
+                .expect("moved Saga should exist")
+                .zone,
+            Zone::Exile
+        );
+        assert!(game.take_pending_trigger_events().iter().any(|event| {
+            event
+                .downcast::<crate::events::permanents::SacrificeEvent>()
+                .is_some_and(|sacrifice| sacrifice.permanent == saga_id)
+        }));
+    }
+
+    #[test]
     fn simultaneous_sba_death_lki_uses_pre_sba_continuous_effects() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
@@ -1456,6 +1682,73 @@ mod tests {
                 } if *player == bob
             )
         }));
+    }
+
+    #[test]
+    fn empty_library_draw_attempt_becomes_loss_at_next_sba_pass() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = creature_card(299, "Only Card", 1, 1);
+        game.create_object_from_card(&card, alice, Zone::Library);
+
+        let drawn = game.draw_cards(alice, 3);
+
+        assert_eq!(drawn.len(), 1, "the remaining card is drawn first");
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .attempted_draw_from_empty_library
+        );
+        assert!(check_state_based_actions(&game).iter().any(|action| {
+            matches!(
+                action,
+                StateBasedAction::PlayerLoses {
+                    player,
+                    reason: LoseReason::DrewFromEmptyLibrary,
+                } if *player == alice
+            )
+        }));
+
+        assert!(apply_state_based_actions(&mut game));
+        assert!(game.player(alice).expect("Alice exists").has_lost);
+        assert!(
+            !game
+                .player(alice)
+                .expect("Alice exists")
+                .attempted_draw_from_empty_library
+        );
+    }
+
+    #[test]
+    fn empty_draw_attempt_expires_when_player_cannot_lose() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        game.draw_cards(alice, 1);
+        game.effect_store.cant_effects.cant_lose_game.insert(alice);
+
+        assert!(!apply_state_based_actions(&mut game));
+        assert!(!game.player(alice).expect("Alice exists").has_lost);
+        assert!(
+            !game
+                .player(alice)
+                .expect("Alice exists")
+                .attempted_draw_from_empty_library,
+            "the attempt expires when SBAs are checked even if losing is prohibited"
+        );
+
+        game.effect_store.cant_effects.cant_lose_game.remove(&alice);
+        assert!(
+            !check_state_based_actions(&game)
+                .iter()
+                .any(|action| matches!(
+                    action,
+                    StateBasedAction::PlayerLoses {
+                        player,
+                        reason: LoseReason::DrewFromEmptyLibrary,
+                    } if *player == alice
+                )),
+            "removing the prohibition later must not revive an expired draw attempt"
+        );
     }
 
     #[test]

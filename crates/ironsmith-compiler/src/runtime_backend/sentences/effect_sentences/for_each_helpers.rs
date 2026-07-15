@@ -5,7 +5,7 @@ use crate::cards::builders::{
 };
 use crate::diagnostics::TextSpan;
 use crate::effect::{Until, Value};
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ObjectFilter, ObjectRef, PlayerFilter};
 use ironsmith_core::ValueSurfaceHint;
 
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
@@ -281,20 +281,26 @@ fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
             PlayerFilter::Opponent,
             PlayerFilter::Defending,
         )),
-        ForEachParticipantScope::Player | ForEachParticipantScope::PlayerOnYourTeam => None,
+        ForEachParticipantScope::Player
+        | ForEachParticipantScope::PlayerExceptYou
+        | ForEachParticipantScope::PlayerExceptItsController
+        | ForEachParticipantScope::PlayerOnYourTeam => None,
     }
 }
 
 fn player_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
     match scope {
         ForEachParticipantScope::Player => Some(PlayerFilter::Any),
+        ForEachParticipantScope::PlayerExceptYou => Some(PlayerFilter::NotYou),
+        ForEachParticipantScope::PlayerExceptItsController => Some(PlayerFilter::excluding(
+            PlayerFilter::Any,
+            PlayerFilter::ControllerOf(ObjectRef::tagged(TagKey::from(IT_TAG))),
+        )),
         ForEachParticipantScope::PlayerOnYourTeam => Some(PlayerFilter::excluding(
             PlayerFilter::Any,
             PlayerFilter::Opponent,
         )),
-        ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => {
-            None
-        }
+        ForEachParticipantScope::Opponent | ForEachParticipantScope::OpponentExceptDefending => None,
     }
 }
 
@@ -323,6 +329,21 @@ fn wrap_players(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
 pub(crate) fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // Voter-relative opponent sets are already represented by an event-
+    // populated player tag. Recognize that typed set before the ordinary
+    // quantified-opponent path wraps it in a second loop, which would apply
+    // the tagged-player action once for every opponent.
+    if let Some(mut effects) =
+        super::dispatch_inner::parse_vote_affinity_subject_verb(tokens)?
+    {
+        if effects.len() == 1 {
+            return Ok(effects.pop());
+        }
+        return Err(CardTextError::ParseError(
+            "voter-relative opponent clause produced multiple outer effects".to_string(),
+        ));
+    }
+
     let Some(outer) = for_each_shapes::parse_participant_clause_shape(tokens) else {
         return Ok(None);
     };
@@ -330,6 +351,16 @@ pub(crate) fn parse_for_each_opponent_clause(
         return Ok(None);
     };
     let clause_text = LexedClause::new(tokens).text();
+    let slot_chooser = if outer.participant_is_actor {
+        PlayerAst::That
+    } else {
+        PlayerAst::You
+    };
+    if let Some(effects) =
+        super::parse_for_each_type_slot_choice_clause(outer.inner_tokens, slot_chooser)?
+    {
+        return Ok(Some(wrap_opponents(&iteration_filter, effects)));
+    }
     if iteration_filter == PlayerFilter::Opponent
         && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, true)?
     {
@@ -489,9 +520,19 @@ pub(crate) fn parse_for_each_opponent_clause(
         }
     }
 
-    let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
-    let mut effects = parse_maybe_effects(&normalized, false, true)?;
-    if for_each_shapes::starts_choose(outer.inner_tokens) {
+    let participant_may = outer.participant_is_actor
+        && outer
+            .inner_tokens
+            .first()
+            .is_some_and(|token| token.is_word("may"));
+    let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
+    let normalized = if outer.participant_is_actor && !participant_may && !participant_chooses {
+        prepend_that_player_subject(outer.inner_tokens)
+    } else {
+        prepend_that_player_life_total_subject(outer.inner_tokens)
+    };
+    let mut effects = parse_maybe_effects(&normalized, false, outer.participant_is_actor)?;
+    if participant_chooses {
         bind_implicit_choose_chooser(
             &mut effects,
             if outer.participant_is_actor {
@@ -541,6 +582,16 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(None);
     };
     let clause_text = LexedClause::new(tokens).text();
+    let slot_chooser = if outer.participant_is_actor {
+        PlayerAst::That
+    } else {
+        PlayerAst::You
+    };
+    if let Some(effects) =
+        super::parse_for_each_type_slot_choice_clause(outer.inner_tokens, slot_chooser)?
+    {
+        return Ok(Some(wrap_players(&iteration_filter, effects)));
+    }
     if iteration_filter == PlayerFilter::Any
         && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, false)?
     {
@@ -652,9 +703,19 @@ pub(crate) fn parse_for_each_player_clause(
         }
     }
 
-    let normalized = prepend_that_player_life_total_subject(outer.inner_tokens);
-    let mut effects = parse_maybe_effects(&normalized, false, false)?;
-    if for_each_shapes::starts_choose(outer.inner_tokens) {
+    let participant_may = outer.participant_is_actor
+        && outer
+            .inner_tokens
+            .first()
+            .is_some_and(|token| token.is_word("may"));
+    let participant_chooses = for_each_shapes::starts_choose(outer.inner_tokens);
+    let normalized = if outer.participant_is_actor && !participant_may && !participant_chooses {
+        prepend_that_player_subject(outer.inner_tokens)
+    } else {
+        prepend_that_player_life_total_subject(outer.inner_tokens)
+    };
+    let mut effects = parse_maybe_effects(&normalized, false, outer.participant_is_actor)?;
+    if participant_chooses {
         bind_implicit_choose_chooser(
             &mut effects,
             if outer.participant_is_actor {

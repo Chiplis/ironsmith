@@ -743,7 +743,9 @@ pub(super) fn test_parse_escape_keyword_line() {
 
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
-        AlternativeCastingMethod::Escape { cost, exile_count } => {
+        AlternativeCastingMethod::Escape {
+            cost, exile_count, ..
+        } => {
             assert_eq!(*exile_count, 4);
             let cost = cost
                 .as_ref()

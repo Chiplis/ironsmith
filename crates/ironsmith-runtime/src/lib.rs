@@ -98,7 +98,9 @@ pub use continuous::{
 };
 pub use cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 pub use effect::Condition as ConditionExpr;
-pub use effect::{ChoiceCount, Effect, SourceCounterThresholdSurface, Until, Value};
+pub use effect::{
+    AttachmentConditionHost, ChoiceCount, Effect, SourceCounterThresholdSurface, Until, Value,
+};
 pub use effects::{DealDamageEffect, EffectExecutor};
 pub use events::processing::{
     DestroyResult,
@@ -175,8 +177,9 @@ pub use effects::{
 pub use game_loop::{
     CombatDamageEvent, GameLoopError, PriorityLoopState, PriorityResponse, advance_priority,
     apply_attacker_declarations, apply_blocker_declarations, apply_priority_response,
-    check_and_apply_sbas, compute_legal_targets, execute_combat_damage_step, execute_turn_with,
-    extract_target_spec, generate_and_queue_step_triggers, get_declare_attackers_decision,
+    check_and_apply_sbas, compute_legal_targets, execute_combat_damage_step,
+    execute_combat_damage_step_with_dm, execute_turn_with, extract_target_spec,
+    generate_and_queue_step_triggers, get_declare_attackers_decision,
     get_declare_blockers_decision, put_triggers_on_stack, queue_combat_damage_triggers,
     requires_target_selection, resolve_stack_entry, run_priority_loop_with,
     spell_has_legal_targets,

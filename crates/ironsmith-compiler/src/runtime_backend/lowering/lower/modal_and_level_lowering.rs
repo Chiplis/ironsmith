@@ -67,6 +67,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             disallow_previously_chosen_modes_this_turn: choose_mode
                 .disallow_previously_chosen_modes_this_turn,
             distinct_player_targets_per_mode: choose_mode.distinct_player_targets_per_mode,
+            conditional_mode_range: choose_mode.conditional_mode_range.clone(),
         },
     ));
     true
@@ -91,6 +92,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
         distinct_player_targets_per_mode,
+        if_kicked_choose_any_number,
         commander_allows_both,
         choose_both_control_card_types,
         choose_both_exact_life_total,
@@ -202,6 +204,14 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
         if distinct_player_targets_per_mode {
             choose_mode = choose_mode.with_distinct_player_targets_per_mode();
+        }
+        if if_kicked_choose_any_number {
+            choose_mode =
+                choose_mode.with_conditional_mode_range(crate::effect::ConditionalModeRange::new(
+                    crate::cost::OptionalCostRef::from("Kicker"),
+                    crate::effect::Value::Fixed(0),
+                    crate::effect::Value::Fixed(mode_count),
+                ));
         }
         crate::effect::Effect::new(choose_mode)
     };

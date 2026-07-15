@@ -2203,21 +2203,58 @@ pub(super) fn rewrite_splice_keyword_lines_lower_typed_subject_and_cost_without_
             definition.alternative_casts.is_empty(),
             "splice must remain a static hand ability, not an AlternativeCastingMethod"
         );
-        let static_ability = definition
+        let splice = definition
             .abilities
             .iter()
             .find_map(|ability| match &ability.kind {
-                AbilityKind::Static(static_ability)
-                    if static_ability.id() == StaticAbilityId::KeywordMarker =>
-                {
-                    Some(static_ability)
-                }
+                AbilityKind::Static(static_ability) => match &static_ability.payload {
+                    crate::static_abilities::StaticAbilityPayload::Splice(spec) => {
+                        Some((static_ability, spec))
+                    }
+                    _ => None,
+                },
                 _ => None,
             })
-            .expect("typed splice line should lower to a supported keyword marker");
+            .expect("typed splice line should lower to an executable splice payload");
+        let (static_ability, spec) = splice;
+        assert_eq!(static_ability.id(), StaticAbilityId::Splice);
         assert_eq!(static_ability.display(), expected_label);
+        assert_eq!(
+            spec.cost.display(),
+            expected_label.rsplit_once(' ').unwrap().1
+        );
     }
 
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_splice_keyword_lines_lower_canonical_nonmana_costs()
+-> Result<(), CardTextError> {
+    for line in [
+        "Splice onto Arcane—Exile four cards from your graveyard. (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+        "Splice onto Arcane—Tap an untapped white creature you control. (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+        "Splice onto Arcane—An opponent gains 5 life. (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+        "Splice onto Arcane—Sacrifice two Mountains. (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+        "Splice onto Arcane—Return a blue creature you control to its owner's hand. (As you cast an Arcane spell, you may reveal this card from your hand and pay its splice cost. If you do, add this card's effects to that spell.)",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Nonmana Splice Probe")
+            .card_types(vec![CardType::Instant])
+            .parse_text(line)?;
+        let spec = definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => match &static_ability.payload {
+                    crate::static_abilities::StaticAbilityPayload::Splice(spec) => Some(spec),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("canonical nonmana splice cost should lower to a typed payload");
+        assert!(spec.cost.has_non_mana_costs(), "line: {line}");
+        assert_ne!(spec.cost.display(), "Free", "line: {line}");
+    }
     Ok(())
 }
 

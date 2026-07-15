@@ -258,6 +258,96 @@ pub(super) fn describe_linked_same_source_damage_pair(
     None
 }
 
+/// Render the common enter-trigger shape where the triggering object is the
+/// source of two or more simultaneous damage instructions. Lowering keeps an
+/// invisible triggering-object tag followed by one `ExecuteWithSourceEffect`
+/// per recipient; without this structural view the generic list renderer
+/// repeats "that creature" and invents sentence boundaries between the
+/// independently targeted damage effects.
+pub(super) fn describe_triggering_object_coordinated_damage(effects: &[Effect]) -> Option<String> {
+    let [tag_effect, damage_effects @ ..] = effects else {
+        return None;
+    };
+    if damage_effects.len() < 2 {
+        return None;
+    }
+
+    let triggering = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let mut damages = Vec::with_capacity(damage_effects.len());
+    for effect in damage_effects {
+        let execute = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+        if !matches!(
+            execute.source.unhinted(),
+            ChooseSpec::Tagged(tag) if *tag == triggering.tag
+        ) {
+            return None;
+        }
+        let damage = structural_unwrap_render_wrappers(&execute.effect)
+            .downcast_ref::<crate::effects::DealDamageEffect>()?;
+        damages.push(damage);
+    }
+
+    let first = *damages.first()?;
+    if damages.iter().skip(1).any(|damage| {
+        damage.source_is_combat != first.source_is_combat
+            || damage.unpreventable != first.unpreventable
+    }) {
+        return None;
+    }
+
+    let mut parts = Vec::with_capacity(damages.len());
+    for (index, damage) in damages.into_iter().enumerate() {
+        let (amount, where_x) = describe_damage_amount_clause(&damage.amount);
+        let subject = if index == 0 { "it deals " } else { "" };
+        let mut part = format!(
+            "{subject}{amount} to {}",
+            describe_choose_spec(&damage.target)
+        );
+        if let Some(where_x) = where_x {
+            part.push_str(&format!(", where X is {where_x}"));
+        }
+        parts.push(part);
+    }
+    join_coordinated_parts(&parts)
+}
+
+#[cfg(test)]
+#[test]
+fn triggering_object_coordinated_damage_preserves_targets_and_amounts() {
+    let triggering = TagKey::from("triggering");
+    let source = ChooseSpec::Tagged(triggering.clone());
+    let effects = vec![
+        Effect::tag_triggering_object(triggering),
+        Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            source.clone(),
+            Effect::deal_damage(
+                Value::Fixed(4),
+                ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Opponent),
+            ),
+        )),
+        Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            source,
+            Effect::deal_damage(
+                Value::Fixed(1),
+                ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()))
+                    .with_count(ChoiceCount::up_to(1)),
+            ),
+        )),
+    ];
+
+    assert_eq!(
+        describe_triggering_object_coordinated_damage(&effects).as_deref(),
+        Some(
+            "it deals 4 damage to target opponent or planeswalker and 1 damage to up to one target creature"
+        )
+    );
+    assert_eq!(
+        describe_effect_list(&effects),
+        "it deals 4 damage to target opponent or planeswalker and 1 damage to up to one target creature"
+    );
+}
+
 pub(super) fn join_coordinated_parts(parts: &[String]) -> Option<String> {
     match parts {
         [] => None,
@@ -1248,10 +1338,10 @@ fn describe_coordinated_copy_all_stack_sets(effects: &[Effect]) -> Option<String
     Some(format!("Copy {first}, then copy {second}"))
 }
 
-/// Preserve the one proven generic coordinated family whose lowering needs a
-/// redundant target-only prelude for target collection. Other coordinated
-/// programs deliberately fall through to the established effect-list
-/// renderer, where their structural bundle compactors remain visible.
+/// Preserve the coordinated family whose lowering needs a redundant
+/// target-only prelude for target collection. The typed fallback below still
+/// starts from the established effect-list renderer, so its structural bundle
+/// compactors remain visible before sentence boundaries are rejoined.
 fn describe_coordinated_gain_life_and_suspect(effects: &[Effect]) -> Option<String> {
     let [target_effect, gain_effect, suspect_effect] = effects else {
         return None;
@@ -1275,12 +1365,81 @@ fn describe_coordinated_gain_life_and_suspect(effects: &[Effect]) -> Option<Stri
     ))
 }
 
+/// Restore an explicit source conjunction after the ordinary effect-list
+/// renderer has preserved the child clauses' established surfaces.
+fn describe_typed_coordinated_clause_fallback(effects: &[Effect]) -> Option<String> {
+    let rendered = describe_effect_list(effects);
+    let mut parts = rendered
+        .split(". ")
+        .map(|part| part.trim().trim_end_matches('.').to_string())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.len() < 2 {
+        // Some established structural compactors infer a top-level `then`
+        // from runtime dependency (notably producer/attachment pairs) and
+        // therefore collapse two authored clauses into one rendered string.
+        // When the typed sequence still has exactly two runtime children,
+        // render those clauses independently so the explicit source `and`
+        // remains authoritative. Reject multi-sentence children: any genuine
+        // nested sequencing they contain must stay within its own surface.
+        let [first, second] = effects else {
+            return None;
+        };
+        parts = [first, second]
+            .into_iter()
+            .map(describe_effect)
+            .map(|part| part.trim().trim_end_matches('.').to_string())
+            .collect();
+        if parts
+            .iter()
+            .any(|part| part.is_empty() || part.contains(". "))
+        {
+            return None;
+        }
+    }
+    for part in parts.iter_mut().skip(1) {
+        *part = lowercase_first(part);
+    }
+    join_coordinated_parts(&parts)
+}
+
+/// Render only the typed coordination introduced inside a result branch.
+///
+/// Existing top-level `SequenceEffect::Coordinated` values cover several
+/// older lowering shapes whose established sentence surfaces are more exact
+/// than the generic clause joiner. The parser's result-prefix preservation,
+/// by contrast, produces one direct coordinated sequence as the complete
+/// `IfEffect`/`ReflexiveTriggerEffect` body. Keeping the fallback behind this
+/// exact structural boundary prevents unrelated coordinated sequences from
+/// changing surface text.
+pub(super) fn describe_typed_coordinated_result_branch(effects: &[Effect]) -> Option<String> {
+    let [effect] = effects else {
+        return None;
+    };
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if !matches!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::ResultConjunction { .. }
+    ) {
+        return None;
+    }
+    describe_typed_coordinated_clause_fallback(&sequence.effects)
+}
+
+pub(super) fn describe_result_branch_effect_list(effects: &[Effect]) -> String {
+    describe_typed_coordinated_result_branch(effects)
+        .unwrap_or_else(|| describe_effect_list(effects))
+}
+
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
     let leading_duration = matches!(
         sequence.surface,
         ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
+            | ironsmith_core::SequenceSurface::ResultConjunction {
+                leading_duration: true
+            }
     );
     if let Some((compact, consumed)) =
         describe_target_same_name_action_fanout_prefix(&sequence.effects)
@@ -1300,6 +1459,11 @@ pub(super) fn describe_coordinated_sequence(
         ironsmith_core::SequenceSurface::Sequential
     ) {
         return None;
+    }
+    if let Some(compact) =
+        describe_coordinated_put_counters_then_grant_same_filter(&sequence.effects)
+    {
+        return Some(compact);
     }
     if let [first, second] = sequence.effects.as_slice()
         && let Some(compact) = describe_joint_subject_pair(first, second)
@@ -1367,6 +1531,7 @@ pub(super) fn describe_coordinated_sequence(
             .then(|| describe_coordinated_gain_life_and_suspect(&sequence.effects))
             .flatten()
         })
+        .or_else(|| describe_typed_coordinated_clause_fallback(&sequence.effects))
 }
 
 #[cfg(test)]
@@ -1410,6 +1575,11 @@ mod coordinated_sequence_tests {
             describe_effect(&sequence),
             "Copy all spells you control, then copy all other activated and triggered abilities you control"
         );
+        assert_eq!(
+            describe_result_branch_effect_list(std::slice::from_ref(&sequence)),
+            "Copy all spells you control, then copy all other activated and triggered abilities you control",
+            "an ordinary coordinated specialist nested in a result branch must not use the generic result joiner"
+        );
     }
 
     #[test]
@@ -1427,6 +1597,33 @@ mod coordinated_sequence_tests {
         assert_eq!(
             describe_effect(&sequence),
             "You gain 3 life and suspect up to one target creature an opponent controls"
+        );
+    }
+
+    #[test]
+    fn typed_coordinated_fallback_preserves_ordinary_source_conjunctions() {
+        let effects = vec![
+            Effect::draw(Value::Fixed(1)),
+            Effect::gain_life(Value::Fixed(2)),
+        ];
+        let established_surface = describe_effect_list(&effects);
+        let ordinary = Effect::new(crate::effects::SequenceEffect::coordinated(effects.clone()));
+        let result = Effect::new(crate::effects::SequenceEffect::result_conjunction(
+            effects, false,
+        ));
+
+        assert_ne!(describe_effect(&ordinary), established_surface);
+        assert_eq!(
+            describe_effect(&ordinary),
+            "Draw a card and you gain 2 life"
+        );
+        assert_eq!(
+            describe_typed_coordinated_result_branch(std::slice::from_ref(&ordinary)),
+            None
+        );
+        assert_eq!(
+            describe_typed_coordinated_result_branch(std::slice::from_ref(&result)).as_deref(),
+            Some("Draw a card and you gain 2 life")
         );
     }
 
@@ -2041,7 +2238,7 @@ pub(crate) fn describe_exile_then_return(
     let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
         return None;
     };
-    if !return_tag.as_str().starts_with("exiled_") || return_tag != &tagged.tag {
+    if return_tag != &tagged.tag {
         return None;
     }
     let exile_move = tagged
@@ -3908,6 +4105,24 @@ pub(super) fn describe_becomes_blocked_trigger(
 ) -> Option<String> {
     let trigger = trigger.downcast_ref::<crate::triggers::BecomesBlockedTrigger>()?;
     let description = trigger.filter.description();
+    if trigger.filter.has_relative_attachment_state_surface()
+        && let Some(attachment) = trigger.filter.tagged_constraints.iter().find_map(|constraint| {
+            (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                .then_some(constraint.tag.as_str())
+                .filter(|tag| matches!(*tag, "enchanted" | "equipped"))
+        })
+    {
+        let without_article = description
+            .strip_prefix("a ")
+            .or_else(|| description.strip_prefix("an "))
+            .unwrap_or(&description);
+        if let Some(base) = without_article.strip_prefix(&format!("{attachment} ")) {
+            return Some(format!(
+                "Whenever {} that's {attachment} becomes blocked",
+                with_indefinite_article(base)
+            ));
+        }
+    }
     let subject = if description.starts_with("enchanted ")
         || description.starts_with("equipped ")
         || description.starts_with("fortified ")

@@ -1612,6 +1612,8 @@ pub(super) fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell()
         alice,
         &casting_method,
         &crate::cost::OptionalCostsPaid::default(),
+        &[],
+        None,
     );
     assert!(
         steps.iter().any(|step| matches!(

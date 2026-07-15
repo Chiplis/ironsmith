@@ -343,6 +343,9 @@ impl CreationPhrase {
                 &["isnt", "legendary"],
                 &["isn't", "legendary"],
                 &["is", "not", "legendary"],
+                &["its", "not", "legendary"],
+                &["it's", "not", "legendary"],
+                &["it", "s", "not", "legendary"],
             ],
             Self::NumberOf => &[&["a", "number", "of"], &["the", "number", "of"]],
             Self::ObjectExiledThisWay => &[

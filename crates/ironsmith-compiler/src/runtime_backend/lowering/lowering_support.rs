@@ -44,7 +44,9 @@ use super::static_ability_helpers::exalted_triggered_ability;
 
 fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
     match target {
-        TargetAst::Tagged(_, _) | TargetAst::Object(_, _, _) => true,
+        TargetAst::Tagged(_, _)
+        | TargetAst::Object(_, _, _)
+        | TargetAst::ObjectOrPlayer(_, _, _) => true,
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_can_establish_local_object_reference(inner)
         }
@@ -688,7 +690,7 @@ fn has_local_target_prelude_before_it_reference(effects: &[EffectAst]) -> bool {
             return false;
         }
         if let EffectAst::SubjectVerb(subject_verb) = effect
-            && let SubjectVerbActionAst::TargetOnly { target } = &subject_verb.action
+            && let SubjectVerbActionAst::TargetOnly { target, .. } = &subject_verb.action
             && target_can_establish_local_object_reference(target)
         {
             return true;
@@ -1323,7 +1325,9 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
 pub(crate) fn rewrite_lower_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    materialize_prepared_statement_effects(prepared)
+    let mut lowered = materialize_prepared_statement_effects(prepared)?;
+    super::battlefield_entry_counter_fusion::fuse_program(&mut lowered.effects);
+    Ok(lowered)
 }
 
 pub(crate) fn rewrite_lower_prepared_additional_cost_choice_modes_with_exports(

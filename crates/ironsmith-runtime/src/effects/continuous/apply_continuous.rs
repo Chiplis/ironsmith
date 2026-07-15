@@ -30,6 +30,8 @@ pub enum RuntimeModification {
         name_override: Option<String>,
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
+        /// Original parsed exception text, retained only for faithful compiled-text rendering.
+        copy_exception_surface: Option<String>,
     },
     /// Resolve power/toughness deltas at execution, then apply layer 7c modification.
     ModifyPowerToughness { power: Value, toughness: Value },
@@ -267,6 +269,7 @@ fn resolve_runtime_modification(
             name_override,
             name_override_surface,
             add_supertypes,
+            copy_exception_surface: _,
         } => {
             let sacrificed_snapshot =
                 source
@@ -536,6 +539,7 @@ impl EffectExecutor for ApplyContinuousEffect {
                 for id in control_change_target_object_ids(&target, &source_type, game, ctx) {
                     if game.current_controller(id) != Some(*new_controller) {
                         game.clear_soulbond_pair(id);
+                        game.set_summoning_sick(id);
                     }
                 }
             }
@@ -754,6 +758,7 @@ mod tests {
                 name_override: Some("Sarkhan, Soul Aflame".to_string()),
                 name_override_surface: None,
                 add_supertypes: vec![Supertype::Legendary],
+                copy_exception_surface: None,
             },
             Until::EndOfTurn,
         ));
@@ -803,6 +808,7 @@ mod tests {
                 name_override: None,
                 name_override_surface: None,
                 add_supertypes: Vec::new(),
+                copy_exception_surface: None,
             },
             Until::EndOfTurn,
         ));
@@ -839,6 +845,10 @@ mod tests {
 
         assert_eq!(game.soulbond_partner(paired_a), None);
         assert_eq!(game.soulbond_partner(paired_b), None);
+        assert!(
+            game.is_summoning_sick(paired_a),
+            "a creature becomes summoning sick when its controller changes"
+        );
     }
 
     #[test]
@@ -863,9 +873,14 @@ mod tests {
         game.next_turn();
         assert_eq!(game.turn.active_player, alice);
         assert_eq!(game.current_controller(target), Some(alice));
+        game.remove_summoning_sickness(target);
 
         game.next_turn();
         assert_eq!(game.current_controller(target), Some(bob));
+        assert!(
+            game.is_summoning_sick(target),
+            "expiration of a control effect is also a controller change"
+        );
     }
 
     #[test]

@@ -185,3 +185,63 @@ pub(super) fn love_on_the_battlefield_delayed_watchers_expire_at_end_of_combat()
     assert!(crate::triggers::check_delayed_triggers(&mut game, &event).is_empty());
     assert!(game.effect_store.delayed_triggers.is_empty());
 }
+
+#[test]
+pub(super) fn adjacent_counter_grants_do_not_invent_an_authored_conjunction() {
+    let cases = [
+        (
+            "Ajani, Valiant Protector",
+            "where X is your life total, then it gains trample until end of turn",
+        ),
+        (
+            "Estinien Varlineau",
+            "put a +1/+1 counter on Estinien Varlineau, then it gains flying until end of turn",
+        ),
+        (
+            "Tales of Master Seshiro",
+            "Put a +1/+1 counter on target creature or Vehicle you control, then it gains vigilance until end of turn",
+        ),
+        (
+            "Baylen, the Haymaker",
+            "Put three +1/+1 counters on Baylen, then it gains trample until end of turn",
+        ),
+        (
+            "Silvar, Devourer of the Free",
+            "Put a +1/+1 counter on Silvar, then it gains indestructible until end of turn",
+        ),
+    ];
+
+    for (name, expected) in cases {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let compiled = compiled_text_lines(&definition).join("\n");
+        assert!(
+            compiled.contains(expected),
+            "{name} must keep sequential counter/grant rendering: {compiled}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn authored_counter_grant_conjunctions_survive_parser_and_renderer() {
+    let cases = [
+        (
+            "First Day of Class",
+            "put a +1/+1 counter on it and it gains haste until end of turn",
+        ),
+        (
+            "Skyrider Patrol",
+            "put a +1/+1 counter on another target creature you control and it gains flying until end of turn",
+        ),
+    ];
+
+    for (name, expected) in cases {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let compiled = compiled_text_lines(&definition).join("\n");
+        assert!(
+            compiled.contains(expected),
+            "{name} must keep its authored counter/grant conjunction: {compiled}"
+        );
+    }
+}

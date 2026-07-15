@@ -5,6 +5,8 @@ use winnow::token::any;
 
 use crate::cards::builders::CardTextError;
 use crate::effect::Value;
+use crate::target::PlayerFilter;
+use crate::zone::Zone;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
 use super::super::{filters, leaf, primitives};
@@ -44,6 +46,49 @@ pub(crate) fn parse_return_segment_tokens(
             )?,
         },
     })
+}
+
+/// Parse costs shaped like "Put a card from your hand on top of your library".
+/// Returning `None` lets the caller fall back to the ordinary put-counter cost
+/// grammar for all other `put` segments.
+pub(crate) fn parse_move_to_library_top_cost_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Result<ActivationCostSegmentCst, CardTextError>> {
+    if !tokens.first().is_some_and(|token| token.is_word("put")) {
+        return None;
+    }
+    const SUFFIX: [&str; 8] = ["from", "your", "hand", "on", "top", "of", "your", "library"];
+    if tokens.len() <= SUFFIX.len() + 1 {
+        return None;
+    }
+    let suffix_start = tokens.len() - SUFFIX.len();
+    if !tokens[suffix_start..]
+        .iter()
+        .zip(SUFFIX)
+        .all(|(token, word)| token.is_word(word))
+    {
+        return None;
+    }
+    let mut filter_start = 1;
+    if tokens
+        .get(filter_start)
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        filter_start += 1;
+    }
+    if filter_start >= suffix_start {
+        return Some(Err(unsupported(tokens, "library-top-cost")));
+    }
+    let parsed = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        &tokens[filter_start..suffix_start],
+        false,
+    )
+    .map(|mut filter| {
+        filter.zone = Some(Zone::Hand);
+        filter.owner = Some(PlayerFilter::You);
+        ActivationCostSegmentCst::MoveChosenToLibraryTop { filter }
+    });
+    Some(parsed)
 }
 
 fn parse_segment<'a>(

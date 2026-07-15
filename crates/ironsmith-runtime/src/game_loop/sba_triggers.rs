@@ -50,6 +50,7 @@ pub fn check_and_apply_sbas_with(
         let all_effects = view.effects_arc();
         drop(view);
         if actions.is_empty() {
+            game.clear_empty_library_draw_attempts_since_sba();
             game.clear_deathtouch_damage_since_sba();
             break;
         }
@@ -877,6 +878,8 @@ fn target_requirements_from_explicit_choices(
                 min_targets: count.min,
                 max_targets: count.max,
                 distinct_player_group: None,
+                distribution_value: None,
+                distribution_min_per_target: 1,
             }
         })
         .collect()

@@ -105,6 +105,13 @@ pub(crate) fn parse_attach_object_phrase(
                 Ok(TargetAst::Tagged(TagKey::from(IT_TAG), object_span))
             }
         }
+        combat_grammar::CombatAttachObjectShape::All { object_tokens } => {
+            let mut filter = parse_object_filter(object_tokens, false)?;
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
+            }
+            Ok(TargetAst::Object(filter, None, None))
+        }
         combat_grammar::CombatAttachObjectShape::Counted {
             count,
             object_tokens,
@@ -167,6 +174,45 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                     TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(object_tokens)),
                     TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
                 ));
+            }
+            if let Some(host_tokens) =
+                grammar::match_word_prefix(object_tokens, &["all", "auras", "enchanting"])
+            {
+                let destination_words = crate::runtime_backend::token_word_refs(target_tokens);
+                if matches!(
+                    destination_words.as_slice(),
+                    ["another", "permanent", "with", "same", "controller"]
+                        | ["another", "permanent", "with", "the", "same", "controller"]
+                ) {
+                    let host = parse_target_phrase(host_tokens)?;
+                    let mut aura_filter = ObjectFilter::permanent().in_zone(Zone::Battlefield);
+                    aura_filter.subtypes.push(Subtype::Aura);
+                    aura_filter.tagged_constraints.push(TaggedObjectConstraint {
+                        tag: TagKey::from(IT_TAG),
+                        relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+                    });
+
+                    let mut destination = ObjectFilter::permanent().in_zone(Zone::Battlefield);
+                    for relation in [
+                        TaggedOpbjectRelation::SameControllerAsTagged,
+                        TaggedOpbjectRelation::IsNotTaggedObject,
+                    ] {
+                        destination.tagged_constraints.push(TaggedObjectConstraint {
+                            tag: TagKey::from(IT_TAG),
+                            relation,
+                        });
+                    }
+
+                    return Ok(EffectAst::Sequence {
+                        effects: vec![
+                            EffectAst::subject_verb_target_only(host),
+                            EffectAst::subject_verb_attach(
+                                TargetAst::Object(aura_filter, None, None),
+                                TargetAst::Object(destination, None, None),
+                            ),
+                        ],
+                    });
+                }
             }
             let object = parse_attach_object_phrase(object_tokens)?;
             let target = if target_is_tagged {
@@ -351,6 +397,21 @@ fn parse_divided_damage_equal_to_amount(
         ),
     ))
 }
+
+fn preserve_tapped_prior_effect_count_equal_to_surface(value: Value) -> Value {
+    let is_tapped_prior_effect_count = matches!(
+        value.unhinted(),
+        Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
+            if query.action == Some(ironsmith_core::PriorEffectAction::Tapped)
+                && query.metric == ironsmith_core::EffectMetric::Count
+    );
+    if is_tapped_prior_effect_count {
+        value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
+    } else {
+        value
+    }
+}
+
 pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -375,6 +436,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
                 clause_words.join(" ")
             ))
         })?;
+    let amount = preserve_tapped_prior_effect_count_equal_to_surface(amount);
     if let Some(target) = parse_combat_player_damage_target(shape.target_tokens, false) {
         return Ok(Some(combat_player_damage_target_effect(
             amount.clone(),
@@ -401,7 +463,8 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let complete_value = parse_value(shape.amount_tokens)
-        .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value));
+        .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value))
+        .map(preserve_tapped_prior_effect_count_equal_to_surface);
     let amount = complete_value
         .or(parse_add_mana_equal_amount_value(shape.amount_tokens))
         .or(parse_equal_to_aggregate_filter_value(shape.amount_tokens))

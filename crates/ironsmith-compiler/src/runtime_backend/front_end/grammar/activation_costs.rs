@@ -118,6 +118,9 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
         filter: ObjectFilter,
     },
+    MoveChosenToLibraryTop {
+        filter: ObjectFilter,
+    },
     MoveOpponentOwnedExiledCardToGraveyard,
     ExertSelf {
         display_text: String,

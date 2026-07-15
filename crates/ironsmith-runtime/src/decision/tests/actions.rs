@@ -1730,6 +1730,64 @@ fn test_compute_legal_actions_includes_hand_activated_ability() {
     );
 }
 
+#[test]
+fn forecast_activation_requires_the_source_owners_upkeep_and_is_once_per_turn() {
+    use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+    use crate::effect::Effect;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::from_raw(57_200), "Forecast Timing Probe").build();
+    let source_id = game.create_object_from_card(&card, alice, Zone::Hand);
+    game.object_mut(source_id)
+        .expect("Forecast source")
+        .abilities_mut()
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::gain_life(1),
+                ]),
+                choices: vec![],
+                timing: ActivationTiming::DuringSourceOwnersUpkeep,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![crate::ConditionExpr::MaxActivationsPerTurn(1)],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Hand],
+        });
+
+    let has_forecast_action = |game: &GameState| {
+        compute_legal_actions(game, alice).iter().any(|action| {
+            matches!(action, LegalAction::ActivateAbility { source, .. } if *source == source_id)
+        })
+    };
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(Step::Draw);
+    assert!(!has_forecast_action(&game));
+
+    game.turn.step = Some(Step::Upkeep);
+    assert!(has_forecast_action(&game));
+
+    game.record_ability_activation(source_id, 0);
+    assert!(!has_forecast_action(&game));
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        !has_forecast_action(&game),
+        "Forecast follows the card owner's upkeep, not another player's upkeep"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_compute_legal_actions_excludes_hand_only_ability_from_battlefield() {

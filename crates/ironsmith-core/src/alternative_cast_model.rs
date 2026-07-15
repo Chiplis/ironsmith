@@ -66,10 +66,13 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Retrace {
         total_cost: TotalCost<C>,
     },
-    JumpStart,
+    JumpStart {
+        additional_cost: TotalCost<C>,
+    },
     Escape {
         cost: Option<ManaCost>,
         exile_count: u32,
+        additional_cost: TotalCost<C>,
     },
     Madness {
         cost: ManaCost,
@@ -125,7 +128,7 @@ where
             Self::Flashback { .. }
             | Self::Harmonize { .. }
             | Self::Retrace { .. }
-            | Self::JumpStart
+            | Self::JumpStart { .. }
             | Self::Escape { .. }
             | Self::Disturb { .. } => Zone::Graveyard,
             Self::Madness { .. } | Self::Foretell { .. } => Zone::Exile,
@@ -150,7 +153,7 @@ where
                 self,
                 Self::Flashback { .. }
                     | Self::Harmonize { .. }
-                    | Self::JumpStart
+                    | Self::JumpStart { .. }
                     | Self::Escape { .. }
             ),
         }
@@ -169,7 +172,7 @@ where
             Self::Flashback { total_cost } => total_cost.mana_cost(),
             Self::Harmonize { total_cost } => total_cost.mana_cost(),
             Self::Retrace { total_cost } => total_cost.mana_cost(),
-            Self::JumpStart => None,
+            Self::JumpStart { .. } => None,
             Self::Escape { cost, .. } => cost.as_ref(),
             Self::Madness { cost } => Some(cost),
             Self::Miracle { cost } => Some(cost),
@@ -192,6 +195,10 @@ where
             Self::Blitz { total_cost } => non_mana_components(total_cost),
             Self::Harmonize { total_cost } => non_mana_components(total_cost),
             Self::Retrace { total_cost } => non_mana_components(total_cost),
+            Self::JumpStart { additional_cost }
+            | Self::Escape {
+                additional_cost, ..
+            } => non_mana_components(additional_cost),
             Self::FlashWithAdditionalCost { total_cost, .. } => non_mana_components(total_cost),
             Self::Composed { total_cost, .. } => non_mana_components(total_cost),
             Self::FromZone { total_cost, .. } => non_mana_components(total_cost),
@@ -210,6 +217,19 @@ where
             Self::Composed { total_cost, .. } => Some(total_cost),
             Self::FromZone { total_cost, .. } => Some(total_cost),
             Self::Bestow { total_cost } => Some(total_cost),
+            _ => None,
+        }
+    }
+
+    /// Additional cost components imposed by an alternative casting method
+    /// while retaining the card's printed mana cost or a separately stored
+    /// alternative mana cost.
+    pub fn additional_cost(&self) -> Option<&TotalCost<C>> {
+        match self {
+            Self::JumpStart { additional_cost }
+            | Self::Escape {
+                additional_cost, ..
+            } => Some(additional_cost),
             _ => None,
         }
     }
@@ -264,7 +284,7 @@ where
             Self::Flashback { .. } => "Flashback",
             Self::Harmonize { .. } => "Harmonize",
             Self::Retrace { .. } => "Retrace",
-            Self::JumpStart => "Jump-start",
+            Self::JumpStart { .. } => "Jump-start",
             Self::Escape { .. } => "Escape",
             Self::Madness { .. } => "Madness",
             Self::Miracle { .. } => "Miracle",
@@ -363,7 +383,7 @@ where
 
     pub fn requirements(&self) -> AlternativeCastRequirements {
         match self {
-            Self::JumpStart => AlternativeCastRequirements {
+            Self::JumpStart { .. } => AlternativeCastRequirements {
                 discard_from_hand: 1,
                 ..Default::default()
             },
@@ -505,10 +525,18 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Retrace { total_cost } => AlternativeCastingMethod::Retrace {
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
             },
-            Self::JumpStart => AlternativeCastingMethod::JumpStart,
-            Self::Escape { cost, exile_count } => {
-                AlternativeCastingMethod::Escape { cost, exile_count }
-            }
+            Self::JumpStart { additional_cost } => AlternativeCastingMethod::JumpStart {
+                additional_cost: map_total_cost(additional_cost, &mut map_cost)?,
+            },
+            Self::Escape {
+                cost,
+                exile_count,
+                additional_cost,
+            } => AlternativeCastingMethod::Escape {
+                cost,
+                exile_count,
+                additional_cost: map_total_cost(additional_cost, &mut map_cost)?,
+            },
             Self::Madness { cost } => AlternativeCastingMethod::Madness { cost },
             Self::Miracle { cost } => AlternativeCastingMethod::Miracle { cost },
             Self::FlashWithAdditionalCost {

@@ -24,6 +24,16 @@ pub const SURVEILLED_THIS_TURN_TAG: &str = "__surveilled_this_turn__";
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
 
+/// Snapshots processed before the current object in an ordered iteration.
+pub const PREVIOUS_ITERATED_OBJECTS_TAG: &str = "__previous_iterated_objects__";
+
+/// Modified creatures controlled by the caster when the current spell was cast.
+///
+/// This preserves the cast-time set for effects whose value is defined by
+/// "modified creatures you controlled as you cast this spell", rather than
+/// accidentally recounting the battlefield when the spell resolves.
+pub const CAST_MODIFIED_CREATURES_TAG: &str = "__cast_modified_creatures__";
+
 /// Dynamic tag key used by the tagging system.
 ///
 /// Using an owned key instead of `&'static str` enables tags built at runtime

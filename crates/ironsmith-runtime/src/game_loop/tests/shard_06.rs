@@ -17,6 +17,8 @@ use super::shard_15::*;
 use super::shard_16::*;
 use super::shard_17::*;
 use super::*;
+use crate::ChoiceCount;
+use crate::ability::{ActivatedAbility, ActivationTiming};
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
@@ -880,7 +882,7 @@ pub(super) fn priority_loop_resolves_next_spell_granted_protection_after_counter
         StaticAbility::cant_be_countered_ability(),
         1,
     );
-    game.consume_temporary_spell_ability_grants_for_spell(bolt_id, alice);
+    game.apply_temporary_spell_ability_grants_for_cast_proposal(bolt_id, alice);
     game.push_to_stack(
         StackEntry::new(bolt_id, alice)
             .with_targets(vec![Target::Object(goblin)])
@@ -1044,6 +1046,2216 @@ pub(super) fn test_casting_choose_two_spell_keeps_non_targeting_modes_clickable_
             .iter()
             .map(|mode| (mode.index, mode.description.as_str(), mode.legal))
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+pub(super) fn modal_x_spell_announces_modes_before_x() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let modal_x_def = CardDefinitionBuilder::new(CardId::new(), "Modal X Order Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::choose_exactly(
+            1,
+            vec![
+                crate::effect::EffectMode {
+                    source_text: "Gain 3 life".to_string(),
+                    effects: vec![Effect::gain_life(3)],
+                },
+                crate::effect::EffectMode {
+                    source_text: "Draw a card".to_string(),
+                    effects: vec![Effect::draw(1)],
+                },
+            ],
+        )])
+        .build();
+    let modal_x_spell = game.create_object_from_definition(&modal_x_def, alice, Zone::Hand);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: modal_x_spell,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("proposing a modal X spell should request its first announcement");
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_))
+        ),
+        "CR 601.2b requires modes before the value of X, got {progress:?}"
+    );
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing the mode should advance to the X announcement");
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(_))
+        ),
+        "the value of X should be announced immediately after modes, got {progress:?}"
+    );
+}
+
+#[test]
+pub(super) fn modal_x_spell_announces_optional_costs_before_x() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let modal_x_def = CardDefinitionBuilder::new(CardId::new(), "Modal Optional X Order Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::choose_exactly(
+            1,
+            vec![crate::effect::EffectMode {
+                source_text: "Gain 3 life".to_string(),
+                effects: vec![Effect::gain_life(3)],
+            }],
+        )])
+        .build();
+    let modal_x_spell = game.create_object_from_definition(&modal_x_def, alice, Zone::Hand);
+    let spell = game
+        .object_mut(modal_x_spell)
+        .expect("modal X spell should exist");
+    spell.optional_costs = vec![crate::cost::OptionalCost::custom(
+        "Order probe additional cost",
+        crate::cost::TotalCost::free(),
+    )]
+    .into();
+    spell.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: modal_x_spell,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("proposing the spell should request its mode");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_))
+        ),
+        "modes should be announced first, got {progress:?}"
+    );
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing the mode should advance to optional costs");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(_)
+            )
+        ),
+        "alternative and additional cost choices must precede X, got {progress:?}"
+    );
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![]),
+    )
+    .expect("declining the optional cost should advance to X");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(_))
+        ),
+        "X should follow the optional-cost announcement, got {progress:?}"
+    );
+}
+
+#[test]
+pub(super) fn effect_driven_cast_uses_full_cr601_transaction_and_rolls_back_atomically() {
+    struct OrderedEffectCastDecisionMaker {
+        target: Option<ObjectId>,
+        stages: Vec<&'static str>,
+    }
+
+    impl crate::decision::DecisionMaker for OrderedEffectCastDecisionMaker {
+        fn decide_number(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            panic!("a free cast must lock printed X to zero without prompting")
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description.starts_with("Choose mode") {
+                self.stages.push("modes");
+            } else if ctx.description.starts_with("Choose optional costs") {
+                self.stages.push("optional costs");
+            } else if ctx.description.starts_with("Pay mana") {
+                self.stages.push("mana payment");
+            }
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.stages.push("targets");
+            self.target.map(Target::Object).into_iter().collect()
+        }
+    }
+
+    fn setup_effect_cast_probe() -> (GameState, PlayerId, ObjectId, ObjectId) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::BeginCombat);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let target_definition = CardDefinitionBuilder::new(CardId::new(), "Effect Cast Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .with_ability(Ability::triggered(
+                Trigger::becomes_targeted(),
+                vec![Effect::gain_life(1)],
+            ))
+            .build();
+        let target = game.create_object_from_definition(&target_definition, bob, Zone::Battlefield);
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Effect Cast CR 601 Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(7)],
+                vec![ManaSymbol::X],
+            ]))
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::choose_exactly(
+                1,
+                vec![
+                    crate::effect::EffectMode {
+                        source_text: "Deal 2 damage to any target".to_string(),
+                        effects: vec![Effect::deal_damage(2, ChooseSpec::AnyTarget)],
+                    },
+                    crate::effect::EffectMode {
+                        source_text: "Gain 2 life".to_string(),
+                        effects: vec![Effect::gain_life(2)],
+                    },
+                ],
+            )])
+            .build();
+        let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+        let spell = game.object_mut(spell_id).expect("probe spell exists");
+        spell.optional_costs = vec![crate::cost::OptionalCost::custom(
+            "Effect-driven kicker",
+            crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
+        )]
+        .into();
+        spell.optional_costs_paid =
+            crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+        game.player_mut(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 1);
+        (game, alice, target, spell_id)
+    }
+
+    let (mut game, alice, target, spell_id) = setup_effect_cast_probe();
+    let mut dm = OrderedEffectCastDecisionMaker {
+        target: Some(target),
+        stages: Vec::new(),
+    };
+    let result = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        true,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("the resolving effect should authorize the complete cast");
+    let stack_id = result.expect("the complete proposal should commit");
+    assert_eq!(dm.stages, vec!["modes", "optional costs", "targets"]);
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("the effect-driven spell should be on the stack");
+    assert_eq!(entry.chosen_modes.as_deref(), Some(&[0][..]));
+    assert_eq!(entry.targets, vec![Target::Object(target)]);
+    assert_eq!(entry.x_value, Some(0));
+    assert_eq!(entry.optional_costs_paid.times_paid(0), 1);
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+    assert_eq!(
+        game.effect_store.pending_trigger_entries.len(),
+        1,
+        "becomes-targeted triggers created during an effect-driven cast must wait for the outer resolution boundary",
+    );
+    let mut outer_trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut outer_trigger_queue);
+    assert_eq!(outer_trigger_queue.entries.len(), 1);
+
+    let (mut game, alice, _target, spell_id) = setup_effect_cast_probe();
+    let mut invalid_dm = OrderedEffectCastDecisionMaker {
+        target: None,
+        stages: Vec::new(),
+    };
+    let result = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        true,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut invalid_dm,
+    )
+    .expect("an invalid target choice should cancel rather than corrupt state");
+    assert!(result.is_none());
+    assert!(game.stack_is_empty());
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        1
+    );
+}
+
+#[test]
+pub(super) fn splice_transaction_adds_ordered_text_costs_targets_and_retains_cards() {
+    struct SpliceDecisionMaker {
+        selection: Vec<ObjectId>,
+        target: PlayerId,
+        splice_prompts: usize,
+        target_prompts: usize,
+        public_reveals: Vec<(PlayerId, Vec<ObjectId>)>,
+    }
+
+    impl DecisionMaker for SpliceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx.description.starts_with("Reveal cards to splice") {
+                self.splice_prompts += 1;
+                return self.selection.clone();
+            }
+            ctx.candidates
+                .iter()
+                .find(|candidate| candidate.legal)
+                .map(|candidate| vec![candidate.id])
+                .unwrap_or_default()
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.target_prompts += 1;
+            vec![Target::Player(self.target)]
+        }
+
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            if ctx.public && ctx.description.contains("spliced") {
+                self.public_reveals.push((viewer, cards.to_vec()));
+            }
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let main = CardDefinitionBuilder::new(CardId::new(), "Main Arcane Spell")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Arcane])
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let life_splice = CardDefinitionBuilder::new(CardId::new(), "Life Splice")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::White]))
+        .card_types(vec![CardType::Instant])
+        .with_ability(Ability::static_ability(StaticAbility::splice(
+            crate::static_abilities::SpliceSpec {
+                quality: crate::static_abilities::SpliceQuality::Arcane,
+                cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::validated_effect(
+                    Effect::new(crate::effects::GainLifeEffect::with_filter(
+                        2,
+                        PlayerFilter::Opponent,
+                    )),
+                )),
+                cost_surface: None,
+            },
+        )))
+        .with_spell_effect(vec![Effect::gain_life(4)])
+        .build();
+    let damage_splice = CardDefinitionBuilder::new(CardId::new(), "Damage Splice")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .card_types(vec![CardType::Instant])
+        .with_ability(Ability::static_ability(StaticAbility::splice(
+            crate::static_abilities::SpliceSpec {
+                quality: crate::static_abilities::SpliceQuality::Arcane,
+                cost: crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
+                cost_surface: None,
+            },
+        )))
+        .with_spell_effect(vec![Effect::deal_damage(
+            2,
+            ChooseSpec::Target(Box::new(ChooseSpec::Player(PlayerFilter::Opponent))),
+        )])
+        .build();
+
+    let main_id = game.create_object_from_definition(&main, alice, Zone::Hand);
+    let life_id = game.create_object_from_definition(&life_splice, alice, Zone::Hand);
+    let damage_id = game.create_object_from_definition(&damage_splice, alice, Zone::Hand);
+    let life_stable = game.object(life_id).expect("life splice exists").stable_id;
+    let damage_stable = game
+        .object(damage_id)
+        .expect("damage splice exists")
+        .stable_id;
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let mut dm = SpliceDecisionMaker {
+        selection: vec![life_id, damage_id],
+        target: bob,
+        splice_prompts: 0,
+        target_prompts: 0,
+        public_reveals: Vec::new(),
+    };
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        main_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("splice cast transaction should run")
+    .expect("legal splice proposal should commit");
+
+    assert_eq!(dm.splice_prompts, 1);
+    assert_eq!(dm.target_prompts, 1);
+    assert_eq!(
+        dm.public_reveals,
+        vec![
+            (alice, vec![life_id, damage_id]),
+            (bob, vec![life_id, damage_id]),
+        ]
+    );
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("spliced spell should be on stack");
+    assert_eq!(entry.spliced_cards, vec![life_stable, damage_stable]);
+    assert_eq!(entry.targets, vec![Target::Player(bob)]);
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&life_id)
+    );
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&damage_id)
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").life, 20);
+    assert_eq!(game.player(bob).expect("Bob exists").life, 22);
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+
+    let effects = game
+        .object(stack_id)
+        .and_then(|spell| spell.spell_effect.as_ref())
+        .expect("spliced spell should have a combined program")
+        .flattened_default_effects();
+    assert_eq!(effects.len(), 3);
+    assert!(
+        effects[0]
+            .downcast_ref::<crate::effects::GainLifeEffect>()
+            .is_some_and(|effect| effect.amount == Value::Fixed(1))
+    );
+    assert!(
+        effects[1]
+            .downcast_ref::<crate::effects::GainLifeEffect>()
+            .is_some_and(|effect| effect.amount == Value::Fixed(4))
+    );
+    assert!(
+        effects[2]
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+            .is_some_and(|effect| effect.amount == Value::Fixed(2))
+    );
+
+    let mut resolve_dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut resolve_dm)
+        .expect("spliced main spell should resolve");
+    assert_eq!(game.player(alice).expect("Alice exists").life, 25);
+    assert_eq!(game.player(bob).expect("Bob exists").life, 20);
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&life_id)
+    );
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&damage_id)
+    );
+    let graveyard_spell = game
+        .player(alice)
+        .expect("Alice exists")
+        .graveyard
+        .iter()
+        .find_map(|id| {
+            game.object(*id)
+                .filter(|object| object.name == "Main Arcane Spell")
+        })
+        .expect("main spell should move to the graveyard");
+    assert_eq!(
+        graveyard_spell
+            .spell_effect
+            .as_ref()
+            .expect("main spell keeps its printed program")
+            .flattened_default_effects()
+            .len(),
+        1,
+        "splice text changes must end when the spell leaves the stack"
+    );
+}
+
+#[test]
+pub(super) fn splice_can_be_declined_and_illegal_selection_rolls_back_cast() {
+    struct SelectSplice {
+        selected: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for SelectSplice {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx.description.starts_with("Reveal cards to splice") {
+                return self.selected.clone();
+            }
+            Vec::new()
+        }
+    }
+
+    fn setup_splice_target_probe() -> (GameState, PlayerId, ObjectId, ObjectId) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        let main = CardDefinitionBuilder::new(CardId::new(), "Arcane Target Probe")
+            .mana_cost(ManaCost::new())
+            .card_types(vec![CardType::Sorcery])
+            .subtypes(vec![Subtype::Arcane])
+            .with_spell_effect(vec![Effect::gain_life(1)])
+            .build();
+        let splice = CardDefinitionBuilder::new(CardId::new(), "Creature Target Splice")
+            .card_types(vec![CardType::Instant])
+            .with_ability(Ability::static_ability(StaticAbility::splice(
+                crate::static_abilities::SpliceSpec {
+                    quality: crate::static_abilities::SpliceQuality::Arcane,
+                    cost: crate::cost::TotalCost::free(),
+                    cost_surface: None,
+                },
+            )))
+            .with_spell_effect(vec![Effect::deal_damage(
+                2,
+                ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+            )])
+            .build();
+        let main_id = game.create_object_from_definition(&main, alice, Zone::Hand);
+        let splice_id = game.create_object_from_definition(&splice, alice, Zone::Hand);
+        (game, alice, main_id, splice_id)
+    }
+
+    let (mut declined_game, alice, main_id, splice_id) = setup_splice_target_probe();
+    let mut decline = SelectSplice {
+        selected: Vec::new(),
+    };
+    let declined = super::cast_spell_from_resolving_effect(
+        &mut declined_game,
+        main_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut decline,
+    )
+    .expect("declining splice should be legal")
+    .expect("main spell should commit without splice");
+    assert!(
+        declined_game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == declined)
+            .is_some_and(|entry| entry.spliced_cards.is_empty())
+    );
+    assert!(
+        declined_game
+            .player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&splice_id)
+    );
+
+    let (mut invalid_game, alice, main_id, splice_id) = setup_splice_target_probe();
+    let mut invalid = SelectSplice {
+        selected: vec![splice_id],
+    };
+    let cancelled = super::cast_spell_from_resolving_effect(
+        &mut invalid_game,
+        main_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut invalid,
+    )
+    .expect("illegal splice proposal should cancel cleanly");
+    assert!(cancelled.is_none());
+    assert!(invalid_game.stack_is_empty());
+    assert!(
+        invalid_game
+            .object(main_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+    assert!(
+        invalid_game
+            .object(splice_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+
+    let (mut duplicate_game, alice, main_id, splice_id) = setup_splice_target_probe();
+    let mut duplicate = SelectSplice {
+        selected: vec![splice_id, splice_id],
+    };
+    let duplicate_result = super::cast_spell_from_resolving_effect(
+        &mut duplicate_game,
+        main_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut duplicate,
+    )
+    .expect("revealing one physical card twice should cancel cleanly");
+    assert!(duplicate_result.is_none());
+    assert!(duplicate_game.stack_is_empty());
+    assert!(
+        duplicate_game
+            .object(main_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+}
+
+#[test]
+pub(super) fn splice_is_announced_before_hybrid_payment_symbols_and_targets() {
+    struct AnnouncementOrderDm {
+        splice: ObjectId,
+        target: PlayerId,
+        events: Vec<&'static str>,
+    }
+
+    impl DecisionMaker for AnnouncementOrderDm {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx.description.starts_with("Reveal cards to splice") {
+                self.events.push("splice");
+                return vec![self.splice];
+            }
+            Vec::new()
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description.starts_with("Choose how to pay pip") {
+                self.events.push("hybrid");
+            }
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.events.push("targets");
+            vec![Target::Player(self.target)]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let main = CardDefinitionBuilder::new(CardId::new(), "Arcane Hybrid Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Arcane])
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let splice = CardDefinitionBuilder::new(CardId::new(), "Hybrid Splice")
+        .card_types(vec![CardType::Instant])
+        .with_ability(Ability::static_ability(StaticAbility::splice(
+            crate::static_abilities::SpliceSpec {
+                quality: crate::static_abilities::SpliceQuality::Arcane,
+                cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+                    ManaSymbol::Red,
+                    ManaSymbol::Green,
+                ]])),
+                cost_surface: None,
+            },
+        )))
+        .with_spell_effect(vec![Effect::deal_damage(
+            1,
+            ChooseSpec::Target(Box::new(ChooseSpec::Player(PlayerFilter::Opponent))),
+        )])
+        .build();
+    let main_id = game.create_object_from_definition(&main, alice, Zone::Hand);
+    let splice_id = game.create_object_from_definition(&splice, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    let mut dm = AnnouncementOrderDm {
+        splice: splice_id,
+        target: bob,
+        events: Vec::new(),
+    };
+
+    let cast = super::cast_spell_from_resolving_effect(
+        &mut game,
+        main_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("hybrid splice transaction should run")
+    .expect("hybrid splice proposal should commit");
+
+    assert_eq!(dm.events, vec!["splice", "hybrid", "targets"]);
+    assert_eq!(
+        game.stack
+            .iter()
+            .find(|entry| entry.object_id == cast)
+            .expect("hybrid-spliced spell on stack")
+            .targets,
+        vec![Target::Player(bob)]
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+}
+
+#[test]
+pub(super) fn spell_announces_damage_distribution_after_targets_and_before_resolution() {
+    struct DivideDuringAnnouncement {
+        bob: PlayerId,
+        charlie: PlayerId,
+        events: Vec<&'static str>,
+        distribution_prompts: usize,
+    }
+
+    impl DecisionMaker for DivideDuringAnnouncement {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.events.push("targets");
+            vec![Target::Player(self.bob), Target::Player(self.charlie)]
+        }
+
+        fn decide_distribute(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::DistributeContext,
+        ) -> Vec<(Target, u32)> {
+            self.events.push("distribution");
+            self.distribution_prompts += 1;
+            assert_eq!(ctx.total, 3);
+            assert_eq!(ctx.min_per_target, 1);
+            vec![
+                (Target::Player(self.bob), 1),
+                (Target::Player(self.charlie), 2),
+            ]
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let distributed_target = ChooseSpec::WithCount(
+        Box::new(ChooseSpec::Target(Box::new(ChooseSpec::Player(
+            PlayerFilter::Opponent,
+        )))),
+        ChoiceCount::exactly(2),
+    );
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Ordered Distribution Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::new(
+            crate::effects::DealDistributedDamageEffect::new(3, distributed_target),
+        )])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    let mut dm = DivideDuringAnnouncement {
+        bob,
+        charlie,
+        events: Vec::new(),
+        distribution_prompts: 0,
+    };
+
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("distributed spell cast transaction should run")
+    .expect("distributed spell proposal should commit");
+
+    assert_eq!(dm.events, vec!["targets", "distribution"]);
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("distributed spell should be on the stack");
+    assert_eq!(entry.target_distributions.len(), 1);
+    assert_eq!(
+        entry.target_distributions[0].allocations,
+        vec![(Target::Player(bob), 1), (Target::Player(charlie), 2)]
+    );
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("distributed spell should use its announced division");
+    assert_eq!(
+        dm.distribution_prompts, 1,
+        "resolution must not divide again"
+    );
+    assert_eq!(game.player(bob).expect("Bob exists").life, 19);
+    assert_eq!(game.player(charlie).expect("Charlie exists").life, 18);
+}
+
+#[test]
+pub(super) fn activation_announces_damage_distribution_after_targets() {
+    struct NoResolutionDistribution;
+
+    impl DecisionMaker for NoResolutionDistribution {
+        fn decide_distribute(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::DistributeContext,
+        ) -> Vec<(Target, u32)> {
+            panic!("an activated ability must retain its announced distribution")
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source = create_creature(&mut game, "Distribution Ability Probe", alice, 1, 1);
+    let distributed_target = ChooseSpec::WithCount(
+        Box::new(ChooseSpec::Target(Box::new(ChooseSpec::Player(
+            PlayerFilter::Opponent,
+        )))),
+        ChoiceCount::exactly(2),
+    );
+    game.object_mut(source)
+        .expect("ability source should exist")
+        .abilities_mut()
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::DealDistributedDamageEffect::new(4, distributed_target),
+                )]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source,
+            ability_index: 0,
+        }),
+    )
+    .expect("distributed activation should begin");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+    ));
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob), Target::Player(charlie)]),
+    )
+    .expect("chosen targets should lead to the division announcement");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Distribute(_))
+    ));
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Distribution(vec![
+            (Target::Player(bob), 3),
+            (Target::Player(charlie), 1),
+        ]),
+    )
+    .expect("valid activation distribution should commit");
+    let entry = game
+        .stack
+        .last()
+        .expect("activated ability should be on stack");
+    assert_eq!(
+        entry.target_distributions[0].allocations,
+        vec![(Target::Player(bob), 3), (Target::Player(charlie), 1)]
+    );
+
+    let mut dm = NoResolutionDistribution;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("activated ability should use its announced distribution");
+    assert_eq!(game.player(bob).expect("Bob exists").life, 17);
+    assert_eq!(game.player(charlie).expect("Charlie exists").life, 19);
+}
+
+#[test]
+pub(super) fn invalid_announced_distribution_rolls_back_spell_proposal() {
+    struct InvalidDivision {
+        target: PlayerId,
+    }
+
+    impl DecisionMaker for InvalidDivision {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            vec![Target::Player(self.target)]
+        }
+
+        fn decide_distribute(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::DistributeContext,
+        ) -> Vec<(Target, u32)> {
+            vec![(Target::Player(self.target), 2)]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Invalid Distribution Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::new(
+            crate::effects::DealDistributedDamageEffect::new(
+                3,
+                ChooseSpec::Target(Box::new(ChooseSpec::Player(PlayerFilter::Opponent))),
+            ),
+        )])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    let mut dm = InvalidDivision { target: bob };
+
+    let result = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("invalid announced distribution should be handled as a cancelled proposal");
+    assert!(
+        result.is_none(),
+        "a distribution that does not assign the announced total must not commit"
+    );
+    assert!(game.stack_is_empty());
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand),
+        "CR 601.6 rollback must restore the proposed spell"
+    );
+    assert_eq!(game.player(bob).expect("Bob exists").life, 20);
+}
+
+#[test]
+pub(super) fn x_distribution_lookahead_requires_a_feasible_announced_division() {
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let two_opponents = ChooseSpec::WithCount(
+        Box::new(ChooseSpec::Target(Box::new(ChooseSpec::Player(
+            PlayerFilter::Opponent,
+        )))),
+        ChoiceCount::exactly(2),
+    );
+    let spell = CardDefinitionBuilder::new(CardId::new(), "X Distribution Lookahead Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::new(
+            crate::effects::DealDistributedDamageEffect::new(Value::X, two_opponents),
+        )])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+
+    assert!(
+        !compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| {
+                matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
+            }),
+        "X=0 or 1 cannot assign at least 1 damage to each of two targets"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+    assert!(
+        compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| {
+                matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
+            }),
+        "CR 601.4 look-ahead must find the payable X=2 division"
+    );
+}
+
+#[test]
+pub(super) fn modal_x_activation_announces_modes_before_x() {
+    use crate::ability::{ActivatedAbility, ActivationTiming};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = create_creature(&mut game, "Modal X Ability Probe", alice, 1, 1);
+    let modal_effect = Effect::choose_exactly(
+        1,
+        vec![
+            crate::effect::EffectMode {
+                source_text: "Gain 3 life".to_string(),
+                effects: vec![Effect::gain_life(3)],
+            },
+            crate::effect::EffectMode {
+                source_text: "Draw a card".to_string(),
+                effects: vec![Effect::draw(1)],
+            },
+        ],
+    );
+    game.object_mut(source)
+        .expect("ability source should exist")
+        .abilities_mut()
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
+                    ManaSymbol::X,
+                ]])),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![modal_effect]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source,
+            ability_index: 0,
+        }),
+    )
+    .expect("proposing a modal X activation should request its first announcement");
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Modes(_))
+        ),
+        "CR 602.2b imports the 601.2b modes-before-X order, got {progress:?}"
+    );
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Modes(vec![0]),
+    )
+    .expect("choosing the activation mode should advance to X");
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(_))
+        ),
+        "the activation's X value should follow modes, got {progress:?}"
+    );
+}
+
+#[test]
+pub(super) fn x_dependent_cast_prohibition_uses_lookahead_and_rolls_back_illegal_proposal() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let x_spell = CardDefinitionBuilder::new(CardId::new(), "X Proposal Legality Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::X]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&x_spell, alice, Zone::Hand);
+    let restriction_source = CardDefinitionBuilder::new(CardId::new(), "X Restriction Probe")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability {
+            kind: AbilityKind::Static(StaticAbility::restriction(
+                crate::effect::Restriction::cast_spells_matching(
+                    crate::target::PlayerFilter::You,
+                    ObjectFilter::default().with_mana_value(crate::filter::Comparison::Equal(0)),
+                ),
+                "You can't cast spells with mana value 0".to_string(),
+            )),
+            functional_zones: vec![Zone::Battlefield],
+        })
+        .build();
+    game.create_object_from_definition(&restriction_source, alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id
+            )
+        })
+        .expect("CR 601.3a look-ahead should expose the cast because X=1 is legal");
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action.clone()),
+    )
+    .expect("the legal proposal should begin with an X choice");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(_))
+    ));
+
+    let error = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::XValue(0),
+    )
+    .expect_err("the completed X=0 proposal must fail the final prohibition check");
+    assert!(matches!(error, GameLoopError::ActionCancelled(_)));
+    assert!(
+        game.stack_is_empty(),
+        "rollback must remove the proposed spell"
+    );
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand),
+        "rollback must restore the spell to its original zone and identity"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        1,
+        "rollback must preserve mana because no cost may be paid before 601.2e"
+    );
+    assert!(!state.has_pending_action());
+    assert!(state.checkpoint.is_none());
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("the restored spell should be castable again");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(_))
+    ));
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::XValue(1),
+    )
+    .expect("the completed X=1 proposal should pass and pay its cost");
+
+    assert!(!game.stack_is_empty(), "the legal proposal should commit");
+    let stack_spell = game
+        .stack
+        .last()
+        .and_then(|entry| game.object(entry.object_id))
+        .expect("the committed spell should be on the stack");
+    assert_eq!(stack_spell.x_value, Some(1));
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+}
+
+#[test]
+pub(super) fn kicked_modal_range_looks_ahead_and_requires_the_promised_cost() {
+    struct ConditionalModeDecisionMaker {
+        pay_kicker: bool,
+        optional_prompt_min: Option<usize>,
+    }
+
+    impl DecisionMaker for ConditionalModeDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description.starts_with("Choose mode for") && ctx.min == 0 && ctx.max == 3 {
+                return vec![0, 1];
+            }
+            if ctx.description.starts_with("Choose optional costs") {
+                self.optional_prompt_min = Some(ctx.min);
+                return self.pay_kicker.then_some(0).into_iter().collect();
+            }
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
+    fn setup_probe() -> (GameState, PlayerId, ObjectId) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.player_mut(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .add(ManaSymbol::Colorless, 1);
+
+        let modes = vec![
+            crate::effect::EffectMode::new("Gain 1 life", vec![Effect::gain_life(1)]),
+            crate::effect::EffectMode::new("Gain 2 life", vec![Effect::gain_life(2)]),
+            crate::effect::EffectMode::new("Gain 3 life", vec![Effect::gain_life(3)]),
+        ];
+        let conditional_modal = crate::effects::ChooseModeEffect::choose_one(modes)
+            .with_conditional_mode_range(crate::effect::ConditionalModeRange::new(
+                crate::cost::OptionalCostRef::from("Kicker"),
+                0,
+                3,
+            ));
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Conditional Mode Probe")
+            .mana_cost(ManaCost::new())
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::new(conditional_modal)])
+            .kicker_mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+            .build();
+        let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+        (game, alice, spell_id)
+    }
+
+    let (mut game, alice, spell_id) = setup_probe();
+    let mut decline = ConditionalModeDecisionMaker {
+        pay_kicker: false,
+        optional_prompt_min: None,
+    };
+    let declined = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        true,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut decline,
+    )
+    .expect("declining the required later cost should cancel cleanly");
+    assert!(declined.is_none());
+    assert_eq!(decline.optional_prompt_min, Some(1));
+    assert!(game.stack_is_empty());
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        1
+    );
+
+    let mut accept = ConditionalModeDecisionMaker {
+        pay_kicker: true,
+        optional_prompt_min: None,
+    };
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        true,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut accept,
+    )
+    .expect("the joint mode/kicker proposal should run")
+    .expect("paying the promised kicker should commit the proposal");
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("conditional modal spell should be on the stack");
+    assert_eq!(entry.chosen_modes.as_deref(), Some(&[0, 1][..]));
+    assert!(entry.optional_costs_paid.was_kicked());
+    assert_eq!(accept.optional_prompt_min, Some(1));
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+}
+
+#[test]
+pub(super) fn mana_optional_cost_target_hypothesis_exposes_legal_cast() {
+    struct KickedTargetDecisionMaker {
+        target: PlayerId,
+    }
+
+    impl DecisionMaker for KickedTargetDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            vec![Target::Player(self.target)]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let program =
+        crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::deal_damage(1, ChooseSpec::target_creature())],
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                crate::effect::Condition::ThisSpellWasKicked,
+                vec![Effect::deal_damage(1, ChooseSpec::target_player())],
+            )],
+        }]);
+    let mut definition = CardDefinitionBuilder::new(CardId::new(), "Kicked Target Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .kicker_mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    definition.spell_effect = Some(program);
+    let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+    assert!(
+        compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| {
+                matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
+            }),
+        "CR 601.4 look-ahead must consider a payable mana kicker that changes target requirements"
+    );
+
+    let mut dm = KickedTargetDecisionMaker { target: bob };
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("kicked target hypothesis should run")
+    .expect("payable kicker and its legal target should commit");
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("kicked spell should be on stack");
+    assert!(entry.optional_costs_paid.was_kicked());
+    assert_eq!(entry.targets, vec![Target::Player(bob)]);
+}
+
+#[test]
+pub(super) fn joint_optional_cost_hypothesis_exposes_targetable_cast() {
+    struct JointOptionalTargetDecisionMaker {
+        target: PlayerId,
+    }
+
+    impl DecisionMaker for JointOptionalTargetDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .collect()
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            vec![Target::Player(self.target)]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let both_costs_paid = crate::effect::Condition::And(
+        Box::new(crate::effect::Condition::ThisSpellPaidLabel(
+            "Kicker".into(),
+        )),
+        Box::new(crate::effect::Condition::ThisSpellPaidLabel(
+            "Buyback".into(),
+        )),
+    );
+    let program =
+        crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::deal_damage(1, ChooseSpec::target_creature())],
+            self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                both_costs_paid,
+                vec![Effect::deal_damage(1, ChooseSpec::target_player())],
+            )],
+        }]);
+    let mut definition = CardDefinitionBuilder::new(CardId::new(), "Joint Proposal Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .kicker_mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .buyback_mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    definition.spell_effect = Some(program);
+    let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+
+    assert!(
+        compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| {
+                matches!(action, LegalAction::CastSpell { spell_id: id, .. } if id == spell_id)
+            }),
+        "CR 601.4 look-ahead must evaluate optional-cost choices jointly"
+    );
+
+    let mut dm = JointOptionalTargetDecisionMaker { target: bob };
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("joint optional-cost target proposal should run")
+    .expect("joint optional-cost target proposal should commit");
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("joint proposal should be on the stack");
+    assert!(entry.optional_costs_paid.was_paid_label("Kicker"));
+    assert!(entry.optional_costs_paid.was_paid_label("Buyback"));
+    assert_eq!(entry.targets, vec![Target::Player(bob)]);
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn bestow_aura_view_can_receive_flash_before_casting_begins() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::DeclareAttackers);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let flash_source = CardBuilder::new(CardId::from_raw(994_022), "Aura Flash Source")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let flash_source_id = game.create_object_from_card(&flash_source, alice, Zone::Battlefield);
+    let aura_flash = crate::grant::GrantSpec::flash_to_spells_matching(
+        crate::filter::ObjectFilter::default().with_subtype(Subtype::Aura),
+    );
+    game.object_mut(flash_source_id)
+        .expect("flash-grant source should exist")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::grants(aura_flash)));
+
+    let host = create_creature(&mut game, "Bestow Host", alice, 2, 2);
+    let bestow = CardDefinitionBuilder::new(CardId::from_raw(994_023), "Bestow Flash Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("Bestow {0}\nEnchanted creature gets +1/+1.")
+        .expect("bestow probe should parse");
+    let bestow_id = game.create_object_from_definition(&bestow, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::Normal,
+                ..
+            } if *spell_id == bestow_id
+        )),
+        "the printed creature spell should not receive an Aura-only flash grant"
+    );
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::Alternative(0),
+                ..
+            } if *spell_id == bestow_id
+        )),
+        "CR 601.3b must test the proposed Bestow Aura characteristics when applying flash"
+    );
+
+    let cast_action = actions
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    casting_method: CastingMethod::Alternative(0),
+                    ..
+                } if *spell_id == bestow_id
+            )
+        })
+        .expect("Bestow action should be available");
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("Bestow cast should begin through the proposed Aura flash permission");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+    ));
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(host)]),
+    )
+    .expect("the completed Bestow proposal should retain its Aura flash permission");
+    assert!(
+        game.stack.iter().any(|entry| game
+            .object(entry.object_id)
+            .is_some_and(|spell| spell.name == "Bestow Flash Probe")),
+        "the legal completed proposal should commit"
+    );
+}
+
+#[test]
+pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_back() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Granted Conspire Proposal Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .color_indicator(crate::color::ColorSet::RED)
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    game.add_temporary_spell_ability_grant(
+        alice,
+        spell_id,
+        ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
+        StaticAbility::keyword_marker("Conspire"),
+        1,
+    );
+
+    let cast_action = LegalAction::CastSpell {
+        spell_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    };
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("the granted ability should participate in the cast proposal");
+    let optional_costs = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected granted Conspire during 601.2b, got {other:?}"),
+    };
+    assert!(
+        optional_costs
+            .options
+            .iter()
+            .any(|option| option.description.contains("Conspire")),
+        "the one-shot ability must add its announcement-time cost before SpellCastEvent"
+    );
+
+    let stack_spell_id = state
+        .pending_cast
+        .as_ref()
+        .map(|pending| pending.spell_id)
+        .expect("the proposal should be tracked while the spell is on the stack");
+    assert!(
+        game.object(stack_spell_id)
+            .expect("proposed spell exists")
+            .abilities
+            .iter()
+            .any(|ability| matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::KeywordMarker
+                        && static_ability.display() == "Conspire"
+            )),
+        "the grant should be attached to the stack object during 601.2a"
+    );
+    assert_eq!(
+        game.effect_store.temporary_spell_ability_grants[0].remaining_uses, 0,
+        "the matching one-shot grant should be reserved by this proposal"
+    );
+
+    let error = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![]),
+    )
+    .expect_err("the unpaid generic mana cost should cancel the proposal");
+    assert!(matches!(error, GameLoopError::ActionCancelled(_)));
+    assert!(game.stack_is_empty());
+    let restored_spell = game
+        .object(spell_id)
+        .expect("rollback restores spell identity");
+    assert_eq!(restored_spell.zone, Zone::Hand);
+    assert!(
+        restored_spell.optional_costs.is_empty()
+            && restored_spell.abilities.iter().all(|ability| !matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::KeywordMarker
+                        && static_ability.display() == "Conspire"
+            )),
+        "CR 601.6 rollback must remove proposal-only cost and ability state"
+    );
+    assert_eq!(
+        game.effect_store.temporary_spell_ability_grants[0].remaining_uses, 1,
+        "rollback must restore the one-shot grant for the next legal proposal"
+    );
+    assert!(!state.has_pending_action());
+    assert!(state.checkpoint.is_none());
+}
+
+pub(super) fn setup_spell_mana_window_probe()
+-> (GameState, PlayerId, ObjectId, ObjectId, LegalAction) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mountain = crate::cards::definitions::basic_mountain();
+    let mountain_id = game.create_object_from_definition(&mountain, alice, Zone::Battlefield);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Mana Window Order Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Sorcery])
+        .additional_cost(crate::cost::TotalCost::from_cost(
+            crate::costs::Cost::sacrifice(ObjectFilter::land().you_control()),
+        ))
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell { spell_id: id, .. } if *id == spell_id
+            )
+        })
+        .expect("the spell should be potentially payable with the Mountain");
+
+    (game, alice, mountain_id, spell_id, cast_action)
+}
+
+#[test]
+pub(super) fn spell_mana_ability_window_precedes_every_cost_payment() {
+    let (mut game, alice, mountain_id, _spell_id, cast_action) = setup_spell_mana_window_probe();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("the cast should reach its pre-payment mana-ability window");
+    let window = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected the mana-ability window, got {other:?}"),
+    };
+    assert!(window.description.starts_with("Activate mana abilities"));
+    assert!(
+        game.object(mountain_id)
+            .is_some_and(|mountain| mountain.zone == Zone::Battlefield)
+    );
+    assert!(!game.is_tapped(mountain_id));
+
+    let mana_choice = window
+        .options
+        .iter()
+        .find(|option| option.object_id == Some(mountain_id))
+        .map(|option| option.index)
+        .expect("the window should expose the Mountain mana ability");
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPayment(mana_choice),
+    )
+    .expect("activating the Mountain should lock mana before costs are paid");
+    let cost_order = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected the locked cost-order choice, got {other:?}"),
+    };
+    assert!(game.is_tapped(mountain_id));
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        1
+    );
+    assert!(
+        game.object(mountain_id)
+            .is_some_and(|mountain| mountain.zone == Zone::Battlefield),
+        "the nonmana sacrifice cost must still be unpaid when 601.2g closes"
+    );
+
+    let sacrifice_choice = cost_order
+        .options
+        .iter()
+        .find(|option| {
+            option
+                .description
+                .to_ascii_lowercase()
+                .contains("sacrifice")
+        })
+        .map(|option| option.index)
+        .expect("the locked cost list should include the sacrifice");
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_choice),
+    )
+    .expect("choosing the sacrifice component should ask for its object");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectObjects(
+            _
+        ))
+    ));
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::CardCostChoice(mountain_id),
+    )
+    .expect("the locked mana should remain usable after sacrificing its source");
+
+    assert!(!game.stack_is_empty());
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+}
+
+#[test]
+pub(super) fn closed_spell_mana_window_does_not_reopen_after_nonmana_cost_and_rolls_back() {
+    let (mut game, alice, mountain_id, spell_id, cast_action) = setup_spell_mana_window_probe();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("the cast should reach its pre-payment mana-ability window");
+    let window = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected the mana-ability window, got {other:?}"),
+    };
+    let finish_choice = window
+        .options
+        .iter()
+        .find(|option| option.description.starts_with("Finish"))
+        .map(|option| option.index)
+        .expect("the player must be able to close the mana-ability window");
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPayment(finish_choice),
+    )
+    .expect("closing the window should lock the total cost");
+    let cost_order = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected cost ordering after the window, got {other:?}"),
+    };
+    let sacrifice_choice = cost_order
+        .options
+        .iter()
+        .find(|option| {
+            option
+                .description
+                .to_ascii_lowercase()
+                .contains("sacrifice")
+        })
+        .map(|option| option.index)
+        .expect("the sacrifice component should be selectable");
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_choice),
+    )
+    .expect("the sacrifice component should request a permanent");
+    let error = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::CardCostChoice(mountain_id),
+    )
+    .expect_err("mana abilities must not reopen after the first cost is paid");
+
+    assert!(matches!(error, GameLoopError::ActionCancelled(_)));
+    assert!(game.stack_is_empty());
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|spell| spell.zone == Zone::Hand)
+    );
+    assert!(
+        game.object(mountain_id)
+            .is_some_and(|mountain| mountain.zone == Zone::Battlefield)
+    );
+    assert!(!game.is_tapped(mountain_id));
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+    assert!(!state.has_pending_action());
+}
+
+#[test]
+pub(super) fn activation_mana_ability_window_precedes_every_cost_payment() {
+    use crate::ability::{ActivatedAbility, ActivationTiming};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mountain = crate::cards::definitions::basic_mountain();
+    let mountain_id = game.create_object_from_definition(&mountain, alice, Zone::Battlefield);
+    let source = create_creature(&mut game, "Activation Mana Window Probe", alice, 1, 1);
+    game.object_mut(source)
+        .expect("ability source should exist")
+        .abilities_mut()
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::from_costs(vec![
+                    crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                        1,
+                    )]])),
+                    crate::costs::Cost::sacrifice(ObjectFilter::land().you_control()),
+                ]),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::gain_life(1),
+                ]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source: id, ability_index: 0 } if *id == source
+            )
+        })
+        .expect("the activation should be potentially payable with the Mountain");
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+    )
+    .expect("the activation should reach its pre-payment mana-ability window");
+    let window = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected the activation mana-ability window, got {other:?}"),
+    };
+    assert!(window.description.starts_with("Activate mana abilities"));
+    assert!(!game.is_tapped(mountain_id));
+    let mana_choice = window
+        .options
+        .iter()
+        .find(|option| option.object_id == Some(mountain_id))
+        .map(|option| option.index)
+        .expect("the activation window should expose the Mountain mana ability");
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPayment(mana_choice),
+    )
+    .expect("activating the Mountain should precede activation-cost payment");
+    let cost_order = match progress {
+        GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected locked activation cost ordering, got {other:?}"),
+    };
+    assert!(game.is_tapped(mountain_id));
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        1
+    );
+    assert!(game.object(mountain_id).is_some());
+
+    let sacrifice_choice = cost_order
+        .options
+        .iter()
+        .find(|option| {
+            option
+                .description
+                .to_ascii_lowercase()
+                .contains("sacrifice")
+        })
+        .map(|option| option.index)
+        .expect("the activation's sacrifice cost should remain unpaid");
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_choice),
+    )
+    .expect("selecting the activation sacrifice should request its object");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectObjects(
+            _
+        ))
+    ));
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::SacrificeTarget(mountain_id),
+    )
+    .expect("locked mana should pay after its source is sacrificed");
+
+    assert!(!game.stack_is_empty());
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
     );
 }
 
@@ -3604,5 +5816,479 @@ pub(super) fn put_illicit_auction_on_stack(
                 spec: target_requirement.spec,
                 range: 0..1,
             }]),
+    );
+}
+
+#[derive(Default)]
+pub(super) struct NamedCastCostDecisionMaker {
+    choices: std::collections::VecDeque<String>,
+    pub(super) cost_prompts: Vec<String>,
+}
+
+impl NamedCastCostDecisionMaker {
+    pub(super) fn new<I, S>(choices: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            choices: choices.into_iter().map(Into::into).collect(),
+            cost_prompts: Vec::new(),
+        }
+    }
+}
+
+impl DecisionMaker for NamedCastCostDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let is_cast_card_cost = ctx.description.starts_with("Choose a card to discard")
+            || ctx
+                .description
+                .starts_with("Choose a card to exile from your graveyard");
+        if !is_cast_card_cost {
+            return crate::decision::AutoPassDecisionMaker.decide_objects(game, ctx);
+        }
+
+        self.cost_prompts.push(ctx.description.clone());
+        let Some(name) = self.choices.pop_front() else {
+            return Vec::new();
+        };
+        if name == "<cancel>" {
+            return Vec::new();
+        }
+
+        ctx.candidates
+            .iter()
+            .find_map(|candidate| {
+                (candidate.legal
+                    && game
+                        .object(candidate.id)
+                        .is_some_and(|object| object.name == name.as_str()))
+                .then_some(candidate.id)
+            })
+            .into_iter()
+            .collect()
+    }
+}
+
+fn i061_test_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    name: &'static str,
+    zone: Zone,
+) -> ObjectId {
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        owner,
+        zone,
+    )
+}
+
+fn i061_zone_contains_name(game: &GameState, ids: &[ObjectId], name: &str) -> bool {
+    ids.iter()
+        .any(|&id| game.object(id).is_some_and(|object| object.name == name))
+}
+
+#[test]
+pub(super) fn native_escape_uses_exact_graveyard_choices_and_rolls_back_partial_payment() {
+    fn setup() -> (GameState, PlayerId, ObjectId) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Native Escape Probe")
+            .mana_cost(ManaCost::new())
+            .card_types(vec![CardType::Sorcery])
+            .escape(ManaCost::new(), 2)
+            .with_spell_effect(vec![Effect::gain_life(1)])
+            .build();
+        let spell_id = game.create_object_from_definition(&spell, alice, Zone::Graveyard);
+        i061_test_card(&mut game, alice, "Escape Fodder A", Zone::Graveyard);
+        i061_test_card(&mut game, alice, "Escape Fodder B", Zone::Graveyard);
+        i061_test_card(&mut game, alice, "Escape Fodder C", Zone::Graveyard);
+        (game, alice, spell_id)
+    }
+
+    let (mut game, alice, spell_id) = setup();
+    let mut exact = NamedCastCostDecisionMaker::new(["Escape Fodder C", "Escape Fodder A"]);
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Graveyard,
+        alice,
+        &CastingMethod::Alternative(0),
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut exact,
+    )
+    .expect("native Escape transaction should execute")
+    .expect("native Escape should commit after both chosen cards are exiled");
+
+    assert_eq!(exact.cost_prompts.len(), 2);
+    assert!(game.stack.iter().any(|entry| {
+        entry.object_id == stack_id && entry.casting_method == CastingMethod::Alternative(0)
+    }));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.exile,
+        "Escape Fodder A"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.exile,
+        "Escape Fodder C"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").graveyard,
+        "Escape Fodder B"
+    ));
+    assert!(
+        !i061_zone_contains_name(&game, &game.exile, "Native Escape Probe"),
+        "the Escape spell itself must not be offered as an exile-cost card"
+    );
+
+    let (mut rollback_game, alice, spell_id) = setup();
+    let mut cancel = NamedCastCostDecisionMaker::new(["Escape Fodder B", "<cancel>"]);
+    let result = super::cast_spell_from_resolving_effect(
+        &mut rollback_game,
+        spell_id,
+        Zone::Graveyard,
+        alice,
+        &CastingMethod::Alternative(0),
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut cancel,
+    )
+    .expect("cancelling a partially paid Escape cost should be a clean cancellation");
+
+    assert!(result.is_none());
+    assert!(rollback_game.stack_is_empty());
+    assert!(rollback_game.exile.is_empty());
+    for name in [
+        "Native Escape Probe",
+        "Escape Fodder A",
+        "Escape Fodder B",
+        "Escape Fodder C",
+    ] {
+        assert!(i061_zone_contains_name(
+            &rollback_game,
+            &rollback_game.player(alice).expect("Alice exists").graveyard,
+            name
+        ));
+    }
+}
+
+#[test]
+pub(super) fn jump_start_stages_and_pays_the_exact_chosen_discard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Jump-start Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .jump_start()
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Graveyard);
+    i061_test_card(&mut game, alice, "Unchosen Hand Card", Zone::Hand);
+    i061_test_card(&mut game, alice, "Chosen Jump-start Discard", Zone::Hand);
+
+    let mut dm = NamedCastCostDecisionMaker::new(["Chosen Jump-start Discard"]);
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Graveyard,
+        alice,
+        &CastingMethod::Alternative(0),
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("Jump-start transaction should execute")
+    .expect("Jump-start should commit after the chosen discard is paid");
+
+    assert_eq!(dm.cost_prompts.len(), 1);
+    assert!(game.stack.iter().any(|entry| entry.object_id == stack_id));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").graveyard,
+        "Chosen Jump-start Discard"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").hand,
+        "Unchosen Hand Card"
+    ));
+}
+
+#[test]
+pub(super) fn granted_escape_uses_the_same_interactive_typed_exile_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let grant_source = i061_test_card(&mut game, alice, "Escape Grant Source", Zone::Battlefield);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Granted Escape Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Graveyard);
+    i061_test_card(&mut game, alice, "Granted Fodder A", Zone::Graveyard);
+    i061_test_card(&mut game, alice, "Granted Fodder B", Zone::Graveyard);
+    i061_test_card(&mut game, alice, "Granted Fodder C", Zone::Graveyard);
+
+    let casting_method = CastingMethod::GrantedEscape {
+        source: grant_source,
+        exile_count: 2,
+    };
+    let mut dm = NamedCastCostDecisionMaker::new(["Granted Fodder C", "Granted Fodder A"]);
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Graveyard,
+        alice,
+        &casting_method,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("granted Escape transaction should execute")
+    .expect("granted Escape should commit after interactive exile payment");
+
+    assert_eq!(dm.cost_prompts.len(), 2);
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| { entry.object_id == stack_id && entry.casting_method == casting_method })
+    );
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.exile,
+        "Granted Fodder A"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.exile,
+        "Granted Fodder C"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").graveyard,
+        "Granted Fodder B"
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn jump_start_discard_cost_preserves_discard_replacement_cause_semantics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Jump-start Replacement Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .jump_start()
+        .with_spell_effect(vec![Effect::gain_life(1)])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Graveyard);
+    let smiter = loxodon_smiter_definition();
+    game.create_object_from_definition(&smiter, alice, Zone::Hand);
+
+    let mut dm = NamedCastCostDecisionMaker::new(["Loxodon Smiter"]);
+    let result = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Graveyard,
+        alice,
+        &CastingMethod::Alternative(0),
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("Jump-start replacement scenario should execute");
+
+    assert!(result.is_some());
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").graveyard,
+        "Loxodon Smiter"
+    ));
+    assert!(
+        !i061_zone_contains_name(&game, &game.battlefield, "Loxodon Smiter"),
+        "a discard paid as the caster's own cost must not satisfy Loxodon Smiter's opponent-cause replacement"
+    );
+}
+
+fn i062_escalate_spell(exact_modes: Option<u32>) -> crate::cards::CardDefinition {
+    let modes = vec![
+        crate::effect::EffectMode {
+            source_text: "Gain 1 life".to_string(),
+            effects: vec![Effect::gain_life(1)],
+        },
+        crate::effect::EffectMode {
+            source_text: "Gain 2 life".to_string(),
+            effects: vec![Effect::gain_life(2)],
+        },
+        crate::effect::EffectMode {
+            source_text: "Gain 3 life".to_string(),
+            effects: vec![Effect::gain_life(3)],
+        },
+    ];
+    let modal = match exact_modes {
+        Some(count) => Effect::choose_exactly(count, modes),
+        None => Effect::choose_up_to(3, 1, modes),
+    };
+    let escalate_cost = crate::cost::TotalCost::from_costs(vec![
+        crate::costs::Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+        crate::costs::Cost::discard(1, None),
+    ]);
+
+    CardDefinitionBuilder::new(CardId::new(), "Typed Escalate Probe")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .with_ability(Ability::static_ability(StaticAbility::escalate(
+            crate::static_abilities::EscalateSpec {
+                cost: escalate_cost,
+                cost_surface: Some("{1}, Discard a card".to_string()),
+            },
+        )))
+        .with_spell_effect(vec![modal])
+        .build()
+}
+
+fn i062_setup(exact_modes: Option<u32>) -> (GameState, PlayerId, ObjectId) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = i062_escalate_spell(exact_modes);
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    i061_test_card(&mut game, alice, "Escalate Fodder A", Zone::Hand);
+    i061_test_card(&mut game, alice, "Escalate Fodder B", Zone::Hand);
+    i061_test_card(&mut game, alice, "Escalate Fodder C", Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    (game, alice, spell_id)
+}
+
+#[test]
+pub(super) fn escalate_repeats_its_full_typed_cost_and_rolls_back_partial_payment() {
+    let (mut game, alice, spell_id) = i062_setup(Some(3));
+    let mut dm = NamedCastCostDecisionMaker::new(["Escalate Fodder C", "Escalate Fodder A"]);
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("Escalate transaction should execute")
+    .expect("three modes should commit after paying Escalate twice");
+
+    assert_eq!(dm.cost_prompts.len(), 2);
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0
+    );
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").graveyard,
+        "Escalate Fodder A"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").graveyard,
+        "Escalate Fodder C"
+    ));
+    assert!(i061_zone_contains_name(
+        &game,
+        &game.player(alice).expect("Alice exists").hand,
+        "Escalate Fodder B"
+    ));
+    assert_eq!(
+        game.stack
+            .iter()
+            .find(|entry| entry.object_id == stack_id)
+            .and_then(|entry| entry.chosen_modes.as_deref()),
+        Some(&[0, 1, 2][..])
+    );
+
+    let (mut rollback, alice, spell_id) = i062_setup(Some(3));
+    let mut cancel = NamedCastCostDecisionMaker::new(["Escalate Fodder B", "<cancel>"]);
+    let result = super::cast_spell_from_resolving_effect(
+        &mut rollback,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut cancel,
+    )
+    .expect("cancelling repeated Escalate payment should be clean");
+    assert!(result.is_none());
+    assert!(rollback.stack_is_empty());
+    assert_eq!(
+        rollback
+            .player(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .total(),
+        2
+    );
+    for name in [
+        "Typed Escalate Probe",
+        "Escalate Fodder A",
+        "Escalate Fodder B",
+        "Escalate Fodder C",
+    ] {
+        assert!(i061_zone_contains_name(
+            &rollback,
+            &rollback.player(alice).expect("Alice exists").hand,
+            name
+        ));
+    }
+}
+
+#[test]
+pub(super) fn escalate_charges_nothing_when_only_one_mode_is_chosen() {
+    let (mut game, alice, spell_id) = i062_setup(None);
+    let mut dm = NamedCastCostDecisionMaker::default();
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    )
+    .expect("single-mode Escalate cast should execute")
+    .expect("single-mode Escalate cast should commit without its additional cost");
+
+    assert!(dm.cost_prompts.is_empty());
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        2
+    );
+    assert_eq!(
+        game.stack
+            .iter()
+            .find(|entry| entry.object_id == stack_id)
+            .and_then(|entry| entry.chosen_modes.as_deref()),
+        Some(&[0][..])
     );
 }

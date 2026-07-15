@@ -179,14 +179,6 @@ const AMASSED_ARMY_TAG_PHRASES: &[&[&str]] = &[
     &["amassed", "army"],
     &["amassed", "armys"],
 ];
-const THIS_WAY_TAG_PHRASES: &[&[&str]] = &[
-    &["exiled", "this", "way"],
-    &["destroyed", "this", "way"],
-    &["sacrificed", "this", "way"],
-    &["revealed", "this", "way"],
-    &["discarded", "this", "way"],
-    &["milled", "this", "way"],
-];
 const TAGGED_OBJECT_REFERENCE_FOR_MANA_VALUE_PHRASES: &[&[&str]] = &[
     &["same", "mana", "value", "as", "object"],
     &["same", "mana", "value", "as", "creature"],
@@ -779,6 +771,16 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         }
 
         let word = words[idx];
+        if word == "non"
+            && let Some(subtype) = words
+                .get(idx + 1)
+                .copied()
+                .and_then(parse_subtype_flexible)
+        {
+            push_unique_filter_value(&mut filter.excluded_subtypes, subtype);
+            idx += 2;
+            continue;
+        }
         if word == "with"
             && let Some((constraint, consumed)) =
                 parse_filter_keyword_constraint_words(&words[idx + 1..])
@@ -801,7 +803,12 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if let Some(supertype) = parse_supertype_word(word) {
             push_unique_filter_value(&mut filter.supertypes, supertype);
         }
-        if let Some(subtype) = parse_subtype_flexible(word) {
+        if let Some(subtype) = word
+            .strip_prefix("non-")
+            .and_then(parse_subtype_flexible)
+        {
+            push_unique_filter_value(&mut filter.excluded_subtypes, subtype);
+        } else if let Some(subtype) = parse_subtype_flexible(word) {
             push_unique_filter_value(&mut filter.subtypes, subtype);
         }
         if word == COLORLESS_WORD {
@@ -1511,7 +1518,19 @@ pub(super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if find_any_phrase_start(all_words, THIS_WAY_TAG_PHRASES).is_some() {
+    if let Some(this_way_idx) = find_phrase_start(all_words, &["this", "way"])
+        && let Some((action, _)) =
+            crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(
+                &all_words[..this_way_idx],
+            )
+    {
+        // Tapping is only meaningful for objects on the battlefield. Preserve
+        // that semantic zone when a later clause refers to the objects tapped
+        // this way, even though the reference surface itself omits the zone.
+        if action == ironsmith_core::PriorEffectAction::Tapped {
+            filter.zone.get_or_insert(Zone::Battlefield);
+        }
+        filter.set_prior_effect_action_surface(Some(action));
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,

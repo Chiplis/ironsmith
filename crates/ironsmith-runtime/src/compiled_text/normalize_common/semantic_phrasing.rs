@@ -1670,6 +1670,10 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "you control with a counter on it",
         )
         .replace(
+            "with counters on them you control",
+            "you control with counters on them",
+        )
+        .replace(
             "Activate only as a sorcery and Activate only once each turn",
             "Activate only as a sorcery and only once each turn",
         )

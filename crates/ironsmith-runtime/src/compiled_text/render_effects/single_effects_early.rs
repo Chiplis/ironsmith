@@ -475,7 +475,7 @@ pub(super) fn describe_with_id_if_clause(
         .then(|| describe_coin_flip_outcome_branch(&if_effect.then))
         .flatten()
         .or_else(|| describe_conditional_branch_effect_list(&if_effect.then))
-        .unwrap_or_else(|| describe_effect_list(&if_effect.then));
+        .unwrap_or_else(|| describe_result_branch_effect_list(&if_effect.then));
     let else_text = describe_effect_list(&if_effect.else_);
 
     let condition = if with_id
@@ -536,7 +536,7 @@ pub(super) fn describe_with_id_if_clause(
                 _ => "",
             };
             match if_effect.predicate {
-                EffectPredicate::DidNotHappen => {
+                EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
                     if pronoun == "you" {
                         "If you don't".to_string()
                     } else if pronoun == "they" {
@@ -1618,7 +1618,8 @@ pub(crate) fn describe_with_id_then_reflexive_trigger(
     let setup = describe_optional_setup_effect_for_if_happened(with_id)
         .unwrap_or_else(|| describe_effect(&with_id.effect));
     let setup = capitalize_first(&setup);
-    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
+    let triggered = describe_result_branch_effect_list(&reflexive.effects);
+    let triggered = lowercase_first(&triggered);
     let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         let who = may
             .decider
@@ -1686,7 +1687,7 @@ pub(super) fn describe_exile_play_then_reflexive_trigger(
         .effect
         .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
     let setup = describe_exile_top_then_play(exile, grant, false)?;
-    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
+    let triggered = lowercase_first(&describe_result_branch_effect_list(&reflexive.effects));
     let triggered = triggered
         .replace("its mana value", "the exiled card's mana value")
         .replace("that object's mana value", "the exiled card's mana value");
@@ -2437,13 +2438,29 @@ pub(super) fn describe_search_choose_then_move(
             } else {
                 ""
             };
+            let controller_suffix = match move_to_zone.battlefield_controller {
+                crate::effects::BattlefieldController::Preserve => "",
+                crate::effects::BattlefieldController::Owner => {
+                    if choose.count.max == Some(1) {
+                        " under its owner's control"
+                    } else {
+                        " under their owners' control"
+                    }
+                }
+                crate::effects::BattlefieldController::You
+                    if move_to_zone.controller_surface_explicit =>
+                {
+                    " under your control"
+                }
+                crate::effects::BattlefieldController::You => "",
+            };
             if filter_text.contains(", where X is ") {
                 format!(
-                    "Search {search_origin} for {filter_text}{reveal_clause}. Put {pronoun} onto the battlefield{tapped}"
+                    "Search {search_origin} for {filter_text}{reveal_clause}. Put {pronoun} onto the battlefield{tapped}{controller_suffix}"
                 )
             } else {
                 format!(
-                    "Search {search_origin} for {filter_text}{reveal_clause}, put {pronoun} onto the battlefield{tapped}"
+                    "Search {search_origin} for {filter_text}{reveal_clause}, put {pronoun} onto the battlefield{tapped}{controller_suffix}"
                 )
             }
         }

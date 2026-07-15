@@ -78,6 +78,95 @@ fn chosen_kind_consult_branch_effects(
     ]
 }
 
+/// Preserve both antecedents in a reveal/pump/cleanup sequence. The singular
+/// “the creature” names the object that caused the trigger, while “the
+/// revealed cards” names the whole collection exposed by the consult. Neither
+/// should be rebound to the immediately preceding effect merely because the
+/// instructions are split across sentences.
+pub(crate) fn parse_consult_reveal_then_pump_triggering_creature_then_move_revealed(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let Some(parts) = parse_consult_traversal_sentence(&first_tokens)? else {
+        return Ok(None);
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+                mode: LibraryConsultModeAst::Reveal,
+                ..
+            },
+            ..
+        }))
+    ) {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Ok(mut pump_effects) = effect_sentences::parse_effect_sentence_lexed(&second_tokens) else {
+        return Ok(None);
+    };
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::PumpForEach {
+                target,
+                count,
+                ..
+            },
+        ..
+    })] = pump_effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    if !count.has_surface_hint(ironsmith_core::ValueSurfaceHint::CardsRevealedThisWay) {
+        return Ok(None);
+    }
+    let definite_creature_subject = second_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .take(2)
+        .eq(["the", "creature"]);
+    if !definite_creature_subject {
+        return Ok(None);
+    }
+    *target = TargetAst::Tagged(TagKey::from("triggering"), None);
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let Ok(mut cleanup_effects) = effect_sentences::parse_effect_sentence_lexed(&third_tokens)
+    else {
+        return Ok(None);
+    };
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::MoveToZone {
+                target: cleanup_target,
+                zone: Zone::Graveyard,
+                target_plural_surface,
+                ..
+            },
+        ..
+    })] = cleanup_effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    if !third_tokens.iter().any(|token| token.is_word("revealed"))
+        || !third_tokens
+            .iter()
+            .any(|token| matches!(token.as_word(), Some("card" | "cards")))
+    {
+        return Ok(None);
+    }
+    *cleanup_target = TargetAst::Tagged(parts.all_tag.clone(), None);
+    *target_plural_surface = true;
+
+    let mut effects = parts.effects;
+    effects.append(&mut pump_effects);
+    effects.append(&mut cleanup_effects);
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_choose_two_targets_counter_first_if_power_then_fight(
     sentences: &[SentenceInput],
     sentence_idx: usize,

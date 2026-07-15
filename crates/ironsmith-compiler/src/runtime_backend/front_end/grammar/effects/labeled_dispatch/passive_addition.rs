@@ -86,6 +86,15 @@ pub(crate) fn parse_passive_color_type_addition_shape(
     if subject_tokens.is_empty() || descriptor_words.is_empty() {
         return None;
     }
+    // Compound static predicates have dedicated typed parsers. Absorbing an
+    // earlier modifier into this subject turns semantics such as base P/T or
+    // an anthem into an accidental object-filter constraint.
+    if parser_token_word_refs(subject_tokens)
+        .iter()
+        .any(|word| matches!(*word, "get" | "gets" | "has" | "have"))
+    {
+        return None;
+    }
 
     let mut colors = ColorSet::new();
     let mut card_types = Vec::new();

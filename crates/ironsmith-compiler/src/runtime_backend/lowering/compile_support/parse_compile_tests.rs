@@ -176,6 +176,45 @@ fn move_to_zone_lowering_preserves_oracle_verb_and_explicit_actor() {
 }
 
 #[test]
+fn explicit_controller_return_lowering_retains_return_surface() {
+    let (effects, choices) = compile_effect(
+        &EffectAst::subject_verb_return_to_battlefield(
+            TargetAst::Tagged(TagKey::from("triggering"), None),
+            false,
+            false,
+            false,
+            crate::cards::builders::ReturnControllerAst::You,
+            None,
+        ),
+        &mut EffectLoweringContext::new(),
+    )
+    .expect("explicit-controller return should lower");
+
+    assert!(choices.is_empty());
+    let lowered = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .and_then(|tagged| {
+                    tagged
+                        .effect
+                        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                })
+                .or_else(|| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+        })
+        .expect("explicit-controller return should lower to a move-to-zone effect");
+    assert_eq!(
+        lowered.verb_surface,
+        ironsmith_core::MoveToZoneVerbSurface::Return
+    );
+    assert_eq!(
+        lowered.battlefield_controller,
+        crate::effects::BattlefieldController::You
+    );
+}
+
+#[test]
 fn parse_text_investigate_twice_compiles_to_count_two() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Investigate Probe")
         .card_types(vec![CardType::Sorcery])
@@ -294,6 +333,7 @@ fn coordinated_equal_target_specs_keep_distinct_lowered_target_slots() {
             ),
         ],
         leading_duration: false,
+        result_conjunction: false,
     };
     let mut ctx = EffectLoweringContext::new();
     ctx.auto_tag_object_targets = true;
@@ -331,6 +371,30 @@ fn coordinated_equal_target_specs_keep_distinct_lowered_target_slots() {
         tags.len(),
         3,
         "each target choice has its own runtime identity"
+    );
+
+    let mut result_conjunction = coordinated;
+    let EffectAst::Coordinated {
+        result_conjunction: marker,
+        ..
+    } = &mut result_conjunction
+    else {
+        unreachable!("fixture is coordinated")
+    };
+    *marker = true;
+    let (result_effects, _) = compile_effects(
+        std::slice::from_ref(&result_conjunction),
+        &mut EffectLoweringContext::new(),
+    )
+    .expect("compile grammar-confirmed result conjunction");
+    let result_sequence = result_effects[0]
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("result conjunction should lower to a sequence");
+    assert_eq!(
+        result_sequence.surface,
+        ironsmith_core::SequenceSurface::ResultConjunction {
+            leading_duration: false
+        }
     );
 }
 

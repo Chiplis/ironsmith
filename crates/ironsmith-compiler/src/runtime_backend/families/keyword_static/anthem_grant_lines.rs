@@ -691,6 +691,8 @@ pub(crate) fn parse_granted_keyword_static_line(
                 attached_subject_filter.as_ref(),
             )
         })?;
+    let condition =
+        condition.map(|condition| bind_attachment_condition_to_subject(condition, &subject));
 
     if let Some((actions, subtypes)) = parse_keyword_and_subtype_addition_tail(&keyword_tokens)? {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
@@ -1270,6 +1272,8 @@ pub(crate) struct ParsedGrantedTailAst {
     pub(crate) granted_static: Vec<StaticAbilityAst>,
     pub(crate) granted_keyword_actions: Vec<KeywordAction>,
     pub(crate) granted_object_abilities: Vec<(ParsedAbility, String)>,
+    pub(crate) removes_all_other_abilities: bool,
+    pub(crate) type_color_additions: Vec<TypeColorAdditionClause>,
 }
 
 #[derive(Debug, Clone)]
@@ -1639,7 +1643,67 @@ fn infer_attached_subject_filter_from_condition_expr(
         | Some(crate::ConditionExpr::EnchantedPermanentIsVehicle) => {
             Some(ObjectFilter::tagged("enchanted"))
         }
+        Some(crate::ConditionExpr::AttachmentCount {
+            host: ironsmith_core::AttachmentConditionHost::Matching(filter),
+            ..
+        }) if attachment_condition_host_has_tag(filter, &["enchanted", "equipped"]) => {
+            Some(filter.clone())
+        }
         _ => None,
+    }
+}
+
+fn attachment_condition_host_has_tag(filter: &ObjectFilter, tags: &[&str]) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && tags.contains(&constraint.tag.as_str())
+    })
+}
+
+fn bind_attachment_condition_to_subject(
+    condition: crate::ConditionExpr,
+    subject: &AnthemSubjectAst,
+) -> crate::ConditionExpr {
+    match condition {
+        crate::ConditionExpr::AttachmentCount {
+            attachment,
+            host: ironsmith_core::AttachmentConditionHost::Matching(filter),
+            comparison,
+            display,
+        } => {
+            let refers_to_it = attachment_condition_host_has_tag(&filter, &["__it__"]);
+            let refers_to_attached_object =
+                attachment_condition_host_has_tag(&filter, &["enchanted", "equipped"]);
+            let host = if refers_to_it && matches!(subject, AnthemSubjectAst::Source) {
+                ironsmith_core::AttachmentConditionHost::Source
+            } else if (refers_to_it || refers_to_attached_object)
+                && attached_object_anthem_subject_filter(subject).is_some()
+            {
+                ironsmith_core::AttachmentConditionHost::SourceAttachedObject
+            } else {
+                ironsmith_core::AttachmentConditionHost::Matching(filter)
+            };
+            crate::ConditionExpr::AttachmentCount {
+                attachment,
+                host,
+                comparison,
+                display,
+            }
+        }
+        crate::ConditionExpr::And(left, right) => crate::ConditionExpr::And(
+            Box::new(bind_attachment_condition_to_subject(*left, subject)),
+            Box::new(bind_attachment_condition_to_subject(*right, subject)),
+        ),
+        crate::ConditionExpr::Or(left, right) => crate::ConditionExpr::Or(
+            Box::new(bind_attachment_condition_to_subject(*left, subject)),
+            Box::new(bind_attachment_condition_to_subject(*right, subject)),
+        ),
+        crate::ConditionExpr::Not(inner) => crate::ConditionExpr::Not(Box::new(
+            bind_attachment_condition_to_subject(*inner, subject),
+        )),
+        other => other,
     }
 }
 
@@ -1690,6 +1754,13 @@ pub(crate) fn parse_static_condition_clause(
     }
     if let Some(condition) = parse_life_total_static_condition(&tokens) {
         return Ok(condition);
+    }
+    if let Some(filter) =
+        crate::runtime_backend::grammar::filters::parse_source_keyword_condition_filter_lexed(
+            &tokens,
+        )
+    {
+        return Ok(crate::ConditionExpr::SourceMatches(filter));
     }
 
     if let Some(kind) = anthem_grant_grammar::parse_fixed_static_condition_kind(&tokens) {
@@ -1801,12 +1872,12 @@ pub(crate) fn parse_static_condition_clause(
             &tokens,
         )
     {
-        return Ok(
-            crate::ConditionExpr::MatchingObjectAttachedToMatchingObject {
-                attachment: attachment.attachment_filter,
-                attached_to: attachment.attached_to_filter,
-            },
-        );
+        return Ok(crate::ConditionExpr::AttachmentCount {
+            attachment: attachment.attachment_filter,
+            host: ironsmith_core::AttachmentConditionHost::Matching(attachment.attached_to_filter),
+            comparison: attachment.comparison,
+            display: attachment.display,
+        });
     }
 
     if let Some(condition) = parse_devotion_static_condition(&tokens)? {
@@ -2531,11 +2602,18 @@ pub(crate) fn parse_anthem_clause(
         })?;
     let modifier_token = modifier_shape.modifier_word;
     let tail_tokens = trim_edge_punctuation(modifier_shape.tail_tokens);
+    let trailing_condition =
+        anthem_grant_grammar::split_trailing_as_long_as_clause(&tail_tokens);
+    let anthem_tail_tokens = trailing_condition
+        .map(|split| split.keyword_tokens)
+        .unwrap_or(&tail_tokens);
     let mut explicit_values = None;
     let (raw_power, raw_toughness) = match parse_pt_modifier_values(modifier_token) {
         Ok(values) => values,
         Err(_) => {
-            if let Some(values) = parse_dynamic_xy_anthem_values(modifier_token, &tail_tokens) {
+            if let Some(values) =
+                parse_dynamic_xy_anthem_values(modifier_token, anthem_tail_tokens)
+            {
                 explicit_values = Some(values);
                 (Value::Fixed(0), Value::Fixed(0))
             } else {
@@ -2551,8 +2629,13 @@ pub(crate) fn parse_anthem_clause(
     let mut count_uses_where_x = false;
     let mut suffix_condition: Option<crate::ConditionExpr> = None;
     let mut suffix_attached_subject: Option<ObjectFilter> = None;
-    if explicit_values.is_none() && !tail_tokens.is_empty() {
-        match anthem_grant_grammar::parse_tail_shape(&tail_tokens) {
+    if let Some(split) = trailing_condition {
+        suffix_attached_subject =
+            infer_attached_subject_filter_from_condition_tokens(split.condition_tokens);
+        suffix_condition = Some(parse_static_condition_clause(split.condition_tokens)?);
+    }
+    if explicit_values.is_none() && !anthem_tail_tokens.is_empty() {
+        match anthem_grant_grammar::parse_tail_shape(anthem_tail_tokens) {
             Some(anthem_grant_grammar::AnthemTailShape::ForEach(tail)) => {
                 if anthem_for_each_prefers_specialized_parser(tail) {
                     scale = Some(parse_anthem_for_each_expression(tail)?);
@@ -2629,7 +2712,7 @@ pub(crate) fn parse_anthem_clause(
         }
     }
 
-    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
+    let tail_words = crate::runtime_backend::token_word_refs(anthem_tail_tokens);
     let counts_cards_in_affected_controller_hand = tail_words.windows(3).any(|words| {
         matches!(
             words,
@@ -2660,7 +2743,8 @@ pub(crate) fn parse_anthem_clause(
         }
         (Some(condition), None) | (None, Some(condition)) => Some(condition),
         (None, None) => None,
-    };
+    }
+    .map(|condition| bind_attachment_condition_to_subject(condition, &subject));
     bind_unique_count_condition_anthem_subject(&mut subject, condition.as_ref());
 
     let has_dynamic_component = matches!(raw_power, Value::X | Value::XTimes(_))
@@ -2859,7 +2943,7 @@ fn build_anthem(clause: &ParsedAnthemClause) -> Anthem {
     anthem
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct TypeColorAdditionClause {
     pub(crate) added_colors: ColorSet,
     pub(crate) set_colors: ColorSet,
@@ -3160,7 +3244,7 @@ pub(crate) fn parse_carried_subject_type_addition_line(
         set_quantifier_surface: None,
         count_uses_where_x: false,
     };
-    push_type_color_additions_for_anthem_subject(&mut result, &clause, additions)?;
+    push_type_color_additions_for_anthem_subject(&mut result, &clause, additions);
     Ok(Some(result))
 }
 
@@ -3184,6 +3268,15 @@ fn fixed_anthem_clause(
 mod dynamic_anthem_tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
+
+    fn parse_clause(text: &str) -> ParsedAnthemClause {
+        let tokens = lex_line(text, 0).expect("anthem fixture should lex");
+        let get_idx = tokens
+            .iter()
+            .position(|token| token.is_word("gets"))
+            .expect("gets token");
+        parse_anthem_clause(&tokens, get_idx, tokens.len()).expect("anthem fixture should parse")
+    }
 
     #[test]
     fn party_scaled_anthem_keeps_typed_party_value() {
@@ -3279,6 +3372,76 @@ mod dynamic_anthem_tests {
         assert_eq!(
             filter.owner,
             Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        );
+    }
+
+    #[test]
+    fn for_each_anthem_keeps_trailing_condition_out_of_count_filter() {
+        let clause = parse_clause(
+            "This creature gets +1/+1 for each black permanent your opponents control as long as there are seven or more cards in your graveyard.",
+        );
+
+        assert!(matches!(clause.subject, AnthemSubjectAst::Source));
+        assert_eq!(clause.power, clause.toughness);
+        let AnthemValue::PerCount {
+            multiplier: 1,
+            count: AnthemCountExpression::MatchingFilter(filter),
+        } = &clause.power
+        else {
+            panic!("expected a matching-filter anthem count, got {:?}", clause.power);
+        };
+        assert!(matches!(filter.zone, None | Some(Zone::Battlefield)));
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+        assert_eq!(filter.owner, None);
+        assert!(
+            filter
+                .colors
+                .is_some_and(|colors| colors.contains(Color::Black))
+        );
+        assert!(matches!(
+            clause.condition,
+            Some(crate::ConditionExpr::ValueComparison {
+                left: Value::CardsInGraveyard(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(7),
+            })
+        ));
+
+        let plain = parse_clause(
+            "This creature gets +1/+1 for each black permanent your opponents control.",
+        );
+        assert!(plain.condition.is_none());
+        assert!(matches!(plain.power, AnthemValue::PerCount { .. }));
+
+        let conditioned = parse_clause(
+            "This creature gets +1/+1 as long as there are seven or more cards in your graveyard.",
+        );
+        assert_eq!(conditioned.power, AnthemValue::Fixed(1));
+        assert_eq!(conditioned.toughness, AnthemValue::Fixed(1));
+        assert!(conditioned.condition.is_some());
+    }
+
+    #[test]
+    fn source_keyword_grant_keeps_source_keyword_trailing_condition() {
+        let tokens = lex_line(
+            "This creature has indestructible as long as it has defender.",
+            0,
+        )
+        .expect("conditional keyword fixture should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("conditional keyword fixture should parse")
+            .expect("conditional keyword parser should match");
+
+        let [StaticAbilityAst::ConditionalKeywordAction {
+            action: KeywordAction::Indestructible,
+            condition: crate::ConditionExpr::SourceMatches(filter),
+        }] = abilities.as_slice()
+        else {
+            panic!("unexpected conditional keyword AST: {abilities:#?}");
+        };
+        assert_eq!(
+            filter.static_abilities,
+            vec![crate::static_abilities::StaticAbilityId::Defender]
         );
     }
 }

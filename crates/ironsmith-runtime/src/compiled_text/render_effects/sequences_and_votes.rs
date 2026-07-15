@@ -282,6 +282,9 @@ pub(super) fn discard_sequence_count(discard: &crate::effects::DiscardEffect) ->
 fn prior_count_draw_phrase(value: &Value, id: crate::effect::EffectId) -> Option<String> {
     let offset = effect_count_reference_offset(value, Some(id))
         .or_else(|| is_effect_count_reference(value, Some(id)).then_some(0))?;
+    if offset == 0 && value.has_surface_hint(ValueSurfaceHint::AsManyCardsThisWay) {
+        return Some("as many cards as they discarded this way".to_string());
+    }
     Some(match offset {
         0 => "that many cards".to_string(),
         1 => "that many cards plus one".to_string(),
@@ -350,7 +353,10 @@ fn describe_discard_draw_pair(first: &Effect, second: &Effect) -> Option<String>
     if discard.player != draw.player {
         return None;
     }
-    let draw_count = prior_count_draw_phrase(&draw.count, with_id.id)?;
+    let draw_count = prior_count_draw_phrase(&draw.count, with_id.id).or_else(|| {
+        matches!(discard.count.unhinted(), Value::Fixed(_))
+            .then(|| describe_card_count(&draw.count))
+    })?;
     let discard_count = discard_sequence_count(discard);
     let random = if discard.random { " at random" } else { "" };
     let subject = discard_sequence_subject(&discard.player);
@@ -531,6 +537,22 @@ pub(super) fn describe_id_backed_prior_action_count_consumer(effects: &[Effect])
     {
         let multiplier = exact_prior_effect_count_multiplier(&draw.count, with_id.id)?;
         let player = describe_player_filter(&draw.player);
+        if draw
+            .count
+            .has_surface_hint(ValueSurfaceHint::AsManyCardsThisWay)
+            && multiplier == 1
+            && with_id
+                .effect
+                .downcast_ref::<crate::effects::DiscardEffect>()
+                .is_some_and(|discard| discard.player == draw.player)
+        {
+            let producer = describe_effect(producer_effect);
+            let producer = producer.trim().trim_end_matches('.');
+            let verb = player_verb(&player, "draw", "draws");
+            return (!producer.is_empty()).then(|| {
+                format!("{producer}, then {verb} as many cards as they discarded this way")
+            });
+        }
         let cards = if multiplier == 1 {
             "a card".to_string()
         } else {
@@ -774,6 +796,9 @@ pub(super) fn describe_for_players_may_action(
     if let Some(rest) = action.strip_prefix("you ") {
         action = rest.to_string();
     }
+    if let Some(rest) = action.strip_prefix("they ") {
+        action = rest.to_string();
+    }
     let action = normalize_you_verb_phrase(&action);
     Some(lowercase_may_clause(&action))
 }
@@ -801,11 +826,46 @@ pub(super) fn describe_sequential_any_player_may_action(
 pub(super) fn describe_for_players_may_happened_sequence(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    if for_players.starting_with_controller || for_players.effects.len() != 2 {
+    if let Some(compact) = describe_for_players_may_copy_spell_and_choose_new_targets(for_players) {
+        return Some(compact);
+    }
+
+    if for_players.starting_with_controller {
         return None;
     }
-    let with_id = for_players.effects[0].downcast_ref::<crate::effects::WithIdEffect>()?;
-    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+
+    // The correlated result may live outside the optional action (the older
+    // `[WithId(May), If]` lowering) or inside the same per-player optional
+    // block (`May([WithId(Action), If])`). Both represent the same rules:
+    // only players who performed the optional action receive the follow-up.
+    let (with_id, may, if_effect, action_effects): (
+        &crate::effects::WithIdEffect,
+        &crate::effects::MayEffect,
+        &crate::effects::IfEffect,
+        &[Effect],
+    ) = match for_players.effects.as_slice() {
+        [with_id_effect, if_effect] => {
+            let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+            let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+            (with_id, may, if_effect, &may.effects)
+        }
+        [may_effect] => {
+            let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+            let [with_id_effect, if_effect] = may.effects.as_slice() else {
+                return None;
+            };
+            let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+            (
+                with_id,
+                may,
+                if_effect,
+                std::slice::from_ref(&with_id.effect),
+            )
+        }
+        _ => return None,
+    };
     if may
         .decider
         .as_ref()
@@ -813,7 +873,6 @@ pub(super) fn describe_for_players_may_happened_sequence(
     {
         return None;
     }
-    let if_effect = for_players.effects[1].downcast_ref::<crate::effects::IfEffect>()?;
     if if_effect.condition != with_id.id
         || if_effect.predicate != EffectPredicate::Happened
         || !if_effect.else_.is_empty()
@@ -824,11 +883,67 @@ pub(super) fn describe_for_players_may_happened_sequence(
     let subject = describe_for_players_subject(&for_players.filter)?.to_string();
     let each_player =
         strip_leading_article(&describe_for_each_player_filter(&for_players.filter)).to_string();
-    let action = describe_for_players_may_action(&for_players.filter, &may.effects)?;
+    let action = describe_for_players_may_action(&for_players.filter, action_effects)?;
     let did_action = may_action_this_way_phrase(&action)?;
     let followup = describe_for_players_happened_followup(&if_effect.then)?;
     Some(format!(
         "{subject} may {action}, then each {each_player} who {did_action} {followup}"
+    ))
+}
+
+fn wrapped_with_id_effect(effect: &Effect) -> Option<&crate::effects::WithIdEffect> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return Some(with_id);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return wrapped_with_id_effect(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return wrapped_with_id_effect(&tag_all.effect);
+    }
+    None
+}
+
+/// Keep a copied spell and the optional retargeting of that same copy in one
+/// per-player action. The effect ID is the semantic link; the presentation is
+/// therefore safe for any spell-copy effect with this lowering shape.
+fn describe_for_players_may_copy_spell_and_choose_new_targets(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let [may_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    let [copy_effect, choose_targets_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let with_id = wrapped_with_id_effect(copy_effect)?;
+    let copy = with_id
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    let choose_targets =
+        choose_targets_effect.downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
+    if copy.count != Value::Fixed(1)
+        || !copy.removed_supertypes.is_empty()
+        || copy.copier != PlayerFilter::IteratedPlayer
+        || choose_targets.from_effect != with_id.id
+        || !choose_targets.may
+        || choose_targets.chooser != Some(PlayerFilter::IteratedPlayer)
+        || choose_targets.single_target_surface
+    {
+        return None;
+    }
+
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let copied_spell = describe_stack_object_copy_target(&copy.target);
+    Some(format!(
+        "{subject} may copy {copied_spell} and may choose new targets for the copy they control"
     ))
 }
 
@@ -1551,10 +1666,11 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
         return None;
     };
     if vote.secret
+        || !vote.starting_with_controller
         || vote.controller_extra_votes != 0
         || vote.controller_optional_extra_votes != 0
         || options.len() < 2
-        || repeat_effects.len() != options.len()
+        || repeat_effects.len() < options.len()
         || options
             .iter()
             .any(|option| !option.effects_per_vote.is_empty())
@@ -1563,6 +1679,7 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
     }
 
     let mut clauses = Vec::new();
+    let (repeat_effects, trailing_effects) = repeat_effects.split_at(options.len());
     for (option, repeat_effect) in options.iter().zip(repeat_effects.iter()) {
         let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
         let Value::VoteCount(repeat_option) = &repeat.count else {
@@ -1603,6 +1720,79 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
         text.push_str(". ");
         text.push_str(&clauses.join(". "));
     }
+    if !trailing_effects.is_empty() {
+        let trailing = describe_effect_list(trailing_effects);
+        if !trailing.trim().is_empty() {
+            text.push_str(". ");
+            text.push_str(&capitalize_first(trailing.trim().trim_end_matches('.')));
+        }
+    }
+    Some(text)
+}
+
+/// Some per-vote clauses need the current voter and are embedded directly in
+/// the vote effect, while voter-independent clauses are lowered as explicit
+/// `RepeatEffectsEffect`s. Recombine those two executable representations so a
+/// single council's-dilemma sentence does not lose either option.
+pub(super) fn describe_hybrid_named_vote_per_vote_sequence(effects: &[Effect]) -> Option<String> {
+    let [vote_effect, followups @ ..] = effects else {
+        return None;
+    };
+    let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+    let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice else {
+        return None;
+    };
+    if vote.secret
+        || !vote.starting_with_controller
+        || vote.controller_extra_votes != 0
+        || vote.controller_optional_extra_votes != 0
+        || options.len() < 2
+        || !options
+            .iter()
+            .any(|option| !option.effects_per_vote.is_empty())
+        || !options
+            .iter()
+            .any(|option| option.effects_per_vote.is_empty())
+    {
+        return None;
+    }
+
+    let mut merged = vote.clone();
+    let crate::effects::VoteChoice::NamedOptions(merged_options) = &mut merged.choice else {
+        unreachable!("choice shape checked above");
+    };
+    let mut consumed_followups = 0usize;
+    for followup in followups {
+        let Some(repeat) = followup.downcast_ref::<crate::effects::RepeatEffectsEffect>() else {
+            break;
+        };
+        let Value::VoteCount(option_name) = &repeat.count else {
+            break;
+        };
+        let option = merged_options
+            .iter_mut()
+            .find(|option| option.name.eq_ignore_ascii_case(option_name))?;
+        if !option.effects_per_vote.is_empty() {
+            return None;
+        }
+        option.effects_per_vote = repeat.effects.clone();
+        consumed_followups += 1;
+    }
+    if merged_options
+        .iter()
+        .any(|option| option.effects_per_vote.is_empty())
+    {
+        return None;
+    }
+
+    let mut text = describe_named_vote_per_vote_effects(&merged)?;
+    if consumed_followups < followups.len() {
+        let trailing = describe_effect_list(&followups[consumed_followups..]);
+        if !trailing.trim().is_empty() {
+            text.push_str(". ");
+            text.push_str(&capitalize_first(trailing.trim().trim_end_matches('.')));
+        }
+    }
     Some(text)
 }
 
@@ -1613,6 +1803,7 @@ pub(super) fn describe_named_vote_per_vote_effects(
         return None;
     };
     if vote.secret
+        || !vote.starting_with_controller
         || vote.controller_extra_votes != 0
         || vote.controller_optional_extra_votes != 0
         || options.len() < 2
@@ -1629,6 +1820,47 @@ pub(super) fn describe_named_vote_per_vote_effects(
         .collect::<Vec<_>>();
     let mut clauses = Vec::new();
     for option in options {
+        if let [effect] = option.effects_per_vote.as_slice()
+            && let Some(extra_turn) =
+                unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::ExtraTurnEffect>()
+            && extra_turn.player == PlayerFilter::You
+        {
+            clauses.push(format!(
+                "For each {} vote, take an extra turn after this one",
+                option.name.to_ascii_lowercase()
+            ));
+            continue;
+        }
+        if let [choose_effect, control_effect] = option.effects_per_vote.as_slice()
+            && let Some(choose) = unwrap_basic_tag_wrappers(choose_effect)
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(control) = unwrap_basic_tag_wrappers(control_effect)
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && choose.chooser == PlayerFilter::You
+            && choose.count.min == 1
+            && choose.count.max == Some(1)
+            && choose.count_value.is_none()
+            && choose.filter.owner == Some(PlayerFilter::IteratedPlayer)
+            && is_permanent_filter_in_zone(&choose.filter, Zone::Battlefield)
+            && control.until == Until::Forever
+            && control.condition.is_none()
+            && control.modification.is_none()
+            && control.additional_modifications.is_empty()
+            && matches!(
+                control.runtime_modifications.as_slice(),
+                [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+            )
+            && control
+                .target_spec
+                .as_ref()
+                .is_some_and(|target| matches!(target.base(), ChooseSpec::Iterated))
+        {
+            clauses.push(format!(
+                "For each {} vote, choose a permanent owned by the voter and gain control of it",
+                option.name.to_ascii_lowercase()
+            ));
+            continue;
+        }
         let body = describe_effect_list(&option.effects_per_vote)
             .trim()
             .trim_end_matches('.')
@@ -1647,7 +1879,35 @@ pub(super) fn describe_named_vote_per_vote_effects(
     Some(format!(
         "Council's dilemma — Starting with you, each player votes for {}. {}",
         join_with_or(&option_names),
-        capitalize_first(&combined)
+        if clauses.iter().all(|clause| clause.starts_with("For each ")) {
+            clauses.join(". ")
+        } else {
+            capitalize_first(&combined)
+        }
+    ))
+}
+
+fn council_conditional_body(effects: &[Effect]) -> Option<String> {
+    let [sacrifice_effect, destroy_effect] = effects else {
+        return None;
+    };
+    let sacrifice = unwrap_basic_tag_wrappers(sacrifice_effect)
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target.base(), ChooseSpec::Source) {
+        return None;
+    }
+    unwrap_basic_tag_wrappers(destroy_effect).downcast_ref::<crate::effects::DestroyEffect>()?;
+    let sacrifice_text = describe_effect(sacrifice_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let destroy_text = describe_effect(destroy_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!(
+        "{sacrifice_text} and {}",
+        lowercase_first(&destroy_text)
     ))
 }
 
@@ -1691,6 +1951,122 @@ pub(super) fn describe_secret_named_vote_intervening_followup(effect: &Effect) -
         return Some("Then choose an opponent at random".to_string());
     }
     None
+}
+
+/// Secret votes can execute a voter-relative choice immediately, then apply
+/// linked set effects after every ballot has been collected. Reconstruct that
+/// relationship only when the chosen tag, gained-control tag, and granted
+/// ability target all agree.
+pub(super) fn describe_secret_vote_voter_choice_control_sequence(
+    effects: &[Effect],
+) -> Option<String> {
+    let [vote_effect, control_effect, grant_effect, repeat_effect] = effects else {
+        return None;
+    };
+    let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+    let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice else {
+        return None;
+    };
+    if !vote.secret
+        || vote.controller_extra_votes != 0
+        || vote.controller_optional_extra_votes != 0
+        || options.len() != 2
+    {
+        return None;
+    }
+    let choice_option = options
+        .iter()
+        .find(|option| !option.effects_per_vote.is_empty())?;
+    let followup_option = options
+        .iter()
+        .find(|option| option.effects_per_vote.is_empty())?;
+    let [choice_effect] = choice_option.effects_per_vote.as_slice() else {
+        return None;
+    };
+    let choose = unwrap_basic_tag_wrappers(choice_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.count_value.is_some()
+        || choose.filter.zone != Some(Zone::Battlefield)
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || choose.filter.card_types.as_slice() != [CardType::Creature]
+    {
+        return None;
+    }
+
+    let control_tag = direct_wrapped_effect_tag(control_effect)?;
+    let control = unwrap_basic_tag_wrappers(control_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if control.until != Until::Forever
+        || control.condition.is_some()
+        || control.modification.is_some()
+        || !control.additional_modifications.is_empty()
+        || !matches!(
+            control.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+        )
+        || !control
+            .target_spec
+            .as_ref()
+            .is_some_and(|target| choose_spec_references_tagged_object(target, &choose.tag))
+    {
+        return None;
+    }
+
+    let grant = unwrap_basic_tag_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if grant.until != Until::Forever
+        || grant.condition.is_some()
+        || !grant.additional_modifications.is_empty()
+        || !grant.runtime_modifications.is_empty()
+        || !grant
+            .target_spec
+            .as_ref()
+            .is_some_and(|target| choose_spec_references_tagged_object(target, control_tag))
+    {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &grant.modification
+    else {
+        return None;
+    };
+    if !matches!(
+        &ability.kind,
+        crate::ability::AbilityKind::Static(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::CantAttackItsOwner
+    ) {
+        return None;
+    }
+
+    let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
+    let Value::VoteCount(repeat_option) = &repeat.count else {
+        return None;
+    };
+    if !repeat_option.eq_ignore_ascii_case(&followup_option.name) {
+        return None;
+    }
+    let repeat_body = describe_effect_list(&repeat.effects)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if repeat_body.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "Secret council — Each player secretly votes for {}, then those votes are revealed. For each {} vote, the voter chooses a creature they control. You gain control of each creature chosen this way, and they gain \"This creature can't attack its owner.\" Then for each {} vote, {}",
+        join_with_or(
+            &options
+                .iter()
+                .map(|option| option.name.to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        ),
+        choice_option.name.to_ascii_lowercase(),
+        followup_option.name.to_ascii_lowercase(),
+        lowercase_first(&repeat_body)
+    ))
 }
 
 pub(super) fn describe_secret_named_vote_followup_sequence(effects: &[Effect]) -> Option<String> {
@@ -1771,6 +2147,7 @@ pub(super) fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Op
         return None;
     };
     if vote.secret
+        || !vote.starting_with_controller
         || vote.controller_extra_votes != 0
         || vote.controller_optional_extra_votes != 0
         || options.len() != 2
@@ -1835,6 +2212,7 @@ pub(super) fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> O
         return None;
     };
     if vote.secret
+        || !vote.starting_with_controller
         || vote.controller_extra_votes != 0
         || vote.controller_optional_extra_votes != 0
         || options.len() < 2
@@ -1866,7 +2244,8 @@ pub(super) fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> O
         {
             return None;
         }
-        let body = describe_effect_clause_list(&conditional.if_true)
+        let body = council_conditional_body(&conditional.if_true)
+            .or_else(|| describe_effect_clause_list(&conditional.if_true))
             .unwrap_or_else(|| describe_effect_list(&conditional.if_true))
             .trim()
             .trim_end_matches('.')
@@ -1887,6 +2266,139 @@ pub(super) fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> O
     );
     text.push_str(". ");
     text.push_str(&clauses.join(". "));
+    Some(text)
+}
+
+/// A named vote can conditionally move the cards linked to the source that
+/// exiled them. Preserve the vote/result sentence boundary without inventing
+/// an ability word: not every rules object using this structure is a
+/// will-of-the-council ability.
+pub(super) fn describe_source_exiled_named_vote_conditional_sequence(
+    effects: &[Effect],
+) -> Option<String> {
+    let [vote_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+    let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice else {
+        return None;
+    };
+    if vote.secret
+        || !vote.starting_with_controller
+        || vote.controller_extra_votes != 0
+        || vote.controller_optional_extra_votes != 0
+        || options.len() < 2
+        || !options
+            .iter()
+            .all(|option| option.effects_per_vote.is_empty())
+    {
+        return None;
+    }
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let condition_option = match &conditional.condition {
+        Condition::VoteOptionGetsMoreVotes(option)
+        | Condition::VoteOptionGetsMoreVotesOrTied(option) => option,
+        _ => return None,
+    };
+    let option_names = options
+        .iter()
+        .map(|option| option.name.to_string())
+        .collect::<Vec<_>>();
+    if !option_names
+        .iter()
+        .any(|option| option.eq_ignore_ascii_case(condition_option))
+    {
+        return None;
+    }
+
+    let [move_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let targets_source_exiled_cards = match move_to_zone.target.base() {
+        ChooseSpec::All(filter) | ChooseSpec::Object(filter) => {
+            is_source_exiled_cards_filter(filter)
+        }
+        ChooseSpec::Tagged(tag) => tag.as_str() == crate::tag::SOURCE_EXILED_TAG,
+        _ => false,
+    };
+    let surface = move_to_zone.exiled_with_source_surface.as_ref()?;
+    if move_to_zone.zone != Zone::Library
+        || move_to_zone.to_top
+        || move_to_zone.library_order.is_some()
+        || !targets_source_exiled_cards
+        || surface.subject != ironsmith_core::ExiledWithSourceSubjectSurface::OwnerOfEachCard
+        || surface.destination != ironsmith_core::ExiledWithSourceDestinationSurface::TheirOwner
+        || !matches!(
+            surface.source,
+            ironsmith_core::ExiledWithSourceReferenceSurface::Source(_)
+        )
+    {
+        return None;
+    }
+
+    let action = describe_effect(move_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!(
+        "Starting with you, each player votes for {}. If {}, {}",
+        join_with_or(&option_names),
+        describe_condition(&conditional.condition),
+        lowercase_first(&action),
+    ))
+}
+
+/// A declared spell target can precede a named vote whose result branches act
+/// on that same spell. Preserve the declaration as its own sentence and use
+/// the definite reference in every structurally linked vote branch.
+pub(super) fn describe_targeted_named_vote_conditional_sequence(
+    effects: &[Effect],
+) -> Option<String> {
+    let [target_effect, vote_effect, rest @ ..] = effects else {
+        return None;
+    };
+    let (_, target_only) = tagged_target_only_effect(target_effect)?;
+    if !matches!(target_only.target, ChooseSpec::Target(_)) {
+        return None;
+    }
+    let conditional_count = rest
+        .iter()
+        .take_while(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .is_some()
+        })
+        .count();
+    if conditional_count == 0 {
+        return None;
+    }
+    let conditionals = &rest[..conditional_count];
+    let mut vote_refs = Vec::with_capacity(conditional_count + 1);
+    vote_refs.push(vote_effect);
+    vote_refs.extend(conditionals.iter());
+    let vote_text =
+        describe_named_vote_conditional_sequence(&vote_refs)?.replace("target spell", "the spell");
+    let target_text = describe_effect(target_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let mut text = format!("{target_text}. {vote_text}");
+    let trailing = &rest[conditional_count..];
+    if !trailing.is_empty() {
+        let trailing_text = describe_effect_list(trailing);
+        if !trailing_text.trim().is_empty() {
+            text.push_str(". ");
+            text.push_str(&capitalize_first(
+                trailing_text.trim().trim_end_matches('.'),
+            ));
+        }
+    }
     Some(text)
 }
 
@@ -2508,7 +3020,7 @@ pub(super) fn may_causative_clause(inner: &str) -> Option<String> {
     let lower = trimmed.to_ascii_lowercase();
     if ![
         "a ", "an ", "all ", "another ", "each ", "it ", "other ", "that ", "the ", "those ",
-        "target ",
+        "target ", "two ",
     ]
     .iter()
     .any(|prefix| lower.starts_with(prefix))
@@ -2537,6 +3049,7 @@ pub(super) fn may_causative_clause(inner: &str) -> Option<String> {
         (" reveals ", "reveal"),
         (" fights ", "fight"),
         (" deals ", "deal"),
+        (" exchange ", "exchange"),
     ];
     replacements.iter().find_map(|(from, to)| {
         lower.find(from).and_then(|idx| {

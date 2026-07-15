@@ -84,6 +84,12 @@ pub(crate) enum ThisCostReductionRemainder {
     Other,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActivatedAbilitiesReductionRemainder {
+    Unbounded,
+    MinimumOneMana,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ThisAbilityReductionRemainder<'a> {
     Unconditional,
@@ -467,12 +473,25 @@ pub(crate) fn parse_this_cost_reduction_remainder_tokens(
 
 pub(crate) fn parse_activated_abilities_reduction_remainder_tokens(
     tokens: &[OwnedLexToken],
-) -> Option<()> {
+) -> Option<ActivatedAbilitiesReductionRemainder> {
     let words = parser_token_word_refs(tokens);
     let mut input: WordSliceInput<'_> = &words;
     word_phrase(&["less", "to", "activate"])
         .parse_next(&mut input)
-        .ok()
+        .ok()?;
+
+    let has_minimum_one_mana = word_phrase_present(
+        &words,
+        &[
+            "this", "effect", "cant", "reduce", "the", "mana", "in", "that", "cost", "to", "less",
+            "than", "one", "mana",
+        ],
+    );
+    Some(if has_minimum_one_mana {
+        ActivatedAbilitiesReductionRemainder::MinimumOneMana
+    } else {
+        ActivatedAbilitiesReductionRemainder::Unbounded
+    })
 }
 
 pub(crate) fn parse_this_ability_reduction_remainder_tokens(
@@ -738,6 +757,25 @@ mod tests {
             parse_this_ability_reduction_remainder_tokens(tail),
             ThisAbilityReductionRemainder::Targets { .. }
         ));
+    }
+
+    #[test]
+    fn distinguishes_explicit_minimum_one_mana_cost_reduction() {
+        let unbounded = lex_line("less to activate.", 0).unwrap();
+        assert_eq!(
+            parse_activated_abilities_reduction_remainder_tokens(&unbounded),
+            Some(ActivatedAbilitiesReductionRemainder::Unbounded)
+        );
+
+        let minimum_one = lex_line(
+            "less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_activated_abilities_reduction_remainder_tokens(&minimum_one),
+            Some(ActivatedAbilitiesReductionRemainder::MinimumOneMana)
+        );
     }
 
     #[test]

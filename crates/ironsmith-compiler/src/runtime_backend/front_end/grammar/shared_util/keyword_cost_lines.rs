@@ -215,6 +215,7 @@ pub(crate) fn parse_escape(
     Ok(Some(AlternativeCastingMethod::Escape {
         cost: Some(mana_cost),
         exile_count: count,
+        additional_cost: TotalCost::from_cost(Cost::exile_from_graveyard(count, Vec::new())),
     }))
 }
 
@@ -222,7 +223,9 @@ pub(crate) fn parse_jump_start(tokens: &[OwnedLexToken]) -> Option<AlternativeCa
     let words = TokenWordView::new(tokens).word_refs();
     (permission_shapes::prefix_words(&words, &["jumpstart"])
         || permission_shapes::prefix_words(&words, &["jump", "start"]))
-    .then_some(AlternativeCastingMethod::JumpStart)
+    .then(|| AlternativeCastingMethod::JumpStart {
+        additional_cost: TotalCost::from_cost(Cost::discard(1, None)),
+    })
 }
 
 pub(crate) fn parse_bestow(

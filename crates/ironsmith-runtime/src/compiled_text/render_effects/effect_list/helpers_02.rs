@@ -139,7 +139,73 @@ pub(crate) fn choose_targets_schedule_trigger(
         !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag == choose.tag)
     });
+    // A destination-owner condition belongs to the watched zone change
+    // ("is put into your graveyard"), not to the target declaration made
+    // while the delayed trigger is created.
+    if choose.filter.owner.is_none() && stripped.owner == Some(crate::target::PlayerFilter::You) {
+        stripped.owner = None;
+    }
     stripped == choose.filter
+}
+
+pub(crate) fn describe_may_choose_graveyard_then_return(effects: &[Effect]) -> Option<String> {
+    let [may_effect, result_effect] = effects else {
+        return None;
+    };
+    let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.as_ref() != Some(&PlayerFilter::You)
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+    {
+        return None;
+    }
+    let [choose_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || choose.filter.zone != Some(Zone::Graveyard)
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || choose.is_search
+        || choose.top_only
+    {
+        return None;
+    }
+
+    let if_effect = result_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+    let [return_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let returned = unwrap_basic_tag_wrappers(return_effect)
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+    if returned.as_aura.is_some()
+        || !matches!(returned.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let mut selection = choose.filter.clone();
+    selection.zone = None;
+    selection.owner = None;
+    selection.tagged_constraints.clear();
+    let selection = with_indefinite_article(&selection.description());
+    let return_clause = append_battlefield_entry_counter_surface(
+        format!(
+            "return it to the battlefield{}",
+            if returned.tapped { " tapped" } else { "" }
+        ),
+        &returned.enters_with_counters,
+    );
+    Some(format!(
+        "You may choose {selection} in your graveyard. If you do, {return_clause}"
+    ))
 }
 
 pub(crate) fn consult_reveal_put_battlefield_then_shuffle_effects(
@@ -632,6 +698,63 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
             "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, then {player} {put_verb} {matched_reference} into their hand and {put_verb} the rest of the revealed cards on the bottom of {library_owner} library{order_text}"
         ))
     }
+}
+
+/// Render a reveal-until partition whose matching cards move in a separately
+/// authored instruction before the revealed remainder goes to the library
+/// bottom. The shared consult tags, rather than a card-specific surface, prove
+/// that the three effects form one partition while preserving the sentence
+/// boundary before its disposition instructions.
+pub(crate) fn render_consult_reveal_move_matches_then_bottom(effects: &[Effect]) -> Option<String> {
+    let [consult_effect, move_effect, bottom_effect] = effects else {
+        return None;
+    };
+
+    let consult = unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
+        return None;
+    }
+
+    let move_to_zone =
+        unwrap_render_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.to_top || move_to_zone.zone == Zone::Battlefield {
+        return None;
+    }
+    let moves_consult_matches = match move_to_zone.target.base() {
+        ChooseSpec::Tagged(tag) => tag == &consult.match_tag,
+        ChooseSpec::All(filter) | ChooseSpec::Object(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == consult.match_tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+        }
+        _ => false,
+    };
+    if !moves_consult_matches {
+        return None;
+    }
+
+    let bottom = unwrap_render_wrappers(bottom_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if bottom.tag != consult.all_tag || bottom.keep_tagged.as_ref() != Some(&consult.match_tag) {
+        return None;
+    }
+
+    let consult_text =
+        capitalize_first(describe_effect(consult_effect).trim().trim_end_matches('.'));
+    let move_text = capitalize_first(describe_effect(move_effect).trim().trim_end_matches('.'));
+    let rendered_bottom = describe_effect(bottom_effect);
+    let bottom_text = rendered_bottom
+        .trim()
+        .trim_end_matches('.')
+        .strip_prefix("Put the rest of the revealed cards")
+        .map(|suffix| format!("put the rest{suffix}"))
+        .unwrap_or_else(|| lowercase_first(rendered_bottom.trim().trim_end_matches('.')));
+
+    Some(cleanup_decompiled_text(&format!(
+        "{consult_text}. {move_text}, then {bottom_text}"
+    )))
 }
 
 pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> Option<String> {

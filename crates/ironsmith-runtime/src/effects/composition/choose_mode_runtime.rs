@@ -157,6 +157,13 @@ pub(crate) fn run_choose_mode(
     if ctx.optional_costs_paid.was_entwined() {
         max_modes = effect.modes.len();
         min_modes = effect.modes.len();
+    } else if let Some(range) = effect.conditional_mode_range.as_ref()
+        && ctx
+            .optional_costs_paid
+            .was_paid_label(range.required_optional_cost.clone())
+    {
+        max_modes = resolve_value(game, &range.max_modes, ctx)?.max(0) as usize;
+        min_modes = resolve_value(game, &range.min_modes, ctx)?.max(0) as usize;
     }
 
     if effect.modes.is_empty() || max_modes == 0 {

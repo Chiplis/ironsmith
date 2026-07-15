@@ -576,6 +576,10 @@ fn counter_unless_payment_total_cost(
 }
 
 pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
+        return Ok(effect);
+    }
+
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
         let target = parse_counter_target_phrase(spec.leading_tokens)?;
         return Ok(EffectAst::Conditional {
@@ -768,6 +772,79 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             dynamic_display_hint,
         ),
     ));
+}
+
+fn parse_counter_unless_source_damage(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause = SubjectVerbPrimitiveClause::new(tokens).trimmed();
+    let Some((target_clause, condition_clause)) = clause.split_once_on_word("unless") else {
+        return Ok(None);
+    };
+    let target_clause = target_clause.trimmed();
+    let condition_clause = condition_clause.trimmed();
+    if target_clause.is_empty() || condition_clause.is_empty() {
+        return Ok(None);
+    }
+
+    let Some((controller_clause, alternative_clause)) =
+        condition_clause.split_once_on_word_any(&["has", "have"])
+    else {
+        return Ok(None);
+    };
+    let controller_words = controller_clause.trimmed_word_refs();
+    if controller_words.as_slice() != ["its", "controller"] {
+        return Ok(None);
+    }
+
+    let alternative_clause = alternative_clause.trimmed();
+    let Some((source_clause, damage_clause)) =
+        alternative_clause.split_once_on_word_any(&["deal", "deals"])
+    else {
+        return Ok(None);
+    };
+    let source_words = source_clause.trimmed_word_refs();
+    if !matches!(
+        source_words.as_slice(),
+        ["this"] | ["this", "spell"] | ["this", "source"]
+    ) {
+        return Ok(None);
+    }
+
+    let damage_clause = damage_clause.trimmed();
+    let Some((amount, used)) = parse_value(damage_clause.tokens()) else {
+        return Ok(None);
+    };
+    let damage_tokens = damage_clause.tokens();
+    if damage_tokens
+        .get(used)
+        .and_then(OwnedLexToken::as_word)
+        != Some("damage")
+    {
+        return Ok(None);
+    }
+    let target_words = SubjectVerbPrimitiveClause::new(&damage_tokens[used + 1..])
+        .trimmed_word_refs();
+    if !matches!(
+        target_words.as_slice(),
+        ["them"] | ["to", "them"] | ["that", "player"] | ["to", "that", "player"]
+    ) {
+        return Ok(None);
+    }
+
+    let target = parse_counter_target_phrase(target_clause.tokens())?;
+    let alternative = EffectAst::subject_verb_damage(
+        amount,
+        TargetAst::Player(
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+            None,
+        ),
+    );
+    Ok(Some(EffectAst::UnlessAction {
+        effects: vec![EffectAst::subject_verb_counter(target)],
+        alternative: vec![alternative],
+        player: PlayerAst::ItsController,
+    }))
 }
 
 #[cfg(test)]

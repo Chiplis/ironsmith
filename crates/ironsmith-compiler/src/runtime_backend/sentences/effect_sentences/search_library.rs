@@ -185,11 +185,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         player
     };
 
-    let shuffle = if target_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| matches!(word, "all" | "each"))
-    {
+    let shuffle = if shuffle_target_moves_all(&target_tokens) {
         EffectAst::subject_verb_shuffle_all_objects_into_library(shuffle_player, target)
     } else {
         EffectAst::subject_verb_shuffle_objects_into_library(shuffle_player, target)
@@ -292,10 +288,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         }]);
     }
     let target = parse_target_phrase(&target_tokens)?;
-    let moves_all = target_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| matches!(word, "all" | "each"));
+    let moves_all = shuffle_target_moves_all(&target_tokens);
     let shuffle = if owner_library_destination && moves_all {
         EffectAst::subject_verb_shuffle_all_objects_into_owner_library(target)
     } else if owner_library_destination {
@@ -307,6 +300,15 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     };
 
     append_trailing(vec![shuffle])
+}
+
+fn shuffle_target_moves_all(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    matches!(words.as_slice(), ["all" | "each", ..])
+        || matches!(
+            words.as_slice(),
+            ["the", "cards" | "creatures" | "permanents" | "tokens" | "objects", ..]
+        )
 }
 
 pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(

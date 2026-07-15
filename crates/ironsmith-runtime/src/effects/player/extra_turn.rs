@@ -101,6 +101,40 @@ mod tests {
     }
 
     #[test]
+    fn most_recent_extra_turn_is_taken_first() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        game.turn_store.extra_turns.push(bob);
+        game.turn_store.extra_turns.push(alice);
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, alice);
+        game.next_turn();
+        assert_eq!(game.turn.active_player, bob);
+    }
+
+    #[test]
+    fn skip_next_turn_applies_to_an_extra_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn_store.extra_turns.push(alice);
+        game.turn_store.extra_turns.push(alice);
+        game.turn_store.skip_next_turn.insert(alice);
+
+        game.next_turn();
+
+        assert_eq!(
+            game.turn.active_player, alice,
+            "one extra turn is skipped and the next extra turn is still taken"
+        );
+        assert!(game.turn_store.extra_turns.is_empty());
+        assert!(!game.turn_store.skip_next_turn.contains(&alice));
+    }
+
+    #[test]
     fn test_extra_turn_clone_box() {
         let effect = ExtraTurnEffect::you();
         let cloned = effect.clone_box();

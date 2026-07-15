@@ -25,6 +25,8 @@ pub(crate) enum DamageTargetShape<'a> {
 #[derive(Debug, Clone)]
 pub(crate) enum DamageSourceShape<'a> {
     Choice,
+    ChoiceMatching(ObjectFilter),
+    Target(&'a [OwnedLexToken]),
     Tagged {
         card_type: Option<CardType>,
         source_tokens: &'a [OwnedLexToken],
@@ -95,7 +97,9 @@ fn source_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-fn you_and_permanents<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
+fn you_and_permanents_filter<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(bool, ObjectFilter)> {
     primitives::kw("you").parse_next(input)?;
     alt((
         primitives::kw("and/or").void(),
@@ -104,9 +108,36 @@ fn you_and_permanents<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     ))
     .parse_next(input)?;
     let other = opt(primitives::kw("other")).parse_next(input)?.is_some();
-    alt((primitives::kw("permanent"), primitives::kw("permanents"))).parse_next(input)?;
+    let creatures = alt((
+        alt((primitives::kw("creature"), primitives::kw("creatures"))).value(true),
+        alt((primitives::kw("permanent"), primitives::kw("permanents"))).value(false),
+    ))
+    .parse_next(input)?;
     primitives::phrase(&["you", "control"]).parse_next(input)?;
-    Ok(other)
+    let filter = if creatures {
+        ObjectFilter::creature().you_control()
+    } else {
+        ObjectFilter::permanent().you_control()
+    };
+    Ok((other, if other { filter.other() } else { filter }))
+}
+
+fn you_and_permanents<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
+    you_and_permanents_filter
+        .map(|(other, _)| other)
+        .parse_next(input)
+}
+
+pub(crate) fn parse_you_and_permanents_filter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    primitives::parse_all(
+        tokens,
+        (you_and_permanents_filter, winnow::combinator::eof)
+            .map(|((_, filter), _)| filter),
+        "you and matching permanents",
+    )
+    .ok()
 }
 
 fn source_of_your_choice<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -164,15 +195,10 @@ fn is_shadow_word(token: &OwnedLexToken) -> bool {
     .is_ok()
 }
 
-fn damage_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let descriptor = primitives::parse_all(
-        tokens,
-        filter_descriptor_tokens,
-        "damage source filter descriptor",
-    )
-    .ok()?;
+fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectFilter {
     let mut filter = ObjectFilter::default();
     let mut colors: Option<crate::color::ColorSet> = None;
+    let mut saw_chosen = false;
     for token in descriptor {
         if is_filter_connector(token) {
             continue;
@@ -180,6 +206,15 @@ fn damage_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
         let Some(word) = token.as_word() else {
             continue;
         };
+        if word.eq_ignore_ascii_case("chosen") {
+            saw_chosen = true;
+            continue;
+        }
+        if saw_chosen && word.eq_ignore_ascii_case("type") {
+            filter.chosen_creature_type = true;
+            saw_chosen = false;
+            continue;
+        }
         if let Some(color) = parse_color(word) {
             colors = Some(
                 colors
@@ -203,7 +238,57 @@ fn damage_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
         }
     }
     filter.colors = colors;
-    Some(filter)
+    filter
+}
+
+fn damage_source_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let descriptor = primitives::parse_all(
+        tokens,
+        filter_descriptor_tokens,
+        "damage source filter descriptor",
+    )
+    .ok()?;
+    Some(damage_source_filter_from_descriptor(descriptor))
+}
+
+fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token
+        .as_word()
+        .is_some_and(|word| word.eq_ignore_ascii_case(expected))
+}
+
+/// Preserve both the fact that a source is chosen and the restrictions on
+/// that choice. Oracle text uses both "artifact source of your choice" and
+/// "creature of your choice with shadow" orderings.
+fn damage_source_choice_filter(tokens: &[OwnedLexToken]) -> Option<Option<ObjectFilter>> {
+    let choice_index = tokens.windows(3).position(|window| {
+        token_is_word(&window[0], "of")
+            && token_is_word(&window[1], "your")
+            && token_is_word(&window[2], "choice")
+    })?;
+
+    let mut descriptor = tokens[..choice_index].to_vec();
+    if descriptor
+        .last()
+        .is_some_and(|token| token_is_word(token, "source"))
+    {
+        descriptor.pop();
+    }
+    descriptor.extend_from_slice(&tokens[choice_index + 3..]);
+    while descriptor.first().is_some_and(|token| {
+        token_is_word(token, "a")
+            || token_is_word(token, "an")
+            || token_is_word(token, "the")
+    }) {
+        descriptor.remove(0);
+    }
+
+    let filter = damage_source_filter_from_descriptor(&descriptor);
+    if filter == ObjectFilter::default() {
+        Some(None)
+    } else {
+        Some(Some(filter))
+    }
 }
 
 fn tagged_source_kind<'a>(input: &mut LexStream<'a>) -> WResult<Option<CardType>> {
@@ -216,8 +301,16 @@ fn tagged_source_kind<'a>(input: &mut LexStream<'a>) -> WResult<Option<CardType>
 }
 
 fn classify_damage_source(tokens: &[OwnedLexToken]) -> Option<DamageSourceShape<'_>> {
-    if has_source_of_your_choice(tokens) {
-        return Some(DamageSourceShape::Choice);
+    if let Some(filter) = damage_source_choice_filter(tokens) {
+        return Some(match filter {
+            Some(filter) => DamageSourceShape::ChoiceMatching(filter),
+            None => DamageSourceShape::Choice,
+        });
+    }
+    if primitives::parse_prefix(tokens, primitives::kw("target")).is_some()
+        || primitives::parse_prefix(tokens, primitives::phrase(&["another", "target"])).is_some()
+    {
+        return Some(DamageSourceShape::Target(tokens));
     }
     if primitives::parse_all(
         tokens,
@@ -241,8 +334,9 @@ fn classify_damage_source(tokens: &[OwnedLexToken]) -> Option<DamageSourceShape<
 }
 
 fn classify_damage_target(tokens: &[OwnedLexToken]) -> DamageTargetShape<'_> {
-    if tokens.is_empty()
-        || primitives::parse_all(
+    if tokens.is_empty() {
+        DamageTargetShape::AnyTarget
+    } else if primitives::parse_all(
             tokens,
             (
                 primitives::phrase(&["any", "target"]),
@@ -253,7 +347,7 @@ fn classify_damage_target(tokens: &[OwnedLexToken]) -> DamageTargetShape<'_> {
         )
         .is_ok()
     {
-        DamageTargetShape::AnyTarget
+        DamageTargetShape::Target(tokens)
     } else if primitives::parse_all(
         tokens,
         (primitives::kw("you"), winnow::combinator::eof).void(),

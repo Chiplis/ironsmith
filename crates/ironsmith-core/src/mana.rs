@@ -99,6 +99,25 @@ impl ManaCost {
             .sum()
     }
 
+    /// Returns this cost's mana value while it is a spell on the stack.
+    ///
+    /// Outside the stack, X contributes zero. On the stack, each X symbol
+    /// contributes the value chosen for X (CR 202.3e).
+    pub fn mana_value_with_x(&self, x_value: u32) -> u32 {
+        self.pips
+            .iter()
+            .map(|pip| {
+                pip.iter()
+                    .map(|symbol| match symbol {
+                        ManaSymbol::X => x_value,
+                        other => other.mana_value(),
+                    })
+                    .max()
+                    .unwrap_or(0)
+            })
+            .sum()
+    }
+
     /// Returns the pips in this mana cost.
     pub fn pips(&self) -> &[Vec<ManaSymbol>] {
         &self.pips
@@ -326,6 +345,18 @@ mod tests {
         cost.push(ManaSymbol::Green);
         assert_eq!(cost.mana_value(), 4);
         assert_eq!(cost.pip_count(), 3);
+    }
+
+    #[test]
+    fn mana_value_with_x_counts_each_x_symbol_on_stack() {
+        let cost = ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Red],
+        ]);
+
+        assert_eq!(cost.mana_value(), 1);
+        assert_eq!(cost.mana_value_with_x(3), 7);
     }
 
     #[test]

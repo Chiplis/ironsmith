@@ -413,6 +413,27 @@ pub(crate) fn parse_prevention_reflect_followup_shape(tokens: &[OwnedLexToken]) 
     deal_idx > 0 && exact_unit(after_deal, reflect_tail)
 }
 
+fn prevention_gain_life_followup<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&[
+        "you",
+        "gain",
+        "life",
+        "equal",
+        "to",
+        "the",
+        "damage",
+        "prevented",
+        "this",
+        "way",
+    ])
+    .void()
+    .parse_next(input)
+}
+
+pub(crate) fn parse_prevention_gain_life_followup_shape(tokens: &[OwnedLexToken]) -> bool {
+    exact_unit(trimmed(tokens), prevention_gain_life_followup)
+}
+
 fn exile_top_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
         primitives::phrase(&["exile", "cards", "from", "the", "top", "of"]),

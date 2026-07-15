@@ -13,7 +13,11 @@ use crate::events::DamageEvent;
 use crate::events::DamageTarget;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
-use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts;
+use crate::events::processing::{
+    ProcessedDamageResult, SimultaneousDamageEvent,
+    process_damage_assignments_with_event_with_source_snapshot_opts_with_dm,
+    process_simultaneous_damage_assignments_with_event_with_dm,
+};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::AttackEventTarget;
@@ -48,6 +52,7 @@ pub(crate) fn apply_processed_damage_outcome(
     source_is_combat: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
 ) -> EffectOutcome {
     apply_processed_damage_outcome_opts(
         game,
@@ -59,6 +64,7 @@ pub(crate) fn apply_processed_damage_outcome(
         false,
         provenance,
         cause,
+        dm,
     )
 }
 
@@ -73,12 +79,9 @@ pub(crate) fn apply_processed_damage_outcome_opts(
     unpreventable: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
 ) -> EffectOutcome {
-    let source_controller = source_snapshot
-        .map(|snapshot| snapshot.controller)
-        .or_else(|| game.object(source).map(|obj| game.controller_of(obj)));
-
-    let processed = process_damage_assignments_with_event_with_source_snapshot_opts(
+    let processed = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm(
         game,
         source,
         initial_target,
@@ -87,83 +90,147 @@ pub(crate) fn apply_processed_damage_outcome_opts(
         unpreventable,
         cause.clone(),
         source_snapshot,
+        dm,
     );
 
-    if processed.replacement_prevented {
-        return EffectOutcome::prevented();
-    }
+    apply_processed_damage_results(
+        game,
+        source,
+        source_snapshot,
+        std::iter::once(processed),
+        source_is_combat,
+        provenance,
+        cause,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_simultaneous_damage_outcome_opts(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    initial_targets: Vec<DamageTarget>,
+    amount: u32,
+    source_is_combat: bool,
+    unpreventable: bool,
+    provenance: crate::provenance::ProvNodeId,
+    cause: crate::events::cause::EventCause,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> EffectOutcome {
+    let events = initial_targets
+        .into_iter()
+        .map(|target| SimultaneousDamageEvent {
+            source,
+            target,
+            amount,
+            is_combat: source_is_combat,
+            unpreventable,
+            cause: cause.clone(),
+            source_snapshot: source_snapshot.cloned(),
+        })
+        .collect::<Vec<_>>();
+    let processed = process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
+
+    apply_processed_damage_results(
+        game,
+        source,
+        source_snapshot,
+        processed,
+        source_is_combat,
+        provenance,
+        cause,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_processed_damage_results(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    processed_results: impl IntoIterator<Item = ProcessedDamageResult>,
+    source_is_combat: bool,
+    provenance: crate::provenance::ProvNodeId,
+    cause: crate::events::cause::EventCause,
+) -> EffectOutcome {
+    let source_controller = source_snapshot
+        .map(|snapshot| snapshot.controller)
+        .or_else(|| game.object(source).map(|obj| game.controller_of(obj)));
 
     let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
     let mut outcomes = Vec::new();
     let mut total_damage_dealt = 0u32;
     let mut affected_objects = Vec::new();
-    for assignment in processed.assignments {
-        let target_snapshot = match assignment.target {
-            DamageTarget::Object(object_id) => game.object(object_id).map(|obj| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    obj, game,
-                )
-            }),
-            DamageTarget::Player(_) => None,
-        };
-        let excess_damage = match assignment.target {
-            DamageTarget::Object(object_id) => {
-                excess_damage_to_object(game, object_id, assignment.amount, keywords)
-            }
-            DamageTarget::Player(_) => 0,
-        };
-        let applied = crate::rules::damage::apply_processed_damage_assignment(
-            game,
-            source,
-            assignment.target,
-            assignment.amount,
-            keywords,
-            cause.clone(),
-        );
-        if !applied.applied {
-            continue;
-        }
-
-        total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
-        if let DamageTarget::Object(object_id) = assignment.target {
-            affected_objects.push(object_id);
-        }
-        let mut outcome = EffectOutcome::count(assignment.amount as i32);
-        if excess_damage > 0 {
-            outcome = outcome
-                .with_execution_fact(ExecutionFact::ExcessDamageDealt)
-                .with_execution_fact(ExecutionFact::ExcessDamage(excess_damage));
-        }
-        if assignment.amount > 0 {
-            let mut damage_event = DamageEvent::with_cause(
+    let mut any_replacement_prevented = false;
+    for processed in processed_results {
+        any_replacement_prevented |= processed.replacement_prevented;
+        for assignment in processed.assignments {
+            let target_snapshot = match assignment.target {
+                DamageTarget::Object(object_id) => game.object(object_id).map(|obj| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        obj, game,
+                    )
+                }),
+                DamageTarget::Player(_) => None,
+            };
+            let excess_damage = match assignment.target {
+                DamageTarget::Object(object_id) => {
+                    excess_damage_to_object(game, object_id, assignment.amount, keywords)
+                }
+                DamageTarget::Player(_) => 0,
+            };
+            let applied = crate::rules::damage::apply_processed_damage_assignment(
+                game,
                 source,
                 assignment.target,
                 assignment.amount,
-                source_is_combat,
+                keywords,
                 cause.clone(),
             );
-            if let Some(snapshot) = target_snapshot {
-                damage_event = damage_event.with_target_snapshot(snapshot);
+            if !applied.applied {
+                continue;
             }
-            let mut event = TriggerEvent::new_with_provenance(damage_event, provenance);
-            if game.object(source).is_none()
-                && let Some(snapshot) = source_snapshot
+
+            total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
+            if let DamageTarget::Object(object_id) = assignment.target {
+                affected_objects.push(object_id);
+            }
+            let mut outcome = EffectOutcome::count(assignment.amount as i32);
+            if excess_damage > 0 {
+                outcome = outcome
+                    .with_execution_fact(ExecutionFact::ExcessDamageDealt)
+                    .with_execution_fact(ExecutionFact::ExcessDamage(excess_damage));
+            }
+            if assignment.amount > 0 {
+                let mut damage_event = DamageEvent::with_cause(
+                    source,
+                    assignment.target,
+                    assignment.amount,
+                    source_is_combat,
+                    cause.clone(),
+                );
+                if let Some(snapshot) = target_snapshot {
+                    damage_event = damage_event.with_target_snapshot(snapshot);
+                }
+                let mut event = TriggerEvent::new_with_provenance(damage_event, provenance);
+                if game.object(source).is_none()
+                    && let Some(snapshot) = source_snapshot
+                {
+                    event = event.with_source_snapshot(snapshot.clone());
+                }
+                outcome = outcome.with_event(event);
+            }
+
+            if let DamageTarget::Player(player_id) = assignment.target
+                && applied.life_lost > 0
             {
-                event = event.with_source_snapshot(snapshot.clone());
+                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
+                    LifeLossEvent::new(player_id, applied.life_lost, true),
+                    provenance,
+                ));
             }
-            outcome = outcome.with_event(event);
-        }
 
-        if let DamageTarget::Player(player_id) = assignment.target
-            && applied.life_lost > 0
-        {
-            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                LifeLossEvent::new(player_id, applied.life_lost, true),
-                provenance,
-            ));
+            outcomes.push(outcome);
         }
-
-        outcomes.push(outcome);
     }
 
     if keywords.has_lifelink
@@ -182,7 +249,9 @@ pub(crate) fn apply_processed_damage_outcome_opts(
         }
     }
 
-    let mut outcome = if outcomes.is_empty() {
+    let mut outcome = if outcomes.is_empty() && any_replacement_prevented {
+        EffectOutcome::prevented()
+    } else if outcomes.is_empty() {
         EffectOutcome::count(0)
     } else {
         EffectOutcome::aggregate_summing_counts(outcomes)
@@ -222,6 +291,12 @@ fn excess_damage_to_object(
     0
 }
 
+fn object_can_be_dealt_damage(object: &crate::object::Object) -> bool {
+    object.has_card_type(CardType::Creature)
+        || object.has_card_type(CardType::Planeswalker)
+        || object.has_card_type(CardType::Battle)
+}
+
 impl EffectExecutor for DealDamageEffect {
     fn execute(
         &self,
@@ -244,6 +319,7 @@ impl EffectExecutor for DealDamageEffect {
                     self.unpreventable,
                     ctx.provenance,
                     ctx.cause.clone(),
+                    &mut *ctx.decision_maker,
                 ));
             }
             return Ok(EffectOutcome::target_invalid());
@@ -252,9 +328,7 @@ impl EffectExecutor for DealDamageEffect {
         if let ChooseSpec::Iterated = &self.target {
             if let Some(object_id) = ctx.iteration.iterated_object {
                 if let Some(obj) = game.object(object_id) {
-                    let can_be_damaged = obj.has_card_type(CardType::Creature)
-                        || obj.has_card_type(CardType::Planeswalker);
-                    if !can_be_damaged {
+                    if !object_can_be_dealt_damage(obj) {
                         return Ok(EffectOutcome::target_invalid());
                     }
                     return Ok(apply_processed_damage_outcome_opts(
@@ -267,6 +341,7 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
                     ));
                 }
                 return Ok(EffectOutcome::target_invalid());
@@ -305,6 +380,7 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
                     ));
                 }
                 AttackEventTarget::Planeswalker(object_id) => {
@@ -324,6 +400,7 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
                     ));
                 }
             }
@@ -342,6 +419,7 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &mut *ctx.decision_maker,
             ));
         }
 
@@ -349,9 +427,11 @@ impl EffectExecutor for DealDamageEffect {
             self.target.base(),
             ChooseSpec::AnyTarget
                 | ChooseSpec::AnyOtherTarget
+                | ChooseSpec::ObjectOrPlayer(_, _)
                 | ChooseSpec::PlayerOrPlaneswalker(_)
         ) {
             let mut found_assignment = false;
+            let mut damage_targets = Vec::new();
             for assignment in &ctx.target_assignments {
                 if assignment.spec == self.target || assignment.spec.base() == self.target.base() {
                     found_assignment = true;
@@ -367,43 +447,42 @@ impl EffectExecutor for DealDamageEffect {
                                 {
                                     continue;
                                 }
-                                return Ok(apply_processed_damage_outcome_opts(
-                                    game,
-                                    ctx.source,
-                                    ctx.source_snapshot.as_ref(),
-                                    DamageTarget::Player(*player_id),
-                                    amount,
-                                    self.source_is_combat,
-                                    self.unpreventable,
-                                    ctx.provenance,
-                                    ctx.cause.clone(),
-                                ));
+                                damage_targets.push(DamageTarget::Player(*player_id));
                             }
                             ResolvedTarget::Object(object_id) => {
-                                if !game.object(*object_id).is_some_and(|obj| {
-                                    obj.has_card_type(CardType::Creature)
-                                        || obj.has_card_type(CardType::Planeswalker)
-                                }) {
+                                if !game
+                                    .object(*object_id)
+                                    .is_some_and(object_can_be_dealt_damage)
+                                {
                                     continue;
                                 }
-                                return Ok(apply_processed_damage_outcome_opts(
-                                    game,
-                                    ctx.source,
-                                    ctx.source_snapshot.as_ref(),
-                                    DamageTarget::Object(*object_id),
-                                    amount,
-                                    self.source_is_combat,
-                                    self.unpreventable,
-                                    ctx.provenance,
-                                    ctx.cause.clone(),
-                                ));
+                                damage_targets.push(DamageTarget::Object(*object_id));
                             }
                         }
                     }
+                    // This effect owns one announced target requirement. A later
+                    // requirement may have the same surface `ChooseSpec`, but it
+                    // belongs to a different effect and must not be consumed here.
+                    break;
                 }
             }
             if found_assignment {
-                return Ok(EffectOutcome::target_invalid());
+                return if damage_targets.is_empty() {
+                    Ok(EffectOutcome::target_invalid())
+                } else {
+                    Ok(apply_simultaneous_damage_outcome_opts(
+                        game,
+                        ctx.source,
+                        ctx.source_snapshot.as_ref(),
+                        damage_targets,
+                        amount,
+                        self.source_is_combat,
+                        self.unpreventable,
+                        ctx.provenance,
+                        ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
+                    ))
+                };
             }
         }
 
@@ -444,6 +523,7 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &mut *ctx.decision_maker,
             ));
         }
 
@@ -488,6 +568,7 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &mut *ctx.decision_maker,
             ));
         }
 
@@ -510,15 +591,14 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &mut *ctx.decision_maker,
             ));
         }
 
         if let Ok(object_ids) = resolve_objects_for_effect(game, ctx, &self.target)
             && let Some(object_id) = object_ids.into_iter().find(|object_id| {
                 game.object(*object_id).is_some_and(|obj| {
-                    obj.zone == crate::zone::Zone::Battlefield
-                        && (obj.has_card_type(CardType::Creature)
-                            || obj.has_card_type(CardType::Planeswalker))
+                    obj.zone == crate::zone::Zone::Battlefield && object_can_be_dealt_damage(obj)
                 })
             })
         {
@@ -532,6 +612,7 @@ impl EffectExecutor for DealDamageEffect {
                 self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &mut *ctx.decision_maker,
             ));
         }
 
@@ -549,13 +630,12 @@ impl EffectExecutor for DealDamageEffect {
                         self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
                     ));
                 }
                 ResolvedTarget::Object(object_id) => {
                     if let Some(obj) = game.object(*object_id) {
-                        let can_be_damaged = obj.has_card_type(CardType::Creature)
-                            || obj.has_card_type(CardType::Planeswalker);
-                        if !can_be_damaged {
+                        if !object_can_be_dealt_damage(obj) {
                             continue;
                         }
                         return Ok(apply_processed_damage_outcome_opts(
@@ -568,6 +648,7 @@ impl EffectExecutor for DealDamageEffect {
                             self.unpreventable,
                             ctx.provenance,
                             ctx.cause.clone(),
+                            &mut *ctx.decision_maker,
                         ));
                     }
                 }
@@ -678,6 +759,65 @@ mod tests {
     }
 
     #[test]
+    fn damage_effect_uses_affected_players_tied_replacement_choice() {
+        struct ChooseLastReplacement {
+            expected_player: PlayerId,
+        }
+
+        impl crate::decision::DecisionMaker for ChooseLastReplacement {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.player, self.expected_player);
+                ctx.options
+                    .iter()
+                    .rev()
+                    .find(|option| option.legal)
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Pinger", 1, 1, alice, vec![]);
+        let add_source = create_creature(&mut game, "Add Replacement", 1, 1, alice, vec![]);
+        let double_source = create_creature(&mut game, "Double Replacement", 1, 1, alice, vec![]);
+
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                add_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Add(1)),
+            ),
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                double_source,
+                alice,
+                crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
+                ReplacementAction::Modify(EventModification::Multiply(2)),
+            ),
+        );
+
+        let mut dm = ChooseLastReplacement {
+            expected_player: bob,
+        };
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![ResolvedTarget::Player(bob)]);
+        let outcome = DealDamageEffect::new(3, ChooseSpec::AnyTarget)
+            .execute(&mut game, &mut ctx)
+            .expect("damage should resolve through both replacements");
+
+        assert_eq!(outcome.count_or_zero(), 7);
+        assert_eq!(game.player(bob).expect("bob should exist").life, 13);
+    }
+
+    #[test]
     fn damage_to_object_records_affected_object_memory() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -779,6 +919,56 @@ mod tests {
 
         assert_eq!(game.damage_on(damaged), 2);
         assert_eq!(game.damage_on(bounced), 0);
+    }
+
+    #[test]
+    fn counted_damage_assignment_hits_every_remaining_legal_target_as_one_batch() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(
+            &mut game,
+            "Lifelink Volley Source",
+            2,
+            2,
+            alice,
+            vec![StaticAbility::lifelink()],
+        );
+        let first = create_creature(&mut game, "First Target", 2, 5, bob, vec![]);
+        let illegal = create_creature(&mut game, "Illegal Target", 2, 5, bob, vec![]);
+        game.move_object_by_effect(illegal, Zone::Hand);
+
+        let counted_target = ChooseSpec::AnyTarget.with_count(crate::effect::ChoiceCount::up_to(3));
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(first),
+                ResolvedTarget::Object(illegal),
+                ResolvedTarget::Player(bob),
+            ])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: counted_target.clone(),
+                range: 0..3,
+            }]);
+
+        let outcome = DealDamageEffect::new(2, counted_target)
+            .execute(&mut game, &mut ctx)
+            .expect("every remaining legal target should be damaged");
+
+        assert_eq!(game.damage_on(first), 2);
+        assert_eq!(game.damage_on(illegal), 0);
+        assert_eq!(game.player(bob).expect("Bob should exist").life, 18);
+        assert_eq!(game.player(alice).expect("Alice should exist").life, 24);
+        assert_eq!(outcome.count_or_zero(), 4);
+        assert_eq!(outcome.affected_objects(), Some([first].as_slice()));
+        assert_eq!(
+            outcome
+                .events
+                .iter()
+                .filter(|event| event.downcast::<DamageEvent>().is_some())
+                .count(),
+            2
+        );
     }
 
     #[test]

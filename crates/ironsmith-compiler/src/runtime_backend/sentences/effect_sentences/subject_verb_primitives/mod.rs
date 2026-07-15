@@ -104,6 +104,14 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     clause.parse_with_lexed(super::dispatch_inner::parse_delayed_when_that_dies_this_turn_sentence)
 }
 
+pub(crate) fn parse_delayed_when_that_leaves_battlefield_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    clause.parse_with_lexed(
+        super::dispatch_inner::parse_delayed_when_that_leaves_battlefield_sentence,
+    )
+}
+
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

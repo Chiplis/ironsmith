@@ -494,7 +494,7 @@ impl KeywordAction {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IfResultPredicate {
     Did,
     /// The preceding clash was won by the controller of the resolving spell
@@ -515,6 +515,10 @@ pub enum IfResultPredicate {
         card_type: crate::types::CardType,
         negated: bool,
     },
+    /// A typed predicate over objects produced by the immediately preceding
+    /// action. This keeps both runtime filtering and the authored
+    /// `... this way` surface through lowering.
+    PriorEffectResult(ironsmith_core::PriorEffectResultSurface),
     WasDeclined,
     Value(ironsmith_core::Comparison),
 }

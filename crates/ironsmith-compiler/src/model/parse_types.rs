@@ -128,6 +128,7 @@ pub enum TargetAst<
     Source(Option<TextSpan>),
     AnyTarget(Option<TextSpan>),
     AnyOtherTarget(Option<TextSpan>),
+    ObjectOrPlayer(ObjectFilter, PlayerFilter, Option<TextSpan>),
     PlayerOrPlaneswalker(PlayerFilter, Option<TextSpan>),
     AttackedPlayerOrPlaneswalker(Option<TextSpan>),
     Spell(Option<TextSpan>),

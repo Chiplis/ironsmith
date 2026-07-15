@@ -157,6 +157,9 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
@@ -166,8 +169,21 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::PlayersWhoControlMoreThanYou(filter) => {
             object_filter_mentions_iterated_player(filter)
         }
+        Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
+            object_filter_mentions_iterated_player(filter)
+        }
         Value::StaticAbilitiesAmong { filter, .. } => {
             object_filter_mentions_iterated_player(filter)
+        }
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => {
+            query
+                .filter
+                .as_ref()
+                .is_some_and(object_filter_mentions_iterated_player)
+                || query
+                    .player
+                    .as_ref()
+                    .is_some_and(PlayerFilter::mentions_iterated_player)
         }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
@@ -255,7 +271,9 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
 
 pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
     match value {
-        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => true,
+        Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. }
+        | Value::PendingPriorEffectMetric(_) => true,
         Value::SurfaceHinted { value, .. }
         | Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
@@ -273,6 +291,9 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
@@ -280,6 +301,9 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::DistinctNames(filter)
         | Value::DistinctPowers(filter)
         | Value::PlayersWhoControlMoreThanYou(filter) => {
+            object_filter_contains_pending_effect_metric(filter)
+        }
+        Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
             object_filter_contains_pending_effect_metric(filter)
         }
         Value::StaticAbilitiesAmong { filter, .. } => {
@@ -331,12 +355,15 @@ pub(crate) fn condition_mentions_iterated_player(condition: &Condition) -> bool 
         | AttachedToSourceMatches(filter)
         | TaggedObjectMatches(_, filter)
         | TargetMatches(filter) => object_filter_mentions_iterated_player(filter),
-        MatchingObjectAttachedToMatchingObject {
-            attachment,
-            attached_to,
+        AttachmentCount {
+            attachment, host, ..
         } => {
             object_filter_mentions_iterated_player(attachment)
-                || object_filter_mentions_iterated_player(attached_to)
+                || matches!(
+                    host,
+                    ironsmith_core::AttachmentConditionHost::Matching(filter)
+                        if object_filter_mentions_iterated_player(filter)
+                )
         }
         PlayerControls { player, filter }
         | PlayerHasAtLeast { player, filter, .. }

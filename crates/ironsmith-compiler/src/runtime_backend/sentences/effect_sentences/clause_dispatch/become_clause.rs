@@ -202,11 +202,28 @@ pub(crate) fn parse_become_clause(
                     .as_ref()
                     .map(|exception| exception.remove_supertypes.clone())
                     .unwrap_or_default(),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.add_card_types.clone())
+                    .unwrap_or_default(),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.set_card_types.clone())
+                    .unwrap_or_default(),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.add_subtypes.clone())
+                    .unwrap_or_default(),
+                copy_exception
+                    .as_ref()
+                    .map(|exception| exception.set_subtypes.clone())
+                    .unwrap_or_default(),
                 granted_abilities,
                 copy_exception
                     .as_ref()
                     .and_then(|exception| exception.set_base_power_toughness)
                     .map(|(power, toughness)| (Value::Fixed(power), Value::Fixed(toughness))),
+                copy_exception.and_then(|exception| exception.surface),
             ));
         }
         become_grammar::BecomeCopySourceShape::NotCopy => {}

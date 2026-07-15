@@ -28,6 +28,8 @@ const EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
 ];
 
 const DAMAGE_EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
+    (&["damage", "dealt", "this", "way"], 4),
+    (&["the", "damage", "dealt", "this", "way"], 5),
     (&["damage", "dealt"], 2),
     (&["the", "damage", "dealt"], 3),
     (&["that", "damage"], 2),
@@ -803,6 +805,22 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     {
         return Some((value, filter_end));
     }
+    // The generic value-expression path runs before several effect-specific
+    // value parsers. Preserve every typed prior-action link here so numeric
+    // phrases such as "the number of creatures destroyed this way" and
+    // "twice the number of Mountains returned this way" do not collapse to
+    // live-zone object counts.
+    if permission_shapes::find_words(filter_words, &["this", "way"]).is_some() {
+        let mut for_each_words = Vec::with_capacity(filter_words.len() + 2);
+        for_each_words.extend(["for", "each"]);
+        for_each_words.extend(filter_words.iter().copied());
+        if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
+            super::count_shapes::parse_for_each_count_value_words(&for_each_words)
+            && used == for_each_words.len()
+        {
+            return Some((value, filter_end));
+        }
+    }
     if let Some(mut filter) = parse_source_controller_graveyard_filter(filter_words) {
         filter.zone = Some(crate::zone::Zone::Graveyard);
         filter.owner = Some(PlayerFilter::You);
@@ -1011,6 +1029,31 @@ mod tests {
         assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
         assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn generic_number_of_value_preserves_tapped_this_way_link() {
+        let (value, used) =
+            parse_value_expr_words(&["the", "number", "of", "creatures", "tapped", "this", "way"])
+                .expect("tapped-this-way count");
+
+        assert_eq!(used, 7);
+        let Value::PendingPriorEffectMetric(query) = value else {
+            panic!("expected typed prior-effect metric");
+        };
+        assert_eq!(
+            query.source,
+            ironsmith_core::EffectMetricSource::AffectedObjects
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Tapped)
+        );
+        assert_eq!(
+            query.filter.expect("creature filter").card_types,
+            vec![crate::types::CardType::Creature]
+        );
     }
 
     #[test]

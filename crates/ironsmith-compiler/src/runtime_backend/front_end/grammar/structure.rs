@@ -91,6 +91,17 @@ fn phrase_occurs(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> b
     primitives::find_prefix(tokens, || primitives::phrase(phrase)).is_some()
 }
 
+fn word_phrase_occurs(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
+    if phrase.is_empty() {
+        return true;
+    }
+    let words = tokens
+        .iter()
+        .filter_map(|token| token.as_word().map(|_| token.parser_text()))
+        .collect::<Vec<_>>();
+    words.windows(phrase.len()).any(|window| window == phrase)
+}
+
 fn predicate_candidate_contains_search_action(tokens: &[OwnedLexToken]) -> bool {
     phrase_occurs(tokens, &["search", "your", "library"])
 }
@@ -142,9 +153,10 @@ pub(crate) struct ModalHeaderFlags {
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,
     pub(crate) distinct_player_targets_per_mode: bool,
+    pub(crate) if_kicked_choose_any_number: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TrailingModalGateSpec<'a> {
     pub(crate) prefix_tokens: &'a [OwnedLexToken],
     pub(crate) predicate: IfResultPredicate,
@@ -193,7 +205,7 @@ pub(crate) enum LeadingResultPrefixKind {
     When,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LeadingResultPrefixSpec<'a> {
     pub(crate) kind: LeadingResultPrefixKind,
     pub(crate) predicate: IfResultPredicate,
@@ -798,6 +810,12 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         distinct_player_targets_per_mode: phrase_occurs(
             tokens,
             &["each", "mode", "must", "target", "a", "different", "player"],
+        ),
+        if_kicked_choose_any_number: word_phrase_occurs(
+            tokens,
+            &[
+                "if", "this", "spell", "was", "kicked", "choose", "any", "number", "instead",
+            ],
         ),
     }
 }

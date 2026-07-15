@@ -220,6 +220,13 @@ struct BattlefieldFlags {
     tapped_permanents: HashSet<ObjectId>,
     /// Creatures that have summoning sickness.
     summoning_sick: HashSet<ObjectId>,
+    /// Controller observed after the last continuous-state refresh.
+    ///
+    /// CR 302.6 cares whether control has been continuous since that
+    /// controller's most recent turn began. Keeping the previous derived
+    /// controller lets refreshes turn every control transition (including a
+    /// static control effect appearing or expiring) into summoning sickness.
+    controller_at_last_refresh: HashMap<ObjectId, PlayerId>,
     /// Damage marked on creatures (cleared at cleanup step).
     damage_marked: HashMap<ObjectId, u32>,
     /// Creatures that are monstrous (from monstrosity ability).
@@ -256,6 +263,14 @@ struct BattlefieldFlags {
     mutation_count: HashMap<ObjectId, u32>,
     /// Phased-out permanents.
     phased_out: HashSet<ObjectId>,
+    /// Controller under whose control a permanent directly phased out.
+    phased_out_under_controller: HashMap<ObjectId, PlayerId>,
+    /// Attachments that phased out only because the object they were attached
+    /// to phased out. They phase in with that object, not independently.
+    indirectly_phased_out: HashSet<ObjectId>,
+    /// Directly phased-out permanents held by an effect until its source leaves.
+    /// The key is the source object that created the duration.
+    phase_out_holds_by_source: HashMap<ObjectId, HashSet<ObjectId>>,
 }
 
 /// Exile/casting permission flags grouped behind copy-on-write storage.
@@ -448,6 +463,10 @@ pub struct TurnStore {
     pub skip_current_turn_main_phases: HashSet<PlayerId>,
     /// Unified owner for per-turn event and action history.
     pub turn_history: TurnHistory,
+    /// Immutable event and action history for the immediately previous turn.
+    /// Intervening-if predicates such as "lost life last turn" must inspect
+    /// the completed turn rather than the freshly reset current-turn store.
+    pub previous_turn_history: TurnHistory,
     /// Hand sizes captured as the current turn began, before the untap step.
     pub hand_sizes_at_turn_start: HashMap<PlayerId, usize>,
     /// Total number of spells cast during the immediately previous turn.
@@ -466,6 +485,9 @@ pub struct TurnStore {
     pub no_combat_damage_this_turn: HashSet<ObjectId>,
     /// Objects that assign no combat damage for the rest of the current combat.
     pub no_combat_damage_this_combat: HashSet<ObjectId>,
+    /// Hand cards revealed by Forecast through the end of the current upkeep.
+    /// A zone change removes the old object ID immediately.
+    pub forecast_revealed_hand_cards: HashSet<ObjectId>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -481,6 +503,10 @@ pub struct EffectStore {
     pub mana_spend_effects: ManaSpendEffectTracker,
     pub delayed_triggers: Vec<crate::triggers::DelayedTrigger>,
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    /// Trigger matches produced inside a nested rules transaction, such as a
+    /// spell cast while another spell or ability is resolving. They wait here
+    /// until the outer resolution boundary can put them into its trigger queue.
+    pub pending_trigger_entries: Vec<crate::triggers::TriggeredAbilityEntry>,
     pub active_state_trigger_conditions: HashSet<crate::triggers::ActiveStateTriggerKey>,
     /// Pending replacement effect choice when multiple effects could apply.
     /// When set, advance_priority returns a ChooseReplacementEffect decision
@@ -513,6 +539,7 @@ impl Default for EffectStore {
             mana_spend_effects: ManaSpendEffectTracker::new(),
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
+            pending_trigger_entries: Vec::new(),
             active_state_trigger_conditions: HashSet::new(),
             pending_replacement_choice: None,
             grant_registry: crate::grant_registry::GrantRegistry::new(),
@@ -2263,6 +2290,15 @@ pub struct TargetAssignment {
     pub range: Range<usize>,
 }
 
+/// A division announced for one target requirement while a spell or ability is proposed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetDistribution {
+    pub spec: ChooseSpec,
+    /// Range of target slots whose announced amounts this division follows.
+    pub range: Range<usize>,
+    pub allocations: Vec<(Target, u32)>,
+}
+
 /// An entry on the stack.
 #[derive(Debug, Clone)]
 pub struct StackEntry {
@@ -2271,11 +2307,15 @@ pub struct StackEntry {
     pub provenance: ProvNodeId,
     pub targets: Vec<Target>,
     pub target_assignments: Vec<TargetAssignment>,
+    /// Divisions announced after targets are chosen (CR 601.2d / 602.2b).
+    pub target_distributions: Vec<TargetDistribution>,
     pub x_value: Option<u32>,
     /// For activated abilities, whether the activation cost contained X.
     pub activation_cost_has_x: bool,
     /// For activated abilities, whether the activation cost contained {T}.
     pub activation_cost_has_tap: bool,
+    /// Mana actually spent to activate this ability, color-by-color.
+    pub mana_spent_on_activation: crate::player::ManaPool,
     /// For triggered/activated abilities, the effects to execute.
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
@@ -2322,6 +2362,8 @@ pub struct StackEntry {
     /// Pre-chosen modes for modal spells (chosen during casting per rule 601.2b).
     /// If Some, resolution should use these instead of prompting.
     pub chosen_modes: Option<Vec<usize>>,
+    /// Stable identities of the cards revealed to splice text onto this spell.
+    pub spliced_cards: Vec<StableId>,
     /// Permanents that contributed keyword-ability alternative payments to this spell cast.
     pub keyword_payment_contributions: Vec<KeywordPaymentContribution>,
     /// Creatures that crewed this object this turn, captured when the entry was created.
@@ -2362,9 +2404,11 @@ impl StackEntry {
             provenance: ProvNodeId::default(),
             targets: Vec::new(),
             target_assignments: Vec::new(),
+            target_distributions: Vec::new(),
             x_value: None,
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
+            mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
@@ -2383,6 +2427,7 @@ impl StackEntry {
             ability_index: None,
             intervening_if: None,
             chosen_modes: None,
+            spliced_cards: Vec::new(),
             keyword_payment_contributions: Vec::new(),
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
@@ -2403,9 +2448,11 @@ impl StackEntry {
             provenance: ProvNodeId::default(),
             targets: Vec::new(),
             target_assignments: Vec::new(),
+            target_distributions: Vec::new(),
             x_value: None,
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
+            mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: Some(effects.into()),
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
@@ -2424,6 +2471,7 @@ impl StackEntry {
             ability_index: None,
             intervening_if: None,
             chosen_modes: None,
+            spliced_cards: Vec::new(),
             keyword_payment_contributions: Vec::new(),
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
@@ -2438,6 +2486,11 @@ impl StackEntry {
         self
     }
 
+    pub fn with_spliced_cards(mut self, spliced_cards: Vec<StableId>) -> Self {
+        self.spliced_cards = spliced_cards;
+        self
+    }
+
     pub fn with_targets(mut self, targets: Vec<Target>) -> Self {
         self.targets = targets;
         self
@@ -2446,6 +2499,47 @@ impl StackEntry {
     pub fn with_target_assignments(mut self, target_assignments: Vec<TargetAssignment>) -> Self {
         self.target_assignments = target_assignments;
         self
+    }
+
+    pub fn with_target_distributions(
+        mut self,
+        target_distributions: Vec<TargetDistribution>,
+    ) -> Self {
+        self.target_distributions = target_distributions;
+        self
+    }
+
+    /// Carry announced divisions along with target-slot changes.
+    ///
+    /// Rule 115.7f permits new targets but forbids changing the original
+    /// division, so amounts remain attached to their corresponding slots.
+    pub fn remap_target_distributions(&mut self, old_targets: &[Target]) -> bool {
+        let mut remapped = self.target_distributions.clone();
+        for distribution in &mut remapped {
+            let Some(old_slice) = old_targets.get(distribution.range.clone()) else {
+                return false;
+            };
+            let Some(new_slice) = self.targets.get(distribution.range.clone()) else {
+                return false;
+            };
+            if old_slice.len() != distribution.allocations.len()
+                || new_slice.len() != distribution.allocations.len()
+                || distribution
+                    .allocations
+                    .iter()
+                    .zip(old_slice)
+                    .any(|((announced_target, _), old_target)| announced_target != old_target)
+            {
+                return false;
+            }
+            for ((announced_target, _), new_target) in
+                distribution.allocations.iter_mut().zip(new_slice)
+            {
+                *announced_target = *new_target;
+            }
+        }
+        self.target_distributions = remapped;
+        true
     }
 
     pub fn with_provenance(mut self, provenance: ProvNodeId) -> Self {
@@ -2465,6 +2559,11 @@ impl StackEntry {
 
     pub fn with_activation_cost_has_tap(mut self, has_tap: bool) -> Self {
         self.activation_cost_has_tap = has_tap;
+        self
+    }
+
+    pub fn with_mana_spent_on_activation(mut self, mana_spent: crate::player::ManaPool) -> Self {
+        self.mana_spent_on_activation = mana_spent;
         self
     }
 
@@ -3093,6 +3192,9 @@ impl GameState {
             | crate::effect::Value::GreatestPower(filter)
             | crate::effect::Value::GreatestToughness(filter)
             | crate::effect::Value::GreatestManaValue(filter)
+            | crate::effect::Value::LeastPower(filter)
+            | crate::effect::Value::LeastToughness(filter)
+            | crate::effect::Value::LeastManaValue(filter)
             | crate::effect::Value::BasicLandTypesAmong(filter)
             | crate::effect::Value::CreatureTypesAmong(filter)
             | crate::effect::Value::CardTypesAmong(filter)
@@ -3101,6 +3203,9 @@ impl GameState {
             | crate::effect::Value::DistinctPowers(filter)
             | crate::effect::Value::PlayersWhoControlMoreThanYou(filter)
             | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
+                Self::object_filter_is_turn_context_sensitive(filter)
+            }
+            crate::effect::Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
                 Self::object_filter_is_turn_context_sensitive(filter)
             }
             crate::effect::Value::CreaturesDiedThisTurn
@@ -3840,6 +3945,35 @@ impl GameState {
         ability_payload: Option<crate::static_abilities::StaticAbility>,
     ) {
         let expires_end_of_turn = self.turn.turn_number;
+        self.grant_temporary_static_ability_payload_to_object_through_turn(
+            object_id,
+            ability,
+            ability_payload,
+            expires_end_of_turn,
+        );
+    }
+
+    pub(crate) fn grant_temporary_static_ability_to_object_through_turn(
+        &mut self,
+        object_id: ObjectId,
+        ability: crate::static_abilities::StaticAbilityId,
+        expires_end_of_turn: u32,
+    ) {
+        self.grant_temporary_static_ability_payload_to_object_through_turn(
+            object_id,
+            ability,
+            None,
+            expires_end_of_turn,
+        );
+    }
+
+    fn grant_temporary_static_ability_payload_to_object_through_turn(
+        &mut self,
+        object_id: ObjectId,
+        ability: crate::static_abilities::StaticAbilityId,
+        ability_payload: Option<crate::static_abilities::StaticAbility>,
+        expires_end_of_turn: u32,
+    ) {
         let Some(object) = self.object_mut(object_id) else {
             return;
         };
@@ -3897,7 +4031,14 @@ impl GameState {
             .collect()
     }
 
-    pub fn consume_temporary_spell_ability_grants_for_spell(
+    /// Attach and consume every matching one-shot spell-ability grant as the
+    /// spell is put on the stack during CR 601.2a.
+    ///
+    /// This must run before announcement choices.  In particular, a granted
+    /// ability may add an announcement-time cost or otherwise affect the
+    /// proposal.  Each matching grant adds its own ability instance; keyword
+    /// abilities such as cascade are cumulative.
+    pub fn apply_temporary_spell_ability_grants_for_cast_proposal(
         &mut self,
         spell_id: ObjectId,
         player: PlayerId,
@@ -3946,18 +4087,10 @@ impl GameState {
             .collect::<Vec<_>>();
         if let Some(spell) = self.object_mut(spell_id) {
             for ability in granted_abilities {
-                let already_present = spell.abilities.iter().any(|existing| {
-                    matches!(
-                        &existing.kind,
-                        crate::ability::AbilityKind::Static(static_ability)
-                            if static_ability.id() == ability.id()
-                    )
+                spell.abilities_mut().push(crate::ability::Ability {
+                    kind: crate::ability::AbilityKind::Static(ability),
+                    functional_zones: vec![Zone::Stack],
                 });
-                if !already_present {
-                    spell
-                        .abilities_mut()
-                        .push(crate::ability::Ability::static_ability(ability));
-                }
             }
         }
         for idx in matching {
@@ -4496,7 +4629,12 @@ impl GameState {
 
         // Update zone indexes
         match zone {
-            Zone::Battlefield => self.battlefield.push(id),
+            Zone::Battlefield => {
+                self.battlefield.push(id);
+                self.battlefield_flags_mut()
+                    .controller_at_last_refresh
+                    .insert(id, owner);
+            }
             Zone::Command => self.command_zone.push(id),
             Zone::Exile => self.exile.push(id),
             Zone::Library => {
@@ -4717,8 +4855,7 @@ impl GameState {
                     drawn.push(new_id);
                 }
             } else {
-                // Can't draw from empty library
-                break;
+                self.record_empty_library_draw_attempt(player);
             }
         }
         drawn
@@ -4749,7 +4886,8 @@ impl GameState {
             };
 
             let Some(id) = card_id else {
-                break;
+                self.record_empty_library_draw_attempt(player);
+                continue;
             };
 
             let final_zone =
@@ -4761,6 +4899,20 @@ impl GameState {
             }
         }
         drawn
+    }
+
+    /// Record one unreplaced attempt to draw from an empty library.
+    pub fn record_empty_library_draw_attempt(&mut self, player: PlayerId) {
+        if let Some(player) = self.player_mut(player) {
+            player.attempted_draw_from_empty_library = true;
+        }
+    }
+
+    /// Complete the CR 704.5b observation window for a real SBA pass.
+    pub(crate) fn clear_empty_library_draw_attempts_since_sba(&mut self) {
+        for player in &mut self.players {
+            player.attempted_draw_from_empty_library = false;
+        }
     }
 
     pub(crate) fn dredge_replacement_candidate(

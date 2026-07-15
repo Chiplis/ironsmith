@@ -3,7 +3,7 @@ use super::*;
 use crate::filter::CounterConstraint;
 use crate::object::CounterType;
 use crate::runtime_backend::front_end::grammar::{filters, leaf};
-use ironsmith_core::{EffectMetric, EffectMetricSource};
+use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectMetricQuery};
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::token::any;
@@ -32,6 +32,13 @@ pub(crate) struct AuraEnchantmentShape<'a> {
     pub(crate) granted_ability_tokens: Vec<&'a [OwnedLexToken]>,
     pub(crate) attachment_mentions_you_control: bool,
     pub(crate) loses_all_abilities: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TaggedExactTypeWithQuotedAbilityShape<'a> {
+    pub(crate) card_types: Vec<CardType>,
+    pub(crate) subtypes: Vec<Subtype>,
+    pub(crate) ability_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +89,7 @@ pub(crate) enum SacrificeCostObjectKindShape {
     Permanent,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WhereXValueShape {
     CommanderManaValueChoice,
     ReferenceMetric {
@@ -100,10 +107,7 @@ pub(crate) enum WhereXValueShape {
     },
     TwoPlusSacrificedManaValue,
     SourceExiledManaValue,
-    PriorEffectMetric {
-        source: EffectMetricSource,
-        metric: EffectMetric,
-    },
+    PriorEffectMetric(PriorEffectMetricQuery),
     RemovedCountersThisWay,
     CountersOn {
         reference: WhereXReferenceShape,
@@ -427,6 +431,73 @@ pub(crate) fn parse_aura_enchantment_tokens(
         granted_ability_tokens: aura_ability_tokens(tail_tokens),
         attachment_mentions_you_control,
         loses_all_abilities,
+    })
+}
+
+fn tagged_singular_characteristics_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        primitives::kw("it's").void(),
+        primitives::kw("it’s").void(),
+        primitives::kw("its").void(),
+        primitives::phrase(&["it", "is"]),
+    ))
+    .parse_next(input)
+}
+
+fn parse_tagged_exact_type_with_quoted_ability_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
+    tagged_singular_characteristics_prefix.parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let descriptor = repeat_till(1.., any.void(), peek(primitives::kw("with")))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::kw("with").parse_next(input)?;
+    primitives::quote().parse_next(input)?;
+    let ability_tokens = repeat_till(1.., any.void(), peek(primitives::quote()))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::quote().parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["and", "it", "loses", "all", "other", "card", "types"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok((descriptor, trim_lexed_commas(ability_tokens)))
+}
+
+pub(crate) fn parse_tagged_exact_type_with_quoted_ability_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<TaggedExactTypeWithQuotedAbilityShape<'_>> {
+    let (descriptor, ability_tokens) = primitives::parse_all(
+        tokens,
+        parse_tagged_exact_type_with_quoted_ability_lexed,
+        "tagged exact type with quoted ability",
+    )
+    .ok()?;
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
+    for token in descriptor {
+        let word = token.as_word()?;
+        if let Ok(card_type) = leaf::parse_leaf_card_type_complete(word) {
+            if !card_types.contains(&card_type) {
+                card_types.push(card_type);
+            }
+            continue;
+        }
+        let subtype = leaf::parse_leaf_subtype_flexible_complete(word).ok()?;
+        if !subtypes.contains(&subtype) {
+            subtypes.push(subtype);
+        }
+    }
+    if card_types.is_empty() || ability_tokens.is_empty() {
+        return None;
+    }
+    Some(TaggedExactTypeWithQuotedAbilityShape {
+        card_types,
+        subtypes,
+        ability_tokens,
     })
 }
 
@@ -1010,15 +1081,66 @@ fn parse_prior_effect_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Wher
     {
         return Ok(WhereXValueShape::SourceExiledManaValue);
     }
+    let source = prior_effect_source(reference_tokens)
+        .ok_or_else(|| primitives::backtrack_err("prior effect reference", "remembered objects"))?;
+    let metric = parsed_metric.unwrap_or(EffectMetric::Count);
+    // Counter removal can be an activation cost rather than a preceding effect.
+    // In that established shape, X is supplied by the cost payment itself; do
+    // not turn it into a pending prior-effect query that has no producer to
+    // bind to during reference resolution.
     if parsed_metric.is_none() && removed_counters_this_way(reference_tokens) {
         return Ok(WhereXValueShape::RemovedCountersThisWay);
     }
-    let source = prior_effect_source(reference_tokens)
-        .ok_or_else(|| primitives::backtrack_err("prior effect reference", "remembered objects"))?;
-    Ok(WhereXValueShape::PriorEffectMetric {
-        source,
-        metric: parsed_metric.unwrap_or(EffectMetric::Count),
-    })
+    let reference_words = parser_token_word_refs(reference_tokens);
+    if let Some(this_way_start) = reference_words
+        .windows(2)
+        .position(|window| window == ["this", "way"])
+    {
+        let subject = &reference_words[..this_way_start];
+        if let Some((action, action_start)) =
+            crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(subject)
+        {
+            let filter_words = &subject[..action_start];
+            let query_source = if matches!(action, ironsmith_core::PriorEffectAction::Chosen) {
+                EffectMetricSource::ChosenObjects
+            } else if filter_words
+                .iter()
+                .any(|word| matches!(*word, "counter" | "counters" | "damage"))
+            {
+                EffectMetricSource::Outcome
+            } else {
+                source
+            };
+            let mut query = PriorEffectMetricQuery::new(query_source, metric).with_action(action);
+            if !filter_words.is_empty()
+                && !filter_words
+                    .iter()
+                    .any(|word| matches!(*word, "counter" | "counters" | "damage"))
+            {
+                let mut filter = crate::runtime_backend::object_filters::parse_object_filter_words(
+                    filter_words,
+                    false,
+                )
+                .map_err(|_| {
+                    primitives::backtrack_err(
+                        "prior effect filter",
+                        "object filter over remembered objects",
+                    )
+                })?;
+                if filter_words
+                    .iter()
+                    .any(|word| matches!(*word, "card" | "cards"))
+                {
+                    filter.set_explicit_card_noun(true);
+                }
+                query = query.with_filter(filter);
+            }
+            return Ok(WhereXValueShape::PriorEffectMetric(query));
+        }
+    }
+    Ok(WhereXValueShape::PriorEffectMetric(
+        PriorEffectMetricQuery::new(source, metric),
+    ))
 }
 
 fn parse_counter_reference_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WhereXValueShape> {

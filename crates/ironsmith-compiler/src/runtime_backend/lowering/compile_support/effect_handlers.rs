@@ -701,6 +701,37 @@ pub(super) fn try_compile_timing_and_control_effect(
             let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
+        EffectAst::DelayedWhenLastObjectLeavesBattlefield { filter, effects } => {
+            let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "cannot schedule leaves-the-battlefield trigger without prior object context"
+                        .to_string(),
+                )
+            })?;
+            let previous_last = ctx.last_object_tag.clone();
+            ctx.last_object_tag = Some("triggering".to_string());
+            let compiled = compile_effects_preserving_last_effect(effects, ctx);
+            ctx.last_object_tag = previous_last;
+            let (delayed_effects, choices) = compiled?;
+
+            let mut watched_filter = filter.clone();
+            watched_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: target_tag.clone().into(),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                target_tag.into(),
+                ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield,
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            )
+            .with_target_filter(watched_filter);
+            (vec![Effect::new(delayed)], choices)
+        }
         _ => return Ok(None),
     };
 
@@ -731,7 +762,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;
-            let predicate = effect_predicate_from_if_result(*predicate);
+            let predicate = effect_predicate_from_if_result(predicate.clone());
             let effect = Effect::if_then(*condition, predicate, inner_effects);
             (vec![effect], inner_choices)
         }
@@ -747,7 +778,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 },
                 |ctx| compile_effects(effects, ctx),
             )?;
-            let predicate = effect_predicate_from_if_result(*predicate);
+            let predicate = effect_predicate_from_if_result(predicate.clone());
             let effect =
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())

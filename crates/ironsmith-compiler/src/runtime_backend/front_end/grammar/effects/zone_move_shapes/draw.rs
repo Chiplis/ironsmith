@@ -204,7 +204,10 @@ fn parse_as_many_this_way(tokens: &[OwnedLexToken]) -> Option<Value> {
     )?;
     primitives::find_prefix(rest, || semantic_phrase(&["this", "way"]))
         .is_some()
-        .then_some(Value::EventValue(EventValueSpec::Amount))
+        .then_some(
+            Value::EventValue(EventValueSpec::Amount)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::AsManyCardsThisWay),
+        )
 }
 
 pub(crate) fn parse_draw_head_shape(
@@ -217,6 +220,12 @@ pub(crate) fn parse_draw_head_shape(
     {
         let consumed = tokens.len().saturating_sub(rest.len());
         let mut value = Value::EventValue(EventValueSpec::Amount);
+        if tokens.first().is_some_and(|token| token.is_word("that"))
+            && tokens.get(1).is_some_and(|token| token.is_word("many"))
+        {
+            value = value
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards);
+        }
         if let Some(((), after_card)) = primitives::parse_prefix(rest, card_noun) {
             let trailing = trimmed(after_card);
             parsed_offset = parse_draw_card_count_offset_shape(trailing);
@@ -477,6 +486,14 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
         words.windows(2).any(|window| window == ["put", "into"]) && words.contains(&"graveyard");
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(words.iter().copied());
+    if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )
+        && used == for_each_words.len()
+    {
+        return Some(value);
+    }
     if put_into_graveyard
         && let Some((Value::Count(mut filter), used)) =
         crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(

@@ -2083,28 +2083,80 @@ pub(crate) fn describe_graveyard_mana_ladder_return_bundle(filtered: &[&Effect])
         second_choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?,
         third_choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?,
     ];
+    let card_types = chooses[0].filter.card_types.as_slice();
+    let supported_card_types = card_types == [CardType::Creature]
+        || card_types == [CardType::Artifact, CardType::Creature];
+    if !supported_card_types {
+        return None;
+    }
     for (idx, choose) in chooses.iter().enumerate() {
+        let chooses_zero_or_one = choose.count.min == 0 && choose.count.max == Some(1);
         if choose.chooser != PlayerFilter::You
-            || choose_exact_count(choose) != Some(1)
-            || !is_creature_filter_in_zone(&choose.filter, Zone::Graveyard, Some(PlayerFilter::You))
+            || (!chooses_zero_or_one && choose_exact_count(choose) != Some(1))
+            || choose.filter.zone != Some(Zone::Graveyard)
+            || choose.filter.owner != Some(PlayerFilter::You)
+            || choose.filter.card_types.as_slice() != card_types
             || choose.filter.mana_value != Some(crate::filter::Comparison::Equal((idx + 1) as i32))
         {
             return None;
         }
     }
-    let return_to_battlefield = unwrap_tag_wrappers(return_effect)
-        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
-    )?;
-    if return_to_battlefield.tapped
-        || (!matches!(&return_to_battlefield.target, ChooseSpec::Tagged(tag) if tag == &chooses[0].tag)
-            && !matches!(&return_to_battlefield.target, ChooseSpec::Iterated))
+    let returned_target = if let Some(return_to_battlefield) =
+        unwrap_tag_wrappers(return_effect)
+            .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        if return_to_battlefield.tapped {
+            return None;
+        }
+        &return_to_battlefield.target
+    } else {
+        let move_to_zone = unwrap_tag_wrappers(return_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield
+            || move_to_zone.enters_tapped
+            || move_to_zone.enters_attacking
+            || move_to_zone.enters_face_down
+        {
+            return None;
+        }
+        &move_to_zone.target
+    };
+    if !matches!(returned_target, ChooseSpec::Tagged(tag) if tag == &chooses[0].tag)
+        && !matches!(returned_target, ChooseSpec::Iterated)
     {
         return None;
     }
-    Some(
-        "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield."
-            .to_string(),
-    )
+    let discarded_tag = chooses[0]
+        .filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str().contains("discarded_mana_ladder")
+        })
+        .map(|constraint| &constraint.tag);
+    if let Some(discarded_tag) = discarded_tag
+        && !chooses.iter().all(|choose| {
+            choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && &constraint.tag == discarded_tag
+            })
+        })
+    {
+        return None;
+    }
+
+    if card_types == [CardType::Artifact, CardType::Creature] && discarded_tag.is_some() {
+        Some(
+            "You may choose an artifact or creature card with mana value 1 you discarded this way, then do the same for artifact or creature cards with mana values 2 and 3. Return those cards to the battlefield."
+                .to_string(),
+        )
+    } else {
+        Some(
+            "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield."
+                .to_string(),
+        )
+    }
 }
 
 pub(crate) fn describe_linked_graveyard_choices_then_may_return_bundle(
@@ -2363,7 +2415,7 @@ pub(crate) fn describe_choose_reveal_from_hand_then_reflexive_bundle(
         EffectPredicate::HappenedNotReplaced => "When you do and it isn't replaced".to_string(),
         _ => format!("When {}", describe_effect_predicate(&reflexive.predicate)),
     };
-    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
+    let triggered = lowercase_first(&describe_result_branch_effect_list(&reflexive.effects));
     Some(format!("{reveal_text}. {condition}, {triggered}"))
 }
 

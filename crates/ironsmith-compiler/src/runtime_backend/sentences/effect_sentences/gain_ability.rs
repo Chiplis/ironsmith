@@ -239,6 +239,7 @@ fn coordinated_gain_surface(tokens: &[OwnedLexToken], effects: Vec<EffectAst>) -
     vec![EffectAst::Coordinated {
         effects,
         leading_duration,
+        result_conjunction: false,
     }]
 }
 
@@ -325,13 +326,23 @@ fn parse_shared_subject_pump_from_get_tail(
     };
     let power = head.power;
     let toughness = head.toughness;
+    let additional_modifier = head.modifier_token_offset > 0;
     let modifier_tokens = modifier_tokens
         .get(head.modifier_token_offset..)
         .unwrap_or_default();
     let for_each =
         if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness) {
             parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?
-                .map(|count| (*power_per, *toughness_per, count))
+                .map(|count| {
+                    let count = if additional_modifier {
+                        count.with_surface_hint(
+                            ironsmith_core::ValueSurfaceHint::AdditionalPowerToughnessModifier,
+                        )
+                    } else {
+                        count
+                    };
+                    (*power_per, *toughness_per, count)
+                })
         } else {
             None
         };
@@ -1525,6 +1536,7 @@ fn parse_gain_ability_sentence_with_subject(
         if let Some(head) = gain_shapes::parse_gain_pump_head_shape(&modifier_tokens) {
             let power = head.power;
             let toughness = head.toughness;
+            let additional_modifier = head.modifier_token_offset > 0;
             let modifier_tokens = modifier_tokens
                 .get(head.modifier_token_offset..)
                 .unwrap_or_default();
@@ -1532,7 +1544,16 @@ fn parse_gain_ability_sentence_with_subject(
                 (&power, &toughness)
             {
                 parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?
-                    .map(|count| (*power_per, *toughness_per, count))
+                    .map(|count| {
+                        let count = if additional_modifier {
+                            count.with_surface_hint(
+                                ironsmith_core::ValueSurfaceHint::AdditionalPowerToughnessModifier,
+                            )
+                        } else {
+                            count
+                        };
+                        (*power_per, *toughness_per, count)
+                    })
             } else {
                 None
             };
@@ -2513,6 +2534,7 @@ mod tests {
             EffectAst::Coordinated {
                 effects: coordinated,
                 leading_duration: false,
+                result_conjunction: false,
             },
         ] = effects.as_slice()
         else {
@@ -2538,6 +2560,7 @@ mod tests {
             EffectAst::Coordinated {
                 effects: coordinated,
                 leading_duration: true,
+                result_conjunction: false,
             },
         ] = effects.as_slice()
         else {

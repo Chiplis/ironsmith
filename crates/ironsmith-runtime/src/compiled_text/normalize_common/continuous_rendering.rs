@@ -324,6 +324,65 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
         return None;
     }
 
+    if matches!(toughness.unhinted(), Value::Fixed(0))
+        && let Some(multiplier) = counters_removed_this_way_multiplier(power)
+        && multiplier > 0
+    {
+        let gets = if plural_target { "get" } else { "gets" };
+        return Some(format!(
+            "For each counter removed this way, {target} {gets} +{multiplier}/+0 {until_text}"
+        ));
+    }
+
+    let for_each_axis = |value: &Value| -> Option<(Value, i32)> {
+        if !value.has_surface_hint(ValueSurfaceHint::ForEach) {
+            return None;
+        }
+        match value.unhinted() {
+            Value::Scaled(inner, multiplier) => Some((inner.as_ref().clone(), *multiplier)),
+            _ => Some((
+                value
+                    .clone()
+                    .without_surface_hint(ValueSurfaceHint::ForEach),
+                1,
+            )),
+        }
+    };
+    let power_for_each = for_each_axis(power);
+    let toughness_for_each = for_each_axis(toughness);
+    let dynamic_for_each = match (power_for_each, toughness_for_each) {
+        (Some((power_basis, power_per)), Some((toughness_basis, toughness_per)))
+            if power_basis == toughness_basis =>
+        {
+            Some((power_basis, power_per, toughness_per))
+        }
+        (Some((basis, power_per)), None) if matches!(toughness.unhinted(), Value::Fixed(0)) => {
+            Some((basis, power_per, 0))
+        }
+        (None, Some((basis, toughness_per))) if matches!(power.unhinted(), Value::Fixed(0)) => {
+            Some((basis, 0, toughness_per))
+        }
+        _ => None,
+    };
+    if let Some((basis, power_per, toughness_per)) = dynamic_for_each
+        && let Some(each_text) = describe_create_for_each_count(&basis)
+    {
+        let gets = if plural_target { "get" } else { "gets" };
+        let additional = if power
+            .has_surface_hint(ValueSurfaceHint::AdditionalPowerToughnessModifier)
+            || toughness.has_surface_hint(ValueSurfaceHint::AdditionalPowerToughnessModifier)
+        {
+            "an additional "
+        } else {
+            ""
+        };
+        return Some(format!(
+            "{target} {gets} {additional}{}/{} {until_text} for each {each_text}",
+            describe_signed_i32(power_per),
+            describe_signed_i32(toughness_per),
+        ));
+    }
+
     if let Some(text) = describe_dynamic_runtime_pt_scale_action(
         target,
         plural_target,
@@ -588,6 +647,15 @@ pub(crate) fn describe_apply_continuous_target(
         describe_choose_spec,
         |filter| pluralize_noun_phrase(&filter.description()),
     );
+    if let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+        && !target.contains(" this way")
+        && let Some(action) = prior_effect_action_for_filter(filter)
+    {
+        target = format!(
+            "{target} {} this way",
+            describe_prior_effect_action_clause(action)
+        );
+    }
     target = if plural || target.contains("creatures that shares ") {
         target
             .replace(" that shares ", " that share ")
@@ -618,7 +686,8 @@ pub(crate) fn describe_apply_continuous_target(
         }
         Some(ironsmith_core::SetQuantifierSurface::Each) => {
             if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
-                let description = filter.description();
+                let description = describe_relative_characteristic_list_filter(filter)
+                    .unwrap_or_else(|| filter.description());
                 let description = strip_indefinite_article(&description);
                 let description = if filter.other {
                     description
@@ -1054,6 +1123,11 @@ pub(crate) fn describe_apply_continuous_clauses(
                 && matches!(
                     modification,
                     crate::continuous::Modification::RemoveSupertypes(_)
+                        | crate::continuous::Modification::AddCardTypes(_)
+                        | crate::continuous::Modification::SetCardTypes(_)
+                        | crate::continuous::Modification::AddSubtypes(_)
+                        | crate::continuous::Modification::SetSubtypes(_)
+                        | crate::continuous::Modification::RemoveAllSubtypesOfFamily(_)
                         | crate::continuous::Modification::SetPowerToughness { .. }
                         | crate::continuous::Modification::AddAbility(_)
                         | crate::continuous::Modification::AddAbilityGeneric(_)
@@ -1284,15 +1358,18 @@ pub(crate) fn describe_apply_continuous_tail(
             name_override,
             name_override_surface,
             add_supertypes,
+            copy_exception_surface,
             ..
         } = runtime
-            && let Some(exception_tail) = describe_copy_exception_tail(
-                name_override,
-                name_override_surface,
-                add_supertypes,
-                *preserve_source_abilities,
-                &effect.additional_modifications,
-            )
+            && let Some(exception_tail) = copy_exception_surface.clone().or_else(|| {
+                describe_copy_exception_tail(
+                    name_override,
+                    name_override_surface,
+                    add_supertypes,
+                    *preserve_source_abilities,
+                    &effect.additional_modifications,
+                )
+            })
         {
             tail_parts.push(format!("except {exception_tail}"));
         }
@@ -2847,23 +2924,77 @@ pub(crate) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -
     if filter.from_specific_source.is_some() {
         parts.push("from that source".to_string());
     }
+    if filter.excluded_specific_source.is_some() {
+        parts.push("other than that source".to_string());
+    }
 
     parts.join(" ")
 }
 
-pub(crate) fn describe_prevention_target(
-    target: &crate::prevention::PreventionTarget,
-) -> &'static str {
-    match target {
-        crate::prevention::PreventionTarget::Player(_) => "that player",
-        crate::prevention::PreventionTarget::Permanent(_) => "that permanent",
-        crate::prevention::PreventionTarget::PermanentsMatching(_) => "matching permanents",
-        crate::prevention::PreventionTarget::Players => "players",
-        crate::prevention::PreventionTarget::You => "you",
-        crate::prevention::PreventionTarget::YouAndPermanentsYouControl => {
-            "you and permanents you control"
+pub(crate) fn describe_prevention_damage_source(filter: &ObjectFilter, chosen: bool) -> String {
+    let description = filter.description();
+    let bare = strip_indefinite_article(&description).trim();
+    if bare.is_empty() {
+        return if chosen {
+            "a source of your choice".to_string()
+        } else {
+            "a source".to_string()
+        };
+    }
+
+    let creature_only = filter.card_types.len() == 1
+        && filter.card_types[0] == CardType::Creature
+        && filter.all_card_types.is_empty();
+    if creature_only {
+        if chosen {
+            if let Some((head, tail)) = bare.split_once(" with ") {
+                return format!(
+                    "{} of your choice with {tail}",
+                    with_indefinite_article(head)
+                );
+            }
+            return format!("{} of your choice", with_indefinite_article(bare));
         }
-        crate::prevention::PreventionTarget::All => "all players and permanents",
+        return with_indefinite_article(bare);
+    }
+
+    let source = with_indefinite_article(&format!("{bare} source"));
+    if chosen {
+        format!("{source} of your choice")
+    } else {
+        source
+    }
+}
+
+fn describe_prevention_matching_permanents(filter: &ObjectFilter) -> String {
+    let surface = describe_for_each_filter(filter);
+    let surface = surface
+        .strip_suffix(" on the battlefield")
+        .unwrap_or(&surface);
+    pluralize_noun_phrase(surface)
+}
+
+pub(crate) fn describe_prevention_target(target: &crate::prevention::PreventionTarget) -> String {
+    match target {
+        crate::prevention::PreventionTarget::Player(_) => "that player".to_string(),
+        crate::prevention::PreventionTarget::Permanent(_) => "that permanent".to_string(),
+        crate::prevention::PreventionTarget::PermanentsMatching(filter) => {
+            if filter.source {
+                filter.description()
+            } else {
+                describe_prevention_matching_permanents(filter)
+            }
+        }
+        crate::prevention::PreventionTarget::YouAndPermanentsMatching(filter) => format!(
+            "you and {}",
+            describe_prevention_matching_permanents(filter)
+        ),
+        crate::prevention::PreventionTarget::Players => "players".to_string(),
+        crate::prevention::PreventionTarget::You => "you".to_string(),
+        crate::prevention::PreventionTarget::YouAndPermanentsYouControl => {
+            "you and permanents you control".to_string()
+        }
+        crate::prevention::PreventionTarget::All => "all players and permanents".to_string(),
     }
 }
 
@@ -3110,7 +3241,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be destroyed", filter.description())
         }
         crate::effect::Restriction::BeRegenerated(filter) => {
-            format!("{} can't be regenerated", filter.description())
+            let subject = describe_prior_effect_tagged_filter_surface(filter)
+                .map(|subject| capitalize_first(&subject))
+                .unwrap_or_else(|| filter.description());
+            format!("{subject} can't be regenerated")
         }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
@@ -3364,6 +3498,111 @@ pub(crate) fn describe_colors_among(filter: &ObjectFilter) -> String {
     format!("colors among {}", describe_for_each_filter(filter))
 }
 
+fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction) -> &'static str {
+    match action {
+        crate::effect::PriorEffectAction::Cast => "cast",
+        crate::effect::PriorEffectAction::Chosen => "choose",
+        crate::effect::PriorEffectAction::Connived => "connive",
+        crate::effect::PriorEffectAction::Countered => "counter",
+        crate::effect::PriorEffectAction::CountersPut => "put counters on",
+        crate::effect::PriorEffectAction::DealtDamage => "deal damage to",
+        crate::effect::PriorEffectAction::Destroyed => "destroy",
+        crate::effect::PriorEffectAction::Discarded => "discard",
+        crate::effect::PriorEffectAction::Drawn => "draw",
+        crate::effect::PriorEffectAction::Exiled => "exile",
+        crate::effect::PriorEffectAction::Goaded => "goad",
+        crate::effect::PriorEffectAction::Milled => "mill",
+        crate::effect::PriorEffectAction::PhasedOut => "phase out",
+        crate::effect::PriorEffectAction::Prevented => "prevent",
+        crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
+        crate::effect::PriorEffectAction::Removed => "remove",
+        crate::effect::PriorEffectAction::Returned => "return",
+        crate::effect::PriorEffectAction::Revealed => "reveal",
+        crate::effect::PriorEffectAction::Sacrificed => "sacrifice",
+        crate::effect::PriorEffectAction::Searched => "search for",
+        crate::effect::PriorEffectAction::Shuffled => "shuffle",
+        crate::effect::PriorEffectAction::Tapped => "tap",
+    }
+}
+
+fn describe_prior_effect_result_surface(
+    surface: &crate::effect::PriorEffectResultSurface,
+) -> String {
+    if surface.quantifier == crate::effect::PriorEffectResultQuantifier::ActionOnly {
+        return match (surface.actor, surface.action) {
+            (
+                crate::effect::PriorEffectResultActor::You,
+                crate::effect::PriorEffectAction::Searched,
+            ) => "you search your library this way".to_string(),
+            (
+                crate::effect::PriorEffectResultActor::It,
+                crate::effect::PriorEffectAction::Connived,
+            ) => "it connives this way".to_string(),
+            (
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectAction::Prevented,
+            ) => "damage is prevented this way".to_string(),
+            (
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectAction::Removed,
+            ) => "one or more counters are removed this way".to_string(),
+            (
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectAction::Countered,
+            ) => "an ability is countered this way".to_string(),
+            (actor, action) => {
+                let actor = match actor {
+                    crate::effect::PriorEffectResultActor::Passive => "the prior action",
+                    crate::effect::PriorEffectResultActor::You => "you",
+                    crate::effect::PriorEffectResultActor::ThatPlayer => "that player",
+                    crate::effect::PriorEffectResultActor::It => "it",
+                };
+                format!(
+                    "{actor} {} this way",
+                    describe_prior_result_active_action(action)
+                )
+            }
+        };
+    }
+    let mut filter = surface.filter.clone();
+    filter.zone = None;
+    filter.tagged_constraints.clear();
+    filter.set_prior_effect_action_surface(None);
+    let base = strip_leading_article(&filter.description())
+        .trim()
+        .to_string();
+    let object = match surface.quantifier {
+        crate::effect::PriorEffectResultQuantifier::One => with_indefinite_article(&base),
+        crate::effect::PriorEffectResultQuantifier::OneOrMore => {
+            format!("one or more {}", pluralize_relative_object_phrase(&base))
+        }
+        crate::effect::PriorEffectResultQuantifier::ActionOnly => String::new(),
+    };
+    let actor = match surface.actor {
+        crate::effect::PriorEffectResultActor::Passive => None,
+        crate::effect::PriorEffectResultActor::You => Some("you"),
+        crate::effect::PriorEffectResultActor::ThatPlayer => Some("that player"),
+        crate::effect::PriorEffectResultActor::It => Some("it"),
+    };
+    if let Some(actor) = actor {
+        let action = describe_prior_result_active_action(surface.action);
+        if object.is_empty() {
+            return format!("{actor} {action} this way");
+        }
+        return format!("{actor} {action} {object} this way");
+    }
+
+    let copula = if surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore {
+        "are"
+    } else {
+        "is"
+    };
+    format!(
+        "{object} {copula} {} this way",
+        describe_prior_effect_action(surface.action)
+    )
+}
+
 pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
     match predicate {
         EffectPredicate::Succeeded => "succeeded".to_string(),
@@ -3381,6 +3620,9 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
                 card_type.name().to_ascii_lowercase()
             )
         }
+        EffectPredicate::PriorEffectResult(surface) => {
+            describe_prior_effect_result_surface(surface)
+        }
         EffectPredicate::Value(cmp) => format!("its count {}", describe_comparison(cmp)),
         EffectPredicate::Chosen => "was chosen".to_string(),
         EffectPredicate::WasDeclined => "was declined".to_string(),
@@ -3393,6 +3635,8 @@ pub(crate) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
         "sacrifice" => Some("sacrificed"),
         "sacrificed" => Some("sacrificed"),
         "destroyed" => Some("destroyed"),
+        "damaged" => Some("dealt damage"),
+        "counters" => Some("that had counters put on them"),
         "exiled" => Some("exiled"),
         "discarded" => Some("discarded"),
         "revealed" => Some("revealed"),
@@ -3400,6 +3644,11 @@ pub(crate) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
         "countered" => Some("countered"),
         "died" => Some("died"),
         "milled" => Some("milled"),
+        "goaded" => Some("goaded"),
+        "phased" => Some("that phased out"),
+        "prevented" => Some("prevented"),
+        "shuffled" => Some("shuffled"),
+        "tapped" => Some("tapped"),
         "moved" => Some("put"),
         _ => None,
     }

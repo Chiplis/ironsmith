@@ -512,22 +512,55 @@ fn replace_shared_else_subject_with_it(
     format!("it{}", &false_text[subject_end..])
 }
 
+struct SharedDeclineFallback {
+    primary: String,
+    fallback: String,
+    battlefield_tag: Option<TagKey>,
+    predicate: EffectPredicate,
+}
+
+fn tagged_battlefield_move(may: &crate::effects::MayEffect) -> Option<&TagKey> {
+    let [move_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield {
+        return None;
+    }
+    match move_to_zone.target.base() {
+        ChooseSpec::Tagged(tag) => Some(tag),
+        _ => None,
+    }
+}
+
+fn normalize_optional_battlefield_reference(text: String, reference: &str) -> String {
+    ["it", "them", "that card", "the card"]
+        .into_iter()
+        .fold(text, |text, current| {
+            text.replace(
+                &format!("put {current} onto the battlefield"),
+                &format!("put {reference} onto the battlefield"),
+            )
+        })
+}
+
 fn describe_shared_decline_fallback(
     conditional: &crate::effects::ConditionalEffect,
-) -> Option<(String, String)> {
+) -> Option<SharedDeclineFallback> {
     let [primary, on_decline] = conditional.if_true.as_slice() else {
         return None;
     };
     let with_id = primary.downcast_ref::<crate::effects::WithIdEffect>()?;
-    if structural_unwrap_render_wrappers(&with_id.effect)
-        .downcast_ref::<crate::effects::MayEffect>()
-        .is_none()
-    {
-        return None;
-    }
+    let may = structural_unwrap_render_wrappers(&with_id.effect)
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let battlefield_tag = tagged_battlefield_move(may).cloned();
     let if_effect = on_decline.downcast_ref::<crate::effects::IfEffect>()?;
     if if_effect.condition != with_id.id
-        || if_effect.predicate != EffectPredicate::DidNotHappen
+        || !matches!(
+            if_effect.predicate,
+            EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined
+        )
         || !if_effect.else_.is_empty()
         || conditional.if_false.is_empty()
     {
@@ -538,10 +571,59 @@ fn describe_shared_decline_fallback(
     if decline != false_branch {
         return None;
     }
-    Some((
-        describe_branch(std::slice::from_ref(primary))?,
-        false_branch,
+    Some(SharedDeclineFallback {
+        primary: describe_branch(std::slice::from_ref(primary))?,
+        fallback: false_branch,
+        battlefield_tag,
+        predicate: if_effect.predicate.clone(),
+    })
+}
+
+fn describe_was_declined_battlefield_fallback(
+    shared: SharedDeclineFallback,
+    condition_prefix: &str,
+    primary_reference: &str,
+    fallback_reference: &str,
+) -> Option<String> {
+    if shared.predicate != EffectPredicate::WasDeclined {
+        return None;
+    }
+    let primary = normalize_optional_battlefield_reference(shared.primary, primary_reference);
+    Some(format!(
+        "{condition_prefix}, {primary}. If you don't put {fallback_reference} onto the battlefield, {}",
+        shared.fallback
     ))
+}
+
+pub(super) fn describe_was_declined_optional_battlefield_fallback_conditional(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    let shared = describe_shared_decline_fallback(conditional)?;
+    if shared.predicate != EffectPredicate::WasDeclined {
+        return None;
+    }
+    let battlefield_tag = shared.battlefield_tag.as_ref()?;
+    let searched_card = battlefield_tag.as_str() == "searched";
+    let primary_reference = if searched_card { "that card" } else { "it" };
+    let fallback_reference = if searched_card { "the card" } else { "it" };
+    let mut condition = describe_condition(&conditional.condition);
+    if let Some(rest) = condition.strip_prefix("its mana value is ") {
+        condition = format!("it has mana value {rest}");
+    }
+    if matches!(&conditional.condition, Condition::YourTurn) {
+        let primary = normalize_optional_battlefield_reference(shared.primary, primary_reference);
+        return Some(format!(
+            "{} if it's your turn. If you don't put {fallback_reference} onto the battlefield, {}",
+            capitalize_first(&primary),
+            shared.fallback
+        ));
+    }
+    describe_was_declined_battlefield_fallback(
+        shared,
+        &format!("If {condition}"),
+        primary_reference,
+        fallback_reference,
+    )
 }
 
 fn describe_observed_conditional(
@@ -552,10 +634,29 @@ fn describe_observed_conditional(
 ) -> Option<String> {
     let filters = observed_filters(&conditional.condition, observed_tag)?;
     let condition = describe_observed_condition(&filters, observed_tag, &conditional.if_true);
-    let (true_branch, false_branch) = if let Some((primary, shared_fallback)) =
+    let (true_branch, false_branch) = if let Some(shared) =
         describe_shared_decline_fallback(conditional)
     {
-        (primary, Some(shared_fallback))
+        if shared.predicate == EffectPredicate::WasDeclined
+            && shared.battlefield_tag.as_ref() == Some(observed_tag)
+        {
+            let condition_prefix = if optional_reveal {
+                format!("If {condition} is revealed this way")
+            } else {
+                format!("If it's {condition}")
+            };
+            let land_card = filters
+                .iter()
+                .all(|filter| filter.card_types.as_slice() == [CardType::Land]);
+            let fallback_reference = if land_card { "the card" } else { "it" };
+            return describe_was_declined_battlefield_fallback(
+                shared,
+                &condition_prefix,
+                "it",
+                fallback_reference,
+            );
+        }
+        (shared.primary, Some(shared.fallback))
     } else {
         let false_branch = if conditional.if_false.is_empty() {
             None
@@ -1031,6 +1132,69 @@ mod tests {
     }
 
     #[test]
+    fn was_declined_matching_move_preserves_explicit_destination_fallback() {
+        let tag = TagKey::from("__sentence_helper_revealed_test");
+        let primary = Effect::with_id(7, Effect::may_single(tagged_move(&tag, Zone::Battlefield)));
+        let fallback = Effect::may_single(tagged_move(&tag, Zone::Library));
+        let effects = vec![
+            Effect::reveal_top(PlayerFilter::You, tag.clone()),
+            Effect::conditional(
+                Condition::TaggedObjectMatches(tag, ObjectFilter::land()),
+                vec![
+                    primary,
+                    Effect::if_then(
+                        EffectId(7),
+                        EffectPredicate::WasDeclined,
+                        vec![fallback.clone()],
+                    ),
+                ],
+                vec![fallback],
+            ),
+        ];
+        let rendered = describe_effect_list(&effects);
+        assert!(
+            rendered.contains("you may put it onto the battlefield. If you don't put the card onto the battlefield, you may put it on the bottom of your library"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("If you do"), "{rendered}");
+        assert!(!rendered.contains("Otherwise"), "{rendered}");
+        assert!(!rendered.contains("you may You"), "{rendered}");
+    }
+
+    #[test]
+    fn generic_was_declined_battlefield_move_uses_negative_wording() {
+        let tag = TagKey::from("targeted_test");
+        let primary = Effect::with_id(9, Effect::may_single(tagged_move(&tag, Zone::Battlefield)));
+        let fallback = tagged_move(&tag, Zone::Hand);
+        let mut filter = ObjectFilter::default();
+        filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(3));
+        let effects = vec![Effect::conditional(
+            Condition::TaggedObjectMatches(tag, filter),
+            vec![
+                primary,
+                Effect::if_then(
+                    EffectId(9),
+                    EffectPredicate::WasDeclined,
+                    vec![fallback.clone()],
+                ),
+            ],
+            vec![fallback],
+        )];
+        let rendered = describe_effect_list(&effects);
+        assert!(
+            rendered
+                .contains("If it has mana value 3 or less, you may put it onto the battlefield"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("If you don't put it onto the battlefield, put it into your hand"),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("If you do"), "{rendered}");
+        assert!(!rendered.contains("Otherwise"), "{rendered}");
+    }
+
+    #[test]
     fn reveal_conditional_consumes_trailing_move_with_revealed_card_antecedent() {
         let tag = TagKey::from("__sentence_helper_revealed_test");
         let effects = vec![
@@ -1156,6 +1320,7 @@ mod tests {
                 name_override: None,
                 name_override_surface: None,
                 add_supertypes: Vec::new(),
+                copy_exception_surface: None,
             },
             Until::Forever,
         ));

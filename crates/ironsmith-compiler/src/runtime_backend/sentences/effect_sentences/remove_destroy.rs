@@ -32,6 +32,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             counter_descriptor,
             target_tokens,
             source_like_target,
+            leave_one,
         } => {
             let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
             let target = if source_like_target {
@@ -45,6 +46,11 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                     Value::CountersOn(Box::new(ChooseSpec::Source), None)
                 }
                 _ => Value::CountersOn(Box::new(ChooseSpec::Source), counter_type),
+            };
+            let amount = if leave_one {
+                Value::Add(Box::new(amount), Box::new(Value::Fixed(-1)))
+            } else {
+                amount
             };
             Ok(EffectAst::subject_verb_remove_up_to_any_counters(
                 amount,

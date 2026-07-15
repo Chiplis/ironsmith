@@ -327,23 +327,32 @@ pub(super) fn compile_subject_verb_late(
             prelude.push(Effect::choose_one(modes));
             Ok((prelude, choices))
         }
-        SubjectVerbActionAst::PhaseOut { target } => {
+        SubjectVerbActionAst::PhaseOut {
+            target,
+            duration,
+            source_surface,
+        } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let base_effect = if spec.is_target() {
-                Effect::phase_out(spec.clone())
-            } else {
-                Effect::new(crate::effects::PhaseOutEffect::with_spec(spec.clone()))
-            };
+            let mut phase_out = crate::effects::PhaseOutEffect::with_spec(spec.clone());
+            phase_out.duration = *duration;
+            phase_out.source_surface = source_surface.clone();
+            let base_effect = Effect::new(phase_out);
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "phased_out");
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::PhaseOutAll { filter } => {
+        SubjectVerbActionAst::PhaseOutAll {
+            filter,
+            duration,
+            source_surface,
+        } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
-            prelude.push(Effect::new(crate::effects::PhaseOutEffect::with_spec(
-                ChooseSpec::all(resolved_filter),
-            )));
+            let mut phase_out =
+                crate::effects::PhaseOutEffect::with_spec(ChooseSpec::all(resolved_filter));
+            phase_out.duration = *duration;
+            phase_out.source_surface = source_surface.clone();
+            prelude.push(Effect::new(phase_out));
             Ok((prelude, choices))
         }
         SubjectVerbActionAst::PhaseIn { target } => {
@@ -1642,7 +1651,7 @@ pub(super) fn compile_subject_verb_late(
                 tag_object_target_effect(Effect::detain(spec.clone()), &spec, ctx, "detained");
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::Goad { target } => {
+        SubjectVerbActionAst::Goad { target, duration } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let spec = if choices.is_empty() {
@@ -1653,7 +1662,12 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 spec
             };
-            let effect = tag_object_target_effect(Effect::goad(spec.clone()), &spec, ctx, "goaded");
+            let effect = tag_object_target_effect(
+                Effect::goad_for(spec.clone(), duration.clone()),
+                &spec,
+                ctx,
+                "goaded",
+            );
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Suspect { target } => {

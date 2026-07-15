@@ -10,7 +10,7 @@ use crate::cards::builders::{
     IfResultPredicate, LoweringFrame, NormalizedLine, ObjectRefAst, PlayerAst, PredicateAst,
     PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
     ReturnControllerAst, SharedTypeConstraintAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
+    SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec, TurnHistoryPredicateAst,
 };
 use crate::color::{Color, ColorSet};
 use crate::cost::TotalCost;
@@ -135,8 +135,8 @@ pub(crate) use tag_support::collect_tag_spans_from_effect;
 pub(crate) use tag_support::{
     choose_spec_references_exiled_tag, collect_tag_spans_from_effects_with_context,
     effect_references_event_derived_amount, effect_references_it_tag,
-    effect_references_its_controller, effect_references_tag, effects_reference_it_tag,
-    effects_reference_its_controller, effects_reference_tag,
+    effect_references_its_controller, effect_references_tag, effects_have_cross_arm_tag_dependency,
+    effects_reference_it_tag, effects_reference_its_controller, effects_reference_tag,
     effects_reference_tag_in_object_position, filter_references_tag, is_exile_cost_collection_tag,
     is_revealed_collection_tag, is_searched_collection_tag, is_sentence_helper_consult_match_tag,
     is_sentence_helper_exiled_collection_tag, predicate_references_tag,
@@ -776,6 +776,106 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
         PredicateAst::ThisSpellWasCastFromNonHand => Condition::ThisSpellWasCastFromNonHand,
+        PredicateAst::TurnHistory(predicate) => Condition::TurnHistory(match predicate {
+            TurnHistoryPredicateAst::SpellsCastLastTurnAtLeast(count) => {
+                ironsmith_core::TurnHistoryCondition::SpellsCastLastTurnAtLeast(*count)
+            }
+            TurnHistoryPredicateAst::SourceCrewedByAtLeast { count, filter } => {
+                ironsmith_core::TurnHistoryCondition::SourceCrewedByAtLeast {
+                    count: *count,
+                    filter: resolve_it_tag(filter, &refs)?,
+                }
+            }
+            TurnHistoryPredicateAst::SourceWasCast { surface } => {
+                ironsmith_core::TurnHistoryCondition::SourceWasCast {
+                    surface: surface.clone(),
+                }
+            }
+            TurnHistoryPredicateAst::SourceWasCastByController { surface } => {
+                ironsmith_core::TurnHistoryCondition::SourceWasCastByController {
+                    surface: surface.clone(),
+                }
+            }
+            TurnHistoryPredicateAst::SourceWasKicked { surface } => {
+                ironsmith_core::TurnHistoryCondition::SourceWasKicked {
+                    surface: surface.clone(),
+                }
+            }
+            TurnHistoryPredicateAst::SourceEnteredBattlefieldThisTurn { surface } => {
+                ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn {
+                    surface: surface.clone(),
+                }
+            }
+            TurnHistoryPredicateAst::SourceAttackedThisTurn { surface } => {
+                ironsmith_core::TurnHistoryCondition::SourceAttackedThisTurn {
+                    surface: surface.clone(),
+                }
+            }
+            TurnHistoryPredicateAst::TriggeringObjectWasCast => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast
+            }
+            TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(zone) => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(*zone)
+            }
+            TurnHistoryPredicateAst::PlayerPlayedLandThisTurn(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerPlayedLandThisTurn(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
+            }
+            TurnHistoryPredicateAst::TriggeringObjectDied => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectDied
+            }
+            TurnHistoryPredicateAst::PlayerPlayedCardFromZoneThisTurn { player, zone } => {
+                ironsmith_core::TurnHistoryCondition::PlayerPlayedCardFromZoneThisTurn {
+                    player: resolve_non_target_player_filter(*player, &refs)?,
+                    zone: *zone,
+                }
+            }
+            TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn => {
+                ironsmith_core::TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn
+            }
+            TurnHistoryPredicateAst::PlayerLostLifeLastTurn(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerLostLifeLastTurn(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
+            }
+            TurnHistoryPredicateAst::TriggeringPlayersTurn { definite_player } => {
+                ironsmith_core::TurnHistoryCondition::TriggeringPlayersTurn {
+                    definite_player: *definite_player,
+                }
+            }
+            TurnHistoryPredicateAst::ControllerTeamGainedLifeThisTurn => {
+                ironsmith_core::TurnHistoryCondition::ControllerTeamGainedLifeThisTurn
+            }
+            TurnHistoryPredicateAst::TriggeringObjectsNoneWereCastOrNoManaSpent => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectsNoneWereCastOrNoManaSpent
+            }
+            TurnHistoryPredicateAst::ManaFromSourceSpentOnTriggeringAction { source_filter } => {
+                ironsmith_core::TurnHistoryCondition::ManaFromSourceSpentOnTriggeringAction {
+                    source_filter: resolve_it_tag(source_filter, &refs)?,
+                }
+            }
+            TurnHistoryPredicateAst::AllPlayersLifeAtMost(amount) => {
+                ironsmith_core::TurnHistoryCondition::AllPlayersLifeAtMost(*amount)
+            }
+            TurnHistoryPredicateAst::AnotherOpponentControlsPotentialTarget { filter } => {
+                ironsmith_core::TurnHistoryCondition::AnotherOpponentControlsPotentialTarget {
+                    filter: resolve_it_tag(filter, &refs)?,
+                }
+            }
+            TurnHistoryPredicateAst::TriggeringAttackerBlockers {
+                required,
+                required_count,
+                prohibited,
+            } => ironsmith_core::TurnHistoryCondition::TriggeringAttackerBlockers {
+                required: resolve_it_tag(required, &refs)?,
+                required_count: *required_count,
+                prohibited: resolve_it_tag(prohibited, &refs)?,
+            },
+            TurnHistoryPredicateAst::TriggeringAbilityIsManaAbility => {
+                ironsmith_core::TurnHistoryCondition::TriggeringAbilityIsManaAbility
+            }
+        }),
         PredicateAst::ValueComparison {
             left,
             operator,
@@ -1297,6 +1397,9 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)

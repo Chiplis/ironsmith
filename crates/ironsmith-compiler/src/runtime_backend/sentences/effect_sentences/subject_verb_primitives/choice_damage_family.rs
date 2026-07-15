@@ -177,6 +177,7 @@ pub(crate) fn parse_sentence_exile_multi_target(
             EffectAst::subject_verb_exile(second_target, false),
         ],
         leading_duration: false,
+        result_conjunction: false,
     }]))
 }
 
@@ -268,6 +269,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
     Ok(Some(vec![EffectAst::Coordinated {
         effects,
         leading_duration: false,
+        result_conjunction: false,
     }]))
 }
 

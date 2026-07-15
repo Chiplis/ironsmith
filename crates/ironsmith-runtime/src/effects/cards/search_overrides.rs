@@ -1,28 +1,20 @@
-use crate::ability::{AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::alternative_cast::{AlternativeCastingMethod, CastingMethod};
-use crate::cost::OptionalCostsPaid;
 use crate::decision::{
     CastLegalityContext, FallbackStrategy, alternative_method_uses_printed_mana_cost,
-    build_requirements_for_method, calculate_effective_mana_cost_for_casting_method,
-    can_cast_spell_with_context, can_cast_with_cost_with_context,
+    build_requirements_for_method, can_cast_spell_with_context, can_cast_with_cost_with_context,
     resolve_play_from_alternative_method, spell_mana_cost_for_cast,
 };
-use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::decisions::make_decision_with_fallback;
 use crate::decisions::specs::MaySpec;
 use crate::derived_view::DerivedGameView;
 use crate::effect::ManaSpendPermission;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::spells::SpellCastEvent;
-use crate::game_state::{
-    ActiveManaSpendPermission, GameState, ManaSpendPermissionSource, StackEntry,
-};
+use crate::game_state::{ActiveManaSpendPermission, GameState, ManaSpendPermissionSource};
 use crate::grant::Grantable;
 use crate::grant_registry::GrantSource;
 use crate::ids::{ObjectId, PlayerId};
-use crate::mana::{ManaCost, ManaSymbol};
 use crate::resolution::ResolutionProgram;
-use crate::special_actions::{SpecialAction, can_perform, perform};
 use crate::static_abilities::StaticAbilityId;
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
@@ -526,7 +518,7 @@ fn cast_from_library_while_searching(
     caster: PlayerId,
     casting_method: CastingMethod,
 ) -> Result<(), ExecutionError> {
-    let (mana_cost, card_name, stable_id) = {
+    {
         let Some(object) = game.object(card_id) else {
             return Ok(());
         };
@@ -544,66 +536,23 @@ fn cast_from_library_while_searching(
         {
             return Ok(());
         }
-        let Some(base_cost) =
-            spell_mana_cost_for_cast(game, caster, object, &casting_method, Zone::Library)
-        else {
-            return Ok(());
-        };
-        let effective_cost = calculate_effective_mana_cost_for_casting_method(
-            game,
-            caster,
-            object,
-            &base_cost,
-            &casting_method,
-        );
-        (effective_cost, object.name.to_string(), object.stable_id)
-    };
-
-    if !pay_library_cast_mana_cost(game, ctx, caster, card_id, &mana_cost) {
-        return Ok(());
-    }
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(());
     }
 
-    let Some(new_id) = game.move_object_by_effect(card_id, Zone::Stack) else {
+    let result = crate::game_loop::cast_spell_from_resolving_effect(
+        game,
+        card_id,
+        Zone::Library,
+        caster,
+        &casting_method,
+        false,
+        None,
+        ctx.provenance,
+        &mut ctx.decision_maker,
+    )
+    .map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+    let Some(new_id) = result else {
         return Ok(());
     };
-
-    let stack_entry = StackEntry {
-        object_id: new_id,
-        controller: caster,
-        provenance: ctx.provenance,
-        targets: vec![],
-        target_assignments: vec![],
-        x_value: None,
-        activation_cost_has_x: false,
-        activation_cost_has_tap: false,
-        ability_effects: None,
-        mana_usage_restrictions: Vec::new(),
-        mana_source_chosen_creature_type: None,
-        is_ability: false,
-        casting_method,
-        optional_costs_paid: OptionalCostsPaid::default(),
-        defending_player: None,
-        chosen_player: None,
-        chapter_ability_source: None,
-        source_stable_id: Some(stable_id),
-        source_snapshot: None,
-        source_name: Some(card_name),
-        triggering_event: None,
-        event_value_amount: None,
-        trigger_identity: None,
-        ability_index: None,
-        intervening_if: None,
-        keyword_payment_contributions: vec![],
-        crew_contributors: vec![],
-        saddle_contributors: vec![],
-        chosen_modes: None,
-        tagged_objects: std::collections::HashMap::new(),
-        effect_outcomes: std::collections::HashMap::new(),
-    };
-    game.push_to_stack(stack_entry);
 
     let event = if let Some(object) = game.object(new_id) {
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
@@ -617,187 +566,6 @@ fn cast_from_library_while_searching(
     );
 
     Ok(())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LibraryCastManaChoice {
-    ActivateManaAbility {
-        permanent_id: ObjectId,
-        ability_index: usize,
-    },
-}
-
-fn pay_library_cast_mana_cost(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    payer: PlayerId,
-    spell_id: ObjectId,
-    cost: &ManaCost,
-) -> bool {
-    const MAX_PAYMENT_STEPS: usize = 64;
-
-    for _ in 0..MAX_PAYMENT_STEPS {
-        if game.can_pay_mana_cost_with_reason(
-            payer,
-            Some(spell_id),
-            cost,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-        ) {
-            return game.try_pay_mana_cost_with_reason(
-                payer,
-                Some(spell_id),
-                cost,
-                0,
-                crate::costs::PaymentReason::CastSpell,
-            );
-        }
-
-        let mana_abilities = available_mana_abilities(game, payer, &mut ctx.decision_maker);
-        if mana_abilities.is_empty() {
-            return false;
-        }
-
-        let mut choices = Vec::new();
-        let mut options = Vec::new();
-        for (permanent_id, ability_index, description) in mana_abilities {
-            choices.push(LibraryCastManaChoice::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            });
-            options.push(SelectableOption::new(
-                choices.len() - 1,
-                format!(
-                    "Tap {}: {}",
-                    describe_permanent(game, permanent_id),
-                    description
-                ),
-            ));
-        }
-
-        let source_name = game
-            .object(spell_id)
-            .map(|object| object.name.to_string())
-            .unwrap_or_else(|| "spell".to_string());
-        let decision_ctx =
-            SelectOptionsContext::mana_payment(payer, spell_id, source_name, options);
-        let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return false;
-        }
-
-        let Some(selected_idx) = selected.first().copied() else {
-            return false;
-        };
-        let Some(choice) = choices.get(selected_idx).copied() else {
-            return false;
-        };
-
-        match choice {
-            LibraryCastManaChoice::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            } => {
-                let action = SpecialAction::ActivateManaAbility {
-                    permanent_id,
-                    ability_index,
-                };
-                if perform(action, game, payer, &mut ctx.decision_maker).is_err() {
-                    return false;
-                }
-                if ctx.decision_maker.awaiting_choice() {
-                    return false;
-                }
-            }
-        }
-    }
-
-    game.try_pay_mana_cost_with_reason(
-        payer,
-        Some(spell_id),
-        cost,
-        0,
-        crate::costs::PaymentReason::CastSpell,
-    )
-}
-
-fn available_mana_abilities(
-    game: &GameState,
-    player: PlayerId,
-    decision_maker: &mut &mut dyn crate::decision::DecisionMaker,
-) -> Vec<(ObjectId, usize, String)> {
-    let mut abilities = Vec::new();
-
-    for &permanent_id in &game.battlefield {
-        let Some(permanent) = game.object(permanent_id) else {
-            continue;
-        };
-        if game.controller_of(permanent) != player {
-            continue;
-        }
-
-        for (ability_index, ability) in permanent.abilities.iter().enumerate() {
-            let AbilityKind::Activated(mana_ability) = &ability.kind else {
-                continue;
-            };
-            if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
-                continue;
-            }
-            let action = SpecialAction::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            };
-            if can_perform(&action, game, player, decision_maker).is_err() {
-                continue;
-            }
-
-            abilities.push((
-                permanent_id,
-                ability_index,
-                describe_mana_ability(game, permanent_id, player, &ability.kind),
-            ));
-        }
-    }
-
-    abilities
-}
-
-fn describe_mana_ability(
-    game: &GameState,
-    source: ObjectId,
-    controller: PlayerId,
-    kind: &AbilityKind,
-) -> String {
-    if let AbilityKind::Activated(mana_ability) = kind
-        && mana_ability.is_runtime_mana_ability(game, source, controller)
-    {
-        let produced: Vec<&str> = mana_ability
-            .inferred_mana_symbols(game, source, controller)
-            .iter()
-            .map(|symbol| match symbol {
-                ManaSymbol::White => "{W}",
-                ManaSymbol::Blue => "{U}",
-                ManaSymbol::Black => "{B}",
-                ManaSymbol::Red => "{R}",
-                ManaSymbol::Green => "{G}",
-                ManaSymbol::Colorless => "{C}",
-                _ => "mana",
-            })
-            .collect();
-        if produced.is_empty() {
-            "Add mana".to_string()
-        } else {
-            format!("Add {}", produced.join(""))
-        }
-    } else {
-        "Add mana".to_string()
-    }
-}
-
-fn describe_permanent(game: &GameState, id: ObjectId) -> String {
-    game.object(id)
-        .map(|object| object.name.to_string())
-        .unwrap_or_else(|| "Unknown".to_string())
 }
 
 #[cfg(test)]

@@ -189,6 +189,7 @@ mod tests {
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::{Object, ObjectKind};
     use crate::static_abilities::StaticAbility;
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
@@ -363,6 +364,63 @@ mod tests {
             .expect("countered spell should still exist after moving");
         assert_eq!(moved_obj.zone, Zone::Graveyard);
         assert_eq!(moved_obj.owner, bob);
+    }
+
+    #[test]
+    fn countered_spell_copy_ceases_to_exist_at_the_next_sba_check() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let original = create_instant(&mut game, bob, Zone::Stack, "Original Spell");
+        game.stack.push(StackEntry::new(original, bob));
+        let original_object = game
+            .object(original)
+            .expect("original spell should exist")
+            .clone();
+        let copy_id = game.new_object_id();
+        let copy = Object::spell_copy_of(&original_object, copy_id, bob);
+        let copy_stable_id = copy.stable_id;
+        game.add_object(copy);
+        game.stack.push(StackEntry::new(copy_id, bob));
+        let surviving_copy_id = game.new_object_id();
+        game.add_object(Object::spell_copy_of(
+            &original_object,
+            surviving_copy_id,
+            bob,
+        ));
+        game.stack.push(StackEntry::new(surviving_copy_id, bob));
+
+        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+        execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(copy_id))),
+            &mut ctx,
+        )
+        .expect("counter should resolve");
+
+        let moved_copy = game
+            .find_object_by_stable_id(copy_stable_id)
+            .expect("the copy should move before state-based actions");
+        assert!(game.object(moved_copy).is_some_and(|object| {
+            object.kind == ObjectKind::SpellCopy && object.zone == Zone::Graveyard
+        }));
+
+        assert!(crate::rules::state_based::apply_state_based_actions(
+            &mut game
+        ));
+        assert!(
+            game.find_object_by_stable_id(copy_stable_id).is_none(),
+            "a countered spell copy must cease to exist rather than remain in a graveyard"
+        );
+        assert!(
+            game.object(surviving_copy_id)
+                .is_some_and(|object| object.zone == Zone::Stack),
+            "a spell copy still on the stack must not be removed by the SBA"
+        );
+        assert!(game.object(original).is_some());
     }
 
     #[test]

@@ -147,9 +147,8 @@ fn preserved_keyword_label(input: &mut LexStream<'_>) -> WResult<PreservedKeywor
         "buyback" | "blitz" | "bestow" | "cumulative" | "cycling" | "echo" | "equip" | "epic"
         | "escape" | "escalate" | "eternalize" | "evoke" | "flashback" | "kicker"
         | "multikicker" | "modular" | "morph" | "megamorph" | "prototype" | "replicate"
-        | "reinforce" | "squad" | "spectacle" | "strive" | "surge" | "suspend" | "ward" => {
-            Ok(PreservedKeywordLabelKind::CostOrCasting)
-        }
+        | "reinforce" | "splice" | "squad" | "spectacle" | "strive" | "surge" | "suspend"
+        | "ward" => Ok(PreservedKeywordLabelKind::CostOrCasting),
         "boast" | "renew" => Ok(PreservedKeywordLabelKind::Activated),
         _ => Err(primitives::backtrack_err(
             "keyword label",

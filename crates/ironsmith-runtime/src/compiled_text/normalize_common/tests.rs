@@ -488,6 +488,16 @@ fn normalize_another_creatures_plural_typo_without_touching_singular() {
 }
 
 #[test]
+fn normalize_plural_counter_qualifier_before_controller() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Other creatures with counters on them you control have flying and haste."
+        ),
+        "Other creatures you control with counters on them have flying and haste."
+    );
+}
+
+#[test]
 fn describe_tagged_object_matches_simple_subtype_uses_is_clause() {
     let mut filter = ObjectFilter::default();
     filter.subtypes = vec![Subtype::Spider];
@@ -710,6 +720,30 @@ fn describe_target_face_up_exiled_card_uses_exiled_surface() {
     ));
 
     assert_eq!(describe_choose_spec(&spec), "target face-up exiled card");
+}
+
+#[test]
+fn describe_object_or_player_union_only_adds_target_for_target_wrapper() {
+    let union = ChooseSpec::ObjectOrPlayer(
+        ObjectFilter::default().with_type(CardType::Battle).other(),
+        PlayerFilter::Opponent,
+    );
+
+    assert_eq!(describe_choose_spec(&union), "another battle or opponent");
+    assert_eq!(
+        describe_choose_spec(&ChooseSpec::target(union)),
+        "another target battle or opponent"
+    );
+}
+
+#[test]
+fn describe_generic_object_or_player_union() {
+    let union = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(
+        ObjectFilter::creature(),
+        PlayerFilter::Any,
+    ));
+
+    assert_eq!(describe_choose_spec(&union), "target creature or player");
 }
 
 #[test]
@@ -1517,6 +1551,12 @@ fn normalize_ability_loss_transform_surface_repairs_base_pt_clause() {
     );
     assert_eq!(
         normalize_common_semantic_phrasing(
+            "Enchanted creature loses all abilities and is green is a citizen, is white, is named legitimate businessperson, has base power, and toughness 1/1 creature."
+        ),
+        "Enchanted creature loses all abilities and is a green and white Citizen creature with base power and toughness 1/1 named Legitimate Businessperson."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
             "Enchanted creature loses all abilities and is white and green citizen is creature named legitimate businessperson and, has base power, and toughness 1/1 creature."
         ),
         "Enchanted creature loses all abilities and is a white and green Citizen creature with base power and toughness 1/1 named Legitimate Businessperson."
@@ -1549,6 +1589,84 @@ fn tagged_set_with_each_surface_renders_each_of_them() {
         describe_apply_continuous_target(&effect),
         ("each of them".to_string(), false)
     );
+}
+
+#[test]
+fn copy_exception_type_modifications_render_only_inside_exception_tail() {
+    let copy_source = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+    let mut additive = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+        ChooseSpec::Source,
+        crate::effects::continuous::RuntimeModification::CopyOf {
+            source: copy_source.clone(),
+            preserve_source_abilities: false,
+            name_override: None,
+            name_override_surface: None,
+            add_supertypes: Vec::new(),
+            copy_exception_surface: Some(
+                "it's a Vehicle artifact in addition to its other types".to_string(),
+            ),
+        },
+        Until::EndOfTurn,
+    );
+    additive.additional_modifications.extend([
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Artifact]),
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Vehicle]),
+    ]);
+    let additive_text = describe_apply_continuous_effect(&additive).expect("additive copy text");
+    assert!(
+        additive_text.contains("except it's a Vehicle artifact in addition to its other types"),
+        "{additive_text}"
+    );
+    assert_eq!(
+        additive_text.matches("artifact").count(),
+        1,
+        "{additive_text}"
+    );
+    assert_eq!(
+        additive_text.matches("Vehicle").count(),
+        1,
+        "{additive_text}"
+    );
+
+    let mut setting = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+        ChooseSpec::Source,
+        crate::effects::continuous::RuntimeModification::CopyOf {
+            source: copy_source,
+            preserve_source_abilities: false,
+            name_override: Some("Taskmaster, Mercenary Mimic".to_string()),
+            name_override_surface: None,
+            add_supertypes: vec![crate::types::Supertype::Legendary],
+            copy_exception_surface: Some(
+                "his name is Taskmaster, Mercenary Mimic and he's a legendary Human Mercenary Villain creature"
+                    .to_string(),
+            ),
+        },
+        Until::YourNextTurn,
+    );
+    setting.additional_modifications.extend([
+        crate::continuous::Modification::SetCardTypes(vec![CardType::Creature]),
+        crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+            crate::types::SubtypeFamily::Creature,
+        ),
+        crate::continuous::Modification::AddSubtypes(vec![
+            Subtype::Human,
+            Subtype::Mercenary,
+            Subtype::Villain,
+        ]),
+    ]);
+    let setting_text = describe_apply_continuous_effect(&setting).expect("setting copy text");
+    assert!(
+        setting_text.contains(
+            "except his name is Taskmaster, Mercenary Mimic and he's a legendary Human Mercenary Villain creature"
+        ),
+        "{setting_text}"
+    );
+    assert_eq!(
+        setting_text.matches("Taskmaster").count(),
+        1,
+        "{setting_text}"
+    );
+    assert_eq!(setting_text.matches("Villain").count(), 1, "{setting_text}");
 }
 
 #[test]

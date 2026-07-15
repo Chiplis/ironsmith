@@ -1439,6 +1439,18 @@ pub enum ZoneChangeOriginCondition {
     MovedFromOrCastFrom(Zone),
 }
 
+/// Grammatical number of an explicitly authored source-object trigger subject.
+///
+/// This is presentation metadata only: it preserves distinctions such as
+/// "When Ran and Shaw enter" versus "When Hidetsugu and Kairi enters" without
+/// guessing from the card name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TriggerSubjectNumber {
+    #[default]
+    Singular,
+    Plural,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZoneChangeTrigger {
     pub from: Option<Zone>,
@@ -1447,6 +1459,7 @@ pub struct ZoneChangeTrigger {
     pub filter: Option<ObjectFilter>,
     pub this: bool,
     pub this_surface: Option<SourceReferenceSurface>,
+    pub this_subject_number: TriggerSubjectNumber,
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
     pub during_turn: Option<PlayerFilter>,
@@ -1462,6 +1475,7 @@ impl ZoneChangeTrigger {
             filter: None,
             this: false,
             this_surface: None,
+            this_subject_number: TriggerSubjectNumber::Singular,
             count: CountMode::One,
             cause_filter: None,
             during_turn: None,
@@ -1508,6 +1522,11 @@ impl ZoneChangeTrigger {
 
     pub fn this_surface(mut self, surface: SourceReferenceSurface) -> Self {
         self.this_surface = Some(surface);
+        self
+    }
+
+    pub fn this_subject_number(mut self, number: TriggerSubjectNumber) -> Self {
+        self.this_subject_number = number;
         self
     }
 

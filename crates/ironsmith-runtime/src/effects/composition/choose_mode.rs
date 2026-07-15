@@ -43,6 +43,7 @@ impl EffectExecutor for ChooseModeEffect {
             allow_repeated_modes: self.allow_repeated_modes,
             mode_point_costs: self.mode_point_costs.clone(),
             distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
+            conditional_mode_range: self.conditional_mode_range.clone(),
         })
     }
 
@@ -60,6 +61,7 @@ impl EffectExecutor for ChooseModeEffect {
             disallow_previously_chosen_modes_this_turn: self
                 .disallow_previously_chosen_modes_this_turn,
             distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
+            conditional_mode_range: self.conditional_mode_range.as_ref(),
         })
     }
 }

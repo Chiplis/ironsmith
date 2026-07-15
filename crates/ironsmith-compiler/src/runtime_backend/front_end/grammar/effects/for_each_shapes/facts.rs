@@ -129,7 +129,9 @@ pub(crate) fn contains_may(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub(crate) fn starts_choose(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_prefix(tokens, primitives::kw("choose")).is_some()
+    tokens
+        .first()
+        .is_some_and(|token| token.is_word("choose") || token.is_word("chooses"))
 }
 
 #[cfg(test)]

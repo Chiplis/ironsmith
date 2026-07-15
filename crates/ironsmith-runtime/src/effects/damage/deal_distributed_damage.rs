@@ -113,18 +113,25 @@ impl DealDistributedDamageEffect {
             };
         }
 
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
-        let distribution = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            chooser,
-            Some(ctx.source),
-            DistributeSpec::damage(ctx.source, total, available_targets.clone()),
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
+        let announced_distribution = ctx.take_target_distribution(&self.target);
+        let uses_announced_distribution = announced_distribution.is_some();
+        let distribution = if let Some(distribution) = announced_distribution {
+            distribution.allocations
+        } else {
+            let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+            let distribution = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                chooser,
+                Some(ctx.source),
+                DistributeSpec::damage(ctx.source, total, available_targets.clone()),
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            distribution
+        };
         if distribution.is_empty() && self.target.count().min == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -141,7 +148,9 @@ impl DealDistributedDamageEffect {
             return Ok(EffectOutcome::impossible());
         }
 
-        if distributed_total < total {
+        // CR 608.2b does not let a resolving spell reassign damage that was
+        // announced for a target that has since become illegal.
+        if !uses_announced_distribution && distributed_total < total {
             let remaining = total - distributed_total;
             if let Some(first_target) = available_targets.first().copied() {
                 *allocations.entry(first_target).or_insert(0) += remaining;
@@ -168,6 +177,7 @@ impl DealDistributedDamageEffect {
                 false,
                 ctx.provenance,
                 ctx.cause.clone(),
+                &mut *ctx.decision_maker,
             ));
         }
 
@@ -198,6 +208,14 @@ impl EffectExecutor for DealDistributedDamageEffect {
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
         Some(self.target.count())
+    }
+
+    fn get_target_distribution_value(&self) -> Option<&Value> {
+        Some(&self.amount)
+    }
+
+    fn target_reuse_policy(&self) -> crate::effects::TargetReusePolicy {
+        crate::effects::TargetReusePolicy::AlwaysDeclareNew
     }
 
     fn target_description(&self) -> &'static str {

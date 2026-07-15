@@ -28,11 +28,15 @@ pub use ironsmith_core::{NewTargetRestriction, RetargetMode, RetargetStackObject
 
 fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
-        ChooseSpec::Target(inner) => requires_target_selection(inner),
+        ChooseSpec::Target(_) => true,
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
         | ChooseSpec::Player(_)
-        | ChooseSpec::Object(_) => true,
+        | ChooseSpec::Object(_)
+        | ChooseSpec::PlayerOrPlaneswalker(_) => true,
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+            requires_target_selection(inner)
+        }
         _ => false,
     }
 }
@@ -313,7 +317,12 @@ impl EffectExecutor for RetargetStackObjectEffect {
 
                     if game.stack[stack_idx].targets != new_targets {
                         let old_targets = game.stack[stack_idx].targets.clone();
-                        game.stack[stack_idx].targets = new_targets;
+                        let mut updated_entry = game.stack[stack_idx].clone();
+                        updated_entry.targets = new_targets;
+                        if !updated_entry.remap_target_distributions(&old_targets) {
+                            continue;
+                        }
+                        game.stack[stack_idx] = updated_entry;
                         changed += 1;
                         for target in &game.stack[stack_idx].targets {
                             if !old_targets.contains(target) {
@@ -413,9 +422,16 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         selected
                     };
 
-                    if let Some(entry_target) = game.stack[stack_idx].targets.get_mut(chosen_idx) {
-                        if *entry_target != fixed_target {
-                            *entry_target = fixed_target;
+                    if game.stack[stack_idx]
+                        .targets
+                        .get(chosen_idx)
+                        .is_some_and(|target| *target != fixed_target)
+                    {
+                        let old_targets = game.stack[stack_idx].targets.clone();
+                        let mut updated_entry = game.stack[stack_idx].clone();
+                        updated_entry.targets[chosen_idx] = fixed_target;
+                        if updated_entry.remap_target_distributions(&old_targets) {
+                            game.stack[stack_idx] = updated_entry;
                             changed += 1;
                             push_becomes_targeted_event(
                                 &mut events,
@@ -484,7 +500,17 @@ mod tests {
             .into(),
         );
         game.push_to_stack(
-            StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(alice)]),
+            StackEntry::new(spell_id, alice)
+                .with_targets(vec![Target::Player(alice)])
+                .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                    spec: ChooseSpec::target_player(),
+                    range: 0..1,
+                }])
+                .with_target_distributions(vec![crate::game_state::TargetDistribution {
+                    spec: ChooseSpec::target_player(),
+                    range: 0..1,
+                    allocations: vec![(Target::Player(alice), 3)],
+                }]),
         );
         let retarget_source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(retarget_source, bob);
@@ -497,6 +523,11 @@ mod tests {
             .expect("retarget should resolve");
 
         assert_eq!(game.stack[0].targets, vec![Target::Player(bob)]);
+        assert_eq!(
+            game.stack[0].target_distributions[0].allocations,
+            vec![(Target::Player(bob), 3)],
+            "the announced amount follows its target slot and cannot be redivided"
+        );
         assert!(outcome.events.iter().any(|event| {
             event
                 .downcast::<BecomesTargetedEvent>()

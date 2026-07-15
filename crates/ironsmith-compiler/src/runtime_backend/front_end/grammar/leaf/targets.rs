@@ -215,6 +215,16 @@ pub(crate) fn parse_leaf_target_head_prefix_lexed<'a>(
 }
 
 fn parse_target_head_count(input: &mut LexStream<'_>) -> WResult<Option<ChoiceCount>> {
+    let mut one_or_more_probe = input.clone();
+    if primitives::phrase(&["one", "or", "more"])
+        .parse_next(&mut one_or_more_probe)
+        .is_ok()
+    {
+        return parse_leaf_choice_count_prefix_lexed
+            .map(Some)
+            .parse_next(input);
+    }
+
     let mut any_number_probe = input.clone();
     if primitives::phrase(&["any", "number", "of"])
         .parse_next(&mut any_number_probe)
@@ -622,6 +632,14 @@ mod tests {
 
     #[test]
     fn preserves_any_number_articles_on_and_ordinal_heads() {
+        let one_or_more = parse("one or more target creatures");
+        assert_eq!(one_or_more.prefix.count, Some(ChoiceCount::at_least(1)));
+        assert!(one_or_more.prefix.explicit_target_span.is_some());
+        assert_eq!(
+            TokenWordView::new(one_or_more.rest()).to_word_refs(),
+            ["creatures"]
+        );
+
         let any = parse("any number of targets");
         assert!(
             any.prefix

@@ -15,6 +15,8 @@ pub(crate) enum ForEachParticipantScope {
     Opponent,
     OpponentExceptDefending,
     Player,
+    PlayerExceptYou,
+    PlayerExceptItsController,
     PlayerOnYourTeam,
 }
 
@@ -188,9 +190,31 @@ pub(crate) fn parse_participant_clause_shape(
             inner_tokens,
         });
     }
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::kw("each"),
+            primitives::kw("other"),
+            semantic_kw("player"),
+        )
+            .void(),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::PlayerExceptYou,
+            participant_is_actor: true,
+            inner_tokens: trim(rest),
+        });
+    }
     let (_, rest) = primitives::parse_prefix(tokens, player_prefix)?;
     let mut scope = ForEachParticipantScope::Player;
     let mut inner_tokens = trim(rest);
+    if let Some((_, rest)) = primitives::parse_prefix(
+        inner_tokens,
+        primitives::phrase(&["other", "than", "its", "controller"]),
+    ) {
+        scope = ForEachParticipantScope::PlayerExceptItsController;
+        inner_tokens = trim(rest);
+    }
     if let Some((_, rest)) =
         primitives::parse_prefix(inner_tokens, primitives::phrase(&["on", "your", "team"]))
     {
@@ -497,6 +521,24 @@ mod tests {
             !parse_participant_clause_shape(&imperative)
                 .unwrap()
                 .participant_is_actor
+        );
+    }
+
+    #[test]
+    fn parses_each_other_player_as_filtered_participant_subject() {
+        let tokens = lex_line("Each other player draws a card", 0).unwrap();
+        let shape = parse_participant_clause_shape(&tokens).unwrap();
+        assert!(shape.participant_is_actor);
+        assert_eq!(shape.scope, ForEachParticipantScope::PlayerExceptYou);
+        assert_eq!(
+            TokenWordView::new(shape.inner_tokens).to_word_refs(),
+            vec!["draws", "a", "card"]
+        );
+
+        let imperative = lex_line("For each other player, draw a card", 0).unwrap();
+        assert!(
+            parse_participant_clause_shape(&imperative).is_none(),
+            "the quantified-subject family must not claim imperative fanout"
         );
     }
 

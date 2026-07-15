@@ -41,6 +41,9 @@ pub(crate) use attached_references::*;
 pub(crate) enum CombatAttachObjectShape<'a> {
     Source,
     Tagged(CombatAttachTaggedObjectShape),
+    All {
+        object_tokens: &'a [OwnedLexToken],
+    },
     Counted {
         count: ChoiceCount,
         object_tokens: &'a [OwnedLexToken],
@@ -120,6 +123,15 @@ pub(crate) fn parse_combat_attach_object_shape_lexed(
     }
     if let Some(shape) = parse_combat_attach_tagged_object_shape_lexed(tokens) {
         return Some(CombatAttachObjectShape::Tagged(shape));
+    }
+    if let Some(((), object_tokens)) =
+        primitives::parse_prefix(tokens, primitives::kw("all").void())
+    {
+        let object_tokens = trim_lexed_commas(object_tokens);
+        if object_tokens.is_empty() {
+            return None;
+        }
+        return Some(CombatAttachObjectShape::All { object_tokens });
     }
     if let Some((count, used)) = parse_choice_count_token_prefix_consumed(tokens) {
         let object_tokens = trim_lexed_commas(tokens.get(used..)?);

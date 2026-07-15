@@ -5,6 +5,27 @@ pub(super) fn describe_remove_counter_phrase(
     counter_type: CounterType,
     target: &ChooseSpec,
 ) -> String {
+    let leaves_one_matching_counter = match count.unhinted() {
+        Value::Add(base, offset) if matches!(offset.unhinted(), Value::Fixed(-1)) => {
+            match base.unhinted() {
+                Value::CountersOnSource(found_counter) => {
+                    *found_counter == counter_type && matches!(target.base(), ChooseSpec::Source)
+                }
+                Value::CountersOn(counter_source, Some(found_counter)) => {
+                    *found_counter == counter_type && counter_source.unhinted() == target.unhinted()
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    };
+    if leaves_one_matching_counter {
+        return format!(
+            "all but one {} counter",
+            describe_counter_type(counter_type)
+        );
+    }
+
     let removes_all_matching_counters = match count {
         Value::CountersOnSource(found_counter) => {
             *found_counter == counter_type && matches!(target.base(), ChooseSpec::Source)
@@ -32,7 +53,8 @@ pub(super) fn prevent_next_time_tagged_source_text_filter(
         crate::effects::PreventNextTimeDamageSource::Filter(filter) => {
             prevent_next_time_tagged_source_text(filter).is_some()
         }
-        crate::effects::PreventNextTimeDamageSource::Choice => false,
+        crate::effects::PreventNextTimeDamageSource::Choice
+        | crate::effects::PreventNextTimeDamageSource::ChoiceMatching(_) => false,
     }
 }
 
@@ -330,6 +352,9 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
+        ActivationTiming::DuringSourceOwnersUpkeep => {
+            Some("Activate only during this card's owner's upkeep")
+        }
     }
 }
 
@@ -495,6 +520,91 @@ pub(super) fn describe_mana_usage_restriction(
             } else {
                 line.push_str(", ");
             }
+            line.push_str(&bonuses.join(" and "));
+            Some(line)
+        }
+        crate::ability::ManaUsageRestriction::CastSpellWithManaBonus {
+            filter,
+            condition,
+            grant_uncounterable,
+            enters_with_counters,
+            granted_abilities,
+            granted_keywords,
+        } => {
+            let spell_text = describe_mana_usage_spell_filter_target_with_options(filter, false)?;
+            let mut line = match condition {
+                crate::ability::ManaSpendBonusCondition::IfThisManaIsSpentToCast => {
+                    format!("If this mana is spent to cast {spell_text}")
+                }
+                crate::ability::ManaSpendBonusCondition::IfThatManaIsSpentToCast => {
+                    format!("If that mana is spent to cast {spell_text}")
+                }
+                crate::ability::ManaSpendBonusCondition::IfThisManaIsSpentOn => {
+                    format!("If this mana is spent on {spell_text}")
+                }
+                crate::ability::ManaSpendBonusCondition::IfThatManaIsSpentOn => {
+                    format!("If that mana is spent on {spell_text}")
+                }
+                crate::ability::ManaSpendBonusCondition::WhenYouSpendThisManaToCast => {
+                    format!("When you spend this mana to cast {spell_text}")
+                }
+            };
+
+            let mut bonuses = Vec::new();
+            if *grant_uncounterable {
+                bonuses.push("that spell can't be countered".to_string());
+            }
+            bonuses.extend(enters_with_counters.iter().map(|(counter_type, count)| {
+                let rendered = describe_mana_usage_etb_bonus(*counter_type, *count);
+                if matches!(
+                    condition,
+                    crate::ability::ManaSpendBonusCondition::WhenYouSpendThisManaToCast
+                ) {
+                    rendered.replacen("that creature", "it", 1)
+                } else {
+                    rendered
+                }
+            }));
+            let has_prior_permanent_bonus = !enters_with_counters.is_empty();
+            for (ability, duration) in granted_abilities {
+                let rendered = match (ability, duration) {
+                    (
+                        crate::static_abilities::StaticAbilityId::Haste,
+                        crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
+                    ) => "it gains haste until end of turn".to_string(),
+                    (
+                        crate::static_abilities::StaticAbilityId::Haste,
+                        crate::ability::ManaSpendAbilityGrantDuration::UntilYourNextTurn,
+                    ) => "it gains haste until your next turn".to_string(),
+                    (
+                        crate::static_abilities::StaticAbilityId::Hexproof,
+                        crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
+                    ) => "it gains hexproof until end of turn".to_string(),
+                    (
+                        crate::static_abilities::StaticAbilityId::Hexproof,
+                        crate::ability::ManaSpendAbilityGrantDuration::UntilYourNextTurn,
+                    ) => "it gains hexproof until your next turn".to_string(),
+                    _ => continue,
+                };
+                if has_prior_permanent_bonus {
+                    bonuses.push(
+                        rendered
+                            .strip_prefix("it ")
+                            .unwrap_or(&rendered)
+                            .to_string(),
+                    );
+                } else {
+                    bonuses.push(rendered);
+                }
+            }
+            bonuses.extend(granted_keywords.iter().map(|keyword| match keyword {
+                crate::ability::ManaSpendGrantedKeyword::Riot => "it gains riot".to_string(),
+            }));
+
+            if bonuses.is_empty() {
+                return None;
+            }
+            line.push_str(", ");
             line.push_str(&bonuses.join(" and "));
             Some(line)
         }
@@ -762,7 +872,15 @@ pub(crate) fn collect_activation_restriction_clauses(
 ) -> Vec<String> {
     let mut clauses = Vec::new();
 
-    if let Some(timing_clause) = describe_activation_timing_clause(timing) {
+    let timing_is_implied_by_presentation = *timing == ActivationTiming::DuringSourceOwnersUpkeep
+        && additional_restrictions.iter().any(|restriction| {
+            restriction
+                .strip_prefix("__ironsmith_activation_label:")
+                .is_some_and(|label| label.eq_ignore_ascii_case("Forecast"))
+        });
+    if !timing_is_implied_by_presentation
+        && let Some(timing_clause) = describe_activation_timing_clause(timing)
+    {
         let normalized = normalize_activation_restriction_clause(timing_clause);
         push_activation_restriction_clause(&mut clauses, normalized);
     }

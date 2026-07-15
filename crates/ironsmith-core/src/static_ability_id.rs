@@ -58,6 +58,8 @@ pub enum StaticAbilityId {
     Rebound,
     Cascade,
     CascadeLandDrop,
+    Splice,
+    Escalate,
     ReadAhead,
     Unleash,
     ConditionalSpellKeyword,
@@ -197,6 +199,7 @@ pub enum StaticAbilityId {
     PreventAllCombatDamageToSelf,
     PreventAllCombatDamageToPermanentsMatching,
     PreventAllNoncombatDamageToPermanentsMatching,
+    PreventAllDamageToSelfFromSourcesMatching,
     PreventAllDamageToSelfByCreatures,
     PreventDamageToYouFromSourceFilter,
     PreventDamageToSelfRemoveCounter,
@@ -266,6 +269,7 @@ pub enum StaticAbilityId {
     StartingLifeBonus,
     BuybackCostReduction,
     LegendRuleDoesntApply,
+    LegendRuleDoesntApplyToController,
     ManaSpendPermission,
     SpendManaAsAnyColor,
     SpendManaAsAnyColorActivationCosts,
@@ -340,6 +344,8 @@ impl StaticAbilityId {
             | Rebound
             | Cascade
             | CascadeLandDrop
+            | Splice
+            | Escalate
             | ReadAhead
             | Unleash
             | ConditionalSpellKeyword
@@ -479,6 +485,7 @@ impl StaticAbilityId {
             | PreventAllCombatDamageToSelf
             | PreventAllCombatDamageToPermanentsMatching
             | PreventAllNoncombatDamageToPermanentsMatching
+            | PreventAllDamageToSelfFromSourcesMatching
             | PreventAllDamageToSelfByCreatures
             | PreventDamageToYouFromSourceFilter
             | PreventDamageToSelfRemoveCounter
@@ -548,6 +555,7 @@ impl StaticAbilityId {
             | StartingLifeBonus
             | BuybackCostReduction
             | LegendRuleDoesntApply
+            | LegendRuleDoesntApplyToController
             | ManaSpendPermission
             | SpendManaAsAnyColor
             | SpendManaAsAnyColorActivationCosts
@@ -615,6 +623,8 @@ impl StaticAbilityId {
                 | SplitSecond
                 | Rebound
                 | Cascade
+                | Splice
+                | Escalate
                 | ReadAhead
                 | Unleash
                 | KeywordText

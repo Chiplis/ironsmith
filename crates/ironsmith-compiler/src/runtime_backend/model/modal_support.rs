@@ -161,6 +161,7 @@ pub(crate) fn parse_modal_header(
         mode_must_be_unchosen: modal_flags.mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn: modal_flags.mode_must_be_unchosen_this_turn,
         distinct_player_targets_per_mode: modal_flags.distinct_player_targets_per_mode,
+        if_kicked_choose_any_number: modal_flags.if_kicked_choose_any_number,
         commander_allows_both: modal_flags.commander_allows_both,
         choose_both_control_card_types: modal_flags.choose_both_control_card_types,
         choose_both_exact_life_total: modal_flags.choose_both_exact_life_total,
@@ -577,6 +578,9 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
                 IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
                     EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
+                }
+                IfResultPredicate::PriorEffectResult(surface) => {
+                    EffectPredicate::PriorEffectResult(surface)
                 }
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
                 IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),

@@ -455,16 +455,7 @@ pub(crate) fn scale_value_multiplier(value: Value, multiplier: i32) -> Value {
         Value::Fixed(amount) => Value::Fixed(amount * multiplier),
         Value::Count(filter) => Value::CountScaled(filter, multiplier),
         Value::CountScaled(filter, factor) => Value::CountScaled(filter, factor * multiplier),
-        other => {
-            let mut result = Value::Fixed(0);
-            for _ in 0..multiplier {
-                result = match result {
-                    Value::Fixed(0) => other.clone(),
-                    _ => Value::Add(Box::new(result), Box::new(other.clone())),
-                };
-            }
-            result
-        }
+        other => Value::Scaled(Box::new(other), multiplier),
     }
 }
 
@@ -1025,11 +1016,23 @@ mod filtered_prior_action_life_tests {
     #[test]
     fn life_multiplier_preserves_discarded_land_filter() {
         let tokens = lex_line("for each land card discarded this way", 0).unwrap();
-        let expected = Value::CountScaled(
-            ObjectFilter::land()
-                .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+        let expected = Value::Scaled(
+            Box::new(Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::AffectedObjects,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_filter({
+                    let mut filter = ObjectFilter::land();
+                    filter.set_explicit_card_noun(true);
+                    filter
+                })
+                .with_action(ironsmith_core::PriorEffectAction::Discarded),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay)),
             3,
-        );
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
         assert_eq!(
             parse_life_amount_from_trailing(&Value::Fixed(3), &tokens).unwrap(),
             Some(expected)

@@ -54,6 +54,12 @@ pub(crate) fn additionalize_card_count_phrase(phrase: &str) -> String {
 }
 
 pub(crate) fn describe_card_count(value: &Value) -> String {
+    if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::AsManyCardsThisWay) {
+        return "as many cards as they discarded this way".to_string();
+    }
+    if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards) {
+        return "that many cards".to_string();
+    }
     if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalCards) {
         let count = value
             .clone()
@@ -98,6 +104,30 @@ pub(crate) fn describe_card_count(value: &Value) -> String {
                 }
             }
         }
+    }
+}
+
+pub(crate) fn counters_removed_this_way_multiplier(value: &Value) -> Option<i32> {
+    match value {
+        Value::SurfaceHinted { value, hints }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay) =>
+        {
+            match value.unhinted() {
+                Value::Scaled(inner, multiplier) => {
+                    counters_removed_this_way_multiplier(inner).map(|value| value * multiplier)
+                }
+                _ => Some(1),
+            }
+        }
+        Value::SurfaceHinted { value, .. } => counters_removed_this_way_multiplier(value),
+        Value::Add(left, right) => Some(
+            counters_removed_this_way_multiplier(left)?
+                + counters_removed_this_way_multiplier(right)?,
+        ),
+        Value::Scaled(inner, multiplier) => {
+            counters_removed_this_way_multiplier(inner).map(|value| value * multiplier)
+        }
+        _ => None,
     }
 }
 
@@ -1016,6 +1046,9 @@ pub(crate) fn describe_demonstrative_tagged_object_filter(
     if let Some(attached) = describe_attached_tagged_object_filter(filter) {
         return Some(attached);
     }
+    if let Some(prior_result) = describe_prior_effect_tagged_filter_surface(filter) {
+        return Some(prior_result);
+    }
 
     let implicit_constraints = filter
         .tagged_constraints
@@ -1048,6 +1081,68 @@ pub(crate) fn describe_demonstrative_tagged_object_filter(
     } else {
         Some(format!("that {base_desc}"))
     }
+}
+
+/// Render an object reference that explicitly named the action producing it,
+/// such as "a land card discarded this way". Runtime identity remains the
+/// generated tag constraint; the typed surface prevents ordinary pronoun
+/// rendering from erasing the provenance relationship.
+pub(crate) fn describe_prior_effect_tagged_filter_surface(
+    filter: &crate::filter::ObjectFilter,
+) -> Option<String> {
+    let action = prior_effect_action_for_filter(filter)?;
+    let mut base = filter.clone();
+    base.set_prior_effect_action_surface(None);
+    base.tagged_constraints.retain(|constraint| {
+        constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    });
+    // The producer action supplies the relevant zone transition. A destination
+    // zone attached by the consuming move must not leak into the noun phrase.
+    base.zone = None;
+    let described = ensure_indefinite_article(&base.description());
+    Some(format!(
+        "{described} {} this way",
+        describe_prior_effect_action_clause(action)
+    ))
+}
+
+/// Recover authored action provenance from either its typed surface or the
+/// generated result tag used by older parser paths. Runtime identity remains
+/// the tag; this only restores the relationship in compiled text.
+pub(crate) fn prior_effect_action_for_filter(
+    filter: &crate::filter::ObjectFilter,
+) -> Option<crate::effect::PriorEffectAction> {
+    filter.prior_effect_action_surface().or_else(|| {
+        filter.tagged_constraints.iter().find_map(|constraint| {
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                return None;
+            }
+            let base = constraint.tag.as_str().split('_').next()?;
+            Some(match base {
+                "cast" => crate::effect::PriorEffectAction::Cast,
+                "chosen" => crate::effect::PriorEffectAction::Chosen,
+                "connived" => crate::effect::PriorEffectAction::Connived,
+                "countered" => crate::effect::PriorEffectAction::Countered,
+                "counters" => crate::effect::PriorEffectAction::CountersPut,
+                "damaged" => crate::effect::PriorEffectAction::DealtDamage,
+                "destroyed" => crate::effect::PriorEffectAction::Destroyed,
+                "discarded" | "discard" => crate::effect::PriorEffectAction::Discarded,
+                "drawn" => crate::effect::PriorEffectAction::Drawn,
+                "exiled" | "exile" => crate::effect::PriorEffectAction::Exiled,
+                "goaded" => crate::effect::PriorEffectAction::Goaded,
+                "milled" => crate::effect::PriorEffectAction::Milled,
+                "phased" => crate::effect::PriorEffectAction::PhasedOut,
+                "prevented" => crate::effect::PriorEffectAction::Prevented,
+                "returned" => crate::effect::PriorEffectAction::Returned,
+                "revealed" => crate::effect::PriorEffectAction::Revealed,
+                "sacrifice" | "sacrificed" => crate::effect::PriorEffectAction::Sacrificed,
+                "searched" => crate::effect::PriorEffectAction::Searched,
+                "shuffled" => crate::effect::PriorEffectAction::Shuffled,
+                "tapped" => crate::effect::PriorEffectAction::Tapped,
+                _ => return None,
+            })
+        })
+    })
 }
 
 pub(crate) fn describe_attached_tagged_object_filter(
@@ -1151,6 +1246,9 @@ fn describe_shared_creature_battlefield_or_graveyard_filter(
 }
 
 fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilter) -> String {
+    if let Some(prior_result) = describe_prior_effect_tagged_filter_surface(filter) {
+        return prior_result;
+    }
     let fixed_pt = match (&filter.power, &filter.toughness) {
         (
             Some(ironsmith_core::FilterComparison::Equal(power)),
@@ -1268,6 +1366,11 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             PlayerFilter::Any => "target player or planeswalker".to_string(),
             other => format!("target {} or planeswalker", describe_player_filter(other)),
         },
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => format!(
+            "{} or {}",
+            describe_choose_spec(&ChooseSpec::Object(object_filter.clone())),
+            describe_player_filter(player_filter)
+        ),
         ChooseSpec::Object(filter) => {
             if let Some(zone_union) =
                 describe_shared_creature_battlefield_or_graveyard_filter(filter)
@@ -1375,6 +1478,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                                 "any number of target {plural}{controller_suffix}{random_suffix}"
                             )
                         }
+                        (1, None) => {
+                            format!("one or more target {plural}{controller_suffix}{random_suffix}")
+                        }
                         (min, None) => {
                             format!(
                                 "at least {min} target {plural}{controller_suffix}{random_suffix}"
@@ -1442,16 +1548,13 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                         (0, None) => {
                             format!("any number of {plural}{controller_suffix}{random_suffix}")
                         }
-                        (min, None) => {
-                            if min == 1 {
-                                format!("at least one {base}{controller_suffix}{random_suffix}")
-                            } else {
-                                format!(
-                                    "at least {} {plural}{controller_suffix}{random_suffix}",
-                                    count_text(min)
-                                )
-                            }
+                        (1, None) => {
+                            format!("one or more {plural}{controller_suffix}{random_suffix}")
                         }
+                        (min, None) => format!(
+                            "at least {} {plural}{controller_suffix}{random_suffix}",
+                            count_text(min)
+                        ),
                         (0, Some(max)) => {
                             if max == 1 {
                                 format!("up to one {base}{controller_suffix}{random_suffix}")
@@ -1541,6 +1644,14 @@ pub(crate) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
         if filter.card_types.is_empty() && filter.subtypes.is_empty() {
             return "it".to_string();
         }
+    }
+    if let ChooseSpec::All(filter) = spec
+        && filter.zone == Some(Zone::Battlefield)
+        && filter.controller.is_none()
+        && filter.subtypes.as_slice() == [Subtype::Equipment]
+        && filter.tagged_constraints.is_empty()
+    {
+        return "all Equipment on the battlefield".to_string();
     }
     describe_choose_spec(spec)
 }
@@ -1711,6 +1822,18 @@ pub(crate) fn graveyard_owner_from_spec(spec: &ChooseSpec) -> Option<Option<Play
     owner_for_zone_from_spec(spec, Zone::Graveyard)
 }
 
+pub(crate) fn graveyard_spec_is_single(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => graveyard_spec_is_single(inner),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.zone == Some(Zone::Graveyard) && filter.single_graveyard
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn hand_owner_from_spec(spec: &ChooseSpec) -> Option<Option<PlayerFilter>> {
     owner_for_zone_from_spec(spec, Zone::Hand)
 }
@@ -1816,6 +1939,13 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             PlayerFilter::Any => "target player or planeswalker".to_string(),
             other => format!("target {} or planeswalker", describe_player_filter(other)),
         },
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => format!(
+            "{} or {}",
+            describe_choose_spec_without_graveyard_zone(
+                &ChooseSpec::Object(object_filter.clone(),)
+            ),
+            describe_player_filter(player_filter)
+        ),
         ChooseSpec::AttackedPlayerOrPlaneswalker => {
             "the player or planeswalker it's attacking".to_string()
         }
@@ -1853,8 +1983,9 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
         }
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             let inner_text = describe_choose_spec_without_graveyard_zone(inner);
+            let random_suffix = if count.is_random() { " at random" } else { "" };
             if count.is_single() {
-                inner_text
+                format!("{inner_text}{random_suffix}")
             } else {
                 if let ChooseSpec::Target(target_inner) = inner.as_ref() {
                     let target_desc = describe_choose_spec_without_graveyard_zone(target_inner);
@@ -1866,32 +1997,45 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                     let count_text =
                         |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
-                        return format!("up to X target {plural}");
+                        return format!("up to X target {plural}{random_suffix}");
                     }
                     if count.is_dynamic_x() {
-                        return format!("X target {plural}");
+                        return format!("X target {plural}{random_suffix}");
                     }
                     match (count.min, count.max) {
-                        (0, None) => format!("any number of target {plural}"),
-                        (min, None) => format!("at least {min} target {plural}"),
+                        (0, None) => {
+                            format!("any number of target {plural}{random_suffix}")
+                        }
+                        (1, None) => format!("one or more target {plural}{random_suffix}"),
+                        (min, None) => {
+                            format!("at least {min} target {plural}{random_suffix}")
+                        }
                         (0, Some(max)) => {
                             if max == 1 {
-                                format!("up to one target {base}")
+                                format!("up to one target {base}{random_suffix}")
                             } else {
-                                format!("up to {} target {plural}", count_text(max))
+                                format!("up to {} target {plural}{random_suffix}", count_text(max))
                             }
                         }
                         (min, Some(max)) if min == max => {
                             if min == 1 {
-                                format!("target {base}")
+                                format!("target {base}{random_suffix}")
                             } else {
-                                format!("{} target {plural}", count_text(min))
+                                format!("{} target {plural}{random_suffix}", count_text(min))
                             }
                         }
-                        (1, Some(2)) => format!("one or two target {plural}"),
-                        (1, Some(3)) => format!("one, two, or three target {plural}"),
+                        (1, Some(2)) => {
+                            format!("one or two target {plural}{random_suffix}")
+                        }
+                        (1, Some(3)) => {
+                            format!("one, two, or three target {plural}{random_suffix}")
+                        }
                         (min, Some(max)) => {
-                            format!("{} to {} target {plural}", count_text(min), count_text(max))
+                            format!(
+                                "{} to {} target {plural}{random_suffix}",
+                                count_text(min),
+                                count_text(max)
+                            )
                         }
                     }
                 } else {
@@ -1903,36 +2047,37 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                             .unwrap_or_else(|| n.to_string())
                     };
                     if count.is_up_to_dynamic_x() {
-                        return format!("up to X {plural}");
+                        return format!("up to X {plural}{random_suffix}");
                     }
                     if count.is_dynamic_x() {
-                        return format!("X {plural}");
+                        return format!("X {plural}{random_suffix}");
                     }
                     match (count.min, count.max) {
-                        (0, None) => format!("any number of {plural}"),
+                        (0, None) => format!("any number of {plural}{random_suffix}"),
+                        (1, None) => format!("one or more {plural}{random_suffix}"),
                         (min, None) => {
-                            if min == 1 {
-                                format!("at least one {base}")
-                            } else {
-                                format!("at least {} {plural}", count_text(min))
-                            }
+                            format!("at least {} {plural}{random_suffix}", count_text(min))
                         }
                         (0, Some(max)) => {
                             if max == 1 {
-                                format!("up to one {base}")
+                                format!("up to one {base}{random_suffix}")
                             } else {
-                                format!("up to {} {plural}", count_text(max))
+                                format!("up to {} {plural}{random_suffix}", count_text(max))
                             }
                         }
                         (min, Some(max)) if min == max => {
                             if min == 1 {
-                                format!("one {base}")
+                                format!("one {base}{random_suffix}")
                             } else {
-                                format!("{} {plural}", count_text(min))
+                                format!("{} {plural}{random_suffix}", count_text(min))
                             }
                         }
                         (min, Some(max)) => {
-                            format!("{} to {} {plural}", count_text(min), count_text(max))
+                            format!(
+                                "{} to {} {plural}{random_suffix}",
+                                count_text(min),
+                                count_text(max)
+                            )
                         }
                     }
                 }
@@ -2865,6 +3010,221 @@ pub(crate) fn describe_effect_metric_value(
     }
 }
 
+pub(crate) fn describe_prior_effect_action(
+    action: crate::effect::PriorEffectAction,
+) -> &'static str {
+    match action {
+        crate::effect::PriorEffectAction::Cast => "cast",
+        crate::effect::PriorEffectAction::Chosen => "chosen",
+        crate::effect::PriorEffectAction::Connived => "connived",
+        crate::effect::PriorEffectAction::Countered => "countered",
+        crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
+        crate::effect::PriorEffectAction::DealtDamage => "dealt damage",
+        crate::effect::PriorEffectAction::Destroyed => "destroyed",
+        crate::effect::PriorEffectAction::Discarded => "discarded",
+        crate::effect::PriorEffectAction::Drawn => "drawn",
+        crate::effect::PriorEffectAction::Exiled => "exiled",
+        crate::effect::PriorEffectAction::Goaded => "goaded",
+        crate::effect::PriorEffectAction::Milled => "milled",
+        crate::effect::PriorEffectAction::PhasedOut => "phased out",
+        crate::effect::PriorEffectAction::Prevented => "prevented",
+        crate::effect::PriorEffectAction::PutOntoBattlefield => "put onto the battlefield",
+        crate::effect::PriorEffectAction::Removed => "removed",
+        crate::effect::PriorEffectAction::Returned => "returned",
+        crate::effect::PriorEffectAction::Revealed => "revealed",
+        crate::effect::PriorEffectAction::Sacrificed => "sacrificed",
+        crate::effect::PriorEffectAction::Searched => "searched for",
+        crate::effect::PriorEffectAction::Shuffled => "shuffled",
+        crate::effect::PriorEffectAction::Tapped => "tapped",
+    }
+}
+
+pub(crate) fn describe_prior_effect_action_clause(
+    action: crate::effect::PriorEffectAction,
+) -> String {
+    let action_text = describe_prior_effect_action(action);
+    if matches!(
+        action,
+        crate::effect::PriorEffectAction::CountersPut | crate::effect::PriorEffectAction::PhasedOut
+    ) {
+        format!("that {action_text}")
+    } else {
+        action_text.to_string()
+    }
+}
+
+fn prior_effect_default_noun(
+    query: &crate::effect::PriorEffectMetricQuery,
+    plural: bool,
+) -> &'static str {
+    match query.action {
+        Some(crate::effect::PriorEffectAction::Removed) => {
+            if plural {
+                "counters"
+            } else {
+                "counter"
+            }
+        }
+        Some(
+            crate::effect::PriorEffectAction::Cast
+            | crate::effect::PriorEffectAction::Drawn
+            | crate::effect::PriorEffectAction::Discarded
+            | crate::effect::PriorEffectAction::Exiled
+            | crate::effect::PriorEffectAction::Milled
+            | crate::effect::PriorEffectAction::Returned
+            | crate::effect::PriorEffectAction::Revealed
+            | crate::effect::PriorEffectAction::Searched,
+        ) => {
+            if plural {
+                "cards"
+            } else {
+                "card"
+            }
+        }
+        _ => {
+            if plural {
+                "objects"
+            } else {
+                "object"
+            }
+        }
+    }
+}
+
+fn prior_effect_filter_is_source_placeholder(filter: &crate::filter::ObjectFilter) -> bool {
+    let mut base = filter.clone();
+    base.set_prior_effect_action_surface(None);
+    // Prior-effect metrics use captured LKI, so neither the producer's zone
+    // nor the authored source pronoun changes what is being counted.
+    base.zone = None;
+    base.source_surface = None;
+    base == crate::filter::ObjectFilter::source()
+}
+
+fn prior_effect_query_noun(query: &crate::effect::PriorEffectMetricQuery, plural: bool) -> String {
+    let Some(filter) = query.filter.as_ref() else {
+        return prior_effect_default_noun(query, plural).to_string();
+    };
+    // A source-only filter is a reference placeholder, not the noun being
+    // counted. For actions such as removing counters, the typed action owns
+    // that noun ("counter"), while the source identifies the producer target.
+    if prior_effect_filter_is_source_placeholder(filter) {
+        return prior_effect_default_noun(query, plural).to_string();
+    }
+    let mut filter = filter.clone();
+    // The query is over captured LKI. The producer action already supplies
+    // the relevant zone transition, so a parser-default battlefield zone
+    // must not leak into "creatures destroyed this way" wording.
+    filter.zone = None;
+    if plural {
+        describe_count_filter_value_subject(&filter)
+    } else {
+        describe_for_each_count_filter(&filter)
+    }
+}
+
+pub(crate) fn describe_prior_effect_metric_basis(
+    query: &crate::effect::PriorEffectMetricQuery,
+    plural: bool,
+) -> String {
+    let noun = prior_effect_query_noun(query, plural);
+    match query.action {
+        Some(action) => format!(
+            "{noun} {} this way",
+            describe_prior_effect_action_clause(action)
+        ),
+        None => noun,
+    }
+}
+
+/// Render a typed prior-action count that still carries a source-only object
+/// filter. This is the legacy `Value::Count` counterpart to
+/// `PriorEffectMetricQuery`; both use the same typed action surface.
+pub(crate) fn describe_prior_effect_source_count_basis(
+    filter: &crate::filter::ObjectFilter,
+    plural: bool,
+) -> Option<String> {
+    let action = filter.prior_effect_action_surface()?;
+    if !prior_effect_filter_is_source_placeholder(filter) {
+        return None;
+    }
+    let query = crate::effect::PriorEffectMetricQuery::new(
+        crate::effect::EffectMetricSource::AffectedObjects,
+        crate::effect::EffectMetric::Count,
+    )
+    .with_action(action);
+    Some(describe_prior_effect_metric_basis(&query, plural))
+}
+
+/// Return the filtered object basis for a typed prior-action count.
+///
+/// Damage rendering uses this to preserve authored scalar surfaces such as
+/// "damage equal to the number of creatures tapped this way" and
+/// "1 damage ... for each creature tapped this way" without recovering the
+/// action or object kind from rendered text.
+pub(crate) fn describe_prior_effect_count_basis_for_action(
+    value: &Value,
+    action: crate::effect::PriorEffectAction,
+    plural: bool,
+) -> Option<String> {
+    let query = match value.unhinted() {
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => query,
+        _ => return None,
+    };
+    if query.metric != crate::effect::EffectMetric::Count || query.action != Some(action) {
+        return None;
+    }
+    Some(describe_prior_effect_metric_basis(query, plural))
+}
+
+pub(crate) fn describe_prior_effect_metric_value(
+    query: &crate::effect::PriorEffectMetricQuery,
+) -> String {
+    let plural_basis = describe_prior_effect_metric_basis(query, true);
+    let singular_basis = describe_prior_effect_metric_basis(query, false);
+    match query.metric {
+        crate::effect::EffectMetric::Count
+        | crate::effect::EffectMetric::ChosenCount
+        | crate::effect::EffectMetric::AffectedCount => {
+            format!("the number of {plural_basis}")
+        }
+        crate::effect::EffectMetric::FirstPower => {
+            format!("the power of the {singular_basis}")
+        }
+        crate::effect::EffectMetric::FirstToughness => {
+            format!("the toughness of the {singular_basis}")
+        }
+        crate::effect::EffectMetric::FirstManaValue => {
+            format!("the mana value of the {singular_basis}")
+        }
+        crate::effect::EffectMetric::TotalPower => {
+            format!("the total power of {plural_basis}")
+        }
+        crate::effect::EffectMetric::TotalToughness => {
+            format!("the total toughness of {plural_basis}")
+        }
+        crate::effect::EffectMetric::TotalManaValue => {
+            format!("the total mana value of {plural_basis}")
+        }
+        crate::effect::EffectMetric::GreatestPower => {
+            format!("the greatest power among {plural_basis}")
+        }
+        crate::effect::EffectMetric::GreatestToughness => {
+            format!("the greatest toughness among {plural_basis}")
+        }
+        crate::effect::EffectMetric::GreatestManaValue => {
+            format!("the greatest mana value among {plural_basis}")
+        }
+        crate::effect::EffectMetric::ColorsAmong => {
+            format!("the number of colors among {plural_basis}")
+        }
+        crate::effect::EffectMetric::CardTypesAmong => {
+            format!("the number of card types among {plural_basis}")
+        }
+        metric => describe_effect_metric_value(metric, None),
+    }
+}
+
 pub(crate) fn describe_explicit_where_x_surface(value: &Value) -> Option<&'static str> {
     if value.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay) {
         return Some("the number of cards drawn this way");
@@ -2999,6 +3359,16 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
                     describe_player_filter(player)
                 ),
             })
+        }
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
+            if matches!(
+                query.metric,
+                crate::effect::EffectMetric::Count
+                    | crate::effect::EffectMetric::ChosenCount
+                    | crate::effect::EffectMetric::AffectedCount
+            ) =>
+        {
+            Some(describe_prior_effect_metric_basis(query, false))
         }
         _ => None,
     }
@@ -3417,6 +3787,24 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_count_filter_value_subject(filter)
             )
         }
+        Value::LeastPower(filter) => {
+            format!(
+                "the least power among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::LeastToughness(filter) => {
+            format!(
+                "the lowest toughness among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        Value::LeastManaValue(filter) => {
+            format!(
+                "the lowest mana value among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
         Value::BasicLandTypesAmong(filter) => {
             format!("the number of {}", describe_basic_land_types_among(filter))
         }
@@ -3471,6 +3859,21 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
             format!(
                 "the number of players who control more {} than you",
+                describe_count_filter_value_subject(&controlled_filter)
+            )
+        }
+        Value::PlayersWhoControlAtLeastMoreThanYou {
+            filter,
+            minimum_difference,
+        } => {
+            let mut controlled_filter = filter.clone();
+            if controlled_filter.zone == Some(Zone::Battlefield) {
+                controlled_filter.zone = None;
+            }
+            format!(
+                "the number of players who control at least {} more {} than you",
+                number_word(*minimum_difference as i32)
+                    .unwrap_or_else(|| minimum_difference.to_string()),
                 describe_count_filter_value_subject(&controlled_filter)
             )
         }
@@ -3662,6 +4065,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::MaxCardsDrawnThisTurn(filter) => match filter {
             PlayerFilter::You => "the number of cards you've drawn this turn".to_string(),
+            PlayerFilter::IteratedPlayer => {
+                "the number of cards that player has drawn this turn".to_string()
+            }
             PlayerFilter::Opponent => {
                 "the greatest number of cards an opponent has drawn this turn".to_string()
             }
@@ -3839,6 +4245,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::PendingEffectMetricOffset { metric, offset, .. } => {
             describe_effect_metric_value(*metric, Some(*offset))
         }
+        Value::PriorEffectMetric { query, .. }
+        | Value::PendingPriorEffectMetric(query) => describe_prior_effect_metric_value(query),
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => "that much".to_string(),
         Value::EventValueOffset(EventValueSpec::Amount, offset)

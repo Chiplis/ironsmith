@@ -670,6 +670,26 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_combat_context_with_view
             combat_context,
             view,
         ),
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            let mut targets = compute_object_targets_with_view(
+                game,
+                object_filter,
+                caster,
+                source_id,
+                source_snapshot,
+                tagged_objects,
+                combat_context,
+                view,
+            );
+            targets.extend(compute_player_targets(
+                game,
+                player_filter,
+                caster,
+                source_id,
+                source_snapshot,
+            ));
+            targets
+        }
         _ => compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
             game,
             spec,
@@ -759,6 +779,26 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
             None,
             view,
         ),
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            let mut targets = compute_object_targets_with_view(
+                game,
+                object_filter,
+                caster,
+                source_id,
+                source_snapshot,
+                tagged_objects,
+                None,
+                view,
+            );
+            targets.extend(compute_player_targets(
+                game,
+                player_filter,
+                caster,
+                source_id,
+                source_snapshot,
+            ));
+            targets
+        }
         // These don't require selection - they're resolved at execution time
         ChooseSpec::Source
         | ChooseSpec::SourceController
@@ -1475,6 +1515,35 @@ mod tests {
             legal_targets.contains(&Target::Object(battle_id)),
             "battle permanents should be legal 'any target' choices"
         );
+    }
+
+    #[test]
+    fn object_or_player_target_unions_matching_objects_and_players() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_battle(1, "Source Siege", alice);
+        let other_battle = create_battle(2, "Other Siege", bob);
+        let creature = create_creature(3, "Unrelated Creature", bob);
+        let source_id = source.id;
+        let other_battle_id = other_battle.id;
+        let creature_id = creature.id;
+        game.add_object(source);
+        game.add_object(other_battle);
+        game.add_object(creature);
+
+        let spec = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(
+            ObjectFilter::default().with_type(CardType::Battle).other(),
+            PlayerFilter::Opponent,
+        ));
+        let legal_targets = compute_legal_targets(&game, &spec, alice, Some(source_id));
+
+        assert!(legal_targets.contains(&Target::Object(other_battle_id)));
+        assert!(legal_targets.contains(&Target::Player(bob)));
+        assert!(!legal_targets.contains(&Target::Object(source_id)));
+        assert!(!legal_targets.contains(&Target::Object(creature_id)));
+        assert!(!legal_targets.contains(&Target::Player(alice)));
     }
 
     #[test]

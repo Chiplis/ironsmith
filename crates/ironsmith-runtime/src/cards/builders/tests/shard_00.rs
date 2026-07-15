@@ -693,6 +693,41 @@ pub(super) fn wondrous_crucible_strict_parser_compiled_text_and_model_regression
 }
 
 #[test]
+pub(super) fn capricious_hellraiser_preserves_random_tagged_graveyard_exile() {
+    assert_oracle_card_parses_strict("Capricious Hellraiser");
+
+    let def = parse_oracle_card_definition("Capricious Hellraiser");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Capricious Hellraiser should have an enters triggered ability");
+    let effects = triggered.effects.flattened_default_effects();
+    let exile = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
+        })
+        .expect("Capricious Hellraiser should tag its graveyard exile");
+
+    assert_eq!(
+        exile.spec.count(),
+        ChoiceCount::exactly(3).at_random(),
+        "Capricious Hellraiser should structurally retain its random three-card choice"
+    );
+    assert!(
+        rendered.contains("Exile three cards at random from your graveyard"),
+        "compiled text should preserve the tagged random-exile clause, got {rendered}"
+    );
+}
+
+#[test]
 pub(super) fn consulate_surveillance_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Consulate Surveillance");
     let def = parse_oracle_card_definition("Consulate Surveillance");

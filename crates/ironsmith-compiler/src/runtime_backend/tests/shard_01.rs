@@ -140,6 +140,45 @@ pub(super) fn attach_any_number_equipment_to_it_lowers_without_targeting_equipme
 }
 
 #[test]
+pub(super) fn attach_all_card_controls_lower_to_all_object_selection() {
+    for (name, text, card_types) in [
+        (
+            "Balan, Wandering Knight",
+            "First strike\nBalan has double strike as long as two or more Equipment are attached to it.\n{1}{W}: Attach all Equipment you control to Balan.",
+            vec![CardType::Creature],
+        ),
+        (
+            "Glamer Spinners",
+            "Flash\nFlying\nWhen this creature enters, attach all Auras enchanting target permanent to another permanent with the same controller.",
+            vec![CardType::Creature],
+        ),
+        (
+            "Rhuk, Hexgold Nabber",
+            "Trample, haste\nWhenever an equipped creature you control other than Rhuk attacks or dies, you may attach all Equipment attached to that creature to Rhuk.",
+            vec![CardType::Creature],
+        ),
+        (
+            "Vulshok Battlemaster",
+            "Haste\nWhen this creature enters, attach all Equipment on the battlefield to it. (Control of the Equipment doesn't change.)",
+            vec![CardType::Creature],
+        ),
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .parse_text(text)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
+        let debug = format!("{definition:#?}");
+        assert!(debug.contains("AttachObjectsEffect"), "{name}: {debug}");
+        assert!(debug.contains("All("), "{name}: {debug}");
+        if name == "Glamer Spinners" {
+            assert!(debug.contains("AttachedToTaggedObject"), "{name}: {debug}");
+            assert!(debug.contains("SameControllerAsTagged"), "{name}: {debug}");
+            assert!(debug.contains("IsNotTaggedObject"), "{name}: {debug}");
+        }
+    }
+}
+
+#[test]
 pub(super) fn amass_where_x_clause_replaces_unbound_x() {
     let tokens = lex_line(
         "Amass Orcs X, where X is the number of Equipment attached to this creature.",

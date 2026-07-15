@@ -2,9 +2,10 @@ use super::*;
 use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
 use crate::runtime_backend::grammar::activated_lines::{
-    self as activated_line_grammar, ActivatedBlockRequirement, ActivatedDevotionParseError,
-    ActivatedLoyaltyShorthand, CostReductionLineHead, EntersTappedLineShape,
-    ThisAbilityReductionRemainder, ThisCostReductionRemainder, ThisSpellReductionRemainder,
+    self as activated_line_grammar, ActivatedAbilitiesReductionRemainder,
+    ActivatedBlockRequirement, ActivatedDevotionParseError, ActivatedLoyaltyShorthand,
+    CostReductionLineHead, EntersTappedLineShape, ThisAbilityReductionRemainder,
+    ThisCostReductionRemainder, ThisSpellReductionRemainder,
 };
 use crate::runtime_backend::grammar::leaf::parse_leaf_fixed_mana_output_tokens;
 use crate::runtime_backend::lexer::render_token_slice;
@@ -73,7 +74,19 @@ pub(crate) fn parse_activated_line_with_raw(
         return Ok(None);
     };
 
-    let cost_start = find_activation_cost_start(line_split.before_colon).unwrap_or(0);
+    // A symbol-led composite cost starts at the symbol even when a later
+    // word-led component (for example, "Sacrifice") is also recognized as a
+    // cost head. Choosing the later head silently drops `{T}` from granted
+    // activated abilities.
+    let cost_start = if line_split
+        .before_colon
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::ManaGroup)
+    {
+        0
+    } else {
+        find_activation_cost_start(line_split.before_colon).unwrap_or(0)
+    };
     let cost_tokens = &line_split.before_colon[cost_start..];
     let effect_tokens = line_split.after_colon;
     if cost_tokens.is_empty() || effect_tokens.is_empty() {
@@ -686,18 +699,28 @@ pub(crate) fn parse_cost_reduction_line(
                     )));
                 }
             };
-            if activated_line_grammar::parse_activated_abilities_reduction_remainder_tokens(
-                &amount_tokens[used..],
-            )
-            .is_none()
-            {
+            let Some(remainder) =
+                activated_line_grammar::parse_activated_abilities_reduction_remainder_tokens(
+                    &amount_tokens[used..],
+                )
+            else {
                 return Ok(None);
-            }
-            Ok(Some(StaticAbility::reduce_activated_ability_costs(
-                filter,
-                reduction,
-                Some(1),
-            )))
+            };
+            let minimum_total_mana = match remainder {
+                ActivatedAbilitiesReductionRemainder::Unbounded => None,
+                ActivatedAbilitiesReductionRemainder::MinimumOneMana => Some(1),
+            };
+            let subject = render_token_slice(subject_tokens);
+            Ok(Some(
+                StaticAbility::reduce_activated_ability_costs_with_display(
+                    filter,
+                    reduction,
+                    minimum_total_mana,
+                    format!(
+                        "Activated abilities of {subject} cost {{{reduction}}} less to activate"
+                    ),
+                ),
+            ))
         }
         CostReductionLineHead::ThisAbility { amount_tokens } => {
             let Some((amount_value, used)) = parse_cost_modifier_amount(amount_tokens) else {

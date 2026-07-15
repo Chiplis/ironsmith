@@ -56,6 +56,12 @@ pub fn execute_turn_with(
                         let cards = decision_maker.decide_objects(game, obj_ctx);
                         runner.respond_discard(cards);
                     }
+                    crate::decisions::context::DecisionContext::Boolean(ref boolean_ctx) => {
+                        runner.respond_boolean(decision_maker.decide_boolean(game, boolean_ctx));
+                    }
+                    crate::decisions::context::DecisionContext::SelectOptions(ref options_ctx) => {
+                        runner.respond_options(decision_maker.decide_options(game, options_ctx));
+                    }
                     _ => {
                         // Other decision types shouldn't appear during turn execution
                     }

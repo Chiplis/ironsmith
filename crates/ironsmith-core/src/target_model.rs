@@ -61,6 +61,10 @@ pub enum ChooseSpec {
     SpecificPlayer(PlayerId),
     AnyTarget,
     AnyOtherTarget,
+    /// A single choice from either the matching objects or players.
+    ///
+    /// Wrap this in [`ChooseSpec::Target`] when the choice is a target.
+    ObjectOrPlayer(ObjectFilter, PlayerFilter),
     PlayerOrPlaneswalker(PlayerFilter),
     AttackedPlayerOrPlaneswalker,
     Source,
@@ -276,6 +280,10 @@ impl ChooseSpec {
         Self::Player(PlayerFilter::Any)
     }
 
+    pub fn object_or_player(object: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::ObjectOrPlayer(object, player)
+    }
+
     pub fn opponent() -> Self {
         Self::Player(PlayerFilter::Opponent)
     }
@@ -347,5 +355,12 @@ mod tests {
         let choose = ChooseSpec::Object(filter.clone());
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert_eq!(choose, ChooseSpec::Object(filter));
+    }
+
+    #[test]
+    fn object_or_player_only_targets_when_wrapped() {
+        let choice = ChooseSpec::object_or_player(ObjectFilter::creature(), PlayerFilter::Opponent);
+        assert!(!choice.is_target());
+        assert!(ChooseSpec::target(choice).is_target());
     }
 }

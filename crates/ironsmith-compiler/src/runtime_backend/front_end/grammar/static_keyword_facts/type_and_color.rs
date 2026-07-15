@@ -30,6 +30,12 @@ pub(crate) struct SubjectTypeAdditionFact<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SubjectCardTypeIdentityFact<'a> {
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) descriptor_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChosenColorAdditionFact;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +135,17 @@ pub(crate) fn parse_subject_type_addition_tokens(
         tokens,
         parse_subject_type_addition,
         "static subject type addition",
+    )
+    .ok()
+}
+
+pub(crate) fn parse_subject_card_type_identity_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SubjectCardTypeIdentityFact<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_subject_card_type_identity,
+        "static subject card-type identity",
     )
     .ok()
 }
@@ -279,6 +296,21 @@ fn parse_subject_type_addition<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<SubjectTypeAdditionFact<'a>> {
     let subject_tokens = take_until(input, 1, is_or_are)?;
+    // The broad "subject is/are TYPE in addition" shape must not absorb an
+    // earlier completed predicate.  Compound static lines such as
+    // "equipped creature gets +1/+1 and is an artifact ..." are owned by the
+    // anthem/type-addition grammar; treating everything before "is" as an
+    // object filter silently turns the P/T bonus into a filter constraint.
+    if subject_tokens.iter().any(|token| {
+        token
+            .as_word()
+            .is_some_and(|word| matches!(word, "get" | "gets" | "has" | "have"))
+    }) {
+        return Err(primitives::backtrack_err(
+            "static subject type addition",
+            "subject without an earlier predicate",
+        ));
+    }
     is_or_are().parse_next(input)?;
     let descriptor_tokens = take_until(input, 1, || other_type_addition_tail)?;
     other_type_addition_tail.parse_next(input)?;
@@ -289,6 +321,19 @@ fn parse_subject_type_addition<'a>(
         subject_tokens,
         descriptor_tokens,
         chosen_type: is_chosen_type(descriptor_tokens),
+    })
+}
+
+fn parse_subject_card_type_identity<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<SubjectCardTypeIdentityFact<'a>> {
+    let subject_tokens = take_until(input, 1, is_or_are)?;
+    is_or_are().parse_next(input)?;
+    let descriptor_tokens = take_until(input, 1, || semantic_finish)?;
+    semantic_finish(input)?;
+    Ok(SubjectCardTypeIdentityFact {
+        subject_tokens: trim_sentence_edges(subject_tokens),
+        descriptor_tokens: trim_sentence_edges(descriptor_tokens),
     })
 }
 
@@ -581,6 +626,14 @@ mod tests {
         assert_eq!(
             render_token_slice(addition.subject_tokens),
             "Lands you control"
+        );
+
+        let identity_tokens = lex("This Vehicle is an artifact creature.");
+        let identity = parse_subject_card_type_identity_tokens(&identity_tokens).unwrap();
+        assert_eq!(render_token_slice(identity.subject_tokens), "This Vehicle");
+        assert_eq!(
+            render_token_slice(identity.descriptor_tokens),
+            "an artifact creature"
         );
 
         let animation_tokens = lex("Lands you control are 3/3 creatures that are still lands.");

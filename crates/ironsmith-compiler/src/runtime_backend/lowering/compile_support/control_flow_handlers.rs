@@ -432,7 +432,7 @@ pub(crate) fn compile_if_do_with_opponent_did(
             return Ok(Some((first_effects, choices)));
         }
         let result_predicate =
-            correlated_choice_result_predicate(*result_predicate, opponent_effects);
+            correlated_choice_result_predicate(result_predicate.clone(), opponent_effects);
         let mut merged_opponent_effects = opponent_effects.clone();
         merged_opponent_effects.push(EffectAst::IfResult {
             predicate: result_predicate,
@@ -484,7 +484,8 @@ pub(crate) fn compile_if_do_with_opponent_did(
         for choice in inner_choices {
             push_choice(&mut choices, choice);
         }
-        let predicate = correlated_choice_result_predicate(*result_predicate, player_effects);
+        let predicate =
+            correlated_choice_result_predicate(result_predicate.clone(), player_effects);
         let conditional = Effect::if_then(
             id,
             effect_predicate_from_if_result(predicate),
@@ -532,7 +533,8 @@ pub(crate) fn compile_if_do_with_opponent_did(
     };
 
     let mut merged_opponent_effects = opponent_effects.clone();
-    let result_predicate = correlated_choice_result_predicate(*result_predicate, opponent_effects);
+    let result_predicate =
+        correlated_choice_result_predicate(result_predicate.clone(), opponent_effects);
     merged_opponent_effects.push(EffectAst::IfResult {
         predicate: result_predicate,
         effects: second_effects.clone(),
@@ -593,7 +595,7 @@ pub(crate) fn compile_if_do_with_player_did(
             return Ok(Some((first_effects, choices)));
         }
         let result_predicate =
-            correlated_choice_result_predicate(*result_predicate, player_effects);
+            correlated_choice_result_predicate(result_predicate.clone(), player_effects);
         let mut merged_player_effects = player_effects.clone();
         merged_player_effects.push(EffectAst::IfResult {
             predicate: result_predicate,
@@ -647,7 +649,7 @@ pub(crate) fn compile_if_do_with_player_did(
         first_effects.push(Effect::if_then(
             id,
             effect_predicate_from_if_result(correlated_choice_result_predicate(
-                *result_predicate,
+                result_predicate.clone(),
                 std::slice::from_ref(first),
             )),
             inner_effects,
@@ -676,7 +678,8 @@ pub(crate) fn compile_if_do_with_player_did(
     };
 
     let mut merged_player_effects = player_effects.clone();
-    let result_predicate = correlated_choice_result_predicate(*result_predicate, player_effects);
+    let result_predicate =
+        correlated_choice_result_predicate(result_predicate.clone(), player_effects);
     merged_player_effects.push(EffectAst::IfResult {
         predicate: result_predicate,
         effects: second_effects.clone(),
@@ -725,8 +728,8 @@ pub(crate) fn compile_result_followup(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let (predicate, followup_effects, reflexive) = match second {
-        EffectAst::IfResult { predicate, effects } => (*predicate, effects, false),
-        EffectAst::WhenResult { predicate, effects } => (*predicate, effects, true),
+        EffectAst::IfResult { predicate, effects } => (predicate.clone(), effects, false),
+        EffectAst::WhenResult { predicate, effects } => (predicate.clone(), effects, true),
         _ => return Ok(None),
     };
     if matches!(
@@ -855,6 +858,9 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
         IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
         IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
             EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
+        }
+        IfResultPredicate::PriorEffectResult(surface) => {
+            EffectPredicate::PriorEffectResult(surface)
         }
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
         IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
@@ -1040,6 +1046,28 @@ fn compiled_vote_option_uses_iterated_player(effects: &[Effect], choices: &[Choo
         || choices.iter().any(choose_spec_mentions_iterated_player)
 }
 
+fn vote_option_ast_uses_iterated_player(effects: &[EffectAst]) -> bool {
+    let mut found = false;
+    for effect in effects {
+        if let EffectAst::ChooseObjects { filter, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
+        | EffectAst::ChooseObjectsAcrossZones { filter, .. } = effect
+            && object_filter_mentions_iterated_player(filter)
+        {
+            return true;
+        }
+        for_each_nested_effects(effect, true, |nested| {
+            if !found && vote_option_ast_uses_iterated_player(nested) {
+                found = true;
+            }
+        });
+        if found {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn compile_vote_sequence(
     effects: &[AnnotatedEffect],
     ctx: &mut EffectLoweringContext,
@@ -1087,22 +1115,46 @@ pub(crate) fn compile_vote_sequence(
     }
 
     let vote_start = match &first.effect {
-        EffectAst::VoteStart { options, secret } => {
-            Some((Some(options.clone()), None, None, *secret))
-        }
+        EffectAst::VoteStart {
+            options,
+            secret,
+            starting_with_controller,
+        } => Some((
+            Some(options.clone()),
+            None,
+            None,
+            *secret,
+            *starting_with_controller,
+        )),
         EffectAst::VoteStartObjects {
             filter,
             count,
             secret,
-        } => Some((None, Some((filter.clone(), *count)), None, *secret)),
+            starting_with_controller,
+        } => Some((
+            None,
+            Some((filter.clone(), *count)),
+            None,
+            *secret,
+            *starting_with_controller,
+        )),
         EffectAst::VoteStartPlayers {
             filter,
             exclude_voter,
             secret,
-        } => Some((None, None, Some((filter.clone(), *exclude_voter)), *secret)),
+            starting_with_controller,
+        } => Some((
+            None,
+            None,
+            Some((filter.clone(), *exclude_voter)),
+            *secret,
+            *starting_with_controller,
+        )),
         _ => None,
     };
-    let Some((named_options, object_vote, player_vote, secret)) = vote_start else {
+    let Some((named_options, object_vote, player_vote, secret, starting_with_controller)) =
+        vote_start
+    else {
         return Ok(None);
     };
 
@@ -1139,7 +1191,8 @@ pub(crate) fn compile_vote_sequence(
         } else {
             crate::effects::VoteEffect::vote_objects(resolved, count, extra_mandatory)
         }
-        .with_secret(secret);
+        .with_secret(secret)
+        .starting_with_controller(starting_with_controller);
         let effect = Effect::new(vote);
         let mut compiled = vec![effect];
         let mut choices = Vec::new();
@@ -1169,7 +1222,8 @@ pub(crate) fn compile_vote_sequence(
             extra_mandatory,
             extra_optional,
         )
-        .with_secret(secret);
+        .with_secret(secret)
+        .starting_with_controller(starting_with_controller);
         let effect = Effect::new(vote);
         let mut compiled = vec![effect];
         let mut choices = Vec::new();
@@ -1209,8 +1263,12 @@ pub(crate) fn compile_vote_sequence(
             EffectAst::VoteOption { option, effects } => {
                 let mut option_effects_ast = effects.clone();
                 force_implicit_vote_token_controller_you(&mut option_effects_ast);
+                let ast_uses_iterated_player =
+                    vote_option_ast_uses_iterated_player(&option_effects_ast);
                 let (repeat_effects, repeat_choices) = compile_effects(&option_effects_ast, ctx)?;
-                if compiled_vote_option_uses_iterated_player(&repeat_effects, &repeat_choices) {
+                if ast_uses_iterated_player
+                    || compiled_vote_option_uses_iterated_player(&repeat_effects, &repeat_choices)
+                {
                     let (per_vote_effects, per_vote_choices) =
                         compile_effects_in_iterated_player_context(&option_effects_ast, ctx, None)?;
                     let mut matching_vote_option = None;
@@ -1254,7 +1312,8 @@ pub(crate) fn compile_vote_sequence(
     } else {
         crate::effects::VoteEffect::new(vote_options, extra_mandatory)
     }
-    .with_secret(secret);
+    .with_secret(secret)
+    .starting_with_controller(starting_with_controller);
     let effect = Effect::new(vote);
     let mut compiled = vec![effect];
     compiled.extend(post_vote_effects);

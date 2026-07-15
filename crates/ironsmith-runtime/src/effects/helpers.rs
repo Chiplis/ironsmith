@@ -13,7 +13,7 @@ use crate::decisions::context::ViewCardsContext;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{
     EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeObjectMemory,
-    OutcomeStatus, Value,
+    OutcomeStatus, PriorEffectMetricQuery, Value,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
@@ -21,7 +21,7 @@ use crate::events::DamageTarget;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::life::LifeGainEvent;
 use crate::events::life::LifeLossEvent;
-use crate::events::other::{CounterPlacedEvent, MarkersChangedEvent};
+use crate::events::other::{CounterPlacedEvent, KeywordActionEvent, MarkersChangedEvent};
 use crate::events::zones::ZoneChangeEvent;
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
@@ -380,6 +380,95 @@ fn resolve_effect_metric(
     Ok(resolved)
 }
 
+fn resolve_prior_effect_metric(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    effect_id: crate::effect::EffectId,
+    query: &PriorEffectMetricQuery,
+) -> Result<i32, ExecutionError> {
+    if query.filter.is_none() && query.player.is_none() {
+        return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
+    }
+
+    let outcome = ctx
+        .get_outcome(effect_id)
+        .ok_or(ExecutionError::EffectNotFound(effect_id))?;
+    let filter_ctx = ctx.filter_context(game);
+    let selected_players = query
+        .player
+        .as_ref()
+        .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
+        .transpose()?;
+
+    let mut memory = if let Some(selected_players) = selected_players.as_ref()
+        && let Some(partitions) = outcome.player_affected_object_memory()
+    {
+        partitions
+            .iter()
+            .filter(|(player, _)| selected_players.contains(player))
+            .flat_map(|(_, memory)| memory.iter().cloned())
+            .collect::<Vec<_>>()
+    } else {
+        effect_metric_memory(game, outcome, query.source)
+    };
+
+    if let Some(selected_players) = selected_players.as_ref()
+        && outcome.player_affected_object_memory().is_none()
+    {
+        memory.retain(|object| selected_players.contains(&object.controller));
+    }
+    if let Some(filter) = query.filter.as_ref() {
+        memory
+            .retain(|object| filter.matches_snapshot(&object.to_snapshot(game), &filter_ctx, game));
+    }
+
+    let resolved = match query.metric {
+        EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount => {
+            memory.len() as i32
+        }
+        EffectMetric::FirstPower => memory.iter().find_map(|object| object.power).unwrap_or(0),
+        EffectMetric::FirstToughness => memory
+            .iter()
+            .find_map(|object| object.toughness)
+            .unwrap_or(0),
+        EffectMetric::FirstManaValue => memory.first().map_or(0, |object| object.mana_value),
+        EffectMetric::TotalPower => memory.iter().map(|object| object.power.unwrap_or(0)).sum(),
+        EffectMetric::TotalToughness => memory
+            .iter()
+            .map(|object| object.toughness.unwrap_or(0))
+            .sum(),
+        EffectMetric::TotalManaValue => memory.iter().map(|object| object.mana_value).sum(),
+        EffectMetric::GreatestPower => memory
+            .iter()
+            .filter_map(|object| object.power)
+            .max()
+            .unwrap_or(0),
+        EffectMetric::GreatestToughness => memory
+            .iter()
+            .filter_map(|object| object.toughness)
+            .max()
+            .unwrap_or(0),
+        EffectMetric::GreatestManaValue => memory
+            .iter()
+            .map(|object| object.mana_value)
+            .max()
+            .unwrap_or(0),
+        EffectMetric::ColorsAmong => memory
+            .iter()
+            .fold(crate::color::ColorSet::COLORLESS, |colors, object| {
+                colors.union(object.colors)
+            })
+            .count() as i32,
+        EffectMetric::CardTypesAmong => memory
+            .iter()
+            .flat_map(|object| object.card_types.iter().copied())
+            .collect::<HashSet<_>>()
+            .len() as i32,
+        _ => resolve_effect_metric(game, ctx, effect_id, query.source, query.metric)?,
+    };
+    Ok(resolved)
+}
+
 fn normalize_count_as_name(name: &str) -> String {
     name.chars()
         .filter(|ch| ch.is_ascii_alphanumeric())
@@ -534,6 +623,23 @@ pub fn resolve_value(
                 .filter(|player| player.is_in_game())
                 .filter(|player| {
                     count_matching_objects_for_player(game, filter, player.id, ctx) > your_count
+                })
+                .count();
+            Ok(count as i32)
+        }
+        Value::PlayersWhoControlAtLeastMoreThanYou {
+            filter,
+            minimum_difference,
+        } => {
+            let your_count = count_matching_objects_for_player(game, filter, ctx.controller, ctx);
+            let count = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| {
+                    let player_count =
+                        count_matching_objects_for_player(game, filter, player.id, ctx);
+                    player_count.saturating_sub(your_count) >= *minimum_difference as usize
                 })
                 .count();
             Ok(count as i32)
@@ -737,6 +843,80 @@ pub fn resolve_value(
                 .max()
                 .unwrap_or(0);
             Ok(max)
+        }
+        Value::LeastPower(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let min = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter_map(|snapshot| snapshot.power)
+                    .min()
+                    .unwrap_or(0);
+                return Ok(min);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+            let min = candidate_ids
+                .iter()
+                .copied()
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .filter_map(|(id, obj)| game.calculated_power(id).or_else(|| obj.power()))
+                .min()
+                .unwrap_or(0);
+            Ok(min)
+        }
+        Value::LeastToughness(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let min = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter_map(|snapshot| snapshot.toughness)
+                    .min()
+                    .unwrap_or(0);
+                return Ok(min);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+            let min = candidate_ids
+                .iter()
+                .copied()
+                .filter_map(|id| game.object(id).map(|obj| (id, obj)))
+                .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+                .filter_map(|(id, obj)| game.calculated_toughness(id).or_else(|| obj.toughness()))
+                .min()
+                .unwrap_or(0);
+            Ok(min)
+        }
+        Value::LeastManaValue(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let min = snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .map(|snapshot| {
+                        snapshot
+                            .mana_cost
+                            .as_ref()
+                            .map_or(0, |cost| cost.mana_value() as i32)
+                    })
+                    .min()
+                    .unwrap_or(0);
+                return Ok(min);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+            let min = candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                .map(|obj| {
+                    obj.mana_cost
+                        .as_ref()
+                        .map_or(0, |cost| cost.mana_value() as i32)
+                })
+                .min()
+                .unwrap_or(0);
+            Ok(min)
         }
         Value::BasicLandTypesAmong(filter) => {
             let filter_ctx = ctx.filter_context(game);
@@ -1772,11 +1952,15 @@ pub fn resolve_value(
             offset,
         } => Ok(resolve_effect_metric(game, ctx, *effect_id, *source, *metric)? + *offset),
 
-        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => {
-            Err(ExecutionError::UnresolvableValue(
-                "pending effect metric was not bound to a prior effect".to_string(),
-            ))
+        Value::PriorEffectMetric { effect_id, query } => {
+            resolve_prior_effect_metric(game, ctx, *effect_id, query)
         }
+
+        Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. }
+        | Value::PendingPriorEffectMetric(_) => Err(ExecutionError::UnresolvableValue(
+            "pending effect metric was not bound to a prior effect".to_string(),
+        )),
 
         Value::HalfRoundedDown(value) => {
             let resolved = resolve_value(game, value, ctx)?;
@@ -1811,9 +1995,11 @@ pub fn resolve_value(
             if let Some(zone_change_event) = triggering_event.downcast::<ZoneChangeEvent>() {
                 return Ok(zone_change_event.count() as i32);
             }
+            if let Some(keyword_action_event) = triggering_event.downcast::<KeywordActionEvent>() {
+                return Ok(keyword_action_event.amount as i32);
+            }
             Err(ExecutionError::UnresolvableValue(
-                "EventValue(Amount) requires a life gain/loss, damage, marker-change, or zone-change event"
-                    .to_string(),
+                "EventValue(Amount) requires a numeric triggering event".to_string(),
             ))
         }
 
@@ -1855,10 +2041,13 @@ pub fn resolve_value(
                 counter_event.amount as i32
             } else if let Some(zone_change_event) = triggering_event.downcast::<ZoneChangeEvent>() {
                 zone_change_event.count() as i32
+            } else if let Some(keyword_action_event) =
+                triggering_event.downcast::<KeywordActionEvent>()
+            {
+                keyword_action_event.amount as i32
             } else {
                 return Err(ExecutionError::UnresolvableValue(
-                    "EventValue(Amount) requires a life gain/loss, damage, marker-change, or zone-change event"
-                        .to_string(),
+                    "EventValue(Amount) requires a numeric triggering event".to_string(),
                 ));
             };
             Ok(base + *offset)
@@ -2165,9 +2354,9 @@ pub(crate) fn preview_object_ids_for_choose_spec(
         | ChooseSpec::WithCountValue(inner, _, _) => {
             preview_object_ids_for_choose_spec(game, inner, ctx)
         }
-        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
-            Some(preview_object_ids_for_filter(game, filter, ctx))
-        }
+        ChooseSpec::Object(filter)
+        | ChooseSpec::ObjectOrPlayer(filter, _)
+        | ChooseSpec::All(filter) => Some(preview_object_ids_for_filter(game, filter, ctx)),
         ChooseSpec::SpecificObject(id) => Some(vec![*id]),
         ChooseSpec::Source => resolve_source_object_id(game, ctx).map(|id| vec![id]),
         ChooseSpec::Tagged(tag) => Some(
@@ -2306,6 +2495,9 @@ pub fn resolve_player_from_spec(
             if let Some(player_id) = matching_player_targets_for_spec(game, spec, ctx).first() {
                 return Ok(*player_id);
             }
+            if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
+                return Err(ExecutionError::InvalidTarget);
+            }
             resolve_player_from_spec(game, inner, ctx)
         }
 
@@ -2314,6 +2506,18 @@ pub fn resolve_player_from_spec(
         ChooseSpec::PlayerOrPlaneswalker(filter) => {
             if let Some(player_id) = matching_player_targets_for_spec(game, spec, ctx).first() {
                 return Ok(*player_id);
+            }
+            if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
+                return Err(ExecutionError::InvalidTarget);
+            }
+            resolve_player_filter(game, filter, ctx)
+        }
+        ChooseSpec::ObjectOrPlayer(_, filter) => {
+            if let Some(player_id) = matching_player_targets_for_spec(game, spec, ctx).first() {
+                return Ok(*player_id);
+            }
+            if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
+                return Err(ExecutionError::InvalidTarget);
             }
             resolve_player_filter(game, filter, ctx)
         }
@@ -2806,9 +3010,12 @@ pub fn validate_target(
 
     match (target, spec) {
         // Selection wrappers do not change target legality.
-        (_, ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _)) => {
-            validate_target(game, target, inner, ctx)
-        }
+        (
+            _,
+            ChooseSpec::Target(inner)
+            | ChooseSpec::WithCount(inner, _)
+            | ChooseSpec::WithCountValue(inner, _, _),
+        ) => validate_target(game, target, inner, ctx),
         (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
             let filter_ctx_for_candidate = || {
                 let mut candidate_ctx = filter_ctx.clone();
@@ -2835,6 +3042,28 @@ pub fn validate_target(
             }
         }
         (ResolvedTarget::Player(id), ChooseSpec::Player(filter)) => {
+            player_filter_matches_game(filter, *id, game, &filter_ctx)
+        }
+        (ResolvedTarget::Object(id), ChooseSpec::ObjectOrPlayer(filter, _)) => {
+            let mut candidate_ctx = filter_ctx.clone();
+            candidate_ctx
+                .target_objects
+                .retain(|snapshot| snapshot.object_id != *id);
+            if let Some(object) = game.object(*id) {
+                candidate_ctx
+                    .target_objects
+                    .retain(|snapshot| snapshot.stable_id != object.stable_id);
+                filter.matches(object, &candidate_ctx, game)
+            } else if let Some(snapshot) = ctx.target_snapshots.get(id) {
+                candidate_ctx
+                    .target_objects
+                    .retain(|target| target.stable_id != snapshot.stable_id);
+                filter.matches_snapshot(snapshot, &candidate_ctx, game)
+            } else {
+                false
+            }
+        }
+        (ResolvedTarget::Player(id), ChooseSpec::ObjectOrPlayer(_, filter)) => {
             player_filter_matches_game(filter, *id, game, &filter_ctx)
         }
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
@@ -3388,6 +3617,7 @@ pub fn resolve_objects_from_spec(
 
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::ObjectOrPlayer(_, _)
         | ChooseSpec::PlayerOrPlaneswalker(_) => {
             let objects: Vec<ObjectId> = ctx
                 .targets
@@ -3492,17 +3722,25 @@ pub fn resolve_players_from_spec(
             if !players.is_empty() {
                 return Ok(players);
             }
+            if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
+                return Err(ExecutionError::InvalidTarget);
+            }
 
             // If no player targets, try to resolve the inner spec
             resolve_players_from_spec(game, inner, ctx)
         }
 
         // Player filter - resolve to matching players
-        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+        ChooseSpec::Player(filter)
+        | ChooseSpec::ObjectOrPlayer(_, filter)
+        | ChooseSpec::PlayerOrPlaneswalker(filter) => {
             let players = matching_player_targets_for_spec(game, spec, ctx);
 
             if !players.is_empty() {
                 return Ok(players);
+            }
+            if !matching_object_targets_for_spec(game, spec, ctx).is_empty() {
+                return Err(ExecutionError::InvalidTarget);
             }
 
             // Fall back to filter resolution
@@ -4813,6 +5051,50 @@ mod tests {
             resolved,
             vec![bob],
             "resolving one player-target clause should not include unrelated player targets from the same spell"
+        );
+    }
+
+    #[test]
+    fn object_or_player_target_resolves_only_the_selected_target_kind() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+        let battle_id =
+            add_battlefield_permanent(&mut game, 102, "Target Battle", bob, vec![CardType::Battle]);
+        let mut battle_filter = crate::filter::ObjectFilter::default();
+        battle_filter.card_types = vec![CardType::Battle];
+        let spec = ChooseSpec::target(ChooseSpec::ObjectOrPlayer(
+            battle_filter,
+            PlayerFilter::Opponent,
+        ));
+
+        let object_ctx = ExecutionContext::new_default(source_id, alice)
+            .with_targets(vec![ResolvedTarget::Object(battle_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: spec.clone(),
+                range: 0..1,
+            }]);
+        assert_eq!(
+            resolve_objects_from_spec(&game, &spec, &object_ctx).unwrap(),
+            vec![battle_id]
+        );
+        assert!(resolve_players_from_spec(&game, &spec, &object_ctx).is_err());
+
+        let player_ctx = ExecutionContext::new_default(source_id, alice)
+            .with_targets(vec![ResolvedTarget::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: spec.clone(),
+                range: 0..1,
+            }]);
+        assert!(resolve_objects_from_spec(&game, &spec, &player_ctx).is_err());
+        assert_eq!(
+            resolve_players_from_spec(&game, &spec, &player_ctx).unwrap(),
+            vec![bob]
+        );
+        assert_eq!(
+            resolve_player_from_spec(&game, &spec, &player_ctx).unwrap(),
+            bob
         );
     }
 

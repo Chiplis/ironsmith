@@ -1,8 +1,11 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PredicateAst, TagKey,
 };
-use crate::effect::{Condition, Effect, EffectPredicate};
-use crate::target::{ChooseSpec, ObjectFilter};
+use crate::effect::{
+    ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value,
+};
+use crate::filter::ObjectRef;
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 use super::{
     AnnotatedEffectSequence, EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering,
@@ -45,6 +48,14 @@ pub(crate) fn materialize_prepared_statement_effects(
     let mut ctx = EffectLoweringContext::new();
     ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
     ctx.apply_reference_env(&prepared.initial_env);
+    if let Some((effects, choices)) = materialize_source_sentence_segments(prepared, &mut ctx)? {
+        let final_env = ctx.reference_env();
+        return Ok(LoweredEffects {
+            effects,
+            choices,
+            exports: ReferenceExports::from_env(&final_env),
+        });
+    }
     let (compiled, _) = compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
     let compiled = normalize_compiled_effects(compiled);
     let final_env = ctx.reference_env();
@@ -91,11 +102,132 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
 }
 
 fn normalize_compiled_effects(compiled: Vec<Effect>) -> Vec<Effect> {
+    let compiled = normalize_controller_grouped_exile_search(compiled);
     let compiled = normalize_targeted_conditional_action_then_fight(compiled);
     let compiled = normalize_two_target_conditional_then_fight(compiled);
     let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     fold_local_zone_rewrite_self_replacements(compiled)
+}
+
+/// Oracle sometimes iterates the individual objects affected by a zone change
+/// while assigning a follow-up search to each distinct controller. Lowering
+/// the sentence literally as `ForEachTagged` repeats the search once per
+/// object and leaves the later collective move/shuffle attributed to the
+/// caster. Collapse that precise linked pipeline into controller groups while
+/// retaining the shared result tag and authored ordering.
+fn normalize_controller_grouped_exile_search(compiled: Vec<Effect>) -> Vec<Effect> {
+    let [exile_effect, per_object_effect, move_effect, shuffle_effect] = compiled.as_slice() else {
+        return compiled;
+    };
+
+    let Some(exile_tagged) = exile_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return compiled;
+    };
+    let exile_filter = if let Some(move_to_zone) = exile_tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    {
+        if move_to_zone.zone != crate::zone::Zone::Exile {
+            return compiled;
+        }
+        match move_to_zone.target.base() {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+            _ => return compiled,
+        }
+    } else if let Some(exile) = exile_tagged
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()
+    {
+        match exile.spec.base() {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+            _ => return compiled,
+        }
+    } else {
+        return compiled;
+    };
+    if exile_filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || exile_filter.controller != Some(PlayerFilter::NotYou)
+    {
+        return compiled;
+    }
+
+    let Some(per_object) = per_object_effect
+        .downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+    else {
+        return compiled;
+    };
+    let [search_effect] = per_object.effects.as_slice() else {
+        return compiled;
+    };
+    let Some(search) = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+        return compiled;
+    };
+    if per_object.tag != exile_tagged.tag
+        || !search.is_search
+        || search.zone != Some(crate::zone::Zone::Library)
+        || !search.additional_zones.is_empty()
+        || !search.count.is_single()
+        || search.count_value.is_some()
+        || search.filter.zone != Some(crate::zone::Zone::Library)
+        || search.filter.card_types.as_slice() != [crate::types::CardType::Land]
+        || search.filter.supertypes.as_slice() != [crate::types::Supertype::Basic]
+        || search.chooser
+            != PlayerFilter::ControllerOf(ObjectRef::tagged(crate::cards::builders::IT_TAG))
+    {
+        return compiled;
+    }
+
+    let Some(moved_tagged) = move_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return compiled;
+    };
+    let Some(move_to_zone) = moved_tagged
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return compiled;
+    };
+    if move_to_zone.zone != crate::zone::Zone::Battlefield
+        || !move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == &search.tag)
+    {
+        return compiled;
+    }
+    let Some(shuffle) =
+        shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+    else {
+        return compiled;
+    };
+    if shuffle.player != PlayerFilter::You || shuffle.target_spec.is_some() {
+        return compiled;
+    }
+
+    let mut grouped_search = search.clone();
+    grouped_search.filter.owner = Some(PlayerFilter::IteratedPlayer);
+    grouped_search.chooser = PlayerFilter::IteratedPlayer;
+    grouped_search.count = ChoiceCount::up_to_dynamic_x();
+    grouped_search.count_value = Some(Value::TaggedCount);
+    grouped_search.search_mode = SearchSelectionMode::Optional;
+    grouped_search.replace_tagged_objects = false;
+
+    vec![
+        exile_effect.clone(),
+        Effect::new(crate::effects::ForEachControllerOfTaggedEffect {
+            tag: exile_tagged.tag.clone(),
+            effects: vec![Effect::new(grouped_search)],
+        }),
+        move_effect.clone(),
+        Effect::new(crate::effects::ForEachControllerOfTaggedEffect {
+            tag: exile_tagged.tag.clone(),
+            effects: vec![Effect::shuffle_library_player(PlayerFilter::IteratedPlayer)],
+        }),
+    ]
 }
 
 fn materialize_source_sentence_segments(
@@ -400,19 +532,24 @@ fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
 
     let mut rewritten = Vec::with_capacity(flattened.len());
     for effect in flattened {
-        let duplicate_target_only = rewritten.last().is_some_and(|previous: &Effect| {
-            let Some(previous_target) = previous.downcast_ref::<crate::effects::TargetOnlyEffect>()
-            else {
-                return false;
-            };
-            let Some(current_target) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
-            else {
-                return false;
-            };
-            previous_target == current_target
+        let duplicate_target_only = rewritten.last().and_then(|previous: &Effect| {
+            let previous_target = previous.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            let current_target = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            (previous_target.target == current_target.target).then_some((
+                previous_target.explicit_declaration,
+                current_target.explicit_declaration,
+            ))
         });
-        if !duplicate_target_only {
-            rewritten.push(effect.clone());
+        match duplicate_target_only {
+            Some((false, true)) => {
+                // Presentation metadata must not create another executable
+                // target choice. If either duplicate came from an authored
+                // standalone declaration, retain that surface on the one
+                // shared target effect.
+                *rewritten.last_mut().expect("checked above") = effect.clone();
+            }
+            Some(_) => {}
+            None => rewritten.push(effect.clone()),
         }
     }
 

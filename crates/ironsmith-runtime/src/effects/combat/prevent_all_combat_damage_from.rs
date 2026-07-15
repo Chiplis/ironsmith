@@ -30,28 +30,28 @@ impl EffectExecutor for PreventAllCombatDamageFromEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let source_id = *resolve_objects_for_effect(game, ctx, &self.source)?
-            .first()
-            .ok_or(ExecutionError::InvalidTarget)?;
+        let source_ids = resolve_objects_for_effect(game, ctx, &self.source)?;
 
         if !game.can_prevent_damage() {
             return Ok(EffectOutcome::resolved());
         }
 
-        let mut filter = DamageFilter::combat();
-        filter.from_specific_source = Some(source_id);
+        for source_id in source_ids {
+            let mut filter = DamageFilter::combat();
+            filter.from_specific_source = Some(source_id);
 
-        register_prevention_shield(
-            game,
-            ctx,
-            PreventionTarget::All,
-            None,
-            self.until.clone(),
-            filter,
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        );
+            register_prevention_shield(
+                game,
+                ctx,
+                PreventionTarget::All,
+                None,
+                self.until.clone(),
+                filter,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            );
+        }
         Ok(EffectOutcome::resolved())
     }
 

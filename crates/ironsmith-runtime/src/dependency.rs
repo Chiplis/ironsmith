@@ -809,7 +809,7 @@ fn evaluate_value(
                         }
                     }
                 }
-                ChooseSpec::Object(filter) => {
+                ChooseSpec::Object(filter) | ChooseSpec::ObjectOrPlayer(filter, _) => {
                     for (&id, chars) in baseline {
                         let Some(obj) = objects.get(&id) else {
                             continue;
@@ -1470,7 +1470,9 @@ fn value_references_pt(value: &Value) -> bool {
         Value::TotalPower(_)
         | Value::TotalToughness(_)
         | Value::GreatestPower(_)
-        | Value::GreatestToughness(_) => true,
+        | Value::GreatestToughness(_)
+        | Value::LeastPower(_)
+        | Value::LeastToughness(_) => true,
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_pt(left) || value_references_pt(right)
         }
@@ -1492,6 +1494,17 @@ fn value_references_pt(value: &Value) -> bool {
                 | crate::effect::EffectMetric::GreatestPower
                 | crate::effect::EffectMetric::GreatestToughness
         ),
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => {
+            matches!(
+                query.metric,
+                crate::effect::EffectMetric::FirstPower
+                    | crate::effect::EffectMetric::FirstToughness
+                    | crate::effect::EffectMetric::TotalPower
+                    | crate::effect::EffectMetric::TotalToughness
+                    | crate::effect::EffectMetric::GreatestPower
+                    | crate::effect::EffectMetric::GreatestToughness
+            )
+        }
 
         // These don't reference P/T
         Value::Fixed(_)
@@ -1504,6 +1517,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::GreatestCount(_)
         | Value::TotalManaValue(_)
         | Value::GreatestManaValue(_)
+        | Value::LeastManaValue(_)
         | Value::BasicLandTypesAmong(_)
         | Value::CreatureTypesAmong(_)
         | Value::CardTypesAmong(_)
@@ -1517,6 +1531,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::PlayersWhoControlMoreThanYou(_)
+        | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
         | Value::PartySize(_)
         | Value::Devotion { .. }
         | Value::DevotionToChosenColor(_)

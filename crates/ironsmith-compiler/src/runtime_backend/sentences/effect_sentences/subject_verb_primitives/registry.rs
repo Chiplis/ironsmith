@@ -677,6 +677,7 @@ pub(crate) fn parse_you_and_player_each_sacrifice_sentence(
     Ok(Some(vec![EffectAst::Coordinated {
         effects: vec![you, other],
         leading_duration: false,
+        result_conjunction: false,
     }]))
 }
 

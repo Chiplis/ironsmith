@@ -10,12 +10,42 @@ use crate::replacement::{
 use crate::zone::Zone;
 
 pub(super) fn apply_trait_replacement(
-    game: &GameState,
+    game: &mut GameState,
     event: Event,
     effect: &ReplacementEffect,
 ) -> TraitApplyResult {
     match &effect.replacement {
         ReplacementAction::Prevent => TraitApplyResult::Prevented,
+
+        ReplacementAction::PreventWithShield {
+            shield_id,
+            max_amount,
+        } => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let result = game.effect_store.prevention_effects.apply_chosen_shield(
+                *shield_id,
+                damage.amount,
+                !damage.is_unpreventable,
+                *max_amount,
+            );
+            for follow_up in result.follow_ups {
+                let follow_up_damage = damage.with_amount(follow_up.prevented);
+                game.effect_store.prevention_effects.queue_follow_up(
+                    follow_up,
+                    follow_up_damage,
+                    event.provenance(),
+                );
+            }
+            if result.remaining == damage.amount {
+                TraitApplyResult::Unchanged(event)
+            } else {
+                TraitApplyResult::Modified(event.rewrap(damage.with_amount(result.remaining)))
+            }
+        }
 
         ReplacementAction::Skip => TraitApplyResult::Prevented,
 

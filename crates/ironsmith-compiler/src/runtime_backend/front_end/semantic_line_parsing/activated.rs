@@ -333,7 +333,7 @@ fn parse_activated_effects_lexed(
     if let Some(effects) = parse_each_player_and_their_creatures_damage_sentence(tokens) {
         return Ok(effects);
     }
-    if let Ok(effects) = parse_effect_sentences_lexed(tokens) {
+    if let Ok(effects) = parse_effect_sentences_preserving_source_boundaries(tokens) {
         return Ok(effects);
     }
 
@@ -468,6 +468,23 @@ fn parse_activated_line_impl(
         activated_grammar::contains_where_x_definition(original_effect_parse_tokens);
     let ability_text = rewrite_activated_display_text(line);
     let presentation_display = activated_presentation_display(line);
+    let is_forecast = presentation_display
+        .as_deref()
+        .is_some_and(|display| display.eq_ignore_ascii_case("Forecast"));
+    let normalized_cost = if is_forecast {
+        mark_forecast_reveal_duration(normalized_cost)
+    } else {
+        normalized_cost
+    };
+    let activation_timing = if is_forecast {
+        ActivationTiming::DuringSourceOwnersUpkeep
+    } else {
+        line.timing_hint
+    };
+    let activation_restrictions = is_forecast
+        .then_some(crate::ConditionExpr::MaxActivationsPerTurn(1))
+        .into_iter()
+        .collect::<Vec<_>>();
     let mut additional_activation_restrictions = if line.presentation_kind
         == Some(crate::runtime_backend::ir::ActivatedPresentationKind::Exhaust)
     {
@@ -531,10 +548,10 @@ fn parse_activated_line_impl(
                     mana_cost: normalized_cost.clone(),
                     effects: ResolutionProgram::default(),
                     choices: vec![],
-                    timing: line.timing_hint.clone(),
+                    timing: activation_timing,
                     is_loyalty_ability: line.is_loyalty_ability,
                     additional_restrictions: additional_activation_restrictions.clone(),
-                    activation_restrictions: vec![],
+                    activation_restrictions: activation_restrictions.clone(),
                     mana_output: Some(spec.mana),
                     activation_condition: None,
                     mana_usage_restrictions: vec![],
@@ -576,10 +593,10 @@ fn parse_activated_line_impl(
                         mana_cost: normalized_cost.clone(),
                         effects: ResolutionProgram::default(),
                         choices: vec![],
-                        timing: line.timing_hint.clone(),
+                        timing: activation_timing,
                         is_loyalty_ability: line.is_loyalty_ability,
                         additional_restrictions: additional_activation_restrictions.clone(),
-                        activation_restrictions: vec![],
+                        activation_restrictions: activation_restrictions.clone(),
                         mana_output: Some(vec![]),
                         activation_condition: None,
                         mana_usage_restrictions: vec![],
@@ -626,10 +643,10 @@ fn parse_activated_line_impl(
                 mana_cost: normalized_cost,
                 effects: ResolutionProgram::default(),
                 choices: vec![],
-                timing: line.timing_hint.clone(),
+                timing: activation_timing,
                 is_loyalty_ability: line.is_loyalty_ability,
                 additional_restrictions: additional_activation_restrictions,
-                activation_restrictions: vec![],
+                activation_restrictions,
                 mana_output: None,
                 activation_condition: None,
                 mana_usage_restrictions: vec![],
@@ -653,6 +670,24 @@ fn parse_activated_line_impl(
         chunk: LineAst::Ability(parsed),
         restrictions,
     })
+}
+
+fn mark_forecast_reveal_duration(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
+    cost.try_map(|component| {
+        component.try_map_effect(
+            |effect| -> Result<crate::effect::Effect, std::convert::Infallible> {
+                if effect
+                    .downcast_ref::<crate::effects::RevealSourceFromHandEffect>()
+                    .is_some()
+                {
+                    Ok(crate::effect::Effect::reveal_source_from_hand_until_upkeep_ends())
+                } else {
+                    Ok(effect)
+                }
+            },
+        )
+    })
+    .expect("mapping a Forecast reveal cost is infallible")
 }
 
 fn apply_chosen_option_condition_to_activated(

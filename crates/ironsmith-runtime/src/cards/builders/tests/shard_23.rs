@@ -24,6 +24,49 @@ use super::shard_21::*;
 use super::shard_22::*;
 use super::*;
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn forecast_compiles_owner_upkeep_once_per_turn_and_persistent_reveal() {
+    let def = parse_oracle_card_definition("Proclamation of Rebirth");
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| {
+            ability.functional_zones.contains(&Zone::Hand)
+                && matches!(ability.kind, AbilityKind::Activated(_))
+        })
+        .expect("Proclamation should have a Forecast ability in hand");
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        unreachable!()
+    };
+
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::DuringSourceOwnersUpkeep
+    );
+    assert!(
+        activated
+            .activation_restrictions
+            .contains(&crate::ConditionExpr::MaxActivationsPerTurn(1))
+    );
+    let reveal = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .find_map(|cost| cost.effect_ref())
+        .and_then(|effect| effect.downcast_ref::<crate::effects::RevealSourceFromHandEffect>())
+        .expect("Forecast should retain its reveal-source cost");
+    assert_eq!(
+        reveal.duration,
+        ironsmith_core::RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand
+    );
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        !rendered.contains("Activate only during this card's owner's upkeep"),
+        "Forecast itself carries that rule and should keep the Oracle surface exact: {rendered}"
+    );
+}
+
 #[test]
 pub(super) fn parse_additional_combat_phase_followed_by_main_phase() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Extra Combat Variant")
@@ -311,8 +354,10 @@ pub(super) fn parse_passive_goad_designation_clause() {
 
     let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
     assert!(
-        rendered.to_ascii_lowercase().contains("goad that creature"),
-        "expected passive goad surface, got {rendered}"
+        rendered
+            .to_ascii_lowercase()
+            .contains("that creature is goaded for the rest of the game"),
+        "expected permanent passive goad surface, got {rendered}"
     );
 }
 

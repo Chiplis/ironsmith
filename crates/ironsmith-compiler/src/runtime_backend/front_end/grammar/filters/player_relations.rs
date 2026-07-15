@@ -104,6 +104,8 @@ fn parse_relation_subject_word_slice(
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
             relation_phrase(&["their", "controllers"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+            relation_phrase(&["those", "opponents"])
+                .map(|()| PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent))),
             relation_phrase(&["you"]).value(PlayerFilter::You),
             relation_phrase(&["opponent"]).value(PlayerFilter::Opponent),
             relation_phrase(&["opponents"]).value(PlayerFilter::Opponent),
@@ -1175,6 +1177,11 @@ mod tests {
             (
                 &["target", "opponent", "controls"][..],
                 PlayerFilter::target_opponent(),
+                2,
+            ),
+            (
+                &["those", "opponents", "control"][..],
+                PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent)),
                 2,
             ),
             (

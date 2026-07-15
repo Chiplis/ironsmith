@@ -938,6 +938,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
                 StaticAbility::conditional_spell_keyword(*spec)
             }
+            ironsmith_core::StaticAbilityPayload::Splice(spec) => {
+                StaticAbility::splice(spec.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::Escalate(spec) => {
+                StaticAbility::escalate(spec.clone())
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 let converted = StaticAbility::from_model((**ability).clone());
                 converted.with_condition(condition.clone()).unwrap_or_else(|| {
@@ -1016,6 +1022,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(
                 filter,
             ) => StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter.clone()),
+            ironsmith_core::StaticAbilityPayload::PreventAllDamageToSelfFromSourcesMatching(spec) => {
+                StaticAbility::prevent_all_damage_to_self_from_sources_matching(spec.clone())
+            }
             ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => {
                 StaticAbility::hexproof_from(filter.clone())
             }
@@ -1756,6 +1765,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .is_some_and(StaticAbility::prefers_card_name_subject)
     }
 
+    fn authored_line_surface(&self) -> Option<String> {
+        (self.model.id == Some(StaticAbilityId::SetCardTypes)
+            && self.model.label != "set card types")
+            .then(|| self.model.label.clone())
+    }
+
     fn display(&self) -> String {
         if self.model.label == "Aftermath" {
             return "Aftermath".to_string();
@@ -2440,6 +2455,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn conditional_spell_keyword_spec(&self) -> Option<super::ConditionalSpellKeywordSpec> {
         self.leaf_static_ability()?.conditional_spell_keyword_spec()
+    }
+
+    fn splice_spec(&self) -> Option<&super::SpliceSpec<crate::costs::Cost>> {
+        self.leaf_static_ability()?.splice_spec()
+    }
+
+    fn escalate_spec(&self) -> Option<&super::EscalateSpec<crate::costs::Cost>> {
+        self.leaf_static_ability()?.escalate_spec()
     }
 
     fn trigger_duplication_spec(&self) -> Option<super::TriggerDuplicationSpec> {

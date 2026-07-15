@@ -79,7 +79,7 @@ pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
 pub(crate) use crate::runtime_backend::ast::{
     ChooseOneModeAst, EffectAst, PredicateAst, ReturnAsAuraAst, StaticAbilityAst,
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
-    TriggerSpec,
+    TriggerSpec, TurnHistoryPredicateAst,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

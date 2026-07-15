@@ -32,6 +32,8 @@ pub struct ModalSpec {
     pub mode_point_costs: Vec<u32>,
     /// Whether each selected mode must target a different player.
     pub distinct_player_targets_per_mode: bool,
+    /// Alternate range enabled by a later optional-cost choice under CR 601.4.
+    pub conditional_mode_range: Option<crate::effect::ConditionalModeRange>,
 }
 
 /// The supported runtime extension categories for effects.
@@ -68,6 +70,10 @@ pub struct TargetSelectionProfile<'a> {
     pub min_targets: usize,
     pub max_targets: Option<usize>,
     pub count_value: Option<&'a crate::effect::Value>,
+    /// Amount that must be divided among the selected targets during announcement.
+    pub distribution_value: Option<&'a crate::effect::Value>,
+    /// Minimum amount that must be assigned to each selected target.
+    pub distribution_min_per_target: u32,
     pub reuse_policy: TargetReusePolicy,
 }
 
@@ -82,6 +88,7 @@ pub struct ModalEffectSpec<'a> {
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
     pub distinct_player_targets_per_mode: bool,
+    pub conditional_mode_range: Option<&'a crate::effect::ConditionalModeRange>,
 }
 
 /// Trait for executing effects.
@@ -241,6 +248,18 @@ pub trait EffectExecutor:
             .and_then(|effect| effect.0.get_target_count())
     }
 
+    /// Value divided among this effect's targets during announcement, if any.
+    fn get_target_distribution_value(&self) -> Option<&Value> {
+        self.transparent_child_effect()
+            .and_then(|effect| effect.0.get_target_distribution_value())
+    }
+
+    /// Minimum amount assigned to each target in an announced division.
+    fn target_distribution_min_per_target(&self) -> u32 {
+        self.transparent_child_effect()
+            .map_or(1, |effect| effect.0.target_distribution_min_per_target())
+    }
+
     /// Whether this target requirement should reuse a compatible earlier target.
     fn target_reuse_policy(&self) -> TargetReusePolicy {
         self.transparent_child_effect()
@@ -267,6 +286,8 @@ pub trait EffectExecutor:
             min_targets,
             max_targets,
             count_value: spec.count_value(),
+            distribution_value: self.get_target_distribution_value(),
+            distribution_min_per_target: self.target_distribution_min_per_target(),
             reuse_policy: self.target_reuse_policy(),
         })
     }

@@ -11,7 +11,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::other::CardsDrawnEvent;
-use crate::game_state::{GameState, StackEntry};
+use crate::game_state::GameState;
 use crate::zone::Zone;
 
 use super::runtime_helpers::with_spell_cast_event;
@@ -41,7 +41,6 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         use crate::alternative_cast::CastingMethod;
-        use crate::cost::OptionalCostsPaid;
 
         // Get card_id and owner from the triggering CardsDrawnEvent
         let Some(ref triggering_event) = ctx.triggering_event else {
@@ -115,73 +114,20 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        // Player wants to cast for miracle cost.
-        let x_value = if miracle_cost.has_x() {
-            Some(0u32)
-        } else {
-            None
-        };
-
-        // Try to pay now; if payment fails, card stays in hand.
-        let Some(card_obj) = game.object(card_id) else {
-            return Ok(EffectOutcome::resolved());
-        };
-        let effective_cost =
-            crate::decision::calculate_effective_mana_cost(game, owner, card_obj, &miracle_cost);
-        if !game.try_pay_mana_cost_with_reason(
+        let casting_method = CastingMethod::Alternative(miracle_index);
+        let result = crate::game_loop::cast_spell_from_resolving_effect(
+            game,
+            card_id,
+            Zone::Hand,
             owner,
-            Some(card_id),
-            &effective_cost,
-            0,
-            crate::costs::PaymentReason::CastSpell,
-        ) {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        // Get stable_id before moving
-        let stable_id = game.object(card_id).map(|o| o.stable_id);
-
-        // Move spell from hand to stack
-        if let Some(new_id) = game.move_object_by_effect(card_id, Zone::Stack) {
-            if let Some(obj) = game.object_mut(new_id) {
-                obj.x_value = x_value;
-            }
-            // Create stack entry with miracle casting method
-            let stack_entry = StackEntry {
-                object_id: new_id,
-                controller: owner,
-                provenance: ctx.provenance,
-                targets: vec![],
-                target_assignments: vec![],
-                x_value,
-                activation_cost_has_x: false,
-                activation_cost_has_tap: false,
-                ability_effects: None,
-                mana_usage_restrictions: Vec::new(),
-                mana_source_chosen_creature_type: None,
-                is_ability: false,
-                casting_method: CastingMethod::Alternative(miracle_index),
-                optional_costs_paid: OptionalCostsPaid::default(),
-                defending_player: None,
-                chosen_player: None,
-                chapter_ability_source: None,
-                source_stable_id: stable_id,
-                source_snapshot: None,
-                source_name: Some(card_name),
-                triggering_event: None,
-                event_value_amount: None,
-                trigger_identity: None,
-                ability_index: None,
-                intervening_if: None,
-                keyword_payment_contributions: vec![],
-                crew_contributors: vec![],
-                saddle_contributors: vec![],
-                chosen_modes: None,
-                tagged_objects: std::collections::HashMap::new(),
-                effect_outcomes: std::collections::HashMap::new(),
-            };
-
-            game.push_to_stack(stack_entry);
+            &casting_method,
+            false,
+            None,
+            ctx.provenance,
+            &mut ctx.decision_maker,
+        )
+        .map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+        if let Some(new_id) = result {
             Ok(with_spell_cast_event(
                 EffectOutcome::with_objects(vec![new_id]),
                 game,
@@ -190,6 +136,8 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
                 Zone::Hand,
                 ctx.provenance,
             ))
+        } else if ctx.decision_maker.awaiting_choice() {
+            Ok(EffectOutcome::count(0))
         } else {
             Ok(EffectOutcome::impossible())
         }

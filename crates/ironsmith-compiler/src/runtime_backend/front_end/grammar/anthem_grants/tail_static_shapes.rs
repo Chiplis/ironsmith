@@ -25,6 +25,14 @@ pub(crate) struct BasePowerToughnessGrantShape<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BasePowerToughnessTypeAdditionShape<'a> {
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) power: i32,
+    pub(crate) toughness: i32,
+    pub(crate) addition_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BasePowerGrantShape<'a> {
     pub(crate) has_token: usize,
     pub(crate) power: i32,
@@ -91,6 +99,20 @@ pub(crate) fn parse_base_power_toughness_grant_shape(
         toughness: parsed.toughness,
         ability_tokens: parsed.ability_tokens,
     })
+}
+
+pub(crate) fn parse_base_power_toughness_type_addition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<BasePowerToughnessTypeAdditionShape<'_>> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    let shape = primitives::parse_all(
+        tokens,
+        parse_base_power_toughness_type_addition_lexed,
+        "base-power/toughness type addition",
+    )
+    .ok()?;
+    super::parse_type_color_addition_shape(shape.addition_tokens)?;
+    Some(shape)
 }
 
 pub(crate) fn parse_base_power_grant_shape(
@@ -274,7 +296,9 @@ fn parse_base_power_toughness_grant_lexed<'a>(
     let has_token = initial_len.saturating_sub(input.len() + 1);
     primitives::phrase(&["base", "power", "and", "toughness"]).parse_next(input)?;
     let (power, toughness) = parse_fixed_power_toughness.parse_next(input)?;
-    primitives::kw("and").parse_next(input)?;
+    // Oracle lists may join the base-P/T predicate to the first granted
+    // ability with either "and has" or a comma followed by "has".
+    alt((primitives::kw("and").void(), primitives::comma().void())).parse_next(input)?;
     alt((
         primitives::kw("have"),
         primitives::kw("has"),
@@ -295,6 +319,34 @@ fn parse_base_power_toughness_grant_lexed<'a>(
         power,
         toughness,
         ability_tokens,
+    })
+}
+
+fn parse_base_power_toughness_type_addition_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<BasePowerToughnessTypeAdditionShape<'a>> {
+    let subject_tokens = take_until_have.parse_next(input)?;
+    parse_have.parse_next(input)?;
+    primitives::phrase(&["base", "power", "and", "toughness"]).parse_next(input)?;
+    let (power, toughness) = parse_fixed_power_toughness.parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    let addition_tokens: &'a [OwnedLexToken] = rest.parse_next(input)?;
+    let subject_tokens = trim_lexed_commas(subject_tokens);
+    let addition_tokens = trim_lexed_commas(addition_tokens);
+    if subject_tokens.is_empty()
+        || addition_tokens.is_empty()
+        || !persistent_anthem_subject_facts(subject_tokens).accepted
+    {
+        return Err(primitives::backtrack_err(
+            "base power/toughness type addition",
+            "persistent subject and additive type predicate",
+        ));
+    }
+    Ok(BasePowerToughnessTypeAdditionShape {
+        subject_tokens,
+        power,
+        toughness,
+        addition_tokens,
     })
 }
 

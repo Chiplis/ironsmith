@@ -63,6 +63,7 @@ fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<
         tag: TagKey::from(tag),
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
+    filter.set_relative_attachment_state_surface(true);
     Some(filter)
 }
 

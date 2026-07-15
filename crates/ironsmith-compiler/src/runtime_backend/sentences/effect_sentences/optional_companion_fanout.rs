@@ -116,6 +116,7 @@ fn combine_shared_keyword_choice(
                     ),
                 ],
                 leading_duration: false,
+                result_conjunction: false,
             }],
         })
         .collect();
@@ -141,6 +142,7 @@ pub(crate) fn parse_optional_companion_fanout_sentence(
         return Ok(Some(vec![EffectAst::Coordinated {
             effects: first,
             leading_duration: false,
+            result_conjunction: false,
         }]));
     }
 
@@ -153,6 +155,7 @@ pub(crate) fn parse_optional_companion_fanout_sentence(
         return Ok(Some(vec![EffectAst::Coordinated {
             effects: first,
             leading_duration: false,
+            result_conjunction: false,
         }]));
     }
 
@@ -290,7 +293,7 @@ mod tests {
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::TargetOnly { target },
+                action: SubjectVerbActionAst::TargetOnly { target, .. },
                 ..
             }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {

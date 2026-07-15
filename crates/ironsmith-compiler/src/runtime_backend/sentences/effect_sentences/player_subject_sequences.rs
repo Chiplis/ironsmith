@@ -61,6 +61,7 @@ pub(super) fn parse_controller_and_defending_player_discard_or_sacrifice(
                 player_choice(PlayerAst::Defending),
             ],
             leading_duration: false,
+            result_conjunction: false,
         }),
         tag: moved_tag,
     }])

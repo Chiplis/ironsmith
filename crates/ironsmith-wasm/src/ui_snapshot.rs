@@ -1861,6 +1861,9 @@ mod tests {
                     vec![ManaSymbol::Red],
                 ])),
                 exile_count: 2,
+                additional_cost: ironsmith::TotalCost::from_cost(
+                    ironsmith::costs::Cost::exile_from_graveyard(2, None),
+                ),
             });
     }
 

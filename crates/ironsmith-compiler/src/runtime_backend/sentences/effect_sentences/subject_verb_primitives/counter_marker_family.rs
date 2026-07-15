@@ -283,7 +283,11 @@ pub(crate) fn parse_sentence_put_counter_sequence(
 
                 let mut effects = vec![first];
                 effects.append(&mut followup_effects);
-                return Ok(Some(effects));
+                return Ok(Some(vec![EffectAst::Coordinated {
+                    effects,
+                    leading_duration: false,
+                    result_conjunction: false,
+                }]));
             }
         }
     }
@@ -367,9 +371,15 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in shape.descriptors {
+        let count = Value::Fixed(descriptor.count as i32);
+        let count = if descriptor.additional {
+            count.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+        } else {
+            count
+        };
         effects.push(EffectAst::subject_verb_put_counters(
             descriptor.counter_type,
-            Value::Fixed(descriptor.count as i32),
+            count,
             tagged_target.clone(),
             None,
             false,
@@ -438,9 +448,15 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
         effects.push(EffectAst::subject_verb_transform(tagged_target.clone()));
     }
     for descriptor in shape.descriptors {
+        let count = Value::Fixed(descriptor.count as i32);
+        let count = if descriptor.additional {
+            count.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+        } else {
+            count
+        };
         effects.push(EffectAst::subject_verb_put_counters(
             descriptor.counter_type,
-            Value::Fixed(descriptor.count as i32),
+            count,
             tagged_target.clone(),
             None,
             false,
@@ -662,7 +678,8 @@ fn lower_put_with_additional_counter(
 
     effects.push(EffectAst::subject_verb_put_counters(
         shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32),
+        Value::Fixed(shape.descriptor.count as i32)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter),
         TargetAst::Tagged(TagKey::from(IT_TAG), span),
         None,
         false,

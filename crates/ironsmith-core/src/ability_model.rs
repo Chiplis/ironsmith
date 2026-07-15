@@ -13,12 +13,42 @@ pub enum ActivationTiming {
     OncePerTurn,
     DuringYourTurn,
     DuringOpponentsTurn,
+    /// Only during the upkeep of the player who owns the source object.
+    ///
+    /// This is distinct from `DuringYourTurn`: Forecast is activated from a
+    /// hidden zone and CR 702.57b keys its permission to the card's owner,
+    /// not to the ability's controller.
+    DuringSourceOwnersUpkeep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaUsageSubtypeRequirement {
     Exact(Subtype),
     ChosenTypeOfSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaSpendBonusCondition {
+    IfThisManaIsSpentToCast,
+    IfThatManaIsSpentToCast,
+    IfThisManaIsSpentOn,
+    IfThatManaIsSpentOn,
+    WhenYouSpendThisManaToCast,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaSpendAbilityGrantDuration {
+    UntilEndOfTurn,
+    UntilYourNextTurn,
+}
+
+/// A keyword ability that can be granted to a spell by mana used to cast it.
+///
+/// These are kept separate from `StaticAbilityId`: some keywords, such as
+/// riot, lower to triggered gameplay abilities rather than a static marker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaSpendGrantedKeyword {
+    Riot,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +67,17 @@ pub enum ManaUsageRestriction {
         grant_uncounterable: bool,
         enters_with_counters: Vec<(crate::CounterType, u32)>,
         granted_abilities: Vec<StaticAbilityId>,
+    },
+    /// A bonus carried by a produced mana unit and applied only when that unit
+    /// is spent on a spell matching `filter`. Unlike a spending restriction,
+    /// this never prevents the mana from being used for a different purpose.
+    CastSpellWithManaBonus {
+        filter: ObjectFilter,
+        condition: ManaSpendBonusCondition,
+        grant_uncounterable: bool,
+        enters_with_counters: Vec<(crate::CounterType, u32)>,
+        granted_abilities: Vec<(StaticAbilityId, ManaSpendAbilityGrantDuration)>,
+        granted_keywords: Vec<ManaSpendGrantedKeyword>,
     },
     CastSpellOrActivateAbilitySourceMatching {
         spell_filter: ObjectFilter,

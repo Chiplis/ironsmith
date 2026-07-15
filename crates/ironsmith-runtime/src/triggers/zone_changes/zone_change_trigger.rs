@@ -33,7 +33,7 @@ use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::types::CardType;
 use crate::zone::Zone;
-pub use ironsmith_core::trigger_model::ZoneChangeOriginCondition;
+pub use ironsmith_core::trigger_model::{TriggerSubjectNumber, ZoneChangeOriginCondition};
 use std::fmt;
 
 /// Pattern for matching zones in zone change events.
@@ -131,6 +131,8 @@ pub struct ZoneChangeTrigger {
     pub this_object: bool,
     /// Original source-reference surface for source-object trigger text.
     pub this_object_surface: Option<crate::target::SourceReferenceSurface>,
+    /// Authored grammatical number for a named source-object subject.
+    pub this_object_subject_number: TriggerSubjectNumber,
 }
 
 impl Default for ZoneChangeTrigger {
@@ -146,6 +148,7 @@ impl Default for ZoneChangeTrigger {
             count_mode: CountMode::Each,
             this_object: false,
             this_object_surface: None,
+            this_object_subject_number: TriggerSubjectNumber::Singular,
         }
     }
 }
@@ -218,6 +221,11 @@ impl ZoneChangeTrigger {
 
     pub fn this_surface(mut self, surface: crate::target::SourceReferenceSurface) -> Self {
         self.this_object_surface = Some(surface);
+        self
+    }
+
+    pub fn this_subject_number(mut self, number: TriggerSubjectNumber) -> Self {
+        self.this_object_subject_number = number;
         self
     }
 
@@ -714,10 +722,14 @@ impl ZoneChangeTrigger {
         if self.this_object {
             let battlefield_subject = self.this_subject_text("permanent");
             let card_subject = self.this_subject_text("card");
+            let enter_verb = match self.this_object_subject_number {
+                TriggerSubjectNumber::Singular => "enters",
+                TriggerSubjectNumber::Plural => "enter",
+            };
             if self.to == ZonePattern::Specific(Zone::Battlefield)
                 && let Some(origin_phrase) = enters_origin_phrase(self)
             {
-                return format!("When {battlefield_subject} enters {origin_phrase}");
+                return format!("When {battlefield_subject} {enter_verb} {origin_phrase}");
             }
             return match (&self.from, &self.to) {
                 (
@@ -734,7 +746,7 @@ impl ZoneChangeTrigger {
                     format!("When {battlefield_subject} is put into exile from the battlefield")
                 }
                 (_, ZonePattern::Specific(Zone::Battlefield)) => {
-                    format!("When {battlefield_subject} enters the battlefield")
+                    format!("When {battlefield_subject} {enter_verb} the battlefield")
                 }
                 (ZonePattern::Specific(Zone::Battlefield), _) => {
                     format!("When {battlefield_subject} leaves the battlefield")
@@ -1385,25 +1397,31 @@ mod tests {
             "Whenever one or more nontoken creatures enter the battlefield, if one or more of them entered from exile or was cast from exile"
         );
 
-        let direct_from_exile = TriggerEvent::new(ZoneChangeEvent::with_cause(
-            entering_id,
-            Zone::Exile,
-            Zone::Battlefield,
-            EventCause::from_game_rule(),
-            None,
-        ));
+        let direct_from_exile = TriggerEvent::new(
+            ZoneChangeEvent::with_cause(
+                entering_id,
+                Zone::Exile,
+                Zone::Battlefield,
+                EventCause::from_game_rule(),
+                None,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
         assert!(trigger.matches(
             &direct_from_exile,
             &TriggerContext::for_source(source_id, alice, &game)
         ));
 
-        let from_stack = TriggerEvent::new(ZoneChangeEvent::with_cause(
-            entering_id,
-            Zone::Stack,
-            Zone::Battlefield,
-            EventCause::from_game_rule(),
-            None,
-        ));
+        let from_stack = TriggerEvent::new(
+            ZoneChangeEvent::with_cause(
+                entering_id,
+                Zone::Stack,
+                Zone::Battlefield,
+                EventCause::from_game_rule(),
+                None,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
         assert!(!trigger.matches(
             &from_stack,
             &TriggerContext::for_source(source_id, alice, &game)
@@ -1417,6 +1435,7 @@ mod tests {
                 Zone::Exile,
                 snapshot,
             ),
+            crate::provenance::ProvNodeId::default(),
         ));
         assert!(trigger.matches(
             &from_stack,

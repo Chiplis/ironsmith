@@ -88,8 +88,8 @@ pub(crate) use subject_shapes::{
 };
 pub(crate) use tail_static_shapes::{
     IsntCreatureShapeError, parse_base_power_grant_shape, parse_base_power_toughness_grant_shape,
-    parse_base_power_toughness_shape, parse_isnt_creature_shape, parse_multi_subject_segments,
-    persistent_anthem_subject_facts,
+    parse_base_power_toughness_shape, parse_base_power_toughness_type_addition_shape,
+    parse_isnt_creature_shape, parse_multi_subject_segments, persistent_anthem_subject_facts,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

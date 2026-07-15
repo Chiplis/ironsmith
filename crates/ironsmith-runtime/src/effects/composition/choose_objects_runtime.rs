@@ -98,6 +98,9 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::GreatestPower(filter)
         | crate::effect::Value::GreatestToughness(filter)
         | crate::effect::Value::GreatestManaValue(filter)
+        | crate::effect::Value::LeastPower(filter)
+        | crate::effect::Value::LeastToughness(filter)
+        | crate::effect::Value::LeastManaValue(filter)
         | crate::effect::Value::BasicLandTypesAmong(filter)
         | crate::effect::Value::CreatureTypesAmong(filter)
         | crate::effect::Value::CardTypesAmong(filter)
@@ -640,10 +643,16 @@ fn normalize_chosen_objects(
     min: usize,
     max: usize,
     fill_to_min: bool,
+    preserve_order: bool,
 ) -> Vec<ObjectId> {
     chosen.truncate(max);
-    chosen.sort();
-    chosen.dedup();
+    if preserve_order {
+        let mut seen = std::collections::HashSet::new();
+        chosen.retain(|id| seen.insert(*id));
+    } else {
+        chosen.sort();
+        chosen.dedup();
+    }
 
     if fill_to_min && chosen.len() < min {
         for id in candidates {
@@ -1281,7 +1290,17 @@ pub(crate) fn run_choose_objects(
                 outcome
             });
         }
-        let chosen = normalize_chosen_objects(chosen, &candidates, min, max, !allow_hidden_partial);
+        let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
+            value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
+        });
+        let chosen = normalize_chosen_objects(
+            chosen,
+            &candidates,
+            min,
+            max,
+            !allow_hidden_partial,
+            preserve_order,
+        );
         let chosen = enforce_public_search_choice_constraint(
             game,
             &candidates,
@@ -1829,7 +1848,7 @@ mod tests {
             ObjectId::from_raw(2),
         ];
 
-        let normalized = normalize_chosen_objects(chosen, &candidates, 2, 2, true);
+        let normalized = normalize_chosen_objects(chosen, &candidates, 2, 2, true, false);
         assert_eq!(
             normalized,
             vec![ObjectId::from_raw(3), ObjectId::from_raw(1)]

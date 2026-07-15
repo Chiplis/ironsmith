@@ -2,7 +2,7 @@ use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
+use crate::filter::{FilterContext, ObjectFilterExt as _, player_filter_matches_game};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::target::PlayerFilter;
@@ -19,6 +19,45 @@ fn source_is_face_down_or_alternate_face(game: &GameState, source: ObjectId) -> 
     // `SourceIsFaceDown` is also used by daybound/nightbound lowering to mean
     // "this DFC is currently showing its alternate face."
     game.is_face_down(source) || game.transform_count(source) % 2 == 1
+}
+
+fn attachment_count_condition_matches(
+    game: &GameState,
+    source: ObjectId,
+    attachment: &crate::target::ObjectFilter,
+    host: &ironsmith_core::AttachmentConditionHost,
+    comparison: &crate::effect::Comparison,
+    filter_ctx: &FilterContext,
+) -> bool {
+    let host_satisfies = |host_id: ObjectId| {
+        game.object(host_id).is_some_and(|host_object| {
+            let count = host_object
+                .attachments
+                .iter()
+                .filter(|attachment_id| {
+                    game.object(**attachment_id)
+                        .is_some_and(|object| attachment.matches(object, filter_ctx, game))
+                })
+                .count() as i32;
+            comparison.evaluate(count)
+        })
+    };
+
+    match host {
+        ironsmith_core::AttachmentConditionHost::Source => host_satisfies(source),
+        ironsmith_core::AttachmentConditionHost::SourceAttachedObject => game
+            .object(source)
+            .and_then(|source_object| source_object.attached_to)
+            .and_then(|target| target.object_id())
+            .is_some_and(host_satisfies),
+        ironsmith_core::AttachmentConditionHost::Matching(host_filter) => {
+            game.battlefield.iter().copied().any(|host_id| {
+                game.object(host_id).is_some_and(|host_object| {
+                    host_filter.matches(host_object, filter_ctx, game) && host_satisfies(host_id)
+                })
+            })
+        }
+    }
 }
 
 fn source_was_cast(
@@ -233,9 +272,10 @@ mod tests {
     use crate::events::{DamageEvent, DamageTarget, RawEvent};
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::object::AttachmentTarget;
     use crate::player::ManaPool;
     use crate::provenance::ProvNodeId;
-    use crate::types::CardType;
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     fn add_hand_card(game: &mut GameState, id_raw: u32, name: &str, owner_index: usize) {
@@ -254,6 +294,156 @@ mod tests {
             .build();
         let owner = game.players[owner_index].id;
         game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
+    fn add_battlefield_permanent(
+        game: &mut GameState,
+        id_raw: u32,
+        name: &str,
+        owner_index: usize,
+        card_type: CardType,
+        subtype: Option<Subtype>,
+    ) -> ObjectId {
+        let mut builder =
+            CardBuilder::new(CardId::from_raw(id_raw), name).card_types(vec![card_type]);
+        if let Some(subtype) = subtype {
+            builder = builder.subtypes(vec![subtype]);
+        }
+        let card = builder.build();
+        let owner = game.players[owner_index].id;
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn attach_for_test(game: &mut GameState, attachment: ObjectId, host: ObjectId) {
+        game.object_mut(attachment).unwrap().attached_to = Some(AttachmentTarget::Object(host));
+        game.object_mut(host).unwrap().attachments.push(attachment);
+    }
+
+    #[test]
+    fn attachment_count_is_evaluated_per_matching_host() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = game.players[0].id;
+        let first_host =
+            add_battlefield_permanent(&mut game, 100, "First Host", 0, CardType::Creature, None);
+        let second_host =
+            add_battlefield_permanent(&mut game, 101, "Second Host", 0, CardType::Creature, None);
+        let first_equipment = add_battlefield_permanent(
+            &mut game,
+            102,
+            "First Equipment",
+            0,
+            CardType::Artifact,
+            Some(Subtype::Equipment),
+        );
+        let second_equipment = add_battlefield_permanent(
+            &mut game,
+            103,
+            "Second Equipment",
+            0,
+            CardType::Artifact,
+            Some(Subtype::Equipment),
+        );
+        attach_for_test(&mut game, first_equipment, first_host);
+        attach_for_test(&mut game, second_equipment, second_host);
+
+        let condition = Condition::AttachmentCount {
+            attachment: crate::target::ObjectFilter::default().with_subtype(Subtype::Equipment),
+            host: ironsmith_core::AttachmentConditionHost::Matching(
+                crate::target::ObjectFilter::creature().you_control(),
+            ),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(2),
+            display: "two or more Equipment are attached to a creature you control".to_string(),
+        };
+        let ctx = ExecutionContext::new_default(first_host, alice);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "attachments on different hosts must not be aggregated"
+        );
+
+        game.object_mut(second_host)
+            .unwrap()
+            .attachments
+            .retain(|id| *id != second_equipment);
+        game.object_mut(second_equipment).unwrap().attached_to =
+            Some(AttachmentTarget::Object(first_host));
+        game.object_mut(first_host)
+            .unwrap()
+            .attachments
+            .push(second_equipment);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "two attachments on one matching host should satisfy the comparison"
+        );
+    }
+
+    #[test]
+    fn source_attached_object_count_honors_other_source_filtering() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = game.players[0].id;
+        let enchanted = add_battlefield_permanent(
+            &mut game,
+            110,
+            "Enchanted Creature",
+            0,
+            CardType::Creature,
+            None,
+        );
+        let other_host = add_battlefield_permanent(
+            &mut game,
+            111,
+            "Other Creature",
+            0,
+            CardType::Creature,
+            None,
+        );
+        let source_aura = add_battlefield_permanent(
+            &mut game,
+            112,
+            "Source Aura",
+            0,
+            CardType::Enchantment,
+            Some(Subtype::Aura),
+        );
+        let other_aura = add_battlefield_permanent(
+            &mut game,
+            113,
+            "Other Aura",
+            0,
+            CardType::Enchantment,
+            Some(Subtype::Aura),
+        );
+        attach_for_test(&mut game, source_aura, enchanted);
+        attach_for_test(&mut game, other_aura, other_host);
+
+        let mut other_aura_filter =
+            crate::target::ObjectFilter::default().with_subtype(Subtype::Aura);
+        other_aura_filter.other = true;
+        let condition = Condition::AttachmentCount {
+            attachment: other_aura_filter,
+            host: ironsmith_core::AttachmentConditionHost::SourceAttachedObject,
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: "another Aura is attached to enchanted creature".to_string(),
+        };
+        let ctx = ExecutionContext::new_default(source_aura, alice);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "the source Aura and an Aura on another creature must not count"
+        );
+
+        game.object_mut(other_host)
+            .unwrap()
+            .attachments
+            .retain(|id| *id != other_aura);
+        game.object_mut(other_aura).unwrap().attached_to =
+            Some(AttachmentTarget::Object(enchanted));
+        game.object_mut(enchanted)
+            .unwrap()
+            .attachments
+            .push(other_aura);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "another Aura on the source's enchanted creature should count"
+        );
     }
 
     #[test]
@@ -926,6 +1116,57 @@ mod tests {
             "later combat phases should not pass"
         );
     }
+
+    #[test]
+    fn target_is_attacking_uses_combat_membership_not_tapped_status() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source =
+            add_battlefield_permanent(&mut game, 120, "Source", 0, CardType::Creature, None);
+        let untapped_attacker = add_battlefield_permanent(
+            &mut game,
+            121,
+            "Vigilant Attacker",
+            0,
+            CardType::Creature,
+            None,
+        );
+        let tapped_nonattacker = add_battlefield_permanent(
+            &mut game,
+            122,
+            "Tapped Nonattacker",
+            0,
+            CardType::Creature,
+            None,
+        );
+        game.tap(tapped_nonattacker);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: untapped_attacker,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+            ..crate::combat_state::CombatState::default()
+        });
+
+        let attacking_ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(untapped_attacker),
+        ]);
+        let nonattacking_ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(tapped_nonattacker),
+        ]);
+
+        assert!(
+            evaluate_condition(&game, &Condition::TargetIsAttacking, &attacking_ctx)
+                .expect("attacking condition should evaluate"),
+            "an untapped vigilant creature remains attacking"
+        );
+        assert!(
+            !evaluate_condition(&game, &Condition::TargetIsAttacking, &nonattacking_ctx)
+                .expect("nonattacking condition should evaluate"),
+            "a tapped creature outside combat is not attacking"
+        );
+    }
 }
 
 fn player_has_card_in_hand_matching(
@@ -970,6 +1211,9 @@ fn evaluate_value_comparison(
     let mut ctx = ExecutionContext::new_default(source, controller);
     if let Some(event) = triggering_event {
         ctx = ctx.with_triggering_event(event.clone());
+        if let Some(snapshot) = event.snapshot() {
+            ctx.set_tagged_objects("triggering", vec![snapshot.clone()]);
+        }
         if let Some(cast) = event.downcast::<crate::events::SpellCastEvent>()
             && let Some(spell) = game.object(cast.spell)
             && let Some(snapshots) = spell
@@ -1488,12 +1732,323 @@ fn player_hand_count_at_turn_start(game: &GameState, player_id: PlayerId) -> Opt
         .map(|count| count as i32)
 }
 
+fn evaluate_turn_history_condition(
+    game: &GameState,
+    condition: &ironsmith_core::TurnHistoryCondition,
+    ctx: SharedConditionContext<'_>,
+) -> bool {
+    use ironsmith_core::TurnHistoryCondition;
+
+    let matching_players =
+        |filter: &PlayerFilter| matching_condition_players_simple(game, ctx.controller, filter);
+    let triggering_snapshot = || {
+        ctx.triggering_event
+            .and_then(TriggerEvent::snapshot)
+            .cloned()
+            .or_else(|| {
+                ctx.triggering_event
+                    .and_then(TriggerEvent::object_id)
+                    .and_then(|id| game.object(id))
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+            })
+    };
+
+    match condition {
+        TurnHistoryCondition::SpellsCastLastTurnAtLeast(count) => {
+            game.turn_store.spells_cast_last_turn_total >= *count
+        }
+        TurnHistoryCondition::SourceCrewedByAtLeast { count, filter } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            game.turn_store
+                .turn_history
+                .crewed_this_turn
+                .get(&ctx.source)
+                .map(|crewers| {
+                    crewers
+                        .iter()
+                        .filter(|id| {
+                            game.object(**id)
+                                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                        })
+                        .count() as u32
+                })
+                .unwrap_or(0)
+                >= *count
+        }
+        TurnHistoryCondition::SourceWasCast { .. } => {
+            source_was_cast(game, ctx.source, ctx.triggering_event)
+        }
+        TurnHistoryCondition::SourceWasCastByController { .. } => {
+            source_was_cast(game, ctx.source, ctx.triggering_event)
+                && game
+                    .object(ctx.source)
+                    .map(|source| game.controller_of(source))
+                    .or_else(|| {
+                        ctx.triggering_event
+                            .and_then(TriggerEvent::snapshot)
+                            .map(|snapshot| snapshot.controller)
+                    })
+                    == Some(ctx.controller)
+        }
+        TurnHistoryCondition::SourceWasKicked { .. } => game
+            .object(ctx.source)
+            .is_some_and(|object| object.optional_costs_paid.was_kicked()),
+        TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { .. } => game
+            .object(ctx.source)
+            .map(|source| source.stable_id)
+            .or_else(|| {
+                ctx.triggering_event
+                    .and_then(TriggerEvent::snapshot)
+                    .map(|s| s.stable_id)
+            })
+            .is_some_and(|stable_id| {
+                game.turn_store
+                    .turn_history
+                    .entered_battlefield_snapshots_this_turn()
+                    .iter()
+                    .any(|snapshot| snapshot.stable_id == stable_id)
+            }),
+        TurnHistoryCondition::SourceAttackedThisTurn { .. } => {
+            game.creature_attacked_this_turn(ctx.source)
+        }
+        TurnHistoryCondition::TriggeringObjectWasCast => {
+            triggering_snapshot().is_some_and(|snapshot| {
+                game.turn_store
+                    .turn_history
+                    .projected_records()
+                    .filter_map(|record| record.event.downcast::<crate::events::SpellCastEvent>())
+                    .any(|event| {
+                        event
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|cast| cast.stable_id == snapshot.stable_id)
+                    })
+            })
+        }
+        TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => triggering_snapshot()
+            .is_some_and(|snapshot| {
+                game.turn_store
+                    .turn_history
+                    .object_was_cast_from_zone(snapshot.stable_id, *zone)
+            }),
+        TurnHistoryCondition::PlayerPlayedLandThisTurn(player) => {
+            let players = matching_players(player);
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::LandPlayedEvent>()
+                        .is_some_and(|event| players.contains(&event.player))
+                })
+        }
+        TurnHistoryCondition::TriggeringObjectDied => ctx
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
+            .is_some_and(|event| event.to == Zone::Graveyard),
+        TurnHistoryCondition::PlayerPlayedCardFromZoneThisTurn { player, zone } => {
+            let players = matching_players(player);
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::SpellCastEvent>()
+                        .is_some_and(|event| {
+                            event.from_zone == *zone && players.contains(&event.caster)
+                        })
+                        || record
+                            .event
+                            .downcast::<crate::events::LandPlayedEvent>()
+                            .is_some_and(|event| {
+                                event.from_zone == *zone && players.contains(&event.player)
+                            })
+                })
+        }
+        TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn => {
+            let Some(triggering_player) = ctx
+                .triggering_event
+                .and_then(|event| event.trigger_player().or_else(|| event.player()))
+            else {
+                return false;
+            };
+            game.turn_store
+                .previous_turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                        .is_some_and(|attack| {
+                            matches!(
+                                attack.target,
+                                crate::triggers::AttackEventTarget::Player(player)
+                                    if player == ctx.controller
+                            ) && record
+                                .object_snapshot
+                                .as_ref()
+                                .is_some_and(|snapshot| snapshot.controller == triggering_player)
+                        })
+                })
+        }
+        TurnHistoryCondition::PlayerLostLifeLastTurn(player) => {
+            let players = matching_players(player);
+            game.turn_store
+                .previous_turn_history
+                .total_life_lost_for_players(&players)
+                > 0
+        }
+        TurnHistoryCondition::TriggeringPlayersTurn { .. } => ctx
+            .triggering_event
+            .and_then(|event| event.trigger_player().or_else(|| event.player()))
+            .is_some_and(|player| player == game.turn.active_player),
+        TurnHistoryCondition::ControllerTeamGainedLifeThisTurn => {
+            let mut team = vec![ctx.controller];
+            team.extend(
+                game.filter_context_for(ctx.controller, ctx.filter_source)
+                    .teammates,
+            );
+            game.turn_store
+                .turn_history
+                .total_life_gained_for_players(&team)
+                > 0
+        }
+        TurnHistoryCondition::TriggeringObjectsNoneWereCastOrNoManaSpent => ctx
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
+            .is_some_and(|event| {
+                if event.to != Zone::Battlefield {
+                    return false;
+                }
+                let none_were_cast = event.from != Zone::Stack;
+                let no_mana_was_spent = if !event.snapshots().is_empty() {
+                    event
+                        .snapshots()
+                        .iter()
+                        .all(|snapshot| snapshot.mana_spent_to_cast.total() == 0)
+                } else {
+                    event.destination_objects().iter().all(|object_id| {
+                        game.object(*object_id)
+                            .is_none_or(|object| object.mana_spent_to_cast.total() == 0)
+                    })
+                };
+                none_were_cast || no_mana_was_spent
+            }),
+        TurnHistoryCondition::ManaFromSourceSpentOnTriggeringAction { source_filter } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            let matching_snapshot = |snapshot: &crate::snapshot::ObjectSnapshot| {
+                source_filter.matches_snapshot(snapshot, &filter_ctx, game)
+            };
+            if let Some(cast) = ctx
+                .triggering_event
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+            {
+                let tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+                game.object(cast.spell)
+                    .and_then(|spell| spell.cast_tagged_objects.get(&tag))
+                    .is_some_and(|snapshots| snapshots.iter().any(matching_snapshot))
+            } else {
+                ctx.triggering_event
+                    .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+                    .is_some_and(|activation| {
+                        activation.mana_sources_spent.iter().any(matching_snapshot)
+                    })
+            }
+        }
+        TurnHistoryCondition::AllPlayersLifeAtMost(amount) => game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .all(|player| player.life <= *amount),
+        TurnHistoryCondition::AnotherOpponentControlsPotentialTarget { filter } => {
+            let Some(cast) = ctx
+                .triggering_event
+                .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+            else {
+                return false;
+            };
+            let Some(entry) = game
+                .stack
+                .iter()
+                .find(|entry| entry.object_id == cast.spell)
+            else {
+                return false;
+            };
+            let Some(existing_target_controller) = entry.targets.iter().find_map(|target| {
+                let crate::game_state::Target::Object(object_id) = target else {
+                    return None;
+                };
+                game.object(*object_id)
+                    .map(|object| game.controller_of(object))
+            }) else {
+                return false;
+            };
+            let opponents = game
+                .filter_context_for(ctx.controller, ctx.filter_source)
+                .opponents;
+            let mut candidate_filter = filter.clone();
+            candidate_filter.zone = Some(Zone::Battlefield);
+            candidate_filter.could_be_targeted_by =
+                Some(crate::filter::TargetabilityConstraint::by_stack_object(
+                    crate::filter::ObjectRef::Specific(cast.spell),
+                ));
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(cast.spell));
+            game.battlefield.iter().copied().any(|object_id| {
+                game.object(object_id).is_some_and(|object| {
+                    let controller = game.controller_of(object);
+                    opponents.contains(&controller)
+                        && controller != existing_target_controller
+                        && candidate_filter.matches(object, &filter_ctx, game)
+                })
+            })
+        }
+        TurnHistoryCondition::TriggeringAttackerBlockers {
+            required,
+            required_count,
+            prohibited,
+        } => {
+            let Some(blocked) = ctx
+                .triggering_event
+                .and_then(|event| event.downcast::<crate::events::combat::CreatureBlockedEvent>())
+            else {
+                return false;
+            };
+            let Some(combat) = game.combat.as_ref() else {
+                return false;
+            };
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            let blockers = crate::combat_state::get_blockers(combat, blocked.attacker);
+            let required_matches = blockers
+                .iter()
+                .filter(|blocker| {
+                    game.object(**blocker)
+                        .is_some_and(|object| required.matches(object, &filter_ctx, game))
+                })
+                .count() as u32;
+            required_matches >= *required_count
+                && !blockers.iter().any(|blocker| {
+                    game.object(*blocker)
+                        .is_some_and(|object| prohibited.matches(object, &filter_ctx, game))
+                })
+        }
+        TurnHistoryCondition::TriggeringAbilityIsManaAbility => ctx
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+            .is_some_and(|event| event.is_mana_ability),
+    }
+}
+
 fn evaluate_condition_shared_core(
     game: &GameState,
     condition: &Condition,
     ctx: SharedConditionContext<'_>,
 ) -> Option<bool> {
     match condition {
+        Condition::TurnHistory(condition) => {
+            Some(evaluate_turn_history_condition(game, condition, ctx))
+        }
         Condition::LifeTotalOrLess(threshold) => Some(
             game.player(ctx.controller)
                 .map(|p| p.life <= *threshold)
@@ -1739,24 +2294,21 @@ fn evaluate_condition_shared_core(
                     .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
             )
         }
-        Condition::MatchingObjectAttachedToMatchingObject {
+        Condition::AttachmentCount {
             attachment,
-            attached_to,
+            host,
+            comparison,
+            ..
         } => {
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            Some(game.battlefield.iter().copied().any(|attachment_id| {
-                let Some(object) = game.object(attachment_id) else {
-                    return false;
-                };
-                if !attachment.matches(object, &filter_ctx, game) {
-                    return false;
-                }
-                object
-                    .attached_to
-                    .and_then(|target| target.object_id())
-                    .and_then(|id| game.object(id))
-                    .is_some_and(|target| attached_to.matches(target, &filter_ctx, game))
-            }))
+            Some(attachment_count_condition_matches(
+                game,
+                ctx.source,
+                attachment,
+                host,
+                comparison,
+                &filter_ctx,
+            ))
         }
         Condition::SourceCameUnderYourControlThisTurn => {
             Some(game.object(ctx.source).is_some_and(|obj| {
@@ -1887,7 +2439,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsFaceDown => {}
         Condition::SourceMatches(..) => {}
         Condition::AttachedToSourceMatches(..) => {}
-        Condition::MatchingObjectAttachedToMatchingObject { .. } => {}
+        Condition::AttachmentCount { .. } => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
         Condition::SourceHasCountersAtLeast(..) => {}
@@ -1949,6 +2501,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceIsAttacking => {}
         Condition::SourceIsBlocking => {}
         Condition::SourceIsSoulbondPaired => {}
+        Condition::TurnHistory(..) => {}
         Condition::XValueAtLeast(..) => {}
         Condition::Custom(..) => {}
         Condition::Not(..) => {}
@@ -2652,6 +3205,12 @@ pub fn evaluate_condition_external(
                 crate::ability::ActivationTiming::DuringOpponentsTurn => {
                     game.turn.active_player != ctx.controller
                 }
+                crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
+                    game.object(ctx.source)
+                        .is_some_and(|object| object.owner == game.turn.active_player)
+                        && game.turn.phase == crate::game_state::Phase::Beginning
+                        && game.turn.step == Some(crate::game_state::Step::Upkeep)
+                }
             }
         }
         Condition::MaxActivationsPerTurn(limit) => {
@@ -2786,22 +3345,21 @@ pub fn evaluate_condition_external(
                 .and_then(|id| game.object(id))
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game))
         }
-        Condition::MatchingObjectAttachedToMatchingObject {
+        Condition::AttachmentCount {
             attachment,
-            attached_to,
+            host,
+            comparison,
+            ..
         } => {
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-            game.battlefield.iter().copied().any(|attachment_id| {
-                let Some(object) = game.object(attachment_id) else {
-                    return false;
-                };
-                attachment.matches(object, &filter_ctx, game)
-                    && object
-                        .attached_to
-                        .and_then(|target| target.object_id())
-                        .and_then(|id| game.object(id))
-                        .is_some_and(|target| attached_to.matches(target, &filter_ctx, game))
-            })
+            attachment_count_condition_matches(
+                game,
+                ctx.source,
+                attachment,
+                host,
+                comparison,
+                &filter_ctx,
+            )
         }
         Condition::TargetMatches(filter) => {
             let filter_ctx = condition_filter_context(
@@ -2839,6 +3397,7 @@ pub fn evaluate_condition_external(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
         Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
+        Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
         Condition::StableObjectIsTopOfLibrary {
             stable_id,
             player,
@@ -3650,6 +4209,7 @@ fn evaluate_condition_simple(
         | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
+        Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
         Condition::TaggedObjectMatches(_, _)
         | Condition::TaggedObjectMatchedLastKnown(_, _)
         | Condition::TaggedObjectIsTopOfLibrary { .. }
@@ -3692,7 +4252,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsFaceDown
         | Condition::SourceMatches(_)
         | Condition::AttachedToSourceMatches(_)
-        | Condition::MatchingObjectAttachedToMatchingObject { .. }
+        | Condition::AttachmentCount { .. }
         | Condition::SourcePowerAtLeast(_) => false,
         Condition::Custom(_)
         | Condition::LifeTotalOrLess(_)
@@ -4550,22 +5110,21 @@ fn evaluate_condition(
                 .and_then(|id| game.object(id))
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game)))
         }
-        Condition::MatchingObjectAttachedToMatchingObject {
+        Condition::AttachmentCount {
             attachment,
-            attached_to,
+            host,
+            comparison,
+            ..
         } => {
             let filter_ctx = ctx.filter_context(game);
-            Ok(game.battlefield.iter().copied().any(|attachment_id| {
-                let Some(object) = game.object(attachment_id) else {
-                    return false;
-                };
-                attachment.matches(object, &filter_ctx, game)
-                    && object
-                        .attached_to
-                        .and_then(|target| target.object_id())
-                        .and_then(|id| game.object(id))
-                        .is_some_and(|target| attached_to.matches(target, &filter_ctx, game))
-            }))
+            Ok(attachment_count_condition_matches(
+                game,
+                ctx.source,
+                attachment,
+                host,
+                comparison,
+                &filter_ctx,
+            ))
         }
         Condition::SourcePowerAtLeast(min_power) => Ok(game
             .calculated_power(ctx.source)
@@ -4578,20 +5137,13 @@ fn evaluate_condition(
             .creature_attacked_this_turn(ctx.source)
             || game.creature_blocked_this_turn(ctx.source)),
         Condition::TargetIsAttacking => {
-            // Check if the target is among declared attackers
-            // Note: Combat attackers are tracked in game_loop, not game_state directly.
-            // For now, check ctx.attacking_creatures if it exists
-            if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() {
-                // Simplified: check if it's a creature that's tapped (attackers are usually tapped)
-                // Full implementation would need access to combat state from game loop
-                if let Some(obj) = game.object(*id) {
-                    return Ok(
-                        game.object_has_card_type(obj.id, crate::types::CardType::Creature)
-                            && game.is_tapped(*id),
-                    );
-                }
-            }
-            Ok(false)
+            let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
+                return Ok(false);
+            };
+            Ok(game
+                .combat
+                .as_ref()
+                .is_some_and(|combat| crate::combat_state::is_attacking(combat, *id)))
         }
         Condition::TargetIsBlocked => {
             if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first()
@@ -4936,6 +5488,7 @@ fn evaluate_condition(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source))),
         Condition::SourceIsSoulbondPaired => Ok(game.is_soulbond_paired(ctx.source)),
+        Condition::TurnHistory(_) => unreachable!("handled by shared condition evaluator"),
         Condition::XValueAtLeast(min) => Ok(ctx.x_value.unwrap_or(0) >= *min),
         Condition::Custom(_)
         | Condition::LifeTotalOrLess(_)

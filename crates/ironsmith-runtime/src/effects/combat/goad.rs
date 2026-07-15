@@ -15,12 +15,19 @@ use crate::zone::Zone;
 pub struct GoadEffect {
     /// Creature target specification.
     pub target: ChooseSpec,
+    /// How long the goad designation lasts.
+    pub duration: Until,
 }
 
 impl GoadEffect {
     /// Create a new goad effect.
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self::with_duration(target, Until::YourNextTurn)
+    }
+
+    /// Create a goad effect with an explicit duration.
+    pub fn with_duration(target: ChooseSpec, duration: Until) -> Self {
+        Self { target, duration }
     }
 }
 
@@ -40,7 +47,7 @@ impl EffectExecutor for GoadEffect {
             if object.zone != Zone::Battlefield || !game.current_is_creature(object_id) {
                 continue;
             }
-            game.add_goad_effect(object_id, ctx.controller, Until::YourNextTurn, ctx.source);
+            game.add_goad_effect(object_id, ctx.controller, self.duration.clone(), ctx.source);
             count += 1;
         }
         Ok(EffectOutcome::count(count))
@@ -212,5 +219,33 @@ mod tests {
 
         assert!(game.is_goaded(ObjectId::from_raw(1)));
         assert!(!game.is_goaded(ObjectId::from_raw(2)));
+    }
+
+    #[test]
+    fn forever_goad_survives_the_goading_players_next_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = battlefield_creature(1, "Memnite", bob, 1, 1);
+        game.add_object(creature);
+
+        let mut filter = ObjectFilter::creature();
+        filter.zone = Some(Zone::Battlefield);
+        let effect = GoadEffect::with_duration(ChooseSpec::All(filter), Until::Forever);
+
+        let mut dm = AutoPassDecisionMaker;
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(100), alice, &mut dm);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("goad should resolve");
+
+        assert_eq!(game.effect_store.goad_effects.len(), 1);
+        assert_eq!(game.effect_store.goad_effects[0].duration, Until::Forever);
+        game.next_turn();
+        game.next_turn();
+        assert!(
+            game.is_goaded(ObjectId::from_raw(1)),
+            "a rest-of-game goad designation must not expire on the goading player's next turn"
+        );
     }
 }

@@ -1,5 +1,48 @@
 use super::*;
 
+pub(super) fn describe_each_player_shuffle_hand_then_draw(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any {
+        return None;
+    }
+    let [shuffle_effect, draw_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let shuffle_effect = shuffle_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(shuffle_effect);
+    let with_id = shuffle_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let shuffle = with_id
+        .effect
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    if shuffle.player != PlayerFilter::IteratedPlayer || shuffle.owner_library_destination {
+        return None;
+    }
+    let filter = match shuffle.target.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+        _ => return None,
+    };
+    if filter.zone != Some(Zone::Hand)
+        || filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || filter.controller.is_some()
+    {
+        return None;
+    }
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::IteratedPlayer
+        || !draw.count.has_surface_hint(ValueSurfaceHint::ThatManyCards)
+        || !matches!(draw.count.unhinted(), Value::EffectValue(id) if *id == with_id.id)
+    {
+        return None;
+    }
+    Some(
+        "Each player shuffles the cards from their hand into their library, then draws that many cards"
+            .to_string(),
+    )
+}
+
 /// Render sibling actions performed by the same quantified opponent as one
 /// coordinated list. The runtime program remains unchanged; this only retains
 /// the shared subject that was present in the parsed player loop.
@@ -10,6 +53,9 @@ pub(super) fn describe_for_players_coordinated_actions(
         return None;
     }
     if let Some(compact) = describe_opponent_discard_lose_exile_top(for_players) {
+        return Some(compact);
+    }
+    if let Some(compact) = describe_for_players_repeated_sacrifice(for_players) {
         return Some(compact);
     }
 
@@ -25,6 +71,30 @@ pub(super) fn describe_for_players_coordinated_actions(
         " and "
     };
     Some(format!("{prefix}{conjunction}{last}"))
+}
+
+/// Keep a quantified participant as the actor when a prior action determines
+/// how many permanents that participant sacrifices. The runtime keeps the
+/// repeated choice explicit, while the authored surface places the count after
+/// the sacrifice clause ("for each card discarded this way").
+fn describe_for_players_repeated_sacrifice(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let [repeat_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
+    let basis = describe_turn_history_for_each_basis(&repeat.count)?;
+    let [choose_effect, sacrifice_effect] = repeat.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice_view(sacrifice_effect)?;
+    let inner = describe_choose_then_sacrifice(choose, sacrifice)?;
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let subject_lower = lowercase_first(subject);
+    let action = iterated_player_action_phrase(&inner, subject, &subject_lower)?;
+    Some(format!("{subject} {action} for each {basis}"))
 }
 
 /// Join a controller/source action with an adjacent opponent action without

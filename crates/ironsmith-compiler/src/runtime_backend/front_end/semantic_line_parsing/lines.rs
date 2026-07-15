@@ -2,10 +2,6 @@ use super::*;
 use crate::ZoneReplacementDurationAst;
 use crate::runtime_backend::GrantedAbilityAst;
 use crate::runtime_backend::ast::{ChooseOneModeAst, SubjectVerbEffectAst, SubjectVerbSubjectAst};
-use crate::runtime_backend::compile_support::{
-    effect_references_event_derived_amount, effects_reference_it_tag,
-    effects_reference_its_controller,
-};
 use crate::runtime_backend::grammar::abilities::{
     is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
 };
@@ -143,7 +139,7 @@ fn parse_statement_to_chunks_impl(
         return Ok(vec![chunk]);
     }
     if effect_grammar::parse_kicked_counter_replacement_tokens(parse_tokens).is_some() {
-        let effects = parse_effect_sentences_lexed(parse_tokens)?;
+        let effects = parse_effect_sentences_preserving_source_boundaries(parse_tokens)?;
         return Ok(vec![LineAst::Statement { effects }]);
     }
     if !parse_groups.is_empty() {
@@ -151,14 +147,14 @@ fn parse_statement_to_chunks_impl(
             && sentences_have_token_creation_followup_after_first(parse_groups)
         {
             let group_tokens = join_sentences_with_period(parse_groups);
-            let effects = parse_effect_sentences_lexed(&group_tokens)?;
+            let effects = parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
             return Ok(vec![LineAst::Statement { effects }]);
         }
         if parse_groups.len() > 1
             && sentences_have_temporary_static_followup_after_first(parse_groups)
         {
             let group_tokens = join_sentences_with_period(parse_groups);
-            let effects = parse_effect_sentences_lexed(&group_tokens)?;
+            let effects = parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
             return Ok(vec![LineAst::Statement { effects }]);
         }
         let mut chunks = Vec::with_capacity(parse_groups.len());
@@ -172,14 +168,14 @@ fn parse_statement_to_chunks_impl(
             {
                 chunks.push(chunk);
             } else if statement_group_should_parse_as_effects_first(group_tokens) {
-                let effects = parse_effect_sentences_lexed(group_tokens)?;
+                let effects = parse_effect_sentences_preserving_source_boundaries(group_tokens)?;
                 chunks.push(LineAst::Statement { effects });
             } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
                 chunks.push(chunk);
             } else if let Some(abilities) = parse_static_ability_ast_line_lexed(group_tokens)? {
                 chunks.push(LineAst::StaticAbilities(abilities));
             } else {
-                let effects = parse_effect_sentences_lexed(group_tokens)?;
+                let effects = parse_effect_sentences_preserving_source_boundaries(group_tokens)?;
                 chunks.push(LineAst::Statement { effects });
             }
         }
@@ -195,7 +191,7 @@ fn parse_statement_to_chunks_impl(
         let keep_linked_statement_grouped = linked_statement_should_stay_grouped(parse_tokens);
         if keep_linked_statement_grouped {
             let group_tokens = join_sentences_with_period(&sentence_tokens);
-            let effects = parse_effect_sentences_lexed(&group_tokens)?;
+            let effects = parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
             return Ok(vec![LineAst::Statement { effects }]);
         }
         if !keep_linked_statement_grouped
@@ -220,7 +216,7 @@ fn parse_statement_to_chunks_impl(
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&sentence)? {
                     chunks.push(LineAst::StaticAbilities(abilities));
                 } else {
-                    let effects = parse_effect_sentences_lexed(&sentence)?;
+                    let effects = parse_effect_sentences_preserving_source_boundaries(&sentence)?;
                     chunks.push(LineAst::Statement { effects });
                 }
             }
@@ -240,7 +236,8 @@ fn parse_statement_to_chunks_impl(
                 {
                     chunks.push(chunk);
                 } else if statement_group_should_parse_as_effects_first(&group_tokens) {
-                    let effects = parse_effect_sentences_lexed(&group_tokens)?;
+                    let effects =
+                        parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
                     chunks.push(LineAst::Statement { effects });
                 } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
                     chunks.push(chunk);
@@ -248,7 +245,8 @@ fn parse_statement_to_chunks_impl(
                 {
                     chunks.push(LineAst::StaticAbilities(abilities));
                 } else {
-                    let effects = parse_effect_sentences_lexed(&group_tokens)?;
+                    let effects =
+                        parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
                     chunks.push(LineAst::Statement { effects });
                 }
             }
@@ -770,6 +768,7 @@ fn parse_triggered_line_impl(
         trigger_parse_tokens,
         effect_parse_tokens,
     )?;
+    let parsed = preserve_triggered_effect_surfaces(parsed, effect_parse_tokens);
     let Some(schedule) = delayed_schedule else {
         return Ok(parsed);
     };
@@ -832,6 +831,75 @@ fn parse_triggered_line_impl(
     Ok(LineAst::Statement {
         effects: vec![delayed],
     })
+}
+
+fn preserve_triggered_effect_surfaces(
+    mut parsed: LineAst,
+    effect_parse_tokens: &[OwnedLexToken],
+) -> LineAst {
+    let Ok(surfaced) = parse_effect_sentences_preserving_source_boundaries(effect_parse_tokens)
+    else {
+        return parsed;
+    };
+    fn without_source_sentence_markers(effects: &[EffectAst]) -> Vec<EffectAst> {
+        let mut flattened = Vec::new();
+        for effect in effects {
+            match effect {
+                EffectAst::SourceSentence { effects } => {
+                    flattened.extend(without_source_sentence_markers(effects));
+                }
+                effect => flattened.push(effect.clone()),
+            }
+        }
+        flattened
+    }
+    fn without_surface_markers(effects: &[EffectAst]) -> Vec<EffectAst> {
+        let mut flattened = Vec::new();
+        for effect in effects {
+            match effect {
+                EffectAst::SourceSentence { effects } | EffectAst::Coordinated { effects, .. } => {
+                    flattened.extend(without_surface_markers(effects));
+                }
+                effect => flattened.push(effect.clone()),
+            }
+        }
+        flattened
+    }
+    let sentence_flattened = without_source_sentence_markers(&surfaced);
+    let flattened = without_surface_markers(&surfaced);
+    if surfaced == flattened {
+        return parsed;
+    }
+
+    fn replace_matching_effects(
+        parsed: &mut LineAst,
+        sentence_flattened: &[EffectAst],
+        flattened: &[EffectAst],
+        surfaced: &[EffectAst],
+    ) -> bool {
+        match parsed {
+            LineAst::Triggered { effects, .. }
+                if effects.as_slice() == sentence_flattened || effects.as_slice() == flattened =>
+            {
+                *effects = surfaced.to_vec();
+                true
+            }
+            LineAst::Ability(parsed)
+                if parsed.effects_ast.as_deref() == Some(sentence_flattened)
+                    || parsed.effects_ast.as_deref() == Some(flattened) =>
+            {
+                parsed.effects_ast = Some(surfaced.to_vec());
+                true
+            }
+            LineAst::Multiple(chunks) => chunks.iter_mut().any(|chunk| {
+                replace_matching_effects(chunk, sentence_flattened, flattened, surfaced)
+            }),
+            _ => false,
+        }
+    }
+
+    replace_matching_effects(&mut parsed, &sentence_flattened, &flattened, &surfaced);
+    parsed
 }
 
 fn parse_triggered_ability_line_impl(
@@ -1121,7 +1189,7 @@ fn parse_triggered_ability_line_impl(
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
         let direct_effects =
-            parse_trigger_effect_sentences_preserving_boundaries(effect_parse_tokens)
+            parse_effect_sentences_preserving_source_boundaries(effect_parse_tokens)
                 .map(|effects| wrap_future_draw_replacement_effects(full_parse_tokens, effects));
         if let (Ok(trigger), Ok(effects)) = (direct_trigger, direct_effects)
             && !effects.is_empty()
@@ -1158,91 +1226,14 @@ fn parse_triggered_ability_line_impl(
     )
 }
 
-/// Preserve authored sentence boundaries only when every sentence proves to
-/// be one independent direct action. Semantic AST equality alone is not
-/// enough: whole-body lowering also carries result tags, player antecedents,
-/// and structural bundles across sentence boundaries.
-fn parse_trigger_effect_sentences_preserving_boundaries(
-    tokens: &[OwnedLexToken],
-) -> Result<Vec<EffectAst>, CardTextError> {
-    let parsed_together = parse_effect_sentences_lexed(tokens)?;
-    let sentences = split_lexed_sentences(tokens);
-    if sentences.len() < 2 {
-        return Ok(parsed_together);
-    }
-
-    let mut sentence_groups = Vec::with_capacity(sentences.len());
-    let mut parsed_individually = Vec::new();
-    for (index, sentence) in sentences.into_iter().enumerate() {
-        let Ok(effects) = parse_effect_sentences_lexed(sentence) else {
-            return Ok(parsed_together);
-        };
-        if !effects_are_one_independent_direct_sentence(&effects)
-            || (index > 0
-                && (effects_need_prior_sentence_context(&effects)
-                    || sentence_has_anaphoric_reference(sentence)))
-        {
-            return Ok(parsed_together);
-        }
-        parsed_individually.extend(effects.iter().cloned());
-        sentence_groups.push(EffectAst::SourceSentence { effects });
-    }
-
-    if parsed_individually == parsed_together {
-        Ok(sentence_groups)
-    } else {
-        Ok(parsed_together)
-    }
-}
-
-fn effects_are_one_independent_direct_sentence(effects: &[EffectAst]) -> bool {
-    let [effect] = effects else {
-        return false;
-    };
-    match effect {
-        EffectAst::SubjectVerb(_) => true,
-        EffectAst::ForEachOpponent { effects }
-        | EffectAst::ForEachPlayer { effects }
-        | EffectAst::ForEachPlayersFiltered { effects, .. } => {
-            matches!(effects.as_slice(), [EffectAst::SubjectVerb(_)])
-        }
-        _ => false,
-    }
-}
-
-fn effects_need_prior_sentence_context(effects: &[EffectAst]) -> bool {
-    effects_reference_it_tag(effects)
-        || effects_reference_its_controller(effects)
-        || effects.iter().any(effect_references_event_derived_amount)
-}
-
-fn sentence_has_anaphoric_reference(tokens: &[OwnedLexToken]) -> bool {
-    token_word_refs(tokens).iter().any(|word| {
-        matches!(
-            *word,
-            "it" | "its"
-                | "that"
-                | "those"
-                | "them"
-                | "they"
-                | "their"
-                | "rest"
-                | "such"
-                | "former"
-                | "latter"
-                | "x"
-        )
-    })
-}
-
 #[test]
-fn source_sentence_boundaries_require_independent_direct_actions() {
+fn source_sentence_boundaries_preserve_jointly_parsed_reference_flow() {
     let independent = lex_line(
         "Put a +1/+1 counter on this creature. Each opponent loses 1 life.",
         0,
     )
     .expect("Aatchik-style effects should lex");
-    let independent = parse_trigger_effect_sentences_preserving_boundaries(&independent)
+    let independent = parse_effect_sentences_preserving_source_boundaries(&independent)
         .expect("Aatchik-style effects should parse");
     assert_eq!(independent.len(), 2, "{independent:#?}");
     assert!(
@@ -1252,21 +1243,17 @@ fn source_sentence_boundaries_require_independent_direct_actions() {
         "independent direct sentences should retain their authored boundary: {independent:#?}"
     );
 
-    for linked in [
-        "Reveal the top card of your library and put that card into your hand. You lose life equal to its mana value.",
-        "It becomes an Aura with enchant creature. Manifest the top card of your library and attach this enchantment to it.",
-        "Each opponent may search their library for up to three basic land cards. They each put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control. Then each player who searched their library this way shuffles.",
-    ] {
-        let tokens = lex_line(linked, 0).expect("linked trigger effects should lex");
-        let effects = parse_trigger_effect_sentences_preserving_boundaries(&tokens)
-            .expect("linked trigger effects should keep the whole-body parse");
-        assert!(
-            effects
-                .iter()
-                .all(|effect| !matches!(effect, EffectAst::SourceSentence { .. })),
-            "cross-sentence result/reference flow must stay in one lowering program: {linked}: {effects:#?}"
-        );
-    }
+    let linked = "Reveal the top card of your library and put that card into your hand. You lose life equal to its mana value.";
+    let tokens = lex_line(linked, 0).expect("linked trigger effects should lex");
+    let effects = parse_effect_sentences_preserving_source_boundaries(&tokens)
+        .expect("linked trigger effects should keep their joint parse");
+    assert_eq!(effects.len(), 2, "{effects:#?}");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| matches!(effect, EffectAst::SourceSentence { .. })),
+        "joint parsing should retain a stable boundary without losing reference flow: {effects:#?}"
+    );
 }
 
 fn lower_spell_or_activated_ability_x_cost_trigger(

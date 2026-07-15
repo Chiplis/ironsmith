@@ -949,7 +949,14 @@ pub(crate) fn parse_attached_type_transform_line(
         if preserve_other_types {
             out.push(StaticAbility::add_card_types(filter.clone(), set_card_types).into());
         } else {
-            out.push(StaticAbility::set_card_types(filter.clone(), set_card_types).into());
+            out.push(
+                StaticAbility::set_card_types_with_surface(
+                    filter.clone(),
+                    set_card_types,
+                    line_text.clone(),
+                )
+                .into(),
+            );
         }
     }
     if !add_subtypes.is_empty() {

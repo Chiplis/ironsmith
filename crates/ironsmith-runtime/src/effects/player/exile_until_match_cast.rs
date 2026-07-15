@@ -1,8 +1,6 @@
 //! Exile cards from the top of a library until one matches a filter, then offer
 //! that card to be cast and put the rest on the bottom in random order.
 
-use crate::alternative_cast::CastingMethod;
-use crate::cost::OptionalCostsPaid;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
@@ -11,12 +9,11 @@ use crate::effects::consult_helpers::{
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
-use crate::game_state::{GameState, StackEntry};
+use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::zone::Zone;
 
-use super::runtime_helpers::with_spell_cast_event;
+use super::runtime_helpers::{EffectDrivenCastOption, with_spell_cast_event};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileUntilMatchCastEffect {
@@ -96,56 +93,32 @@ impl EffectExecutor for ExileUntilMatchCastEffect {
 
             if should_cast {
                 let from_zone = candidate_obj.zone;
-                let mana_cost = candidate_obj.mana_cost_owned();
-                let stable_id = candidate_obj.stable_id;
-                let x_value = mana_cost
-                    .as_ref()
-                    .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
-
-                if let Some(new_id) = game.move_object_by_effect(candidate_id, Zone::Stack) {
-                    if let Some(obj) = game.object_mut(new_id) {
-                        obj.x_value = x_value;
-                    }
-
-                    let stack_entry = StackEntry {
-                        object_id: new_id,
-                        controller: caster_id,
-                        provenance: ctx.provenance,
-                        targets: vec![],
-                        target_assignments: vec![],
-                        x_value,
-                        activation_cost_has_x: false,
-                        activation_cost_has_tap: false,
-                        ability_effects: None,
-                        mana_usage_restrictions: Vec::new(),
-                        mana_source_chosen_creature_type: None,
-                        is_ability: false,
-                        casting_method: CastingMethod::PlayFrom {
-                            source: ctx.source,
-                            zone: from_zone,
-                            use_alternative: None,
-                        },
-                        optional_costs_paid: OptionalCostsPaid::default(),
-                        defending_player: None,
-                        chosen_player: None,
-                        chapter_ability_source: None,
-                        source_stable_id: Some(stable_id),
-                        source_snapshot: None,
-                        source_name: Some(candidate_name),
-                        triggering_event: None,
-                        event_value_amount: None,
-                        trigger_identity: None,
-                        ability_index: None,
-                        intervening_if: None,
-                        keyword_payment_contributions: vec![],
-                        crew_contributors: vec![],
-                        saddle_contributors: vec![],
-                        chosen_modes: None,
-                        tagged_objects: std::collections::HashMap::new(),
-                        effect_outcomes: std::collections::HashMap::new(),
-                    };
-                    game.push_to_stack(stack_entry);
+                let option = EffectDrivenCastOption {
+                    object_id: candidate_id,
+                    from_zone,
+                    casting_method: crate::alternative_cast::CastingMethod::PlayFrom {
+                        source: ctx.source,
+                        zone: from_zone,
+                        use_alternative: None,
+                    },
+                    label: format!("Cast {candidate_name}"),
+                };
+                let result = crate::game_loop::cast_spell_from_resolving_effect(
+                    game,
+                    option.object_id,
+                    option.from_zone,
+                    caster_id,
+                    &option.casting_method,
+                    self.without_paying_mana_cost,
+                    None,
+                    ctx.provenance,
+                    &mut ctx.decision_maker,
+                )
+                .map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+                if let Some(new_id) = result {
                     casted_card = Some((candidate_id, new_id, from_zone));
+                } else if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
                 }
             }
         }

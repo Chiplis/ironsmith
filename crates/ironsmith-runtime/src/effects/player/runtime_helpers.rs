@@ -1,5 +1,4 @@
 use crate::alternative_cast::CastingMethod;
-use crate::cost::OptionalCostsPaid;
 use crate::effect::EffectOutcome;
 use crate::effects::ExecutionContext;
 use crate::effects::ExecutionError;
@@ -7,7 +6,7 @@ use crate::events::other::LandPlayedEvent;
 use crate::events::spells::SpellCastEvent;
 use crate::filter::AlternativeCastKind;
 use crate::filter::ObjectFilterExt as _;
-use crate::game_state::{GameState, StackEntry, Target, TargetAssignment};
+use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::triggers::TriggerEvent;
@@ -209,7 +208,7 @@ fn alternative_cast_matches_kind(
             AlternativeCastingMethod::Flashback { .. }
         ) | (
             AlternativeCastKind::JumpStart,
-            AlternativeCastingMethod::JumpStart
+            AlternativeCastingMethod::JumpStart { .. }
         ) | (
             AlternativeCastKind::Escape,
             AlternativeCastingMethod::Escape { .. }
@@ -224,88 +223,6 @@ fn alternative_cast_matches_kind(
             AlternativeCastingMethod::Suspend { .. }
         )
     )
-}
-
-fn target_assignments_for_requirements(
-    requirements: &[crate::decision::TargetRequirement],
-    targets: &[Target],
-) -> Option<Vec<TargetAssignment>> {
-    let requirement_contexts = requirements
-        .iter()
-        .map(
-            |requirement| crate::decisions::context::TargetRequirementContext {
-                description: requirement.description.clone(),
-                legal_targets: requirement.legal_targets.clone(),
-                legal_target_sets: requirement.legal_target_sets.clone(),
-                min_targets: requirement.min_targets,
-                max_targets: requirement.max_targets,
-                distinct_player_group: requirement.distinct_player_group,
-            },
-        )
-        .collect::<Vec<_>>();
-    let ranges = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)?;
-    Some(
-        requirements
-            .iter()
-            .zip(ranges)
-            .map(|(requirement, range)| TargetAssignment {
-                spec: requirement.spec.clone(),
-                range,
-            })
-            .collect(),
-    )
-}
-
-fn choose_effect_driven_cast_targets(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    stack_id: ObjectId,
-    caster: PlayerId,
-    spell_name: String,
-) -> Option<(Vec<Target>, Vec<TargetAssignment>)> {
-    let requirements = game
-        .object(stack_id)
-        .and_then(|obj| obj.spell_effect.as_ref())
-        .map(|program| {
-            crate::game_loop::extract_target_requirements_from_program_with_modes(
-                game,
-                program,
-                caster,
-                Some(stack_id),
-                None,
-            )
-        })
-        .unwrap_or_default();
-    let requirement_contexts = requirements
-        .iter()
-        .map(
-            |requirement| crate::decisions::context::TargetRequirementContext {
-                description: requirement.description.clone(),
-                legal_targets: requirement.legal_targets.clone(),
-                legal_target_sets: requirement.legal_target_sets.clone(),
-                min_targets: requirement.min_targets,
-                max_targets: requirement.max_targets,
-                distinct_player_group: requirement.distinct_player_group,
-            },
-        )
-        .collect::<Vec<_>>();
-    let selected_targets = if requirement_contexts.is_empty() {
-        Vec::new()
-    } else {
-        let targets_ctx = crate::decisions::context::TargetsContext::new(
-            caster,
-            stack_id,
-            spell_name,
-            requirement_contexts,
-        );
-        let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return None;
-        }
-        crate::targeting::normalize_targets_for_requirements(&targets_ctx.requirements, proposed)?
-    };
-    let target_assignments = target_assignments_for_requirements(&requirements, &selected_targets)?;
-    Some((selected_targets, target_assignments))
 }
 
 pub(super) fn cast_effect_driven_spell_without_paying(
@@ -330,118 +247,20 @@ pub(super) fn cast_effect_driven_spell_with_payment(
     option: &EffectDrivenCastOption,
     payment: EffectDrivenCastPayment,
 ) -> Result<Option<EffectDrivenCastResult>, ExecutionError> {
-    let stack_id = crate::game_loop::propose_spell_cast(
+    let result = crate::game_loop::cast_spell_from_resolving_effect(
         game,
         option.object_id,
         option.from_zone,
         caster,
         &option.casting_method,
+        matches!(payment, EffectDrivenCastPayment::WithoutPayingManaCost),
+        None,
+        ctx.provenance,
+        &mut ctx.decision_maker,
     )
     .map_err(|err| crate::effects::ExecutionError::Impossible(err.to_string()))?;
-
-    let (spell_name, stable_id, x_value) = {
-        let Some(spell) = game.object(stack_id) else {
-            return Ok(None);
-        };
-        let x_value = spell
-            .mana_cost
-            .as_ref()
-            .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
-        (spell.name.to_string(), spell.stable_id, x_value)
-    };
-    if let Some(spell) = game.object_mut(stack_id) {
-        spell.x_value = x_value;
-    }
-
-    let Some((targets, target_assignments)) =
-        choose_effect_driven_cast_targets(game, ctx, stack_id, caster, spell_name.clone())
-    else {
-        return Ok(None);
-    };
-
-    if matches!(payment, EffectDrivenCastPayment::AlternativeCost(_)) {
-        let effective_cost = {
-            let Some(spell) = game.object(stack_id) else {
-                return Ok(None);
-            };
-            crate::decision::spell_mana_cost_for_cast(
-                game,
-                caster,
-                spell,
-                &option.casting_method,
-                option.from_zone,
-            )
-            .map(|base_cost| {
-                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method_from_zone(
-                    game,
-                    caster,
-                    spell,
-                    &base_cost,
-                    &targets,
-                    &option.casting_method,
-                    option.from_zone,
-                )
-            })
-        };
-        if let Some(cost) = effective_cost
-            && !game.try_pay_mana_cost_with_reason(
-                caster,
-                Some(stack_id),
-                &cost,
-                x_value.unwrap_or(0),
-                crate::costs::PaymentReason::CastSpell,
-            )
-        {
-            game.move_object_by_effect(stack_id, option.from_zone);
-            return Ok(None);
-        }
-    }
-
-    let mana_sources_tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
-    let tagged_objects = game
-        .object(stack_id)
-        .and_then(|spell| spell.cast_tagged_objects.get(&mana_sources_tag))
-        .filter(|snapshots| !snapshots.is_empty())
-        .cloned()
-        .map(|snapshots| std::collections::HashMap::from([(mana_sources_tag, snapshots)]))
-        .unwrap_or_default();
-    let stack_entry = StackEntry {
-        object_id: stack_id,
-        controller: caster,
-        provenance: ctx.provenance,
-        targets,
-        target_assignments,
-        x_value,
-        activation_cost_has_x: false,
-        activation_cost_has_tap: false,
-        ability_effects: None,
-        mana_usage_restrictions: Vec::new(),
-        mana_source_chosen_creature_type: None,
-        is_ability: false,
-        casting_method: option.casting_method.clone(),
-        optional_costs_paid: OptionalCostsPaid::default(),
-        defending_player: None,
-        chosen_player: None,
-        chapter_ability_source: None,
-        source_stable_id: Some(stable_id),
-        source_snapshot: None,
-        source_name: Some(spell_name),
-        triggering_event: None,
-        event_value_amount: None,
-        trigger_identity: None,
-        ability_index: None,
-        intervening_if: None,
-        keyword_payment_contributions: vec![],
-        crew_contributors: vec![],
-        saddle_contributors: vec![],
-        chosen_modes: None,
-        tagged_objects,
-        effect_outcomes: std::collections::HashMap::new(),
-    };
-    game.push_to_stack(stack_entry);
-
-    Ok(Some(EffectDrivenCastResult {
-        new_id: stack_id,
+    Ok(result.map(|new_id| EffectDrivenCastResult {
+        new_id,
         from_zone: option.from_zone,
     }))
 }

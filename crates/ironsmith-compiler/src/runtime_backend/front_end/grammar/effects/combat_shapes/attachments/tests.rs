@@ -43,4 +43,15 @@ fn parses_attachment_clause_shapes() {
             kind: AttachedObjectReferenceKind::Equipment,
         })
     );
+
+    let all = lex_line("all Equipment you control", 0).unwrap();
+    let CombatAttachObjectShape::All { object_tokens } =
+        parse_combat_attach_object_shape_lexed(&all).unwrap()
+    else {
+        panic!("expected an all-objects attachment shape")
+    };
+    assert_eq!(
+        parser_token_word_refs(object_tokens),
+        ["equipment", "you", "control"]
+    );
 }

@@ -22,13 +22,17 @@ pub(super) fn normalize_redundant_short_name_etb_surface(
     else {
         return line;
     };
+    let enter_verb = match zone_trigger.this_object_subject_number {
+        crate::triggers::zone_changes::TriggerSubjectNumber::Singular => "enters",
+        crate::triggers::zone_changes::TriggerSubjectNumber::Plural => "enter",
+    };
     if triggered_has_you_difference_draw(triggered) {
         return line;
     }
 
     let Some((start, prefix_len)) = [
-        format!("When {surface} enters,"),
-        format!("When {surface} enters the battlefield,"),
+        format!("When {surface} {enter_verb},"),
+        format!("When {surface} {enter_verb} the battlefield,"),
     ]
     .into_iter()
     .find_map(|prefix| {
@@ -37,20 +41,20 @@ pub(super) fn normalize_redundant_short_name_etb_surface(
             .map(|start| (start, prefix.len()))
     }) else {
         for generic_subject in [subject, "this creature", "this permanent", "this artifact"] {
-            let generic_prefix = format!("When {generic_subject} enters,");
+            let generic_prefix = format!("When {generic_subject} {enter_verb},");
             if let Some(start) = line
                 .find(generic_prefix.as_str())
                 .filter(|start| *start == 0 || line[..*start].ends_with(": "))
             {
                 let rest = &line[start + generic_prefix.len()..];
-                return format!("{}When {surface} enters,{rest}", &line[..start]);
+                return format!("{}When {surface} {enter_verb},{rest}", &line[..start]);
             }
         }
         return line;
     };
     let rest = &line[start + prefix_len..];
     if surface.contains('/') {
-        return format!("{}When {surface} enters,{rest}", &line[..start]);
+        return format!("{}When {surface} {enter_verb},{rest}", &line[..start]);
     }
     let rest_lower = rest.to_ascii_lowercase();
     if rest_lower.contains("behold ") {
@@ -69,7 +73,7 @@ pub(super) fn normalize_redundant_short_name_etb_surface(
     // ("When Katara enters"), keep the name rather than collapsing it to the
     // generic subject. Type-surface triggers ("this artifact") still render the
     // type; this branch only fires for a captured ShortName surface.
-    format!("{}When {surface} enters,{rest}", &line[..start])
+    format!("{}When {surface} {enter_verb},{rest}", &line[..start])
 }
 
 pub(super) fn normalize_spellcast_trigger_mana_value_surface(
@@ -109,6 +113,28 @@ pub(super) fn apply_triggered_presentation_label(
     let Some(presentation_label) = triggered.presentation_label.as_ref() else {
         return line;
     };
+    let line = if let PresentationLabel::AbilityWord(label) = presentation_label {
+        let marker = format!("{} — ", label.trim());
+        let lower = line.to_ascii_lowercase();
+        let marker_lower = marker.to_ascii_lowercase();
+        // The trigger surface can receive the ability word before its
+        // resolution text is appended. If a structural resolution renderer
+        // also knows the same ability word, retain the authored leading copy
+        // and remove the later duplicate.
+        let search_start = if lower.starts_with(&marker_lower) {
+            marker.len()
+        } else {
+            0
+        };
+        if let Some(relative_index) = lower[search_start..].find(&marker_lower) {
+            let index = search_start + relative_index;
+            format!("{}{}", &line[..index], &line[index + marker.len()..])
+        } else {
+            line
+        }
+    } else {
+        line
+    };
     match presentation_label {
         PresentationLabel::CaseSolved => format!("Solved — {line}"),
         PresentationLabel::CaseToSolve => {
@@ -142,6 +168,27 @@ pub(super) fn apply_triggered_presentation_label(
             format!("{label} — {line}")
         }
     }
+}
+
+pub(super) fn deduplicate_triggered_presentation_label(
+    triggered: &crate::ability::TriggeredAbility,
+    line: String,
+) -> String {
+    let Some(PresentationLabel::AbilityWord(label)) = triggered.presentation_label.as_ref() else {
+        return line;
+    };
+    let marker = format!("{} — ", label.trim());
+    let marker_lower = marker.to_ascii_lowercase();
+    let lower = line.to_ascii_lowercase();
+    let Some(first) = lower.find(&marker_lower) else {
+        return line;
+    };
+    let after_first = first + marker.len();
+    let Some(relative_second) = lower[after_first..].find(&marker_lower) else {
+        return line;
+    };
+    let second = after_first + relative_second;
+    format!("{}{}", &line[..second], &line[second + marker.len()..])
 }
 
 pub(super) fn describe_case_to_solve_triggered_ability(
@@ -785,6 +832,9 @@ pub(super) fn describe_payment_each_value(value: &Value) -> String {
     match value {
         Value::Count(filter) => describe_for_each_filter(filter),
         Value::CountScaled(filter, _) => describe_for_each_filter(filter),
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) => {
+            describe_prior_effect_metric_basis(query, false)
+        }
         Value::BasicLandTypesAmong(filter) => {
             describe_basic_land_types_among(filter).replace("basic land types", "basic land type")
         }
@@ -847,6 +897,19 @@ fn describe_cost_component_parts_with_target(
                     .downcast_ref::<crate::effects::RevealTaggedEffect>()
             })
             && let Some(compact) = describe_choose_then_reveal_from_hand_cost(choose, reveal)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < costs.len()
+            && let Some(choose) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(move_to_zone) = costs[idx + 1]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+            && let Some(compact) = describe_choose_then_put_on_top_of_library_cost(choose, move_to_zone)
         {
             parts.push(compact);
             idx += 2;
@@ -926,6 +989,36 @@ fn describe_cost_component_parts_with_target(
         idx += 1;
     }
     parts
+}
+
+fn describe_choose_then_put_on_top_of_library_cost(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || !matches!(choose.filter.owner, None | Some(PlayerFilter::You))
+        || !choose.count.is_single()
+        || move_to_zone.zone != Zone::Library
+        || !move_to_zone.to_top
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.owner = None;
+    let mut noun = strip_leading_article(&filter.description()).to_string();
+    if noun == "object" || noun == "permanent" {
+        noun = "card".to_string();
+    } else if !noun.split_whitespace().any(|word| matches!(word, "card" | "cards")) {
+        noun.push_str(" card");
+    }
+    Some(format!(
+        "Put {} from your hand on top of your library",
+        with_indefinite_article(&noun)
+    ))
 }
 
 fn describe_choose_then_reveal_from_hand_cost(
@@ -2439,6 +2532,136 @@ pub(crate) fn describe_for_players_choose_then_sacrifice(
     Some(format!("{subject} {verb} {chosen} of {possessive} choice"))
 }
 
+fn correlated_choice_comparison_filter(
+    filter: &ObjectFilter,
+    tag: &crate::TagKey,
+) -> bool {
+    if filter.controller != Some(PlayerFilter::IteratedPlayer) {
+        return false;
+    }
+    let mut stripped = filter.clone();
+    stripped.controller = None;
+    stripped == ObjectFilter::tagged(tag.clone())
+}
+
+fn correlated_choice_slot_label(
+    choose: &crate::effects::ChooseObjectsEffect,
+    tag: &crate::TagKey,
+) -> Option<String> {
+    if choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.controller = None;
+    filter.tagged_constraints.retain(|constraint| {
+        constraint.tag != *tag
+            || constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    });
+    if !filter.tagged_constraints.is_empty()
+        || !filter.no_shared_creature_types_with.is_empty()
+        || !filter.any_of.is_empty()
+    {
+        return None;
+    }
+    Some(strip_leading_article(&filter.description()).to_string())
+}
+
+/// Render two player loops that form one locked-choice/complement procedure.
+/// The first loop records every player's chosen set; only after those choices
+/// are complete does the second loop perform the sacrifice.
+pub(crate) fn describe_split_for_players_choose_then_sacrifice(
+    effects: &[Effect],
+) -> Option<String> {
+    let [choice_loop_effect, sacrifice_loop_effect] = effects else {
+        return None;
+    };
+    let choice_loop = choice_loop_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let sacrifice_loop =
+        sacrifice_loop_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if choice_loop.filter != PlayerFilter::Any
+        || sacrifice_loop.filter != PlayerFilter::Any
+        || choice_loop.starting_with_controller
+        || sacrifice_loop.starting_with_controller
+        || choice_loop.stop_after_first_happened
+        || sacrifice_loop.stop_after_first_happened
+        || choice_loop.effects.is_empty()
+        || sacrifice_loop.effects.len() != 1
+    {
+        return None;
+    }
+
+    let first_choice = choice_loop.effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let tag = &first_choice.tag;
+    let mut slots = Vec::new();
+    for effect in &choice_loop.effects {
+        let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        if choose.tag != *tag {
+            return None;
+        }
+        slots.push(correlated_choice_slot_label(choose, tag)?);
+    }
+
+    let sacrifice = sacrifice_view(&sacrifice_loop.effects[0])?;
+    if sacrifice.player != &PlayerFilter::IteratedPlayer
+        || !matches!(sacrifice.count, Value::Count(filter) if filter == sacrifice.filter)
+        || sacrifice.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || !sacrifice.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *tag
+                && constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+        })
+    {
+        return None;
+    }
+
+    let mut sacrificed = sacrifice.filter.clone();
+    sacrificed.controller = None;
+    sacrificed.other = false;
+    sacrificed.tagged_constraints.retain(|constraint| {
+        constraint.tag != *tag
+            || constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    });
+    let comparisons = std::mem::take(&mut sacrificed.no_shared_creature_types_with);
+    if !sacrificed.tagged_constraints.is_empty() {
+        return None;
+    }
+    let sacrificed_kind = pluralize_noun_phrase(strip_leading_article(&sacrificed.description()));
+    let comparison_tail = match comparisons.as_slice() {
+        [] => String::new(),
+        [comparison] if correlated_choice_comparison_filter(comparison, tag) => format!(
+            " that don't share a creature type with the chosen {} they control",
+            slots.first()?
+        ),
+        _ => return None,
+    };
+
+    let choice_clause = if slots.len() == 1 {
+        format!(
+            "For each player, you choose {} that player controls",
+            with_indefinite_article(&slots[0])
+        )
+    } else {
+        let choices = slots
+            .iter()
+            .map(|slot| with_indefinite_article(slot))
+            .collect::<Vec<_>>();
+        format!(
+            "For each player, you choose from among the permanents that player controls {}",
+            join_with_and(&choices)
+        )
+    };
+    Some(format!(
+        "{choice_clause}. Then each player sacrifices all other {sacrificed_kind} they control{comparison_tail}"
+    ))
+}
+
 pub(super) fn describe_for_players_choose_then_exile(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -3838,14 +4061,36 @@ pub(crate) fn describe_milled_graveyard_count_filter(filter: &ObjectFilter) -> O
 }
 
 pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
+    if filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && filter.tagged_constraints[0].tag.as_str()
+            == ironsmith_core::CAST_MODIFIED_CREATURES_TAG
+    {
+        return "modified creature you controlled as you cast this spell".to_string();
+    }
+    if let Some(relative) = describe_relative_characteristic_list_filter(filter) {
+        return relative;
+    }
     if let Some(milled) = describe_milled_graveyard_count_filter(filter) {
         return milled;
     }
     let mut base_filter = filter.clone();
     base_filter.controller = None;
+    let explicit_name = base_filter
+        .name
+        .take()
+        .map(|name| title_case_card_name_fragment(&name));
 
     let description = base_filter.description();
     let mut base = strip_indefinite_article(&description).to_string();
+    if let Some(name) = explicit_name {
+        base = if let Some((noun, zone)) = base.split_once(" in ") {
+            format!("{noun} named {name} in {zone}")
+        } else {
+            format!("{base} named {name}")
+        };
+    }
     if filter.was_dealt_damage_this_turn {
         base = base
             .replace(
@@ -3908,4 +4153,38 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
         base.push_str(" on the battlefield");
     }
     base
+}
+
+pub(crate) fn describe_relative_characteristic_list_filter(
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if !filter.has_relative_characteristic_list_surface() {
+        return None;
+    }
+    let (subtypes, negated) = match (
+        filter.subtypes.as_slice(),
+        filter.excluded_subtypes.as_slice(),
+    ) {
+        (subtypes, []) if subtypes.len() >= 2 => (subtypes, false),
+        ([], subtypes) if subtypes.len() >= 2 => (subtypes, true),
+        _ => return None,
+    };
+
+    let mut base_filter = filter.clone();
+    base_filter.subtypes.clear();
+    base_filter.excluded_subtypes.clear();
+    base_filter.type_or_subtype_union = false;
+    base_filter.set_relative_characteristic_list_surface(false);
+    let base = strip_indefinite_article(&base_filter.description())
+        .trim()
+        .to_string();
+    let subtype_list = join_with_or(
+        &subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+    );
+    let subtype_list = with_indefinite_article(&subtype_list);
+    let relation = if negated { "that isn't" } else { "that's" };
+    Some(format!("{base} {relation} {subtype_list}"))
 }

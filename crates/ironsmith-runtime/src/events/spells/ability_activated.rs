@@ -26,6 +26,10 @@ pub struct AbilityActivatedEvent {
     pub x_value: Option<u32>,
     /// Last-known snapshot of the source at activation time.
     pub snapshot: Option<ObjectSnapshot>,
+    /// One snapshot per mana unit spent to activate this ability. This is
+    /// preserved separately from the ability source so intervening-if clauses
+    /// can test mana-source provenance after the source has left play.
+    pub mana_sources_spent: Vec<ObjectSnapshot>,
 }
 
 impl AbilityActivatedEvent {
@@ -40,6 +44,7 @@ impl AbilityActivatedEvent {
             activation_cost_has_tap: false,
             x_value: None,
             snapshot: None,
+            mana_sources_spent: Vec::new(),
         }
     }
 
@@ -67,6 +72,11 @@ impl AbilityActivatedEvent {
     /// Attach a snapshot captured when the ability was activated.
     pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
         self.snapshot = snapshot;
+        self
+    }
+
+    pub fn with_mana_sources_spent(mut self, snapshots: Vec<ObjectSnapshot>) -> Self {
+        self.mana_sources_spent = snapshots;
         self
     }
 }

@@ -2628,6 +2628,82 @@ impl StaticAbilityKind for DeckConstructionRuleText {
 // Placeholder / Marker Abilities
 // =============================================================================
 
+/// CR 702.47 splice ability that functions from its card's owner's hand.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpliceAbility {
+    pub spec: crate::static_abilities::SpliceSpec<crate::costs::Cost>,
+}
+
+impl SpliceAbility {
+    pub fn new(spec: crate::static_abilities::SpliceSpec<crate::costs::Cost>) -> Self {
+        Self { spec }
+    }
+}
+
+impl StaticAbilityKind for SpliceAbility {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Splice
+    }
+
+    fn display(&self) -> String {
+        let separator = if self.spec.cost.has_non_mana_costs() {
+            "—"
+        } else {
+            " "
+        };
+        let rendered_cost = self
+            .spec
+            .cost_surface
+            .clone()
+            .unwrap_or_else(|| self.spec.cost.display());
+        format!(
+            "Splice onto {}{separator}{}",
+            self.spec.quality.oracle_surface(),
+            rendered_cost
+        )
+    }
+
+    fn splice_spec(&self) -> Option<&crate::static_abilities::SpliceSpec<crate::costs::Cost>> {
+        Some(&self.spec)
+    }
+}
+
+/// CR 702.120 escalate ability that adds its typed cost per mode beyond the first.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EscalateAbility {
+    pub spec: crate::static_abilities::EscalateSpec<crate::costs::Cost>,
+}
+
+impl EscalateAbility {
+    pub fn new(spec: crate::static_abilities::EscalateSpec<crate::costs::Cost>) -> Self {
+        Self { spec }
+    }
+}
+
+impl StaticAbilityKind for EscalateAbility {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Escalate
+    }
+
+    fn display(&self) -> String {
+        let separator = if self.spec.cost.has_non_mana_costs() {
+            "—"
+        } else {
+            " "
+        };
+        let rendered_cost = self
+            .spec
+            .cost_surface
+            .clone()
+            .unwrap_or_else(|| self.spec.cost.display());
+        format!("Escalate{separator}{rendered_cost}")
+    }
+
+    fn escalate_spec(&self) -> Option<&crate::static_abilities::EscalateSpec<crate::costs::Cost>> {
+        Some(&self.spec)
+    }
+}
+
 /// Semantic keyword label for a keyword whose runtime semantics are implemented elsewhere.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeywordMarker {

@@ -472,11 +472,15 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
         TriggerSpec::ThisEntersBattlefield => Trigger::this_enters_battlefield(),
-        TriggerSpec::ThisEntersBattlefieldWithSurface(surface) => Trigger::new(
+        TriggerSpec::ThisEntersBattlefieldWithSurface {
+            surface,
+            subject_number,
+        } => Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
                 .to(crate::zone::Zone::Battlefield)
                 .this()
-                .this_surface(surface.clone()),
+                .this_surface(surface.clone())
+                .this_subject_number(subject_number),
         ),
         TriggerSpec::ThisEntersBattlefieldFromZone {
             mut subject_filter,
@@ -837,7 +841,9 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
         },
         EventValueSpec::BlockersBeyondFirst { .. } => match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
-            TriggerSpec::ThisBecomesBlocked => true,
+            TriggerSpec::ThisBecomesBlocked
+            | TriggerSpec::BecomesBlocked(_)
+            | TriggerSpec::ThisBecomesBlockedByObject(_) => true,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)
                     && trigger_supports_event_value(right, spec)

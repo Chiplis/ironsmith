@@ -525,6 +525,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
                 EffectAst::subject_verb_untap_all(right),
             ],
             leading_duration: false,
+            result_conjunction: false,
         });
     }
     match misc_action_shapes::parse_untap_action_tokens(tokens) {

@@ -292,6 +292,30 @@ fn parse_target_first_source<'a>(input: &mut LexStream<'a>) -> WResult<PreventAl
     })
 }
 
+fn parse_target_source_duration<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PreventAllDamageShape<'a>> {
+    primitives::phrase(&[
+        "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
+    ])
+    .parse_next(input)?;
+    let target_tokens = repeat_till(1.., any.void(), peek(primitives::kw("by")))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::kw("by").parse_next(input)?;
+    let source_tokens = repeat_till(1.., any.void(), peek(primitives::phrase(&["this", "turn"])))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PreventAllDamageShape::ToTargetFromSource {
+        target_tokens: trim_lexed_commas(target_tokens),
+        source: classify_prevent_source(source_tokens),
+    })
+}
+
 fn parse_target_first<'a>(input: &mut LexStream<'a>) -> WResult<PreventAllDamageShape<'a>> {
     primitives::phrase(&[
         "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
@@ -323,6 +347,7 @@ pub(crate) fn parse_prevent_all_damage_shape_tokens(
         alt((
             parse_duration_first_source,
             parse_duration_first_target,
+            parse_target_source_duration,
             parse_target_first_source,
             parse_target_first,
         )),

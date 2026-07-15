@@ -6,9 +6,12 @@ use crate::{ColorSet, ObjectFilter};
 
 pub(crate) use super::grammar::filters::parse_simple_object_filter_words;
 use super::grammar::filters::{
-    apply_filter_tail_decoration, parse_filter_distinct_names_tokens, parse_filter_lexed_envelope,
-    parse_filter_tail_decoration_split_words, parse_filter_tail_decoration_tokens,
-    parse_filter_word_envelope, parse_simple_object_filter_lexed,
+    apply_filter_tail_decoration, parse_extremum_object_filter_lexed,
+    parse_extremum_object_filter_words, parse_filter_distinct_names_tokens,
+    parse_filter_lexed_envelope, parse_filter_tail_decoration_split_words,
+    parse_filter_tail_decoration_tokens, parse_filter_word_envelope,
+    parse_simple_object_filter_lexed, preserve_filter_counter_constraint_surface_tokens,
+    preserve_filter_counter_constraint_surface_words,
 };
 use super::grammar::primitives::split_lexed_slices_on_or;
 use super::lexer::{
@@ -179,6 +182,7 @@ pub(crate) fn parse_object_filter(
     };
     filter = envelope.decorations.apply_distinct_names_only(filter);
     preserve_union_surface(&mut filter, tokens);
+    preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     Ok(apply_original_printing_set(filter, original_printing_set))
 }
 
@@ -191,7 +195,15 @@ pub(crate) fn parse_object_filter_words(
             .map(|(words, set_name)| (words, Some(set_name)))
             .unwrap_or((word_refs, None));
     let envelope = parse_filter_word_envelope(original_printing_words);
-    if let Some(filter) = parse_simple_object_filter_words(&envelope.core_words, other) {
+    if let Some(mut filter) = parse_extremum_object_filter_words(&envelope.core_words, other)? {
+        preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
+    }
+    if let Some(mut filter) = parse_simple_object_filter_words(&envelope.core_words, other) {
+        preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
             original_printing_set,
@@ -201,6 +213,7 @@ pub(crate) fn parse_object_filter_words(
         && let Some(mut filter) = parse_simple_object_filter_words(split.base_words, other)
     {
         apply_filter_tail_decoration(&mut filter, split.decoration);
+        preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
             original_printing_set,
@@ -235,7 +248,15 @@ pub(crate) fn parse_object_filter_lexed(
             original_printing_set,
         ));
     }
-    if let Some(filter) = parse_simple_object_filter_lexed(&envelope.core_tokens, other) {
+    if let Some(mut filter) = parse_extremum_object_filter_lexed(&envelope.core_tokens, other)? {
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
+    }
+    if let Some(mut filter) = parse_simple_object_filter_lexed(&envelope.core_tokens, other) {
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
             original_printing_set,
@@ -463,6 +484,38 @@ mod tests {
             filter.description(),
             "a nontoken permanent with a name originally printed in the Antiquities expansion"
         );
+    }
+
+    #[test]
+    fn parse_object_filter_preserves_plural_counter_surface_semantically() {
+        let plural_tokens = tokenize_line("creatures you control with +1/+1 counters on them", 0);
+        let plural = parse_object_filter_lexed(&plural_tokens, false)
+            .expect("plural counter filter should parse");
+        assert_eq!(
+            plural.with_counter,
+            Some(crate::filter::CounterConstraint::Typed(
+                crate::object::CounterType::PlusOnePlusOne,
+            ))
+        );
+        assert!(
+            plural
+                .description()
+                .ends_with("with +1/+1 counters on them"),
+            "{}",
+            plural.description()
+        );
+
+        let singular_tokens = tokenize_line("a creature you control with a +1/+1 counter on it", 0);
+        let singular = parse_object_filter_lexed(&singular_tokens, false)
+            .expect("singular counter filter should parse");
+        assert!(
+            singular
+                .description()
+                .ends_with("with a +1/+1 counter on it"),
+            "{}",
+            singular.description()
+        );
+        assert_eq!(plural, singular);
     }
 
     #[test]

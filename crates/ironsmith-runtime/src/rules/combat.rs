@@ -760,6 +760,7 @@ mod tests {
             attached_to: None,
             attachments: vec![],
             spell_effect: None,
+            splice_cast_state: None,
             aura_attach_filter: None,
             alternative_casts: vec![].into(),
             cast_alternative_method: None,

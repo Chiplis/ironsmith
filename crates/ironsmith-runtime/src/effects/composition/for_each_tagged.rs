@@ -78,7 +78,13 @@ impl EffectExecutor for ForEachTaggedEffect {
         let mut player_counts: Vec<(PlayerId, i32)> = Vec::new();
 
         let it_tag = TagKey::from("__it__");
-        for snapshot in &snapshots {
+        let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);
+        let original_previous = ctx.tagged_objects.remove(&previous_tag);
+        for (index, snapshot) in snapshots.iter().enumerate() {
+            // Ordered iterations expose exactly the objects processed before
+            // the current one. Ordinary loops can ignore this tag; values such
+            // as "for each creature chosen before it" count it directly.
+            ctx.set_tagged_objects(previous_tag.clone(), snapshots[..index].to_vec());
             // Expose the current iterated object as "__it__" for tagged constraints like
             // "shares a card type with it" inside the loop body.
             let original_it = ctx.tagged_objects.remove(&it_tag);
@@ -115,6 +121,15 @@ impl EffectExecutor for ForEachTaggedEffect {
                 None => {
                     ctx.tagged_objects.remove(&it_tag);
                 }
+            }
+        }
+
+        match original_previous {
+            Some(value) => {
+                ctx.tagged_objects.insert(previous_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&previous_tag);
             }
         }
 

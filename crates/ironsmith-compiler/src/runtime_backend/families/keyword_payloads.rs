@@ -478,20 +478,66 @@ pub(super) fn parse_squad(
 }
 
 pub(super) fn parse_splice(
-    _line: &PreprocessedLine,
+    line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
     _full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
     let Some(parsed) = parse_splice_keyword_line_tokens(tokens)? else {
         return Ok(None);
     };
-    let label = format!(
-        "Splice onto {} {}",
-        parsed.subject.oracle_surface(),
-        parsed.cost.to_oracle()
-    );
+    let is_edge_punctuation = |token: &crate::runtime_backend::lexer::OwnedLexToken| {
+        matches!(
+            token.kind,
+            crate::runtime_backend::lexer::TokenKind::Dash
+                | crate::runtime_backend::lexer::TokenKind::EmDash
+                | crate::runtime_backend::lexer::TokenKind::Period
+        )
+    };
+    let start = parsed
+        .cost_tokens
+        .iter()
+        .position(|token| !is_edge_punctuation(token))
+        .unwrap_or(parsed.cost_tokens.len());
+    let end = parsed
+        .cost_tokens
+        .iter()
+        .rposition(|token| !is_edge_punctuation(token))
+        .map_or(start, |index| index + 1);
+    let cost_tokens = &parsed.cost_tokens[start..end];
+    let cost_surface = cost_tokens
+        .first()
+        .zip(cost_tokens.last())
+        .and_then(|(first, last)| line.info.raw_line.get(first.span.start..last.span.end))
+        .map(str::trim)
+        .filter(|surface| !surface.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            crate::runtime_backend::lexer::render_token_slice(cost_tokens)
+                .trim()
+                .to_string()
+        });
+    let cost = crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(cost_tokens)?
+        .ok_or_else(|| {
+            crate::cards::builders::CardTextError::ParseError(format!(
+                "unsupported splice cost clause: {}",
+                crate::runtime_backend::lexer::render_token_slice(cost_tokens).trim()
+            ))
+        })?;
+    let quality = match parsed.subject {
+        super::grammar::splice_keyword_lines::SpliceSubject::Arcane => {
+            crate::static_abilities::SpliceQuality::Arcane
+        }
+        super::grammar::splice_keyword_lines::SpliceSubject::InstantOrSorcery => {
+            crate::static_abilities::SpliceQuality::InstantOrSorcery
+        }
+    };
     Ok(ast(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::keyword_marker(label).into(),
+        crate::static_abilities::StaticAbility::splice_with_cost_surface(
+            quality,
+            cost,
+            Some(cost_surface),
+        )
+        .into(),
     )))
 }
 
@@ -500,11 +546,11 @@ pub(super) fn parse_escalate(
     tokens: &[OwnedLexToken],
     _full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
-    let Some((_cost, display)) = parse_escalate_line_lexed(tokens)? else {
+    let Some((cost, display)) = parse_escalate_line_lexed(tokens)? else {
         return Ok(None);
     };
     Ok(ast(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::keyword_marker(format!("Escalate {display}"))
+        crate::static_abilities::StaticAbility::escalate_with_cost_surface(cost, Some(display))
             .into(),
     )))
 }

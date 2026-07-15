@@ -35,6 +35,32 @@ use std::collections::HashMap;
 
 use super::CardDefinition;
 
+/// Runtime ability carried by the riot keyword.
+///
+/// Keeping this constructor reusable lets both printed riot and effects that
+/// grant riot to a spell install the same gameplay representation.
+pub(crate) fn riot_triggered_ability() -> Ability {
+    let modes = vec![
+        EffectMode {
+            source_text: "This creature enters with a +1/+1 counter on it".to_string(),
+            effects: vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
+        },
+        EffectMode {
+            source_text: "This creature gains haste until end of turn".to_string(),
+            effects: vec![Effect::grant_abilities_all(
+                ObjectFilter::source(),
+                vec![StaticAbility::haste()],
+                Until::EndOfTurn,
+            )],
+        },
+    ];
+
+    Ability::triggered(
+        Trigger::this_enters_battlefield(),
+        vec![Effect::choose_one(modes)],
+    )
+}
+
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardTextError {
@@ -3381,25 +3407,7 @@ impl CardDefinitionBuilder {
     ///
     /// Riot means "This creature enters with your choice of a +1/+1 counter or haste."
     pub fn riot(self) -> Self {
-        let modes = vec![
-            EffectMode {
-                source_text: "This creature enters with a +1/+1 counter on it".to_string(),
-                effects: vec![Effect::plus_one_counters(1, ChooseSpec::Source)],
-            },
-            EffectMode {
-                source_text: "This creature gains haste until end of turn".to_string(),
-                effects: vec![Effect::grant_abilities_all(
-                    ObjectFilter::source(),
-                    vec![StaticAbility::haste()],
-                    Until::EndOfTurn,
-                )],
-            },
-        ];
-
-        self.with_ability(Ability::triggered(
-            Trigger::this_enters_battlefield(),
-            vec![Effect::choose_one(modes)],
-        ))
+        self.with_ability(riot_triggered_ability())
     }
 
     /// Add unleash.
@@ -4165,7 +4173,9 @@ impl CardDefinitionBuilder {
     /// Add jump-start (cast from graveyard, discard a card).
     pub fn jump_start(mut self) -> Self {
         self.alternative_casts
-            .push(AlternativeCastingMethod::JumpStart);
+            .push(AlternativeCastingMethod::JumpStart {
+                additional_cost: TotalCost::from_cost(crate::costs::Cost::discard(1, None)),
+            });
         self
     }
 
@@ -4175,6 +4185,10 @@ impl CardDefinitionBuilder {
             .push(AlternativeCastingMethod::Escape {
                 cost: Some(cost),
                 exile_count,
+                additional_cost: TotalCost::from_cost(crate::costs::Cost::exile_from_graveyard(
+                    exile_count,
+                    None,
+                )),
             });
         self
     }

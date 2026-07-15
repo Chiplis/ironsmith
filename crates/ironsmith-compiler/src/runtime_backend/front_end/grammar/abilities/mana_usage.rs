@@ -2,7 +2,10 @@ use winnow::combinator::{alt, eof, opt, peek, repeat_till};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::ability::{ManaUsageRestriction, ManaUsageSubtypeRequirement};
+use crate::ability::{
+    ManaSpendAbilityGrantDuration, ManaSpendBonusCondition, ManaSpendGrantedKeyword,
+    ManaUsageRestriction, ManaUsageSubtypeRequirement,
+};
 use crate::object::CounterType;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -31,12 +34,9 @@ const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
     &["spend", "that", "mana", "only", "to", "cast"],
 ];
-const IF_MANA_SPENT_SPELL_PREFIXES: &[&[&str]] = &[
-    &["if", "this", "mana", "is", "spent", "to", "cast"],
-    &["if", "that", "mana", "is", "spent", "to", "cast"],
-    &["if", "this", "mana", "is", "spent", "on"],
-    &["if", "that", "mana", "is", "spent", "on"],
-];
+const WHEN_MANA_SPENT_SPELL_PREFIXES: &[&[&str]] = &[&[
+    "when", "you", "spend", "this", "mana", "to", "cast",
+]];
 const UNCOUNTERABLE_TAILS: &[&[&str]] = &[
     &["and", "that", "spell", "can't", "be", "countered"],
     &["and", "that", "spell", "cant", "be", "countered"],
@@ -73,6 +73,7 @@ struct FilterCastShape<'a> {
 struct ManaSpendBonusShape<'a> {
     spec_tokens: &'a [OwnedLexToken],
     bonus_tokens: &'a [OwnedLexToken],
+    condition: ManaSpendBonusCondition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +143,60 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     } else {
         Vec::new()
     };
+    let granted_keywords = if matches_any_exact_tokens(
+        bonus_tokens,
+        &[
+            &["it", "gains", "riot"],
+            &["that", "creature", "gains", "riot"],
+            &["that", "spell", "gains", "riot"],
+        ],
+    ) {
+        vec![ManaSpendGrantedKeyword::Riot]
+    } else {
+        Vec::new()
+    };
+
+    let (counter_bonus_tokens, mut duration_grants) =
+        strip_mana_spend_duration_grant_suffix(bonus_tokens);
+    duration_grants.extend(granted_abilities.iter().copied().map(|ability| {
+        (ability, ManaSpendAbilityGrantDuration::UntilEndOfTurn)
+    }));
+    let enters_with_counters = parse_mana_spend_counter_shape(counter_bonus_tokens)
+        .and_then(parse_mana_spend_counter_tail)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    if simple_card_type.is_none()
+        || matches!(
+            parsed.condition,
+            ManaSpendBonusCondition::WhenYouSpendThisManaToCast
+        )
+        || duration_grants
+            .iter()
+            .any(|(_, duration)| {
+                *duration == ManaSpendAbilityGrantDuration::UntilYourNextTurn
+            })
+        || !granted_keywords.is_empty()
+    {
+        if !grant_uncounterable
+            && enters_with_counters.is_empty()
+            && duration_grants.is_empty()
+            && granted_keywords.is_empty()
+        {
+            return None;
+        }
+        let filter = simple_card_type
+            .map(|card_type| ObjectFilter::default().with_type(card_type))
+            .or_else(|| parse_nondefault_spell_filter(spec_tokens))?;
+        return Some(ManaUsageRestriction::CastSpellWithManaBonus {
+            filter,
+            condition: parsed.condition,
+            grant_uncounterable,
+            enters_with_counters,
+            granted_abilities: duration_grants,
+            granted_keywords,
+        });
+    }
 
     if grant_uncounterable || !granted_abilities.is_empty() {
         if let Some(card_type) = simple_card_type {
@@ -165,8 +220,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     }
 
     let card_type = simple_card_type?;
-    let counter = parse_mana_spend_counter_shape(bonus_tokens)?;
-    let (counter_type, count) = parse_mana_spend_counter_tail(counter)?;
+    let (counter_type, count) = enters_with_counters.into_iter().next()?;
     Some(ManaUsageRestriction::CastSpell {
         card_types: vec![card_type],
         subtype_requirement: None,
@@ -178,7 +232,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
 }
 
 pub(crate) fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches_any_prefix_tokens(tokens, IF_MANA_SPENT_SPELL_PREFIXES)
+    parse_mana_spend_bonus_sentence_lexed(tokens).is_some()
 }
 
 fn parse_cast_unlock_turn_face_up(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
@@ -563,7 +617,7 @@ fn strip_article(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 fn parse_mana_spend_bonus_shape(tokens: &[OwnedLexToken]) -> Option<ManaSpendBonusShape<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    let spec_start = parse_any_prefix_word_count(&words, IF_MANA_SPENT_SPELL_PREFIXES)?;
+    let (spec_start, condition) = parse_mana_spend_bonus_condition_prefix(&words)?;
     let spell_offset = first_word_choice(words.get(spec_start..)?, &["spell", "spells"])?;
     if spell_offset == 0 {
         return None;
@@ -582,7 +636,69 @@ fn parse_mana_spend_bonus_shape(tokens: &[OwnedLexToken]) -> Option<ManaSpendBon
     Some(ManaSpendBonusShape {
         spec_tokens: token_slice_for_words(tokens, &view, spec_start, spec_start + spell_offset)?,
         bonus_tokens: tokens.get(bonus_start..)?,
+        condition,
     })
+}
+
+fn parse_mana_spend_bonus_condition_prefix(
+    words: &[&str],
+) -> Option<(usize, ManaSpendBonusCondition)> {
+    let candidates = [
+        (
+            &["if", "this", "mana", "is", "spent", "to", "cast"] as &[&str],
+            ManaSpendBonusCondition::IfThisManaIsSpentToCast,
+        ),
+        (
+            &["if", "that", "mana", "is", "spent", "to", "cast"] as &[&str],
+            ManaSpendBonusCondition::IfThatManaIsSpentToCast,
+        ),
+        (
+            &["if", "this", "mana", "is", "spent", "on"] as &[&str],
+            ManaSpendBonusCondition::IfThisManaIsSpentOn,
+        ),
+        (
+            &["if", "that", "mana", "is", "spent", "on"] as &[&str],
+            ManaSpendBonusCondition::IfThatManaIsSpentOn,
+        ),
+        (
+            WHEN_MANA_SPENT_SPELL_PREFIXES[0],
+            ManaSpendBonusCondition::WhenYouSpendThisManaToCast,
+        ),
+    ];
+    candidates.into_iter().find_map(|(prefix, condition)| {
+        let mut input: primitives::WordSliceInput<'_> = words;
+        parse_phrase_words(&mut input, prefix).ok()?;
+        Some((words.len().saturating_sub(input.len()), condition))
+    })
+}
+
+fn strip_mana_spend_duration_grant_suffix(
+    tokens: &[OwnedLexToken],
+) -> (
+    &[OwnedLexToken],
+    Vec<(StaticAbilityId, ManaSpendAbilityGrantDuration)>,
+) {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let suffixes: &[&[&str]] = &[
+        &["and", "gains", "hexproof", "until", "your", "next", "turn"],
+        &[
+            "and", "it", "gains", "hexproof", "until", "your", "next", "turn",
+        ],
+    ];
+    let Some(start) = last_exact_suffix_offset(&words, suffixes) else {
+        return (tokens, Vec::new());
+    };
+    let Some(primary) = token_slice_for_words(tokens, &view, 0, start) else {
+        return (tokens, Vec::new());
+    };
+    (
+        primary,
+        vec![(
+            StaticAbilityId::Hexproof,
+            ManaSpendAbilityGrantDuration::UntilYourNextTurn,
+        )],
+    )
 }
 
 fn parse_simple_bonus_card_type(tokens: &[OwnedLexToken]) -> Option<CardType> {
@@ -625,6 +741,9 @@ fn parse_mana_spend_counter_shape(tokens: &[OwnedLexToken]) -> Option<ManaSpendC
 
 fn mana_spend_counter_subject_matches(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
+    if words.as_slice() == ["it"] {
+        return true;
+    }
     let mut input: primitives::WordSliceInput<'_> = &words;
     if primitives::word_slice_exact("that")
         .parse_next(&mut input)
@@ -814,5 +933,20 @@ mod tests {
             "If this mana is spent to cast a creature spell, that creature enters with an additional +1/+1 counter on it.",
         ));
         assert!(counter.is_some());
+    }
+
+    #[test]
+    fn mana_spend_bonus_preserves_riot_as_a_runtime_keyword_grant() {
+        let riot = parse_mana_spend_bonus_sentence_lexed(&lex(
+            "If that mana is spent on a creature spell, it gains riot.",
+        ));
+        assert!(matches!(
+            riot,
+            Some(ManaUsageRestriction::CastSpellWithManaBonus {
+                condition: ManaSpendBonusCondition::IfThatManaIsSpentOn,
+                granted_keywords,
+                ..
+            }) if granted_keywords == [ManaSpendGrantedKeyword::Riot]
+        ));
     }
 }

@@ -795,6 +795,9 @@ where
             ironsmith_core::SequenceSurface::CoordinatedLeadingDuration => {
                 crate::effects::SequenceEffect::coordinated_with_leading_duration(effects)
             }
+            ironsmith_core::SequenceSurface::ResultConjunction { leading_duration } => {
+                crate::effects::SequenceEffect::result_conjunction(effects, leading_duration)
+            }
         };
         return Ok(Effect::new(sequence));
     }
@@ -847,6 +850,16 @@ where
         )));
     }
     if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::ForEachControllerOfTaggedEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::ForEachControllerOfTaggedEffect::new(
+                payload.tag.clone(),
+                convert_effects(payload.effects.iter().cloned(), hooks)?,
+            ),
+        ));
+    }
+    if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedPlayerEffect<M::Effect>>(&effect)
     {
         return Ok(Effect::new(crate::effects::ForEachTaggedPlayerEffect::new(
@@ -891,7 +904,8 @@ where
                 payload.controller_optional_extra_votes,
             )
             .with_secret(payload.secret),
-        };
+        }
+        .starting_with_controller(payload.starting_with_controller);
         return Ok(Effect::new(converted));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::BidLifeEffect<M::Effect>>(&effect) {
@@ -1076,6 +1090,9 @@ where
             ironsmith_core::PreventNextTimeDamageSource::Choice => {
                 crate::effects::PreventNextTimeDamageSource::Choice
             }
+            ironsmith_core::PreventNextTimeDamageSource::ChoiceMatching(filter) => {
+                crate::effects::PreventNextTimeDamageSource::ChoiceMatching(filter.clone())
+            }
             ironsmith_core::PreventNextTimeDamageSource::Target(spec) => {
                 crate::effects::PreventNextTimeDamageSource::Target(spec.clone())
             }
@@ -1086,6 +1103,9 @@ where
         let target = match &payload.target {
             ironsmith_core::PreventNextTimeDamageTarget::AnyTarget => {
                 crate::effects::PreventNextTimeDamageTarget::AnyTarget
+            }
+            ironsmith_core::PreventNextTimeDamageTarget::Omitted => {
+                crate::effects::PreventNextTimeDamageTarget::Omitted
             }
             ironsmith_core::PreventNextTimeDamageTarget::You => {
                 crate::effects::PreventNextTimeDamageTarget::You
@@ -1245,9 +1265,10 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PhaseOutEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::PhaseOutEffect::with_spec(
-            payload.target.clone(),
-        )));
+        let mut phase_out = crate::effects::PhaseOutEffect::with_spec(payload.target.clone());
+        phase_out.duration = payload.duration;
+        phase_out.source_surface = payload.source_surface.clone();
+        return Ok(Effect::new(phase_out));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PhaseInEffect>(&effect) {
         return Ok(Effect::new(crate::effects::PhaseInEffect::with_spec(
@@ -1482,8 +1503,9 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GoadEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::GoadEffect::new(
+        return Ok(Effect::new(crate::effects::GoadEffect::with_duration(
             payload.target.clone(),
+            payload.duration.clone(),
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SuspectEffect>(&effect) {

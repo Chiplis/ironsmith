@@ -8,7 +8,7 @@ use crate::filter::TaggedOpbjectRelation;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
-use ironsmith_core::{EffectMetric, EffectMetricSource};
+use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction};
 
 #[cfg(test)]
 use crate::TagKey;
@@ -196,7 +196,9 @@ fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str
 
 fn target_is_any_damage_target(target: &TargetAst) -> bool {
     match target {
-        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_) => true,
+        TargetAst::AnyTarget(_)
+        | TargetAst::AnyOtherTarget(_)
+        | TargetAst::ObjectOrPlayer(_, _, _) => true,
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
             target_is_any_damage_target(inner)
         }
@@ -278,6 +280,18 @@ fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
             });
         }
         TargetAst::Object(filter, _, _) => track_player_from_object_filter(filter, frame),
+        TargetAst::ObjectOrPlayer(object_filter, player_filter, _) => {
+            track_player_from_object_filter(object_filter, frame);
+            frame.last_player_filter =
+                Some(if matches!(player_filter, PlayerFilter::IteratedPlayer) {
+                    frame
+                        .last_player_filter
+                        .clone()
+                        .unwrap_or(PlayerFilter::IteratedPlayer)
+                } else {
+                    PlayerFilter::Target(Box::new(player_filter.clone()))
+                });
+        }
         _ => {}
     }
 }
@@ -590,10 +604,10 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::TapOrUntap { target } => {
                     maybe_tag_target(target, frame, id_gen, "tap_or_untap")?;
                 }
-                SubjectVerbActionAst::PhaseOut { target } => {
+                SubjectVerbActionAst::PhaseOut { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "phased_out")?;
                 }
-                SubjectVerbActionAst::PhaseOutAll { filter } => {
+                SubjectVerbActionAst::PhaseOutAll { filter, .. } => {
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::PhaseIn { target } => {
@@ -758,7 +772,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Detain { target } => {
                     maybe_tag_target(target, frame, id_gen, "detained")?;
                 }
-                SubjectVerbActionAst::Goad { target } => {
+                SubjectVerbActionAst::Goad { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "goaded")?;
                 }
                 SubjectVerbActionAst::Suspect { target } => {
@@ -915,10 +929,19 @@ fn advance_reference_frame_for_effect(
                     source: target,
                 }
                 | SubjectVerbActionAst::PreventDamage { target, .. }
-                | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
                 | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
                 | SubjectVerbActionAst::PutOrRemoveCounters { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
+                }
+                SubjectVerbActionAst::PreventAllDamageToTarget {
+                    target,
+                    source_target,
+                    ..
+                } => {
+                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    if let Some(source_target) = source_target {
+                        maybe_tag_target(source_target, frame, id_gen, "source")?;
+                    }
                 }
                 SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
                     protected_target,
@@ -1050,7 +1073,7 @@ fn advance_reference_frame_for_effect(
                     }
                     track_player_from_object_filter(filter, frame);
                 }
-                SubjectVerbActionAst::TargetOnly { target } => {
+                SubjectVerbActionAst::TargetOnly { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
                 }
                 SubjectVerbActionAst::TagMatchingObjects { filter, tag, .. } => {
@@ -1112,6 +1135,12 @@ fn advance_reference_frame_for_effect(
                     // clauses such as "and must be blocked" name the object
                     // actually modified by the preceding grant.
                     maybe_tag_target(target, frame, id_gen, "granted")?;
+                }
+                SubjectVerbActionAst::GrantAbilitiesAll { filter, .. } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "granted"));
+                    }
+                    track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::ConsultTopOfLibrary {
                     player, match_tag, ..
@@ -1309,7 +1338,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
-        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. } => {
+        | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+        | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
         EffectAst::MayByPlayer { player, effects } => {
@@ -1368,7 +1398,7 @@ fn advance_reference_frame_for_effect(
             let saved_last_effect = frame.last_effect_id;
             let saved_bind = frame.bind_unbound_x_to_last_effect;
             frame.last_effect_id = Some(*condition);
-            frame.bind_unbound_x_to_last_effect = *predicate != IfResultPredicate::AcceptedChoice;
+            frame.bind_unbound_x_to_last_effect = predicate != &IfResultPredicate::AcceptedChoice;
             advance_reference_frames(&effects, id_gen, frame)?;
             frame.last_effect_id = saved_last_effect;
             frame.bind_unbound_x_to_last_effect = saved_bind;
@@ -1440,6 +1470,36 @@ fn advance_reference_frame_for_effect(
         EffectAst::BidLife { winner_effects, .. } => {
             advance_effects_preserving_last_effect(winner_effects, id_gen, frame)?;
         }
+        EffectAst::VoteOption { effects, .. } => {
+            // Per-vote effects execute with the current voter bound. Preserve
+            // any explicitly chosen object tag they produce so a following
+            // clause such as "each creature chosen this way" can consume the
+            // union of those choices after voting finishes.
+            let saved = frame.clone();
+            let mut nested = saved.clone();
+            nested.last_effect_id = None;
+            nested.iterated_player = true;
+            nested.last_player_filter = Some(PlayerFilter::IteratedPlayer);
+            advance_reference_frames(effects, id_gen, &mut nested)?;
+            if saved.last_object_tag != nested.last_object_tag {
+                frame.last_object_tag = nested.last_object_tag;
+            }
+            if saved.last_player_filter != nested.last_player_filter {
+                frame.last_player_filter = nested.last_player_filter;
+            }
+            if let Some((_, chosen_tag)) = nested
+                .snapshot_tag_aliases
+                .iter()
+                .find(|(alias, _)| alias == CHOSEN_OBJECTS_TAG)
+            {
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != CHOSEN_OBJECTS_TAG);
+                frame
+                    .snapshot_tag_aliases
+                    .push((CHOSEN_OBJECTS_TAG.to_string(), chosen_tag.clone()));
+            }
+        }
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
@@ -1484,7 +1544,6 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SecretChoiceReveal
         | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteStartPlayers { .. }
-        | EffectAst::VoteOption { .. }
         | EffectAst::VoteExtra { .. } => {}
     }
 
@@ -1825,6 +1884,10 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::Destroy { .. }
                 | SubjectVerbActionAst::DestroyAll { .. }
                 | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
+                | SubjectVerbActionAst::Tap { .. }
+                | SubjectVerbActionAst::TapAll { .. }
+                | SubjectVerbActionAst::PhaseOut { .. }
+                | SubjectVerbActionAst::PhaseOutAll { .. }
                 | SubjectVerbActionAst::Exile { .. }
                 | SubjectVerbActionAst::ExileAll { .. }
                 | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
@@ -1854,12 +1917,28 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::DealDamageEqualToPower { .. }
                 | SubjectVerbActionAst::DealDistributedDamage { .. }
                 | SubjectVerbActionAst::DealDamageEach { .. }
+                | SubjectVerbActionAst::Connive { .. }
+                | SubjectVerbActionAst::ConniveIterated
+                | SubjectVerbActionAst::Counter { .. }
+                | SubjectVerbActionAst::CounterUnlessPays { .. }
+                | SubjectVerbActionAst::PutCounters { .. }
+                | SubjectVerbActionAst::PutCountersAll { .. }
+                | SubjectVerbActionAst::Goad { .. }
+                | SubjectVerbActionAst::PreventDamage { .. }
+                | SubjectVerbActionAst::PreventDamageEach { .. }
+                | SubjectVerbActionAst::PreventDamageToTargetPutCounters { .. }
+                | SubjectVerbActionAst::CastTagged { .. }
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayAnyLife { .. }
                 | SubjectVerbActionAst::CopySpell { .. }
                 | SubjectVerbActionAst::CopySpellForEachTarget { .. }
+                | SubjectVerbActionAst::TargetOnly { .. }
         ),
+        EffectAst::ChooseObjects { .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { .. }
+        | EffectAst::ChooseObjectsAcrossZones { .. } => true,
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
@@ -1888,6 +1967,11 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
             effect_can_supply_prior_effect_memory(effect)
                 || otherwise.iter().any(effect_can_supply_prior_effect_memory)
         }
+        EffectAst::Sequence { effects }
+        | EffectAst::SourceSentence { effects }
+        | EffectAst::Coordinated { effects, .. } => {
+            effects.iter().any(effect_can_supply_prior_effect_memory)
+        }
         EffectAst::TagAffected { effect, .. } => effect_can_supply_prior_effect_memory(effect),
         EffectAst::MoveTaggedGroupToZone { .. } | EffectAst::RestartGame { .. } => true,
         _ => false,
@@ -1907,10 +1991,208 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
             })
         );
     }
+    for action in [
+        PriorEffectAction::Cast,
+        PriorEffectAction::Chosen,
+        PriorEffectAction::Connived,
+        PriorEffectAction::Countered,
+        PriorEffectAction::CountersPut,
+        PriorEffectAction::DealtDamage,
+        PriorEffectAction::Destroyed,
+        PriorEffectAction::Discarded,
+        PriorEffectAction::Drawn,
+        PriorEffectAction::Exiled,
+        PriorEffectAction::Goaded,
+        PriorEffectAction::Milled,
+        PriorEffectAction::PhasedOut,
+        PriorEffectAction::Prevented,
+        PriorEffectAction::PutOntoBattlefield,
+        PriorEffectAction::Removed,
+        PriorEffectAction::Returned,
+        PriorEffectAction::Revealed,
+        PriorEffectAction::Sacrificed,
+        PriorEffectAction::Searched,
+        PriorEffectAction::Shuffled,
+        PriorEffectAction::Tapped,
+    ] {
+        if effect_references_pending_metric_action(consumer, action) {
+            return effect_can_supply_object_memory_for_action(effect, action);
+        }
+    }
     if effect_references_pending_effect_metric(consumer) {
         return effect_can_supply_prior_effect_memory(effect);
     }
     true
+}
+
+fn value_references_pending_metric_action(value: &Value, action: PriorEffectAction) -> bool {
+    match value {
+        Value::PendingPriorEffectMetric(query) => query.action == Some(action),
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_references_pending_metric_action(value, action),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_pending_metric_action(left, action)
+                || value_references_pending_metric_action(right, action)
+        }
+        _ => false,
+    }
+}
+
+fn effect_references_pending_metric_action(effect: &EffectAst, action: PriorEffectAction) -> bool {
+    let mut references_pending_action = false;
+    visit_effect_values(effect, &mut |value| {
+        references_pending_action |= value_references_pending_metric_action(value, action);
+    });
+    references_pending_action
+}
+
+fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectAction) -> bool {
+    if action == PriorEffectAction::Chosen {
+        return matches!(
+            effect,
+            EffectAst::ChooseObjects { .. }
+                | EffectAst::ChooseObjectsBottomOfLibrary { .. }
+                | EffectAst::ChooseObjectsTopOfLibrary { .. }
+                | EffectAst::ChooseObjectsAcrossZones { .. }
+                | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                })
+        );
+    }
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: producer_action,
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+    match action {
+        PriorEffectAction::Destroyed => matches!(
+            producer_action,
+            SubjectVerbActionAst::Destroy { .. }
+                | SubjectVerbActionAst::DestroyAll { .. }
+                | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
+                | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+        ),
+        PriorEffectAction::Tapped => matches!(
+            producer_action,
+            SubjectVerbActionAst::Tap { .. } | SubjectVerbActionAst::TapAll { .. }
+        ),
+        PriorEffectAction::Cast => {
+            matches!(producer_action, SubjectVerbActionAst::CastTagged { .. })
+        }
+        PriorEffectAction::Connived => matches!(
+            producer_action,
+            SubjectVerbActionAst::Connive { .. } | SubjectVerbActionAst::ConniveIterated
+        ),
+        PriorEffectAction::Countered => matches!(
+            producer_action,
+            SubjectVerbActionAst::Counter { .. } | SubjectVerbActionAst::CounterUnlessPays { .. }
+        ),
+        PriorEffectAction::CountersPut => matches!(
+            producer_action,
+            SubjectVerbActionAst::PutCounters { .. }
+                | SubjectVerbActionAst::PutCountersAll { .. }
+                | SubjectVerbActionAst::PutCounterChoice { .. }
+        ),
+        PriorEffectAction::DealtDamage => matches!(
+            producer_action,
+            SubjectVerbActionAst::DealDamage { .. }
+                | SubjectVerbActionAst::DealDamageEach { .. }
+                | SubjectVerbActionAst::DealDamageEqualToPower { .. }
+                | SubjectVerbActionAst::DealDistributedDamage { .. }
+        ),
+        PriorEffectAction::Discarded => matches!(
+            producer_action,
+            SubjectVerbActionAst::Discard { .. } | SubjectVerbActionAst::DiscardHand
+        ),
+        PriorEffectAction::Drawn => {
+            matches!(producer_action, SubjectVerbActionAst::Draw { .. })
+        }
+        PriorEffectAction::Exiled => matches!(
+            producer_action,
+            SubjectVerbActionAst::Exile { .. }
+                | SubjectVerbActionAst::ExileAll { .. }
+                | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
+                | SubjectVerbActionAst::ExileTopOfLibrary { .. }
+        ),
+        PriorEffectAction::Milled => {
+            matches!(producer_action, SubjectVerbActionAst::Mill { .. })
+        }
+        PriorEffectAction::Goaded => matches!(producer_action, SubjectVerbActionAst::Goad { .. }),
+        PriorEffectAction::PhasedOut => matches!(
+            producer_action,
+            SubjectVerbActionAst::PhaseOut { .. } | SubjectVerbActionAst::PhaseOutAll { .. }
+        ),
+        PriorEffectAction::Removed => matches!(
+            producer_action,
+            SubjectVerbActionAst::RemoveUpToAnyCounters { .. }
+                | SubjectVerbActionAst::RemoveCountersAll { .. }
+        ),
+        PriorEffectAction::Prevented => matches!(
+            producer_action,
+            SubjectVerbActionAst::PreventDamage { .. }
+                | SubjectVerbActionAst::PreventDamageEach { .. }
+                | SubjectVerbActionAst::PreventDamageToTargetPutCounters { .. }
+                | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+                | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
+                | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
+        ),
+        PriorEffectAction::PutOntoBattlefield => matches!(
+            producer_action,
+            SubjectVerbActionAst::PutOntoBattlefield { .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+        ),
+        PriorEffectAction::Returned => matches!(
+            producer_action,
+            SubjectVerbActionAst::ReturnToHand { .. }
+                | SubjectVerbActionAst::ReturnAllToHand { .. }
+                | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+        ),
+        PriorEffectAction::Revealed => matches!(
+            producer_action,
+            SubjectVerbActionAst::RevealHand
+                | SubjectVerbActionAst::RevealTop
+                | SubjectVerbActionAst::RevealTagged { .. }
+                | SubjectVerbActionAst::RevealCardsFromHand { .. }
+                | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
+        ),
+        PriorEffectAction::Sacrificed => matches!(
+            producer_action,
+            SubjectVerbActionAst::Sacrifice { .. } | SubjectVerbActionAst::SacrificeAll { .. }
+        ),
+        PriorEffectAction::Searched => {
+            matches!(producer_action, SubjectVerbActionAst::SearchLibrary { .. })
+        }
+        PriorEffectAction::Shuffled => matches!(
+            producer_action,
+            SubjectVerbActionAst::ShuffleLibrary
+                | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+        ),
+        _ => false,
+    }
+}
+
+fn effect_can_supply_object_memory_for_action(
+    effect: &EffectAst,
+    action: PriorEffectAction,
+) -> bool {
+    if is_object_memory_producer_for_action(effect, action) {
+        return true;
+    }
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        found |= nested
+            .iter()
+            .any(|effect| effect_can_supply_object_memory_for_action(effect, action));
+    });
+    found
 }
 
 fn effect_references_pending_effect_metric(effect: &EffectAst) -> bool {
@@ -1939,7 +2221,9 @@ fn effect_references_only_other_number_metric(effect: &EffectAst) -> bool {
 fn value_references_pending_effect_metric(value: &Value) -> bool {
     match value {
         Value::SurfaceHinted { value, .. } => value_references_pending_effect_metric(value),
-        Value::PendingEffectMetric { .. } | Value::PendingEffectMetricOffset { .. } => true,
+        Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. }
+        | Value::PendingPriorEffectMetric(_) => true,
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_pending_effect_metric(left)
                 || value_references_pending_effect_metric(right)
@@ -1986,6 +2270,7 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
                 visit(count_value);
             }
         }
+        EffectAst::RepeatEffects { count, .. } => visit(count),
         _ => {}
     }
     for_each_nested_effects(effect, true, |nested| {
@@ -2130,7 +2415,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter }
         | SubjectVerbActionAst::TapAll { filter }
         | SubjectVerbActionAst::UntapAll { filter }
-        | SubjectVerbActionAst::PhaseOutAll { filter }
+        | SubjectVerbActionAst::PhaseOutAll { filter, .. }
         | SubjectVerbActionAst::PhaseInAll { filter }
         | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. }
         | SubjectVerbActionAst::SacrificeAll { filter }
@@ -2236,6 +2521,7 @@ fn resolve_effect_references_in_effect(
         return Ok(EffectAst::subject_verb_pump(
             if *power == 1 {
                 Value::EffectValue(id)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
             } else {
                 Value::Fixed(*power)
             },
@@ -2303,7 +2589,14 @@ fn resolve_effect_sequence_references_with_state(
         ) {
             saved_last_effect_id
         } else {
-            assigned_effect_id
+            // Keep the last deliberately exported result across intervening
+            // effects that do not produce a result ID of their own. The
+            // assignment pass scans past such effects for typed references
+            // like "for each creature that phased out this way"; clearing the
+            // ID here made nested sequence/sentence wrappers lose the exact
+            // producer before the consumer was resolved. A later compatible
+            // producer receives its own ID and replaces this one.
+            assigned_effect_id.or(saved_last_effect_id)
         };
         if let Some(id) = assigned_effect_id
             && effect_is_library_search(&effect)
@@ -2394,7 +2687,7 @@ fn advance_reference_env_for_effect(
             let mut nested_env = env.clone();
             nested_env.last_effect_id = RefState::Known(*condition);
             nested_env.bind_unbound_x_to_last_effect =
-                *predicate != IfResultPredicate::AcceptedChoice;
+                predicate != &IfResultPredicate::AcceptedChoice;
             let nested =
                 annotate_effect_sequence_with_env_internal(effects, nested_env, config, id_gen)?;
             let mut out_env = nested.final_env;
@@ -2806,6 +3099,9 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count_value, state)?;
             }
         }
+        EffectAst::RepeatEffects { count, .. } => {
+            resolve_effect_result_value(count, state)?;
+        }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         _ => {}
     }
@@ -2909,6 +3205,18 @@ fn resolve_effect_result_value(
                 source: *source,
                 metric: *metric,
                 offset: *offset,
+            };
+        }
+        Value::PendingPriorEffectMetric(query) => {
+            let id = state.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending filtered effect metric requires a prior memory-producing effect"
+                        .to_string(),
+                )
+            })?;
+            *value = Value::PriorEffectMetric {
+                effect_id: id,
+                query: query.clone(),
             };
         }
         Value::EventValue(EventValueSpec::Amount) if !state.allow_life_event_value => {
@@ -3158,7 +3466,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::TapAll { filter }
             | SubjectVerbActionAst::UntapAll { filter }
-            | SubjectVerbActionAst::PhaseOutAll { filter }
+            | SubjectVerbActionAst::PhaseOutAll { filter, .. }
             | SubjectVerbActionAst::PhaseInAll { filter }
             | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
@@ -3207,7 +3515,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Destroy { target, .. }
             | SubjectVerbActionAst::GainControl { target, .. }
             | SubjectVerbActionAst::TapOrUntap { target }
-            | SubjectVerbActionAst::PhaseOut { target }
+            | SubjectVerbActionAst::PhaseOut { target, .. }
             | SubjectVerbActionAst::PhaseIn { target }
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
@@ -3224,7 +3532,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Goad { target, .. }
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
@@ -3570,7 +3878,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                         .unwrap_or(0)
             }
             SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
-            | SubjectVerbActionAst::TargetOnly { target }
+            | SubjectVerbActionAst::TargetOnly { target, .. }
             | SubjectVerbActionAst::Pump { target, .. }
             | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
@@ -3712,6 +4020,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             } else {
                 0
             }
+        }
+        EffectAst::DelayedWhenLastObjectLeavesBattlefield { filter, .. } => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
         }
         EffectAst::Conditional { predicate, .. }
         | EffectAst::TrailingUnless { predicate, .. }
@@ -3870,6 +4181,10 @@ fn bind_unresolved_it_in_target(target: &mut TargetAst, seed_tag: &TagKey) -> us
     match target {
         TargetAst::Tagged(tag, _) => bind_unresolved_it_in_tag(tag, seed_tag),
         TargetAst::Object(filter, _, _) => bind_unresolved_it_in_filter(filter, seed_tag),
+        TargetAst::ObjectOrPlayer(object_filter, player_filter, _) => {
+            bind_unresolved_it_in_filter(object_filter, seed_tag)
+                + bind_unresolved_it_in_player_filter(player_filter, seed_tag)
+        }
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
             bind_unresolved_it_in_player_filter(filter, seed_tag)
         }
@@ -3901,6 +4216,10 @@ fn bind_unresolved_it_in_choose_spec(spec: &mut ChooseSpec, seed_tag: &TagKey) -
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            bind_unresolved_it_in_filter(object_filter, seed_tag)
+                + bind_unresolved_it_in_player_filter(player_filter, seed_tag)
+        }
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             bind_unresolved_it_in_choose_spec(inner, seed_tag)
         }
@@ -3928,6 +4247,9 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
         | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter)
         | Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
@@ -4100,7 +4422,7 @@ mod tests {
                 effects,
             } => {
                 assert_eq!(*condition, EffectId(0));
-                assert_eq!(*predicate, IfResultPredicate::Did);
+                assert_eq!(predicate, &IfResultPredicate::Did);
                 assert_eq!(effects.len(), 1);
                 match &effects[0] {
                     EffectAst::SubjectVerb(subject_verb)
@@ -4772,6 +5094,131 @@ mod tests {
             }
             other => panic!("expected draw effect, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn tapped_metric_binds_only_to_tap_family_producer() {
+        let tapped_query = || {
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    EffectMetricSource::AffectedObjects,
+                    EffectMetric::Count,
+                )
+                .with_filter(ObjectFilter::creature())
+                .with_action(PriorEffectAction::Tapped),
+            )
+        };
+        let consumer = || {
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: tapped_query(),
+                },
+            )
+        };
+
+        let tap =
+            EffectAst::subject_verb_tap(TargetAst::Object(ObjectFilter::creature(), None, None));
+        let annotated = annotate_effect_sequence(
+            &[tap, consumer()],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("typed tapped metric should bind to tap producer");
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) = &annotated.effects[1].effect
+        else {
+            panic!("expected draw consumer");
+        };
+        assert!(matches!(
+            count,
+            Value::PriorEffectMetric {
+                effect_id: EffectId(0),
+                query,
+            } if query.action == Some(PriorEffectAction::Tapped)
+        ));
+
+        let destroy = EffectAst::subject_verb_destroy(TargetAst::Object(
+            ObjectFilter::creature(),
+            None,
+            None,
+        ));
+        let error = annotate_effect_sequence(
+            &[destroy, consumer()],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect_err("destroy producer must not satisfy a tapped metric");
+        assert!(error.to_string().contains("prior memory-producing effect"));
+    }
+
+    #[test]
+    fn partitioned_repeat_metric_binds_through_player_and_may_wrappers() {
+        let producer = EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::May {
+                effects: vec![EffectAst::subject_verb_tap(TargetAst::Object(
+                    ObjectFilter::creature(),
+                    None,
+                    None,
+                ))],
+            }],
+        };
+        let count = Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                EffectMetricSource::AffectedObjects,
+                EffectMetric::Count,
+            )
+            .with_filter(ObjectFilter::creature())
+            .with_player(PlayerFilter::IteratedPlayer)
+            .with_action(PriorEffectAction::Tapped),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+        let consumer = EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::RepeatEffects {
+                count,
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::That,
+                    SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
+            }],
+        };
+
+        let annotated = annotate_effect_sequence(
+            &[producer, consumer],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("partitioned repeat metric should bind through participant wrappers");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        let EffectAst::ForEachPlayer { effects } = &annotated.effects[1].effect else {
+            panic!("expected participant-scoped consumer");
+        };
+        let [EffectAst::RepeatEffects { count, .. }] = effects.as_slice() else {
+            panic!("expected participant-scoped repeat consumer: {effects:#?}");
+        };
+        assert!(matches!(
+            count,
+            Value::SurfaceHinted { value, .. }
+                if matches!(
+                    value.as_ref(),
+                    Value::PriorEffectMetric {
+                        effect_id: EffectId(0),
+                        query,
+                    } if query.player == Some(PlayerFilter::IteratedPlayer)
+                        && query.action == Some(PriorEffectAction::Tapped)
+                )
+        ));
     }
 
     #[test]

@@ -1046,11 +1046,41 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             Value::PlayerCounters(PlayerFilter::You, counter_type)
         }
         DynamicCostValueShape::ThisWayMetric(metric) => match metric {
-            DynamicThisWayMetric::Destroyed | DynamicThisWayMetric::Sacrificed => {
+            DynamicThisWayMetric::Destroyed => {
+                let mut count_words = vec!["for", "each"];
+                count_words.extend(parser_token_word_refs(history_tokens));
+                if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
+                    parse_for_each_count_value_words(&count_words)
+                    && used == count_words.len()
+                {
+                    value
+                } else {
+                    Value::PendingEffectMetric {
+                        source: EffectMetricSource::AffectedObjects,
+                        metric: EffectMetric::Count,
+                    }
+                }
+            }
+            DynamicThisWayMetric::Sacrificed => {
+                let words = parser_token_word_refs(history_tokens);
+                let kind = if words.iter().any(|word| matches!(*word, "creature" | "creatures")) {
+                    ironsmith_core::SacrificedObjectKind::Creature
+                } else if words.iter().any(|word| matches!(*word, "artifact" | "artifacts")) {
+                    ironsmith_core::SacrificedObjectKind::Artifact
+                } else if words
+                    .iter()
+                    .any(|word| matches!(*word, "enchantment" | "enchantments"))
+                {
+                    ironsmith_core::SacrificedObjectKind::Enchantment
+                } else {
+                    ironsmith_core::SacrificedObjectKind::Permanent
+                };
                 Value::PendingEffectMetric {
                     source: EffectMetricSource::AffectedObjects,
                     metric: EffectMetric::Count,
                 }
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::PermanentsSacrificedThisWay)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::SacrificedObject(kind))
             }
             DynamicThisWayMetric::Discarded => Value::PendingEffectMetric {
                 source: EffectMetricSource::Outcome,
@@ -1169,8 +1199,15 @@ pub(crate) fn parse_skip_your_draw_step_static_line(
 pub(crate) fn parse_legend_rule_doesnt_apply_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if keyword_static_lines::parse_legend_rule_doesnt_apply_tokens(tokens) {
-        return Ok(Some(StaticAbility::legend_rule_doesnt_apply()));
+    if let Some(scope) = keyword_static_lines::parse_legend_rule_doesnt_apply_tokens(tokens) {
+        return Ok(Some(match scope {
+            keyword_static_lines::LegendRuleScopeShape::Global => {
+                StaticAbility::legend_rule_doesnt_apply()
+            }
+            keyword_static_lines::LegendRuleScopeShape::Controller => {
+                StaticAbility::legend_rule_doesnt_apply_to_controller()
+            }
+        }));
     }
     Ok(None)
 }
@@ -1243,6 +1280,44 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
         abilities.push(StaticAbility::add_subtypes(filter, subtypes));
     }
     Ok(Some(abilities))
+}
+
+pub(crate) fn parse_subject_is_card_types_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(fact) = type_and_color_facts::parse_subject_card_type_identity_tokens(tokens) else {
+        return Ok(None);
+    };
+
+    let mut card_types = Vec::new();
+    for token in fact.descriptor_tokens {
+        let Some(word) = token.as_word() else {
+            continue;
+        };
+        if matches!(word, "a" | "an" | "and") {
+            continue;
+        }
+        let Some(card_type) = parse_card_type(word) else {
+            return Ok(None);
+        };
+        crate::slice_primitives::push_unique(&mut card_types, card_type);
+    }
+    if card_types.is_empty() {
+        return Ok(None);
+    }
+
+    let subject = parse_anthem_subject(fact.subject_tokens)?;
+    let mut filter = anthem_subject_filter(&subject);
+    if matches!(subject, AnthemSubjectAst::Source) {
+        let subject_words = parser_token_word_refs(fact.subject_tokens);
+        if subject_words.len() > 1
+            && let Some(surface) = source_reference_surface_for_words(&subject_words)
+        {
+            filter = filter.with_source_surface(surface);
+        }
+    }
+
+    Ok(Some(StaticAbility::set_card_types(filter, card_types)))
 }
 
 pub(crate) fn parse_all_cards_spells_permanents_colorless_line(
@@ -1931,6 +2006,46 @@ pub(crate) fn parse_prevent_all_combat_damage_to_matching_permanents_line(
             "prevent-all combat damage static line missing target filter (clause: '{}')",
             render_token_slice(tokens)
         )));
+    }
+    if let Some(by_idx) = target_tokens.iter().position(|token| token.is_word("by")) {
+        let source_tokens = trim_commas(&target_tokens[by_idx + 1..]);
+        let word_positions = source_tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, token)| token.as_word().map(|word| (idx, word)))
+            .collect::<Vec<_>>();
+        let (source_end, source_relation) = if word_positions.len() >= 2
+            && word_positions[word_positions.len() - 2].1 == "blocking"
+            && word_positions[word_positions.len() - 1].1 == "it"
+        {
+            (
+                word_positions[word_positions.len() - 2].0,
+                ironsmith_core::StaticDamageSourceRelation::BlockingStaticSource,
+            )
+        } else {
+            (
+                source_tokens.len(),
+                ironsmith_core::StaticDamageSourceRelation::Any,
+            )
+        };
+        let source_filter_tokens = trim_commas(&source_tokens[..source_end]);
+        if source_filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "prevent-all combat damage static line missing source filter (clause: '{}')",
+                render_token_slice(tokens)
+            )));
+        }
+        let source_filter = parse_object_filter_lexed(&source_filter_tokens, false)?;
+        return Ok(Some(
+            StaticAbility::prevent_all_damage_to_self_from_sources_matching(
+                ironsmith_core::PreventAllDamageToSelfFromSourcesMatchingSpec {
+                    source_filter,
+                    combat_only: true,
+                    source_relation,
+                    display: display_text_for_tokens(tokens, true),
+                },
+            ),
+        ));
     }
     let filter = parse_object_filter_lexed(&target_tokens, false)?;
     Ok(Some(

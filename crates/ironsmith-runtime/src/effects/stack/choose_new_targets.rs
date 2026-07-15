@@ -22,11 +22,15 @@ pub use ironsmith_core::ChooseNewTargetsEffect;
 /// object outputs and falling back to preserved chosen/affected-object facts.
 fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
-        ChooseSpec::Target(inner) => requires_target_selection(inner),
+        ChooseSpec::Target(_) => true,
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
         | ChooseSpec::Player(_)
-        | ChooseSpec::Object(_) => true,
+        | ChooseSpec::Object(_)
+        | ChooseSpec::PlayerOrPlaneswalker(_) => true,
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+            requires_target_selection(inner)
+        }
         _ => false,
     }
 }
@@ -173,7 +177,16 @@ impl EffectExecutor for ChooseNewTargetsEffect {
             };
 
             if game.stack[stack_idx].targets != new_targets {
-                game.stack[stack_idx].targets = new_targets;
+                let old_targets = game.stack[stack_idx].targets.clone();
+                let mut updated_entry = game.stack[stack_idx].clone();
+                updated_entry.targets = new_targets;
+                if !updated_entry.remap_target_distributions(&old_targets) {
+                    if self.may {
+                        continue;
+                    }
+                    return Ok(EffectOutcome::target_invalid());
+                }
+                game.stack[stack_idx] = updated_entry;
                 changed += 1;
                 for target in &game.stack[stack_idx].targets {
                     if let Target::Object(target_id) = target {

@@ -6,7 +6,7 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use crate::filter::CounterConstraint;
+use crate::filter::{CounterConstraint, ObjectFilter};
 use crate::object::CounterType;
 use crate::runtime_backend::lexer::{OwnedLexToken, parser_token_word_refs};
 
@@ -18,10 +18,12 @@ pub(crate) struct CounterTypeWordsSpec {
     pub(crate) consumed: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FilterCounterConstraintSpec {
     pub(crate) constraint: CounterConstraint,
     pub(crate) consumed: usize,
+    pub(crate) plural_counter_noun: bool,
+    pub(crate) plural_subject: bool,
 }
 
 fn counter_noun<'a>(
@@ -164,15 +166,14 @@ fn parse_filter_counter_constraint_word_slice(
 ) -> Result<FilterCounterConstraintSpec, ErrMode<ContextError>> {
     let initial_len = input.len();
     let descriptor = take_descriptor_before_counter(input)?;
-    counter_noun.parse_next(input)?;
+    let counter_noun = counter_noun.parse_next(input)?;
     primitives::word_slice_exact("on")
         .void()
         .parse_next(input)?;
-    alt((
+    let subject = alt((
         primitives::word_slice_exact("it"),
         primitives::word_slice_exact("them"),
     ))
-    .void()
     .parse_next(input)?;
 
     let descriptor_words = descriptor
@@ -205,6 +206,8 @@ fn parse_filter_counter_constraint_word_slice(
     Ok(FilterCounterConstraintSpec {
         constraint,
         consumed: initial_len.saturating_sub(input.len()),
+        plural_counter_noun: counter_noun == "counters",
+        plural_subject: subject == "them",
     })
 }
 
@@ -250,11 +253,54 @@ pub(crate) fn parse_counter_type_from_tokens(tokens: &[OwnedLexToken]) -> Option
 pub(crate) fn parse_filter_counter_constraint_words(
     words: &[&str],
 ) -> Option<(CounterConstraint, usize)> {
-    let mut input: primitives::WordSliceInput<'_> = words;
-    let spec = parse_filter_counter_constraint_word_slice
-        .parse_next(&mut input)
-        .ok()?;
+    let spec = parse_filter_counter_constraint_spec_words(words)?;
     Some((spec.constraint, spec.consumed))
+}
+
+pub(crate) fn parse_filter_counter_constraint_spec_words(
+    words: &[&str],
+) -> Option<FilterCounterConstraintSpec> {
+    let mut input: primitives::WordSliceInput<'_> = words;
+    parse_filter_counter_constraint_word_slice
+        .parse_next(&mut input)
+        .ok()
+}
+
+fn apply_filter_counter_constraint_surface(
+    filter: &mut ObjectFilter,
+    spec: FilterCounterConstraintSpec,
+) {
+    if filter.with_counter == Some(spec.constraint) {
+        filter.set_counter_requirement_surface(spec.plural_counter_noun, spec.plural_subject);
+    }
+    if filter.without_counter == Some(spec.constraint) {
+        filter.set_counter_exclusion_surface(spec.plural_counter_noun, spec.plural_subject);
+    }
+    for branch in &mut filter.any_of {
+        apply_filter_counter_constraint_surface(branch, spec);
+    }
+}
+
+/// Restore Oracle-only number and pronoun choices after the semantic filter
+/// parser has consumed a counter constraint. These hints do not participate in
+/// filter equality or runtime matching.
+pub(crate) fn preserve_filter_counter_constraint_surface_words(
+    filter: &mut ObjectFilter,
+    words: &[&str],
+) {
+    for start in 0..words.len() {
+        if let Some(spec) = parse_filter_counter_constraint_spec_words(&words[start..]) {
+            apply_filter_counter_constraint_surface(filter, spec);
+        }
+    }
+}
+
+pub(crate) fn preserve_filter_counter_constraint_surface_tokens(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
+    let words = parser_token_word_refs(tokens);
+    preserve_filter_counter_constraint_surface_words(filter, &words);
 }
 
 #[cfg(test)]
@@ -318,6 +364,24 @@ mod tests {
             parse_filter_counter_constraint_words(&["stun", "counter", "on", "it"]),
             Some((CounterConstraint::Typed(CounterType::Stun), 4))
         );
+
+        let plural = parse_filter_counter_constraint_spec_words(&[
+            "+1/+1", "counters", "on", "them", "this", "turn",
+        ])
+        .expect("plural filter counter surface");
+        assert_eq!(
+            plural.constraint,
+            CounterConstraint::Typed(CounterType::PlusOnePlusOne)
+        );
+        assert_eq!(plural.consumed, 4);
+        assert!(plural.plural_counter_noun);
+        assert!(plural.plural_subject);
+
+        let singular =
+            parse_filter_counter_constraint_spec_words(&["a", "+1/+1", "counter", "on", "it"])
+                .expect("singular filter counter surface");
+        assert!(!singular.plural_counter_noun);
+        assert!(!singular.plural_subject);
     }
 
     #[test]

@@ -206,7 +206,9 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
     if matches_surface(&all_words, TAGGED_OBJECT_TARGET_PATTERN) {
-        if all_words == ["the", "card"] {
+        if let Some(surface) = typed_demonstrative_reference_surface(tokens) {
+            record_source_reference_surface(span, surface);
+        } else if all_words == ["the", "card"] {
             record_source_reference_surface(
                 span,
                 SourceReferenceSurface::ThisPermanentType("the card".to_string()),
@@ -741,17 +743,15 @@ pub(crate) fn parse_target_phrase_inner(
         ));
     }
 
-    if [
-        &["permanent", "or", "player"][..],
-        &["permanents", "or", "players"][..],
-        &["player", "or", "permanent"][..],
-        &["players", "or", "permanents"][..],
-    ]
-    .iter()
-    .any(|expected| primitives::parse_word_sequence_complete(&remaining_words, expected).is_some())
-    {
+    if matches!(
+        parse_target_union_shape(&remaining_words),
+        Some(TargetUnionShape::BattleOrOpponent)
+    ) {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        filter.card_types.push(CardType::Battle);
+        filter.other = other;
         return Ok(wrap_target_count(
-            TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            TargetAst::ObjectOrPlayer(filter, PlayerFilter::Opponent, target_span),
             target_count,
         ));
     }
@@ -761,7 +761,24 @@ pub(crate) fn parse_target_phrase_inner(
         Some(TargetUnionShape::CreatureOrPlayer)
     );
     if creature_or_player {
-        return Ok(wrap_target_count(TargetAst::AnyTarget(span), target_count));
+        let mut filter = ObjectFilter::creature();
+        filter.other = other;
+        return Ok(wrap_target_count(
+            TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, target_span),
+            target_count,
+        ));
+    }
+
+    if matches!(
+        parse_target_union_shape(&remaining_words),
+        Some(TargetUnionShape::PermanentOrPlayer)
+    ) {
+        let mut filter = ObjectFilter::permanent();
+        filter.other = other;
+        return Ok(wrap_target_count(
+            TargetAst::ObjectOrPlayer(filter, PlayerFilter::Any, target_span),
+            target_count,
+        ));
     }
 
     let mixed_object_player_target =
@@ -823,6 +840,7 @@ pub(crate) fn parse_target_phrase_inner(
         filter.with_counter = Some(counter_constraint);
     }
     let reference_span = if let Some(surface) = typed_demonstrative_reference_surface(remaining) {
+        filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
         let span = token_slice_span(remaining);
         record_source_reference_surface(span, surface);
         span
@@ -898,6 +916,40 @@ mod tests {
         };
         assert!(filter.other);
         assert_eq!(filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn battle_or_opponent_preserves_both_target_domains_and_source_exclusion() {
+        let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
+            parse("another target battle or opponent")
+        else {
+            panic!("expected object/player union target");
+        };
+        assert!(explicit_target.is_some());
+        assert!(filter.other);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, vec![CardType::Battle]);
+        assert_eq!(player, PlayerFilter::Opponent);
+    }
+
+    #[test]
+    fn non_target_permanent_or_player_union_remains_non_targeting() {
+        let TargetAst::ObjectOrPlayer(filter, player, explicit_target) =
+            parse("a permanent or player")
+        else {
+            panic!("expected object/player union reference");
+        };
+        assert!(explicit_target.is_none());
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(player, PlayerFilter::Any);
+    }
+
+    #[test]
+    fn attacked_player_or_planeswalker_remains_a_combat_reference() {
+        assert!(matches!(
+            parse("the player or planeswalker it's attacking"),
+            TargetAst::AttackedPlayerOrPlaneswalker(_)
+        ));
     }
 
     #[test]

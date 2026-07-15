@@ -1,12 +1,14 @@
 //! Prevent all damage effect implementation.
 
 use super::prevention_helpers::{
-    SourceChoiceSelection, choose_source_of_your_choice, register_prevention_shield,
+    SourceChoiceSelection, choose_source_of_your_choice,
+    choose_source_sharing_activation_payment_color, register_prevention_shield,
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::effects::helpers::resolve_objects_from_spec;
 pub use ironsmith_core::PreventAllDamageEffect;
 
 /// Effect that prevents all damage until end of turn.
@@ -40,8 +42,30 @@ impl EffectExecutor for PreventAllDamageEffect {
         }
 
         let mut damage_filter = self.damage_filter.clone();
+        if let Some(source_target) = &self.source_target {
+            damage_filter.from_specific_source = resolve_objects_from_spec(game, source_target, ctx)?
+                .first()
+                .copied();
+            if damage_filter.from_specific_source.is_none() {
+                return Err(ExecutionError::InvalidTarget);
+            }
+        }
+        if let Some(excluded_source_target) = &self.excluded_source_target {
+            damage_filter.excluded_specific_source =
+                resolve_objects_from_spec(game, excluded_source_target, ctx)?
+                    .first()
+                    .copied();
+            if damage_filter.excluded_specific_source.is_none() {
+                return Err(ExecutionError::InvalidTarget);
+            }
+        }
         if self.source_of_your_choice {
-            match choose_source_of_your_choice(game, ctx) {
+            let selection = if self.source_choice_shares_activation_mana_color {
+                choose_source_sharing_activation_payment_color(game, ctx)
+            } else {
+                choose_source_of_your_choice(game, ctx)
+            };
+            match selection {
                 SourceChoiceSelection::Chosen(source) => {
                     damage_filter.from_specific_source = Some(source);
                 }
@@ -50,10 +74,15 @@ impl EffectExecutor for PreventAllDamageEffect {
             }
         }
 
+        let protected = if self.protect_source {
+            crate::prevention::PreventionTarget::Permanent(ctx.source)
+        } else {
+            self.target.clone()
+        };
         register_prevention_shield(
             game,
             ctx,
-            self.target.clone(),
+            protected,
             None,
             self.until.clone(),
             damage_filter,
@@ -63,6 +92,12 @@ impl EffectExecutor for PreventAllDamageEffect {
         );
 
         Ok(EffectOutcome::resolved())
+    }
+
+    fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
+        self.source_target
+            .as_ref()
+            .or(self.excluded_source_target.as_ref())
     }
 }
 

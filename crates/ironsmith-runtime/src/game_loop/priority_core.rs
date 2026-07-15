@@ -1,9 +1,11 @@
 use super::*;
 use crate::perf::PerfTimer;
+#[cfg(feature = "serialization")]
 use serde::Serialize;
 use std::cell::RefCell;
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serialization", derive(Serialize))]
 pub struct PriorityAdvancePerfMetrics {
     pub replacement_choice_ms: f64,
     pub state_based_actions_ms: f64,

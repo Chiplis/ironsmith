@@ -13,13 +13,13 @@ use crate::decision::DecisionMaker;
 use crate::effect::{EffectId, EffectOutcome};
 use crate::effects::{SecretChoiceResult, VoteResult};
 use crate::events::cause::EventCause;
-use crate::game_state::{GameState, TargetAssignment};
+use crate::game_state::{GameState, TargetAssignment, TargetDistribution};
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
 use crate::replacement::{ReplacementEffect, ReplacementEffectId, ReplacementEffectKey};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
-use crate::target::FilterContext;
+use crate::target::{ChooseSpec, FilterContext};
 use crate::types::Subtype;
 
 // ============================================================================
@@ -162,6 +162,8 @@ pub struct ManaExecutionContext {
     pub mana_source_chosen_creature_type: Option<Subtype>,
     /// Provenance marker for mana produced during this execution.
     pub production_provenance: crate::events::mana::ManaProductionProvenance,
+    /// Mana spent on the activation cost of the resolving ability.
+    pub activation_payment: crate::player::ManaPool,
 }
 
 /// Ephemeral replacement effects scoped to the current resolution path.
@@ -185,6 +187,8 @@ pub struct ExecutionContext<'a> {
     pub targets_are_cost_choices: bool,
     /// Active target requirement assignments for the current execution scope.
     pub target_assignments: Vec<TargetAssignment>,
+    /// Announced divisions not yet consumed by their resolving effects.
+    pub target_distributions: Vec<TargetDistribution>,
     /// X value (for spells with X in cost).
     pub x_value: Option<u32>,
     /// Outcomes of previously executed effects (for WithId/If).
@@ -262,6 +266,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("targets", &self.targets)
             .field("targets_are_cost_choices", &self.targets_are_cost_choices)
             .field("target_assignments", &self.target_assignments)
+            .field("target_distributions", &self.target_distributions)
             .field("x_value", &self.x_value)
             .field("effect_outcomes", &self.effect_outcomes)
             .field("secret_choice_results", &self.secret_choice_results)
@@ -309,6 +314,7 @@ impl<'a> ExecutionContext<'a> {
             targets: Vec::new(),
             targets_are_cost_choices: false,
             target_assignments: Vec::new(),
+            target_distributions: Vec::new(),
             x_value: None,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
@@ -354,6 +360,7 @@ impl<'a> ExecutionContext<'a> {
             targets: Vec::new(),
             targets_are_cost_choices: false,
             target_assignments: Vec::new(),
+            target_distributions: Vec::new(),
             x_value: None,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
@@ -389,6 +396,7 @@ impl<'a> ExecutionContext<'a> {
             targets: self.targets,
             targets_are_cost_choices: self.targets_are_cost_choices,
             target_assignments: self.target_assignments,
+            target_distributions: self.target_distributions,
             x_value: self.x_value,
             effect_outcomes: self.effect_outcomes,
             vote_results: self.vote_results,
@@ -466,6 +474,15 @@ impl<'a> ExecutionContext<'a> {
         provenance: crate::events::mana::ManaProductionProvenance,
     ) -> Self {
         self.mana.production_provenance = provenance;
+        self
+    }
+
+    /// Retain the resolving activated ability's mana payment.
+    pub fn with_activation_mana_payment(
+        mut self,
+        payment: crate::player::ManaPool,
+    ) -> Self {
+        self.mana.activation_payment = payment;
         self
     }
 
@@ -569,6 +586,24 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_target_assignments(mut self, target_assignments: Vec<TargetAssignment>) -> Self {
         self.target_assignments = target_assignments;
         self
+    }
+
+    /// Set the target divisions announced when this stack object was proposed.
+    pub fn with_target_distributions(
+        mut self,
+        target_distributions: Vec<TargetDistribution>,
+    ) -> Self {
+        self.target_distributions = target_distributions;
+        self
+    }
+
+    /// Consume the next announced division for the specified target requirement.
+    pub fn take_target_distribution(&mut self, spec: &ChooseSpec) -> Option<TargetDistribution> {
+        let index = self
+            .target_distributions
+            .iter()
+            .position(|distribution| distribution.spec == *spec)?;
+        Some(self.target_distributions.remove(index))
     }
 
     /// Temporarily override `targets` while running a closure, then restore.

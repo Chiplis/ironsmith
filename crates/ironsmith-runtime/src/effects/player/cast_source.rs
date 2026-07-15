@@ -3,11 +3,10 @@
 //! Casts the source card of the resolving effect/ability.
 
 use crate::alternative_cast::CastingMethod;
-use crate::cost::OptionalCostsPaid;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, StackEntry};
+use crate::game_state::GameState;
 use crate::zone::Zone;
 pub use ironsmith_core::CastSourceEffect;
 
@@ -33,9 +32,6 @@ impl EffectExecutor for CastSourceEffect {
         }
 
         let from_zone = source_obj.zone;
-        let mana_cost = source_obj.mana_cost_owned();
-        let stable_id = source_obj.stable_id;
-        let source_name = source_obj.name.to_string();
         let mut suspend_alternative_index = if from_zone == Zone::Exile {
             source_obj
                 .alternative_casts
@@ -44,49 +40,8 @@ impl EffectExecutor for CastSourceEffect {
         } else {
             None
         };
-        let x_value = mana_cost
-            .as_ref()
-            .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
-
-        if !self.without_paying_mana_cost
-            && let Some(cost) = mana_cost.as_ref()
-        {
-            let effective_cost = crate::decision::calculate_effective_mana_cost(
-                game,
-                ctx.controller,
-                source_obj,
-                cost,
-            );
-            if !game.try_pay_mana_cost_with_reason(
-                ctx.controller,
-                Some(source_id),
-                &effective_cost,
-                0,
-                crate::costs::PaymentReason::CastSpell,
-            ) {
-                return Ok(EffectOutcome::impossible());
-            }
-        }
-
-        let mana_sources_tag =
-            crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
-        let spent_mana_sources = game
-            .object(source_id)
-            .and_then(|object| object.cast_tagged_objects.get(&mana_sources_tag))
-            .cloned()
-            .unwrap_or_default();
-
-        let Some(new_id) = game.move_object_by_effect(source_id, Zone::Stack) else {
-            return Ok(EffectOutcome::impossible());
-        };
-
-        if let Some(obj) = game.object_mut(new_id) {
-            obj.x_value = x_value;
-            if !spent_mana_sources.is_empty() {
-                obj.cast_tagged_objects
-                    .insert(mana_sources_tag.clone(), spent_mana_sources.clone());
-            }
-            if self.cast_as_suspend && suspend_alternative_index.is_none() {
+        if self.cast_as_suspend && suspend_alternative_index.is_none() {
+            if let Some(obj) = game.object_mut(source_id) {
                 suspend_alternative_index = Some(obj.alternative_casts.len());
                 obj.alternative_casts.push(
                     crate::alternative_cast::AlternativeCastingMethod::Suspend {
@@ -96,55 +51,30 @@ impl EffectExecutor for CastSourceEffect {
                 );
             }
         }
-
-        let mut optional_costs_paid = OptionalCostsPaid::default();
-        if self.cast_as_suspend {
-            optional_costs_paid.mark_label_paid("Suspend");
-        }
-
-        let stack_entry = StackEntry {
-            object_id: new_id,
-            controller: ctx.controller,
-            provenance: ctx.provenance,
-            targets: vec![],
-            target_assignments: vec![],
-            x_value,
-            activation_cost_has_x: false,
-            activation_cost_has_tap: false,
-            ability_effects: None,
-            mana_usage_restrictions: Vec::new(),
-            mana_source_chosen_creature_type: None,
-            is_ability: false,
-            casting_method: CastingMethod::PlayFrom {
-                source: source_id,
-                zone: from_zone,
-                use_alternative: suspend_alternative_index,
-            },
-            optional_costs_paid,
-            defending_player: None,
-            chosen_player: None,
-            chapter_ability_source: None,
-            source_stable_id: Some(stable_id),
-            source_snapshot: None,
-            source_name: Some(source_name),
-            triggering_event: None,
-            event_value_amount: None,
-            trigger_identity: None,
-            ability_index: None,
-            intervening_if: None,
-            keyword_payment_contributions: vec![],
-            crew_contributors: vec![],
-            saddle_contributors: vec![],
-            chosen_modes: None,
-            tagged_objects: if spent_mana_sources.is_empty() {
-                std::collections::HashMap::new()
-            } else {
-                std::collections::HashMap::from([(mana_sources_tag, spent_mana_sources)])
-            },
-            effect_outcomes: std::collections::HashMap::new(),
+        let casting_method = CastingMethod::PlayFrom {
+            source: source_id,
+            zone: from_zone,
+            use_alternative: suspend_alternative_index,
         };
-
-        game.push_to_stack(stack_entry);
+        let result = crate::game_loop::cast_spell_from_resolving_effect(
+            game,
+            source_id,
+            from_zone,
+            ctx.controller,
+            &casting_method,
+            self.without_paying_mana_cost,
+            None,
+            ctx.provenance,
+            &mut ctx.decision_maker,
+        )
+        .map_err(|error| ExecutionError::Impossible(error.to_string()))?;
+        let Some(new_id) = result else {
+            return if ctx.decision_maker.awaiting_choice() {
+                Ok(EffectOutcome::count(0))
+            } else {
+                Ok(EffectOutcome::impossible())
+            };
+        };
         Ok(with_spell_cast_event(
             EffectOutcome::with_objects(vec![new_id]),
             game,

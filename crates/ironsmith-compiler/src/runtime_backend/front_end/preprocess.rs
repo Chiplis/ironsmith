@@ -102,6 +102,16 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
     if let Some(split) = preprocess_grammar::parse_line_variant_split(line) {
         let first = line.get(..split.first_end).unwrap_or_default().trim();
         let second = line.get(split.second_start..).unwrap_or_default().trim();
+        let second_without_reminder = strip_parenthetical_segments(second);
+        if split.kind == preprocess_grammar::LineVariantSplitKind::ManaSpendFollowup
+            && lex_line(second_without_reminder.as_str(), 0)
+                .ok()
+                .is_some_and(|tokens| {
+                super::grammar::abilities::parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
+            })
+        {
+            return vec![line.to_string()];
+        }
         if !first.is_empty() && !second.is_empty() {
             return vec![first.to_string(), second.to_string()];
         }
@@ -862,8 +872,9 @@ pub(crate) fn preprocess_document(
 
         let expanded_normalized = expand_borrow_ability_line(normalized.normalized.as_str());
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
-        let rewritten_normalized =
-            rewrite_exile_return_when_source_leaves_line(rewritten_normalized.as_str());
+        // Keep explicit exile/return sentences intact. The effect-sequence bundle
+        // parser folds them into one source-leaves runtime effect while retaining
+        // that the authored surface used two sentences.
         let normalized = if rewritten_normalized != normalized.normalized {
             let char_map =
                 resized_char_map_for_rewrite(&normalized.char_map, &rewritten_normalized);

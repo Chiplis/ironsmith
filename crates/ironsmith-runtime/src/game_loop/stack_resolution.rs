@@ -156,6 +156,10 @@ fn choose_spec_references_target_player(spec: &crate::target::ChooseSpec) -> boo
         | ChooseSpec::PlayerOrPlaneswalker(filter) => {
             player_filter_references_target_player(filter)
         }
+        ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => {
+            object_filter_references_target_player(object_filter)
+                || player_filter_references_target_player(player_filter)
+        }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             object_filter_references_target_player(filter)
         }
@@ -369,7 +373,12 @@ fn collect_tagged_constraints_from_spec(
             collect_tagged_constraints_from_spec(spec, out);
         }
         _ => {
-            if let crate::target::ChooseSpec::Object(filter) = spec.base() {
+            let filter = match spec.base() {
+                crate::target::ChooseSpec::Object(filter)
+                | crate::target::ChooseSpec::ObjectOrPlayer(filter, _) => Some(filter),
+                _ => None,
+            };
+            if let Some(filter) = filter {
                 for constraint in &filter.tagged_constraints {
                     if !out.contains(&constraint.tag) {
                         out.push(constraint.tag.clone());
@@ -685,6 +694,7 @@ pub(super) fn resolve_stack_entry_full(
         .with_casting_method(entry.casting_method.clone())
         .with_mana_usage_restrictions(entry.mana_usage_restrictions.clone())
         .with_mana_source_chosen_creature_type(entry.mana_source_chosen_creature_type)
+        .with_activation_mana_payment(entry.mana_spent_on_activation.clone())
         .with_cause(EventCause::from_effect(entry.object_id, entry.controller))
         .with_provenance(entry.provenance);
     if let Some(x) = entry.x_value {
@@ -824,7 +834,8 @@ pub(super) fn resolve_stack_entry_full(
 
     ctx = ctx
         .with_targets(valid_targets)
-        .with_target_assignments(valid_target_assignments.clone());
+        .with_target_assignments(valid_target_assignments.clone())
+        .with_target_distributions(entry.target_distributions.clone());
 
     // Snapshot target objects for "last known information" before effects execute
     // This allows effects to access power/controller of targets even after they're exiled

@@ -13,6 +13,8 @@ pub enum GameLoopError {
     ResolutionFailed(String),
     /// Invalid game state.
     InvalidState(String),
+    /// A proposed cast or activation was illegal and has been rolled back.
+    ActionCancelled(String),
     /// No players remaining.
     GameOver,
     /// Invalid player response.
@@ -36,9 +38,11 @@ pub enum PriorityResponse {
         declarations: Vec<BlockerDeclaration>,
     },
     Targets(Vec<Target>),
+    Distribution(Vec<(Target, u32)>),
     XValue(u32),
     NumberChoice(u32),
     Modes(Vec<usize>),
+    SpliceCards(Vec<ObjectId>),
     OptionalCosts(Vec<(usize, u32)>),
     ManaPayment(usize),
     ManaPipPayment(usize),
@@ -80,6 +84,7 @@ impl std::fmt::Display for GameLoopError {
             GameLoopError::TurnError(e) => write!(f, "Turn error: {e}"),
             GameLoopError::ResolutionFailed(msg) => write!(f, "Resolution failed: {}", msg),
             GameLoopError::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
+            GameLoopError::ActionCancelled(msg) => write!(f, "Action cancelled: {}", msg),
             GameLoopError::GameOver => write!(f, "Game over"),
             GameLoopError::ResponseError(e) => write!(f, "Response error: {}", e),
             GameLoopError::CombatError(e) => write!(f, "Combat error: {}", e),

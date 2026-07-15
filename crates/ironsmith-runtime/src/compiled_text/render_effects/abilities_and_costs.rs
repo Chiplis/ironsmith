@@ -639,6 +639,7 @@ pub(crate) fn describe_ability(
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
             line = normalize_ability_self_reference_surface(&line, subject);
+            line = deduplicate_triggered_presentation_label(triggered, line);
             vec![line]
         }
         AbilityKind::Activated(activated) if activated.is_mana_ability() => {
@@ -1338,6 +1339,9 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::DuringYourTurn => "Activate only during your turn".to_string(),
             ActivationTiming::DuringOpponentsTurn => {
                 "Activate only during an opponent's turn".to_string()
+            }
+            ActivationTiming::DuringSourceOwnersUpkeep => {
+                "Activate only during this card's owner's upkeep".to_string()
             }
         },
         crate::ConditionExpr::MaxActivationsPerTurn(limit) => {

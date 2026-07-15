@@ -35,7 +35,8 @@ pub use ironsmith_core::effect::{
     ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId, SearchSelectionMode,
 };
 pub use ironsmith_core::{
-    Comparison, EffectPredicate, EventValueSpec, Until, ValueComparisonOperator,
+    Comparison, ConditionalModeRange, EffectPredicate, EventValueSpec, PriorEffectResultActor,
+    PriorEffectResultQuantifier, PriorEffectResultSurface, Until, ValueComparisonOperator,
 };
 use std::sync::Arc;
 
@@ -180,6 +181,80 @@ impl OutcomeObjectMemory {
             let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
             Self::from_snapshot(&snapshot)
         })
+    }
+
+    /// Rebuild a filterable snapshot while preserving captured LKI fields.
+    ///
+    /// If the object still exists, its full snapshot supplies fields that the
+    /// compact memory does not retain. Captured identity, zone, controller,
+    /// owner, and characteristics always win so prior-effect queries never
+    /// silently observe post-effect state.
+    pub fn to_snapshot(&self, game: &GameState) -> ObjectSnapshot {
+        let mut snapshot = game
+            .object(self.object_id)
+            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+            .unwrap_or_else(|| ObjectSnapshot {
+                object_id: self.object_id,
+                stable_id: self.stable_id,
+                kind: if self.is_token {
+                    crate::object::ObjectKind::Token
+                } else {
+                    crate::object::ObjectKind::Card
+                },
+                card: None,
+                controller: self.controller,
+                owner: self.owner,
+                name: String::new(),
+                first_printed_set_name: None,
+                mana_cost: None,
+                colors: self.colors,
+                supertypes: Vec::new(),
+                card_types: self.card_types.clone(),
+                subtypes: self.subtypes.clone(),
+                compiled_card_text: String::new(),
+                other_face: None,
+                other_face_name: None,
+                linked_face_layout: crate::card::LinkedFaceLayout::None,
+                power: self.power,
+                toughness: self.toughness,
+                base_power: self.power,
+                base_toughness: self.toughness,
+                loyalty: None,
+                defense: None,
+                abilities: Arc::new(Vec::new()),
+                aura_attach_filter: None,
+                copiable_values: crate::snapshot::CopiableValues::default(),
+                x_value: None,
+                cast_order_this_turn: None,
+                mana_spent_to_cast: crate::player::ManaPool::default(),
+                counters: std::collections::HashMap::new(),
+                is_token: self.is_token,
+                tapped: false,
+                attacking: false,
+                flipped: false,
+                face_down: false,
+                transform_count: 0,
+                attached_to: None,
+                attachments: Vec::new(),
+                was_enchanted: false,
+                is_monstrous: false,
+                is_commander: false,
+                zone: self.zone,
+            });
+
+        snapshot.stable_id = self.stable_id;
+        snapshot.controller = self.controller;
+        snapshot.owner = self.owner;
+        snapshot.zone = self.zone;
+        snapshot.power = self.power;
+        snapshot.toughness = self.toughness;
+        snapshot.base_power = self.power;
+        snapshot.base_toughness = self.toughness;
+        snapshot.card_types = self.card_types.clone();
+        snapshot.colors = self.colors;
+        snapshot.subtypes = self.subtypes.clone();
+        snapshot.is_token = self.is_token;
+        snapshot
     }
 }
 
@@ -752,6 +827,63 @@ pub trait EffectPredicateRuntimeExt {
     fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool;
 }
 
+fn prior_result_filter_has_lki_constraints(filter: &ObjectFilter) -> bool {
+    !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
+        || !filter.excluded_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+        || filter.token
+        || filter.nontoken
+}
+
+fn prior_result_memory_matches_filter(memory: &OutcomeObjectMemory, filter: &ObjectFilter) -> bool {
+    if !filter.card_types.is_empty()
+        && !filter
+            .card_types
+            .iter()
+            .any(|card_type| memory.card_types.contains(card_type))
+    {
+        return false;
+    }
+    if !filter
+        .all_card_types
+        .iter()
+        .all(|card_type| memory.card_types.contains(card_type))
+    {
+        return false;
+    }
+    if filter
+        .excluded_card_types
+        .iter()
+        .any(|card_type| memory.card_types.contains(card_type))
+    {
+        return false;
+    }
+    if !filter.subtypes.is_empty()
+        && !filter
+            .subtypes
+            .iter()
+            .any(|subtype| memory.subtypes.contains(subtype))
+    {
+        return false;
+    }
+    if filter
+        .excluded_subtypes
+        .iter()
+        .any(|subtype| memory.subtypes.contains(subtype))
+    {
+        return false;
+    }
+    if filter.token && !memory.is_token {
+        return false;
+    }
+    if filter.nontoken && memory.is_token {
+        return false;
+    }
+    true
+}
+
 impl EffectPredicateRuntimeExt for EffectPredicate {
     fn evaluate_outcome(&self, outcome: &EffectOutcome) -> bool {
         match self {
@@ -807,6 +939,16 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                         .any(|memory| memory.card_types.contains(card_type) != *negated)
                 })
             }
+            Self::PriorEffectResult(surface) => {
+                if !prior_result_filter_has_lki_constraints(&surface.filter) {
+                    return Self::Happened.evaluate_outcome(outcome);
+                }
+                outcome.affected_object_memory().is_some_and(|memories| {
+                    memories
+                        .iter()
+                        .any(|memory| prior_result_memory_matches_filter(memory, &surface.filter))
+                })
+            }
             Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
             Self::Chosen => {
                 !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Declined))
@@ -824,7 +966,8 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
 // ============================================================================
 
 pub use ironsmith_core::value_model::{
-    Condition, EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope, Restriction,
+    AttachmentConditionHost, Condition, EffectMetric, EffectMetricSource, ManaSpendPermission,
+    ManaSpendScope, PriorEffectAction, PriorEffectMetricQuery, Restriction,
     SourceCounterThresholdSurface, Value,
 };
 
@@ -1627,6 +1770,12 @@ impl Effect {
     pub fn goad(target: ChooseSpec) -> Self {
         use crate::effects::GoadEffect;
         Self::new(GoadEffect::new(target))
+    }
+
+    /// Create a goad effect with an explicit duration.
+    pub fn goad_for(target: ChooseSpec, duration: Until) -> Self {
+        use crate::effects::GoadEffect;
+        Self::new(GoadEffect::with_duration(target, duration))
     }
 
     /// Create a "detain target permanent" effect.

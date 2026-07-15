@@ -1039,11 +1039,29 @@ impl ReplacementMatcher for DamageToOtherCreatureYouControlMatcher {
 #[derive(Debug, Clone)]
 pub struct DamageToSelfFromSourceFilterMatcher {
     pub source_filter: ObjectFilter,
+    pub combat_only: bool,
+    pub source_relation: ironsmith_core::StaticDamageSourceRelation,
 }
 
 impl DamageToSelfFromSourceFilterMatcher {
     pub fn new(source_filter: ObjectFilter) -> Self {
-        Self { source_filter }
+        Self {
+            source_filter,
+            combat_only: false,
+            source_relation: ironsmith_core::StaticDamageSourceRelation::Any,
+        }
+    }
+
+    pub fn with_constraints(
+        source_filter: ObjectFilter,
+        combat_only: bool,
+        source_relation: ironsmith_core::StaticDamageSourceRelation,
+    ) -> Self {
+        Self {
+            source_filter,
+            combat_only,
+            source_relation,
+        }
     }
 
     pub fn from_creature() -> Self {
@@ -1064,11 +1082,21 @@ impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
         if damage.is_unpreventable {
             return false;
         }
+        if self.combat_only && !damage.is_combat {
+            return false;
+        }
 
         let DamageTarget::Object(target_id) = damage.target else {
             return false;
         };
         if ctx.source != Some(target_id) {
+            return false;
+        }
+        if self.source_relation == ironsmith_core::StaticDamageSourceRelation::BlockingStaticSource
+            && ctx.game.combat.as_ref().and_then(|combat| {
+                crate::combat_state::get_blocked_attacker(combat, damage.source)
+            }) != Some(target_id)
+        {
             return false;
         }
 

@@ -86,6 +86,21 @@ pub(super) fn parse_triggered_line_cst(
     }
 
     let mut best_probe_error = None;
+    let mut typed_conditional_fallback = None;
+
+    // Once a triggered ability explicitly starts its post-trigger clause with
+    // `if`, that condition is semantic: it is an intervening-if check, not
+    // expendable punctuation. Keep track of the surface shape independently
+    // of whether the typed predicate grammar can model it so the generic
+    // comma splitter below cannot silently turn the ability unconditional.
+    let has_explicit_intervening_if =
+        grammar::split_lexed_once_on_comma(tokens_without_cap).is_some_and(
+            |(_, after_trigger)| {
+                after_trigger.first().is_some_and(|token| {
+                    token.kind == TokenKind::Word && token.parser_text() == "if"
+                })
+            },
+        );
 
     if let Some(spec) = structure::split_triggered_conditional_clause_lexed(tokens_without_cap, 1) {
         let probe = probe_triggered_split(
@@ -106,6 +121,29 @@ pub(super) fn parse_triggered_line_cst(
         if best_probe_error.is_none() {
             best_probe_error = probe.preferred_error();
         }
+        // The split probe is deliberately conservative and can reject a
+        // trigger/effect pair that the semantic document pass can still
+        // lower with its richer context. Preserve that existing fallback
+        // behavior, but keep the successfully parsed predicate attached.
+        // This is the conditional counterpart to the generic fallback below.
+        typed_conditional_fallback = probe.fallback_cst(line, tokens_without_cap);
+    }
+
+    if has_explicit_intervening_if {
+        if let Some(parsed) = typed_conditional_fallback {
+            parse_trace::event(format!(
+                "trigger split: typed conditional fallback trigger=\"{}\" effects=\"{}\"",
+                render_token_slice(&parsed.trigger_parse_tokens),
+                render_token_slice(&parsed.effect_parse_tokens)
+            ));
+            return Ok(parsed);
+        }
+        return Err(best_probe_error.unwrap_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported intervening-if predicate in triggered line: '{}'",
+                line.info.raw_line
+            ))
+        }));
     }
 
     if let Some((leading_tokens, effect_tokens)) =

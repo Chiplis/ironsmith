@@ -105,6 +105,17 @@ fn first_word_look_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -
     sentence_head_word_in(sentences, sentence_idx, &["look", "reveal"])
 }
 
+fn first_word_consult_reveal_candidate(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> bool {
+    sentence_head_word_in(
+        sentences,
+        sentence_idx,
+        &["reveal", "defending", "target", "each", "that", "they", "you"],
+    )
+}
+
 fn first_word_target_exile_look_or_reveal(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -303,6 +314,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_look_or_reveal,
         parser:
             generic_subject_verb_sequences::triples::parse_consult_cleanup_then_typed_when_result,
+    },
+    SequenceRuleDef {
+        name: "consult-reveal-pump-triggering-creature-move-revealed",
+        feature_tag: Some("consult-revealed-collection-followup"),
+        priority: 438,
+        consumed_sentences: 3,
+        predicate: first_word_consult_reveal_candidate,
+        parser: generic_subject_verb_sequences::triples::parse_consult_reveal_then_pump_triggering_creature_then_move_revealed,
     },
     SequenceRuleDef {
         name: "look-at-top-reveal-counted-hand-then-shuffle",
@@ -811,6 +830,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         priority: 240,
         consumed_sentences: 2,
         predicate: first_word_the,
+        parser: generic_subject_verb_sequences::parse_next_damage_prevention_gain_life_sequence,
+    },
+    SequenceRuleDef {
+        name: "fixed-damage-prevention-then-gain-prevented-life",
+        feature_tag: Some("damage-prevention-followup"),
+        priority: 240,
+        consumed_sentences: 2,
+        predicate: first_word_prevent,
         parser: generic_subject_verb_sequences::parse_next_damage_prevention_gain_life_sequence,
     },
     SequenceRuleDef {

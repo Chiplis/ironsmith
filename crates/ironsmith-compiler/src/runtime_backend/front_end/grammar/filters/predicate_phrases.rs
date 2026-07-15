@@ -663,7 +663,9 @@ fn parse_filter_keyword_constraint_tokens(
     Some((constraint, consumed_tokens))
 }
 
-fn parse_source_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+pub(crate) fn parse_source_keyword_condition_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
     let relation = parse_has_relation_clauses(tokens)?;
     if !is_source_reference_clause(relation.subject_clause) {
         return None;
@@ -675,7 +677,29 @@ fn parse_source_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateA
     }
     let mut filter = ObjectFilter::default();
     apply_filter_keyword_constraint(&mut filter, constraint, false);
-    Some(PredicateAst::SourceMatches(filter))
+    Some(filter)
+}
+
+fn parse_source_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    parse_source_keyword_condition_filter(tokens).map(PredicateAst::SourceMatches)
+}
+
+fn parse_triggering_object_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let relation = parse_has_relation_clauses(tokens)?;
+    if !surface::exact_any(
+        relation.subject_clause,
+        &[&["it"], &["that", "object"], &["that", "spell"]],
+    ) {
+        return None;
+    }
+    let (constraint, consumed) =
+        parse_filter_keyword_constraint_tokens(relation.tail_clause.tokens())?;
+    if consumed != relation.tail_clause.tokens().len() {
+        return None;
+    }
+    let mut filter = ObjectFilter::default();
+    apply_filter_keyword_constraint(&mut filter, constraint, false);
+    Some(PredicateAst::ItMatches(filter))
 }
 
 fn parse_you_life_total_at_most_predicate(
@@ -2347,9 +2371,123 @@ fn is_creature_on_battlefield_with_greatest_power(words: &[String]) -> bool {
 
 fn parse_this_ability_resolution_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
+    if let Some(counts) = ability_resolution_ordinal_disjunction_counts(clause) {
+        let mut predicates = counts
+            .into_iter()
+            .map(PredicateAst::ThisAbilityResolvedThisTurnExactly);
+        let first = predicates.next()?;
+        return Some(predicates.fold(first, |left, right| {
+            PredicateAst::Or(Box::new(left), Box::new(right))
+        }));
+    }
+
     let count = ability_resolution_ordinal_count(clause)?;
 
     Some(PredicateAst::ThisAbilityResolvedThisTurnExactly(count))
+}
+
+fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Option<Vec<u32>> {
+    const PREFIX: &[&str] = &["this", "is"];
+    const SUFFIXES: &[&[&str]] = &[
+        &["time", "this", "ability", "has", "resolved", "this", "turn"],
+        &["time", "this", "ability", "resolved", "this", "turn"],
+    ];
+
+    let words = clause.word_refs();
+    if !words.starts_with(PREFIX) {
+        return None;
+    }
+    let mut start = PREFIX.len();
+    if words.get(start) == Some(&"the") {
+        start += 1;
+    }
+
+    for suffix in SUFFIXES {
+        if !words.ends_with(suffix) || words.len() <= start + suffix.len() {
+            continue;
+        }
+        let ordinal_words = &words[start..words.len() - suffix.len()];
+        let mut counts = Vec::new();
+        let mut expect_count = true;
+        for word in ordinal_words {
+            if expect_count && *word == "the" {
+                continue;
+            }
+            if expect_count {
+                counts.push(ordinal_number_word(word)?);
+                expect_count = false;
+            } else if matches!(*word, "or" | "and" | "and/or") {
+                expect_count = true;
+            } else {
+                return None;
+            }
+        }
+        if counts.len() > 1 && !expect_count {
+            return Some(counts);
+        }
+    }
+    None
+}
+
+/// Parse intervening-if gates which identify the triggering spell by its
+/// ordinal among matching spells cast this turn. Each category becomes an
+/// independent event-boundary comparison, so shared Oracle wording such as
+/// "the first instant spell, the first sorcery spell, or the first Otter
+/// spell ..." retains its inclusive disjunction semantics.
+fn parse_triggering_spell_ordinal_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
+    const CAST_THIS_TURN_SUFFIXES: &[&[&str]] = &[
+        &["you", "cast", "this", "turn"],
+        &["youve", "cast", "this", "turn"],
+        &["you've", "cast", "this", "turn"],
+        &["you", "have", "cast", "this", "turn"],
+    ];
+
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        WinnowSequence::any_phrase(&[
+            &["it", "was"],
+            &["it's"],
+            &["its"],
+            &["it", "s"],
+        ]),
+        WinnowSequence::optional(OPTIONAL_THE),
+        WinnowSequence::object(
+            "ordinal_categories",
+            WinnowCaptureKind::UntilAnyPhrase(CAST_THIS_TURN_SUFFIXES),
+        ),
+        WinnowSequence::any_phrase(CAST_THIS_TURN_SUFFIXES),
+    ];
+    let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
+    let categories = matched.capture_clause("ordinal_categories", clause)?;
+
+    let mut predicates = Vec::new();
+    for category in split_lexed_slices_on_or(categories.tokens()) {
+        let category = LexedClause::new(category).trimmed();
+        let category_tokens = strip_leading_article_tokens(category.tokens());
+        let (ordinal_token, descriptor_tokens) = category_tokens.split_first()?;
+        let ordinal = ordinal_number_word(ordinal_token.parser_text())?;
+        if ordinal == 0 || descriptor_tokens.is_empty() {
+            return None;
+        }
+        let left =
+            crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_triggering_spell_history_count_value(
+                descriptor_tokens,
+            )?;
+        predicates.push(PredicateAst::ValueComparison {
+            left,
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(ordinal.saturating_sub(1) as i32),
+        });
+    }
+
+    let mut predicates = predicates.into_iter();
+    let first = predicates.next()?;
+    Some(predicates.fold(first, |left, right| {
+        PredicateAst::Or(Box::new(left), Box::new(right))
+    }))
 }
 
 fn ability_resolution_ordinal_count(clause: LexedClause<'_>) -> Option<u32> {
@@ -2599,9 +2737,15 @@ fn parse_passive_this_way_tagged_object_predicate(
     if filter_clause.tokens().is_empty() {
         return Ok(None);
     }
-    let Some(filter) = parse_this_way_object_filter_clause(filter_clause) else {
+    let Some(mut filter) = parse_this_way_object_filter_clause(filter_clause) else {
         return Ok(None);
     };
+    filter.set_prior_effect_action_surface(
+        crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(
+            &action_words,
+        )
+        .map(|(action, _)| action),
+    );
     Ok(Some(PredicateAst::TaggedMatches(
         TagKey::from(reference_tag),
         filter,
@@ -2641,9 +2785,10 @@ fn parse_active_this_way_discard_predicate(
     if filter_clause.tokens().is_empty() {
         return Ok(None);
     }
-    let Some(filter) = parse_this_way_object_filter_clause(filter_clause) else {
+    let Some(mut filter) = parse_this_way_object_filter_clause(filter_clause) else {
         return Ok(None);
     };
+    filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Discarded));
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player,
         tag: TagKey::from(IT_TAG),
@@ -2902,7 +3047,7 @@ fn parse_repeated_and_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     for split_idx in (1..tokens.len().saturating_sub(1)).rev() {
-        if !token_word_is(&tokens[split_idx], AND_WORD) {
+        if !tokens[split_idx].is_word(AND_WORD) {
             continue;
         }
 
@@ -2913,10 +3058,10 @@ fn parse_repeated_and_predicate(
         }
         if left_tokens
             .iter()
-            .any(|token| token_word_is(token, AND_WORD))
+            .any(|token| token.is_word(AND_WORD))
             || right_tokens
                 .iter()
-                .any(|token| token_word_is(token, AND_WORD))
+                .any(|token| token.is_word(AND_WORD))
         {
             continue;
         }

@@ -649,6 +649,9 @@ fn additional_trigger_copies_for_entry(
     let mut copies = 0usize;
 
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
@@ -685,6 +688,9 @@ fn trigger_is_suppressed(
     entry: &TriggeredAbilityEntry,
 ) -> bool {
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
@@ -1421,6 +1427,9 @@ fn build_trigger_registry(
     view.prewarm_characteristics(&game.battlefield);
 
     for &obj_id in &game.battlefield {
+        if game.is_phased_out(obj_id) {
+            continue;
+        }
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
@@ -2081,12 +2090,7 @@ fn check_triggers_with_view_and_registry(
                     .count()
             })
             .unwrap_or(0);
-        let granted_cascade_count = game
-            .temporary_granted_spell_abilities(cast.spell, cast.caster)
-            .into_iter()
-            .filter(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Cascade)
-            .count();
-        let cascade_count = native_cascade_count + granted_cascade_count;
+        let cascade_count = native_cascade_count;
         if cascade_count > 0 {
             let ability = TriggeredAbility {
                 trigger: Trigger::you_cast_this_spell(),
@@ -4055,6 +4059,8 @@ mod tests {
             1,
         );
 
+        game.apply_temporary_spell_ability_grants_for_cast_proposal(spell_id, alice);
+
         let triggered = check_triggers(
             &game,
             &TriggerEvent::new_with_provenance(
@@ -4064,7 +4070,6 @@ mod tests {
         );
         assert_eq!(triggered.len(), 1, "expected one cascade trigger");
 
-        game.consume_temporary_spell_ability_grants_for_spell(spell_id, alice);
         assert!(
             game.temporary_granted_spell_abilities(spell_id, alice)
                 .is_empty(),
@@ -4091,7 +4096,7 @@ mod tests {
             1,
         );
 
-        game.consume_temporary_spell_ability_grants_for_spell(spell_id, alice);
+        game.apply_temporary_spell_ability_grants_for_cast_proposal(spell_id, alice);
 
         let spell = game
             .object(spell_id)

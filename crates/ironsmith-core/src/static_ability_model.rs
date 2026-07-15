@@ -23,6 +23,59 @@ pub enum ConditionalSpellKeywordKind {
     Cascade,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StaticDamageSourceRelation {
+    #[default]
+    Any,
+    /// The damage source must currently be blocking the static ability source.
+    BlockingStaticSource,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
+    pub source_filter: ObjectFilter,
+    pub combat_only: bool,
+    pub source_relation: StaticDamageSourceRelation,
+    pub display: String,
+}
+
+/// The quality of spell onto which a card's splice ability may be applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpliceQuality {
+    Arcane,
+    InstantOrSorcery,
+}
+
+impl SpliceQuality {
+    pub const fn oracle_surface(self) -> &'static str {
+        match self {
+            Self::Arcane => "Arcane",
+            Self::InstantOrSorcery => "instant or sorcery",
+        }
+    }
+}
+
+/// Typed CR 702.47 splice ability payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpliceSpec<C> {
+    pub quality: SpliceQuality,
+    pub cost: TotalCost<C>,
+    /// The canonical oracle surface for the splice cost, when parsing retained one.
+    ///
+    /// Payment remains represented by `cost`; this field prevents typed choose-then-pay
+    /// costs from being rendered as their lower-level execution steps.
+    pub cost_surface: Option<String>,
+}
+
+/// Typed CR 702.120 escalate ability payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EscalateSpec<C> {
+    /// The additional cost paid once for each mode chosen beyond the first.
+    pub cost: TotalCost<C>,
+    /// The canonical oracle surface for the escalate cost, when parsing retained one.
+    pub cost_surface: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraveyardCountMetric {
     CardTypes,
@@ -245,6 +298,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     Protection(ProtectionFrom),
     PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
     PreventAllNoncombatDamageToPermanentsMatching(ObjectFilter),
+    PreventAllDamageToSelfFromSourcesMatching(PreventAllDamageToSelfFromSourcesMatchingSpec),
     RuleRestriction {
         restriction: Restriction,
         additional_restrictions: Vec<Restriction>,
@@ -551,6 +605,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         display: String,
     },
     ConditionalSpellKeyword(ConditionalSpellKeywordSpec),
+    Splice(SpliceSpec<C>),
+    Escalate(EscalateSpec<C>),
     KeywordActionReplacement {
         action: KeywordActionKind,
         source_filter: ObjectFilter,
@@ -913,6 +969,17 @@ where
             StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
                 StaticAbilityPayload::ConditionalSpellKeyword(spec)
             }
+            StaticAbilityPayload::Splice(spec) => StaticAbilityPayload::Splice(SpliceSpec {
+                quality: spec.quality,
+                cost: spec.cost.try_map(|cost| map_cost(cost))?,
+                cost_surface: spec.cost_surface,
+            }),
+            StaticAbilityPayload::Escalate(spec) => {
+                StaticAbilityPayload::Escalate(EscalateSpec {
+                    cost: spec.cost.try_map(|cost| map_cost(cost))?,
+                    cost_surface: spec.cost_surface,
+                })
+            }
             StaticAbilityPayload::PlayersSkipUpkeep { player } => {
                 StaticAbilityPayload::PlayersSkipUpkeep { player }
             }
@@ -1029,6 +1096,9 @@ where
             }
             StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter)
+            }
+            StaticAbilityPayload::PreventAllDamageToSelfFromSourcesMatching(spec) => {
+                StaticAbilityPayload::PreventAllDamageToSelfFromSourcesMatching(spec)
             }
             StaticAbilityPayload::RuleRestriction {
                 restriction,
@@ -2034,6 +2104,66 @@ impl<
         Self::identified(StaticAbilityId::KeywordMarker, text)
     }
 
+    pub fn splice(quality: SpliceQuality, cost: TotalCost<C>) -> Self
+    where
+        C: CostComponent,
+    {
+        Self::splice_with_cost_surface(quality, cost, None)
+    }
+
+    pub fn splice_with_cost_surface(
+        quality: SpliceQuality,
+        cost: TotalCost<C>,
+        cost_surface: Option<String>,
+    ) -> Self
+    where
+        C: CostComponent,
+    {
+        let separator = if cost.has_non_mana_costs() {
+            "—"
+        } else {
+            " "
+        };
+        let rendered_cost = cost_surface.clone().unwrap_or_else(|| cost.display());
+        Self {
+            id: Some(StaticAbilityId::Splice),
+            label: format!(
+                "Splice onto {}{separator}{}",
+                quality.oracle_surface(),
+                rendered_cost
+            ),
+            payload: StaticAbilityPayload::Splice(SpliceSpec {
+                quality,
+                cost,
+                cost_surface,
+            }),
+        }
+    }
+
+    pub fn escalate(cost: TotalCost<C>) -> Self
+    where
+        C: CostComponent,
+    {
+        Self::escalate_with_cost_surface(cost, None)
+    }
+
+    pub fn escalate_with_cost_surface(cost: TotalCost<C>, cost_surface: Option<String>) -> Self
+    where
+        C: CostComponent,
+    {
+        let separator = if cost.has_non_mana_costs() {
+            "—"
+        } else {
+            " "
+        };
+        let rendered_cost = cost_surface.clone().unwrap_or_else(|| cost.display());
+        Self {
+            id: Some(StaticAbilityId::Escalate),
+            label: format!("Escalate{separator}{rendered_cost}"),
+            payload: StaticAbilityPayload::Escalate(EscalateSpec { cost, cost_surface }),
+        }
+    }
+
     pub fn keyword_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::KeywordFallbackText, text)
     }
@@ -2918,6 +3048,18 @@ impl<
         Self {
             id: Some(StaticAbilityId::SetCardTypes),
             label: "set card types".to_string(),
+            payload: StaticAbilityPayload::SetCardTypes { filter, card_types },
+        }
+    }
+
+    pub fn set_card_types_with_surface(
+        filter: ObjectFilter,
+        card_types: Vec<CardType>,
+        surface: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetCardTypes),
+            label: surface.into(),
             payload: StaticAbilityPayload::SetCardTypes { filter, card_types },
         }
     }
@@ -3810,6 +3952,12 @@ impl<
             "legend rule doesnt apply",
         )
     }
+    pub fn legend_rule_doesnt_apply_to_controller() -> Self {
+        Self::identified(
+            StaticAbilityId::LegendRuleDoesntApplyToController,
+            "legend rule doesnt apply to permanents you control",
+        )
+    }
     pub fn remove_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveSupertypes),
@@ -3833,11 +3981,11 @@ impl<
     }
     pub fn prevent_damage_to_other_creature_you_control_put_counters_instead(
         _counter_type: CounterType,
-        _display: impl Into<String>,
+        display: impl Into<String>,
     ) -> Self {
         Self {
             id: Some(StaticAbilityId::PreventDamageToOtherCreatureYouControlPutCountersInstead),
-            label: "prevent damage to other creature you control put counters instead".into(),
+            label: display.into(),
             payload: StaticAbilityPayload::None,
         }
     }
@@ -3860,6 +4008,15 @@ impl<
             id: Some(StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching),
             label: "prevent all noncombat damage to permanents matching filter".into(),
             payload: StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter),
+        }
+    }
+    pub fn prevent_all_damage_to_self_from_sources_matching(
+        spec: PreventAllDamageToSelfFromSourcesMatchingSpec,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllDamageToSelfFromSourcesMatching),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::PreventAllDamageToSelfFromSourcesMatching(spec),
         }
     }
     pub fn prevent_all_damage_to_self() -> Self {

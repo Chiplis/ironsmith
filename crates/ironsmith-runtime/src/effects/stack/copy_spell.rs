@@ -47,7 +47,9 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
         .map(target_from_resolved_target)
         .collect();
     entry.target_assignments = ctx.target_assignments.clone();
+    entry.target_distributions = ctx.target_distributions.clone();
     entry.x_value = ctx.x_value;
+    entry.mana_spent_on_activation = ctx.mana.activation_payment.clone();
     entry.casting_method = ctx.casting_method.clone();
     entry.optional_costs_paid = ctx.optional_costs_paid.clone();
     entry.defending_player = ctx.combat.defending_player;
@@ -110,14 +112,15 @@ pub(crate) fn create_stack_copy_from_object(
     }
     customize_copy(&mut copy_obj);
     copy_obj.zone = Zone::Stack;
-    game.add_object(copy_obj);
-
     let mut copy_entry = StackEntry::new(copy_id, copier);
     copy_entry.provenance = original_entry.provenance;
     copy_entry.targets = targets_override.unwrap_or_else(|| original_entry.targets.clone());
     copy_entry.target_assignments = original_entry.target_assignments.clone();
+    copy_entry.target_distributions = original_entry.target_distributions.clone();
     copy_entry.x_value = original_entry.x_value;
     copy_entry.activation_cost_has_x = original_entry.activation_cost_has_x;
+    copy_entry.activation_cost_has_tap = original_entry.activation_cost_has_tap;
+    copy_entry.mana_spent_on_activation = original_entry.mana_spent_on_activation.clone();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();
@@ -128,11 +131,17 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.source_name = original_entry.source_name.clone();
     copy_entry.source_stable_id = original_entry.source_stable_id;
     copy_entry.chosen_modes = original_entry.chosen_modes.clone();
+    copy_entry.spliced_cards = original_entry.spliced_cards.clone();
     copy_entry.keyword_payment_contributions = original_entry.keyword_payment_contributions.clone();
     copy_entry.crew_contributors = original_entry.crew_contributors.clone();
     copy_entry.saddle_contributors = original_entry.saddle_contributors.clone();
     copy_entry.tagged_objects = original_entry.tagged_objects.clone();
     copy_entry.effect_outcomes = original_entry.effect_outcomes.clone();
+    if !copy_entry.remap_target_distributions(&original_entry.targets) {
+        return Err(ExecutionError::InvalidTarget);
+    }
+
+    game.add_object(copy_obj);
 
     if let Some(chosen_player) = copy_entry.chosen_player {
         game.set_chosen_player(copy_id, chosen_player);
@@ -327,6 +336,119 @@ mod tests {
             .find(|e| e.object_id == copy_id)
             .expect("copy on stack");
         assert_eq!(copy_entry.chosen_modes, Some(vec![1, 3]));
+    }
+
+    #[test]
+    fn test_copy_spell_preserves_announced_target_distribution() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let spell_id = create_instant_on_stack(&mut game, "Distributed Spell", alice);
+        let spec = ChooseSpec::WithCount(
+            Box::new(ChooseSpec::AnyTarget),
+            crate::effect::ChoiceCount::exactly(2),
+        );
+        let entry = game
+            .stack
+            .iter_mut()
+            .find(|entry| entry.object_id == spell_id)
+            .expect("original stack entry");
+        entry.targets = vec![Target::Player(alice), Target::Player(bob)];
+        entry.target_assignments = vec![crate::game_state::TargetAssignment {
+            spec: spec.clone(),
+            range: 0..2,
+        }];
+        entry.target_distributions = vec![crate::game_state::TargetDistribution {
+            spec,
+            range: 0..2,
+            allocations: vec![(Target::Player(alice), 1), (Target::Player(bob), 2)],
+        }];
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
+        let result = CopySpellEffect::single(ChooseSpec::spell())
+            .execute(&mut game, &mut ctx)
+            .expect("copy distributed spell");
+        let crate::effect::OutcomeValue::Objects(copies) = result.value else {
+            panic!("expected copied spell object");
+        };
+        let copy = game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == copies[0])
+            .expect("copy stack entry");
+        assert_eq!(
+            copy.target_distributions[0].allocations,
+            vec![(Target::Player(alice), 1), (Target::Player(bob), 2)]
+        );
+    }
+
+    #[test]
+    fn test_copy_spell_preserves_spliced_text_and_provenance_until_stack_exit() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let spell_id = create_instant_on_stack(&mut game, "Spliced Spell", alice);
+        let splice_card = crate::ids::StableId::from_raw(991);
+
+        let spell = game.object_mut(spell_id).expect("original spell exists");
+        spell.spell_effect = Some(
+            crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::gain_life(1),
+            ])
+            .into(),
+        );
+        assert!(spell.begin_splice_cast_overlay());
+        let mut active_program = spell.spell_effect_owned().expect("base program");
+        active_program.extend(crate::resolution::ResolutionProgram::from_effects(vec![
+            crate::effect::Effect::draw(1),
+        ]));
+        spell.spell_effect = Some(active_program.into());
+        game.stack
+            .iter_mut()
+            .find(|entry| entry.object_id == spell_id)
+            .expect("original stack entry")
+            .spliced_cards = vec![splice_card];
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(spell_id)];
+        let result = CopySpellEffect::single(ChooseSpec::spell())
+            .execute(&mut game, &mut ctx)
+            .expect("copy spliced spell");
+        let crate::effect::OutcomeValue::Objects(copies) = result.value else {
+            panic!("expected copied spell object");
+        };
+        let copy_id = copies[0];
+        assert_eq!(
+            game.stack
+                .iter()
+                .find(|entry| entry.object_id == copy_id)
+                .expect("copy stack entry")
+                .spliced_cards,
+            vec![splice_card]
+        );
+        assert_eq!(
+            game.object(copy_id)
+                .and_then(|copy| copy.spell_effect.as_ref())
+                .expect("copy retains active spliced program")
+                .flattened_default_effects()
+                .len(),
+            2
+        );
+
+        game.stack.retain(|entry| entry.object_id != copy_id);
+        let graveyard_id = game
+            .move_object_by_effect(copy_id, Zone::Graveyard)
+            .expect("copy can leave stack for overlay regression");
+        assert_eq!(
+            game.object(graveyard_id)
+                .and_then(|copy| copy.spell_effect.as_ref())
+                .expect("pre-splice program restored")
+                .flattened_default_effects()
+                .len(),
+            1
+        );
     }
 
     #[test]

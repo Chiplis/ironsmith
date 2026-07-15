@@ -16,6 +16,7 @@ use crate::events::zones::matchers::{
 use crate::events::{ReplacementMatcher, ReplacementPriority};
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
+use crate::static_abilities::StaticAbilityInstanceId;
 use crate::target::ChooseSpec;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
@@ -42,6 +43,10 @@ pub struct ReplacementEffect {
 
     /// Trait-based matcher for checking if this effect applies.
     pub matcher: Option<Box<dyn ReplacementMatcher>>,
+
+    /// Stable identity of the static ability that generated this effect.
+    /// Resolution-created effects leave this unset.
+    pub static_ability_instance: Option<StaticAbilityInstanceId>,
 }
 
 /// Unique identifier for a replacement effect.
@@ -64,6 +69,7 @@ impl ReplacementEffectId {
 pub struct ReplacementEffectKey {
     pub source: ObjectId,
     pub controller: PlayerId,
+    pub static_ability_instance: Option<StaticAbilityInstanceId>,
     pub matcher: Option<String>,
     pub replacement: String,
 }
@@ -73,6 +79,7 @@ impl ReplacementEffect {
         ReplacementEffectKey {
             source: self.source,
             controller: self.controller,
+            static_ability_instance: self.static_ability_instance,
             matcher: self.matcher.as_ref().map(|matcher| matcher.display()),
             replacement: format!("{:?}", self.replacement),
         }
@@ -84,6 +91,16 @@ impl ReplacementEffect {
 pub enum ReplacementAction {
     /// Prevent the event entirely
     Prevent,
+
+    /// Apply one prevention shield to a matching damage event.
+    ///
+    /// Damage processing exposes live shields as ordinary CR 616 candidates;
+    /// this action consumes only the shield the affected player chooses.
+    PreventWithShield {
+        shield_id: crate::prevention::PreventionShieldId,
+        /// Batch-level CR 615.7 allocation cap for this source event.
+        max_amount: Option<u32>,
+    },
 
     /// Apply the event but modified
     Modify(EventModification),
@@ -674,6 +691,7 @@ impl ReplacementEffect {
             replacement,
             priority_override: None,
             matcher: Some(Box::new(matcher)),
+            static_ability_instance: None,
         }
     }
 
@@ -691,6 +709,7 @@ impl ReplacementEffect {
             replacement,
             priority_override: None,
             matcher: Some(matcher),
+            static_ability_instance: None,
         }
     }
 

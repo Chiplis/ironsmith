@@ -1,5 +1,9 @@
 {
 
+    if let Some(compact) = describe_may_choose_graveyard_then_return(effects) {
+        return compact;
+    }
+
     if let Some(compact) = describe_search_reveal_conditional_battlefield_or_hand(effects) {
         return compact;
     }
@@ -35,7 +39,26 @@
     {
         return compact;
     }
+    if let Some(compact) = describe_attach_all_enchanting_target_to_same_controller(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_redundant_target_only_pair(effects) {
+        return compact;
+    }
+    if effects.len() > 2
+        && let Some(prefix) = describe_redundant_target_only_pair(&effects[..2])
+    {
+        let suffix = describe_effect_list(&effects[2..]);
+        return format!(
+            "{}. {}",
+            prefix.trim_end_matches('.'),
+            capitalize_first(suffix.trim_end_matches('.'))
+        );
+    }
+    if let Some(compact) = describe_exile_then_choose_delayed_leaves(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_triggering_object_coordinated_damage(effects) {
         return compact;
     }
     if let [first, second] = effects

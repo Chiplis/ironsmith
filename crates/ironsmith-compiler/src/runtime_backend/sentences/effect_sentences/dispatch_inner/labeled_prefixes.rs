@@ -73,8 +73,21 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return Ok(Vec::new());
     }
 
+    if let Some(effects) = parse_vote_affinity_subject_verb(tokens)? {
+        return Ok(effects);
+    }
+
     if let Some(stripped) = split_labeled_effect_prefix_lexed(tokens) {
         return parse_effect_sentence_lexed(stripped);
+    }
+    if dispatch_shape.starts_if
+        && effect_grammar::control_copy_attach_shapes::contains_source_exiled_owner_library_bottom_shape(tokens)
+        && let Some(effects) = parse_conditional_sentence_family_lexed(
+            tokens,
+            parse_effect_chain_preserving_source_exiled_owner_library_bottom,
+        )?
+    {
+        return Ok(effects);
     }
     if dispatch_shape.starts_if
         && let Some(mut effects) = parse_exile_replacement_subject_verb_sentence(tokens)?
@@ -98,15 +111,21 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(effect) = lower_matching_spell_cost_reduction_sentence(tokens) {
         return Ok(vec![effect]);
     }
+    if let Some(effect) = parse_source_exiled_owner_library_bottom_subject_verb(tokens) {
+        return Ok(vec![effect]);
+    }
     if dispatch_shape.pre_extension_head
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if let Some(effects) =
-        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
+    if let Some(mut effects) = parse_conditional_sentence_family_lexed(
+        tokens,
+        parse_effect_chain_preserving_source_exiled_owner_library_bottom,
+    )?
     {
+        super::preserve_leading_result_coordination_lexed(tokens, &mut effects);
         return Ok(effects);
     }
     if dispatch_shape.exile_then {
@@ -127,16 +146,24 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         return parse_effect_sentence_lexed(then_tail);
     }
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
-        return Ok(vec![match prefix.kind {
+        let trailing_effects = super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        let mut result = vec![match prefix.kind {
             LeadingResultPrefixKind::If => EffectAst::IfResult {
                 predicate: prefix.predicate,
-                effects: super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
+                effects: trailing_effects,
             },
             LeadingResultPrefixKind::When => EffectAst::WhenResult {
                 predicate: prefix.predicate,
-                effects: super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?,
+                effects: trailing_effects,
             },
-        }]);
+        }];
+        // This late result-prefix route intentionally parses the trailing
+        // actions through the inner chain parser to avoid re-entering result
+        // dispatch. Restore the authored conjunction after that parse, using
+        // the same grammar-confirmed boundary as the ordinary conditional
+        // route rather than inferring it from adjacent effects.
+        super::preserve_leading_result_coordination_lexed(tokens, &mut result);
+        return Ok(result);
     }
     if dispatch_shape.each_player_choose
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
@@ -262,6 +289,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
+    // Voter-relative player sets contain an ordinary action verb (for
+    // example, "loses"), so route the typed voting subject before the generic
+    // gain/lose primitive can erase the vote-affinity predicate.
     if dispatch_shape.has_gain_or_lose {
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;

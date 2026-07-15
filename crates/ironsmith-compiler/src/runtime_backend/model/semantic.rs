@@ -247,6 +247,7 @@ pub(crate) struct ParsedModalHeader {
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,
     pub(crate) distinct_player_targets_per_mode: bool,
+    pub(crate) if_kicked_choose_any_number: bool,
     pub(crate) commander_allows_both: bool,
     pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
     pub(crate) choose_both_exact_life_total: Option<i32>,

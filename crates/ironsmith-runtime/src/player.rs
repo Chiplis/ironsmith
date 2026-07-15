@@ -789,6 +789,9 @@ pub struct Player {
     pub has_lost: bool,
     pub has_won: bool,
     pub has_left_game: bool,
+    /// This player attempted an unreplaced draw from an empty library since
+    /// the last state-based-action pass.
+    pub attempted_draw_from_empty_library: bool,
 
     // Zones (stored as object IDs)
     pub library: Vec<ObjectId>,
@@ -833,6 +836,7 @@ impl Player {
             has_lost: false,
             has_won: false,
             has_left_game: false,
+            attempted_draw_from_empty_library: false,
             library: Vec::new(),
             hand: Vec::new(),
             graveyard: Vec::new(),
@@ -1088,8 +1092,7 @@ impl Player {
                 self.hand.push(card_id);
                 drawn.push(card_id);
             } else {
-                // Can't draw from empty library - will trigger loss via state-based actions
-                break;
+                self.attempted_draw_from_empty_library = true;
             }
         }
         drawn
@@ -1270,6 +1273,7 @@ mod tests {
         let drawn = player.draw(5); // Try to draw more than available
         assert_eq!(drawn.len(), 1);
         assert_eq!(player.library_size(), 0);
+        assert!(player.attempted_draw_from_empty_library);
     }
 
     #[test]

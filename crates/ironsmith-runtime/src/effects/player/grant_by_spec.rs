@@ -13,7 +13,7 @@ use crate::ids::PlayerId;
 use crate::zone::Zone;
 pub type GrantBySpecEffect = ironsmith_core::GrantBySpecEffect<GrantSpec, GrantDuration>;
 
-fn next_turn_number_for_player(game: &GameState, player: PlayerId) -> u32 {
+pub(crate) fn next_turn_number_for_player(game: &GameState, player: PlayerId) -> u32 {
     if game.turn_store.turn_order.is_empty() {
         return game.turn.turn_number;
     }

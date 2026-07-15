@@ -1,6 +1,7 @@
 use super::*;
 
-#[derive(Debug, Clone, Default, serde::Serialize)]
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize))]
 pub struct ComputeLegalActionsPerfMetrics {
     pub derived_view_ms: f64,
     pub prewarm_ms: f64,

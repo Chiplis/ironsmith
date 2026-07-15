@@ -153,6 +153,7 @@ fn parse_conjoined_must_be_blocked_sentence(
         let EffectAst::Coordinated {
             effects,
             leading_duration: nested_leading_duration,
+            result_conjunction: false,
         } = parsed_head.remove(0)
         else {
             unreachable!("coordinated head was checked before removal")
@@ -169,6 +170,7 @@ fn parse_conjoined_must_be_blocked_sentence(
     Ok(Some(vec![EffectAst::Coordinated {
         effects: parsed_head,
         leading_duration,
+        result_conjunction: false,
     }]))
 }
 
@@ -271,8 +273,8 @@ pub(crate) fn lower_where_x_shape(
                 crate::tag::SOURCE_EXILED_TAG,
             )))),
         ),
-        sentence_shapes::WhereXValueShape::PriorEffectMetric { source, metric } => {
-            (None, Value::PendingEffectMetric { source, metric })
+        sentence_shapes::WhereXValueShape::PriorEffectMetric(query) => {
+            (None, Value::PendingPriorEffectMetric(query))
         }
         sentence_shapes::WhereXValueShape::RemovedCountersThisWay => (None, Value::X),
         sentence_shapes::WhereXValueShape::CountersOn {
@@ -981,6 +983,15 @@ fn parse_effect_sentence_lexed_inner(
     if let Some(effect) = parse_source_and_blocked_creatures_top_library_shuffle_sentence(tokens) {
         return Ok(vec![effect]);
     }
+    // Preserve voter-relative player predicates before the generic player
+    // subject machinery rewrites `each opponent` to an iterated `that
+    // player` action and discards the qualifying vote relationship.
+    if let Some(effects) = parse_vote_affinity_subject_verb(tokens)? {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Vote subject=explicit recognizer=vote-affinity",
+        );
+        return Ok(effects);
+    }
     if let Some(effect) = parse_vote_subject_verb(tokens)? {
         crate::parse_trace::event(
             "effect-route: subject-verb verb=Vote subject=explicit recognizer=vote-procedure",
@@ -1171,13 +1182,23 @@ fn parse_effect_sentence_lexed_inner(
     if matches!(
         leading_if_shape,
         Some(sentence_shapes::LeadingIfSentenceShape { replacement: false })
-    ) && let Ok(Some(mut effects)) =
-        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
-        && matches!(effects.as_slice(), [EffectAst::Conditional { .. }])
-    {
-        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
-        normalize_search_followup_shuffles(&mut effects);
-        return Ok(effects);
+    ) {
+        let conditional = if effect_grammar::control_copy_attach_shapes::contains_source_exiled_owner_library_bottom_shape(tokens)
+        {
+            parse_conditional_sentence_family_lexed(
+                tokens,
+                parse_effect_chain_preserving_source_exiled_owner_library_bottom,
+            )
+        } else {
+            parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
+        };
+        if let Ok(Some(mut effects)) = conditional
+            && matches!(effects.as_slice(), [EffectAst::Conditional { .. }])
+        {
+            apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+            normalize_search_followup_shuffles(&mut effects);
+            return Ok(effects);
+        }
     }
 
     if has_unrecognized_leading_effect_label(tokens) {
@@ -1391,7 +1412,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
             | SubjectVerbActionAst::MoveToZone { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
-            | SubjectVerbActionAst::TargetOnly { target }
+            | SubjectVerbActionAst::TargetOnly { target, .. }
             | SubjectVerbActionAst::Pump { target, .. }
             | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }

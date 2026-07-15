@@ -8,6 +8,7 @@ fn parse_coordinated(text: &str) -> Vec<EffectAst> {
         EffectAst::Coordinated {
             effects,
             leading_duration: false,
+            result_conjunction: false,
         },
     ] = parsed.as_slice()
     else {

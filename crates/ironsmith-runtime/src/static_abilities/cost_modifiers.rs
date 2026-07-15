@@ -601,6 +601,27 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             };
             ("{X}".to_string(), Some(tail))
         }
+        Value::LeastPower(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the least power among {}",
+                filter.description()
+            )),
+        ),
+        Value::LeastToughness(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the lowest toughness among {}",
+                filter.description()
+            )),
+        ),
+        Value::LeastManaValue(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the lowest mana value among {}",
+                filter.description()
+            )),
+        ),
         Value::DistinctNames(filter) => (
             "{X}".to_string(),
             Some(format!(

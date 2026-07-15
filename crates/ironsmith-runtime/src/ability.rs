@@ -18,7 +18,8 @@ pub type ActivatedAbility =
     ironsmith_core::ActivatedAbility<crate::effect::Effect, crate::costs::Cost>;
 pub type LevelAbility = ironsmith_core::LevelAbility<NewStaticAbility>;
 pub use ironsmith_core::{
-    ActivatedPresentationLabel, ActivationTiming, ManaUsageRestriction,
+    ActivatedPresentationLabel, ActivationTiming, ManaSpendAbilityGrantDuration,
+    ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaUsageRestriction,
     ManaUsageSubtypeRequirement, PresentationKeyword, PresentationLabel, ProtectionFrom,
     RestrictedManaUnit,
 };
@@ -66,19 +67,16 @@ pub trait ActivatedAbilityRuntimeExt {
 impl ActivatedAbilityRuntimeExt for ActivatedAbility {
     fn could_add_mana(
         &self,
-        game: &crate::game_state::GameState,
-        source: crate::ids::ObjectId,
-        controller: crate::ids::PlayerId,
+        _game: &crate::game_state::GameState,
+        _source: crate::ids::ObjectId,
+        _controller: crate::ids::PlayerId,
     ) -> bool {
         self.mana_output.is_some()
-            || selected_resolution_effects_for_current_state(
-                &self.effects,
-                game,
-                source,
-                controller,
-            )
-            .into_iter()
-            .any(|effect| effect.could_produce_mana(game, source, controller))
+            || self
+                .effects
+                .all_effects()
+                .into_iter()
+                .any(crate::effect::Effect::contains_mana_production)
     }
 
     fn is_runtime_mana_ability(
@@ -155,23 +153,24 @@ pub fn selected_resolution_effects_for_current_state<'a>(
 }
 
 pub fn effects_could_add_mana(
-    game: &crate::game_state::GameState,
-    source: crate::ids::ObjectId,
-    controller: crate::ids::PlayerId,
-    effects: &[crate::effect::Effect],
+    _game: &crate::game_state::GameState,
+    _source: crate::ids::ObjectId,
+    _controller: crate::ids::PlayerId,
+    effects: &crate::resolution::ResolutionProgram,
 ) -> bool {
     effects
-        .iter()
-        .any(|effect| effect.could_produce_mana(game, source, controller))
+        .all_effects()
+        .into_iter()
+        .any(crate::effect::Effect::contains_mana_production)
 }
 
 pub fn effect_could_add_mana(
-    game: &crate::game_state::GameState,
-    source: crate::ids::ObjectId,
-    controller: crate::ids::PlayerId,
+    _game: &crate::game_state::GameState,
+    _source: crate::ids::ObjectId,
+    _controller: crate::ids::PlayerId,
     effect: &crate::effect::Effect,
 ) -> bool {
-    effect.could_produce_mana(game, source, controller)
+    effect.contains_mana_production()
 }
 
 fn canonical_mana_symbols(symbols: Vec<ManaSymbol>) -> Vec<ManaSymbol> {
@@ -358,6 +357,86 @@ mod tests {
             activated.inferred_mana_symbols(&game, source, alice),
             vec![ManaSymbol::Green]
         );
+    }
+
+    #[test]
+    fn mana_ability_classification_ignores_current_self_replacement_branch() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let program =
+            crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                default_effects: vec![Effect::draw(1)],
+                self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                    crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
+                    vec![Effect::add_mana(vec![ManaSymbol::Green])],
+                )],
+            }]);
+        let ability = Ability::activated(
+            crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
+            program,
+        );
+        let source_definition = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(99_003),
+            "Structural Mana Ability Probe",
+        )
+        .card_types(vec![crate::types::CardType::Artifact])
+        .with_ability(ability.clone())
+        .build();
+        let source = game.create_object_from_definition(
+            &source_definition,
+            alice,
+            crate::zone::Zone::Battlefield,
+        );
+        let AbilityKind::Activated(activated) = &ability.kind else {
+            panic!("expected activated ability");
+        };
+
+        assert!(
+            selected_resolution_effects_for_current_state(&activated.effects, &game, source, alice)
+                .iter()
+                .all(|effect| !effect.contains_mana_production()),
+            "the current state should select the nonmana default branch for this probe"
+        );
+        assert!(activated.could_add_mana(&game, source, alice));
+        assert!(activated.is_runtime_mana_ability(&game, source, alice));
+        assert!(
+            activated
+                .inferred_mana_symbols(&game, source, alice)
+                .is_empty(),
+            "actual current-state mana inference remains separate from structural classification"
+        );
+        let actions = crate::decision::compute_legal_actions(&game, alice);
+        assert!(actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateManaAbility {
+                source: action_source,
+                ability_index: 0,
+            } if *action_source == source
+        )));
+        assert!(!actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility {
+                source: action_source,
+                ability_index: 0,
+            } if *action_source == source
+        )));
+    }
+
+    #[test]
+    fn triggered_mana_payload_classification_scans_all_program_branches() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(99_004);
+        let program =
+            crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                default_effects: vec![Effect::draw(1)],
+                self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
+                    crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
+                    vec![Effect::add_mana(vec![ManaSymbol::Blue])],
+                )],
+            }]);
+
+        assert!(effects_could_add_mana(&game, source, alice, &program,));
     }
 
     #[test]

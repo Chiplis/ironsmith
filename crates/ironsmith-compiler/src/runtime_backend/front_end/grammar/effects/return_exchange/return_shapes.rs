@@ -34,6 +34,7 @@ pub(crate) struct ReturnDestinationShape {
     pub(crate) zone: ReturnZoneShape,
     pub(crate) destination_player_surface: Option<PlayerAst>,
     pub(crate) tapped: bool,
+    pub(crate) attacking: bool,
     pub(crate) transformed: bool,
     pub(crate) converted: bool,
     pub(crate) controller: ReturnControllerShape,
@@ -323,6 +324,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         None
     };
     let tapped = marker_anywhere(destination_head, primitives::kw("tapped"));
+    let attacking = marker_anywhere(destination_head, primitives::kw("attacking"));
     let transformed = marker_anywhere(tokens, primitives::kw("transformed"));
     let converted = marker_anywhere(tokens, primitives::kw("converted"));
     let controller = if marker_anywhere(
@@ -354,6 +356,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         zone,
         destination_player_surface,
         tapped,
+        attacking,
         transformed,
         converted,
         controller,

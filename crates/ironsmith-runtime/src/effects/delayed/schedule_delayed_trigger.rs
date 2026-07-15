@@ -1,7 +1,7 @@
 //! Schedule delayed trigger effect implementation.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::helpers::resolve_player_filter;
+use crate::effects::helpers::{resolve_player_filter, resolve_source_object_id};
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
@@ -116,6 +116,12 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
+        // A resolving ability may already have moved its source to another
+        // zone before registering this delayed trigger. Follow the source's
+        // stable identity so the delayed ability and any `this card` effects
+        // refer to the current object rather than the stale pre-zone-change
+        // ObjectId.
+        let ability_source = resolve_source_object_id(game, ctx).unwrap_or(ctx.source);
         let mut tagged_objects = ctx.tagged_objects.clone();
         if !ctx.targets_are_cost_choices {
             for (idx, target) in ctx.targets.iter().enumerate() {
@@ -160,7 +166,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                     self.one_shot,
                     controller_id,
                 )
-                .with_ability_source(Some(ctx.source))
+                .with_ability_source(Some(ability_source))
                 .with_x_value(ctx.x_value)
                 .with_not_before_turn(if self.start_next_turn {
                     Some(game.turn.turn_number.saturating_add(1))
@@ -177,7 +183,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 queue_delayed_from_template(
                     game,
                     DelayedWatcherIdentity::combined(if self.watch_ability_source {
-                        vec![ctx.source]
+                        vec![ability_source]
                     } else {
                         vec![snapshot.object_id]
                     }),
@@ -194,7 +200,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             self.one_shot,
             controller_id,
         )
-        .with_ability_source(Some(ctx.source))
+        .with_ability_source(Some(ability_source))
         .with_x_value(ctx.x_value)
         .with_not_before_turn(if self.start_next_turn {
             Some(game.turn.turn_number.saturating_add(1))
@@ -211,7 +217,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         queue_delayed_from_template(
             game,
             DelayedWatcherIdentity::combined(if self.watch_ability_source {
-                vec![ctx.source]
+                vec![ability_source]
             } else {
                 self.target_objects.clone()
             }),
@@ -232,9 +238,12 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effect::Effect;
     use crate::effects::ExecutionContext;
+    use crate::game_loop::{put_triggers_on_stack, resolve_stack_entry};
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::snapshot::ObjectSnapshot;
+    use crate::target::ChooseSpec;
+    use crate::triggers::TriggerQueue;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -369,5 +378,132 @@ mod tests {
             1,
             "scheduled land-play trigger should fire for its controller"
         );
+    }
+
+    #[test]
+    fn tagged_leaves_trigger_tracks_chosen_object_and_current_exiled_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source_card = CardBuilder::new(CardId::from_raw(993), "Returning Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let source_battlefield_id =
+            game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let source_snapshot = ObjectSnapshot::from_object(
+            game.object(source_battlefield_id)
+                .expect("source should be on the battlefield"),
+            &game,
+        );
+        let source_stable_id = source_snapshot.stable_id;
+        let source_graveyard_id = game
+            .move_object_by_effect(source_battlefield_id, Zone::Graveyard)
+            .expect("source should move to the graveyard");
+        let source_exile_id = game
+            .move_object_by_effect(source_graveyard_id, Zone::Exile)
+            .expect("source should move from the graveyard to exile");
+        game.take_pending_trigger_events();
+
+        let chosen_card = CardBuilder::new(CardId::from_raw(994), "Chosen Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let chosen_id = game.create_object_from_card(&chosen_card, bob, Zone::Battlefield);
+        let chosen_snapshot = ObjectSnapshot::from_object(
+            game.object(chosen_id)
+                .expect("chosen creature should be on the battlefield"),
+            &game,
+        );
+
+        let decoy_card = CardBuilder::new(CardId::from_raw(995), "Decoy Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let decoy_id = game.create_object_from_card(&decoy_card, bob, Zone::Battlefield);
+
+        let return_source = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Object(ObjectFilter::source().in_zone(Zone::Exile)),
+            Zone::Battlefield,
+            false,
+        )
+        .under_owner_control();
+        let effect = ScheduleDelayedTriggerEffect::from_tag(
+            Trigger::this_leaves_battlefield(),
+            vec![Effect::new(return_source)],
+            true,
+            "chosen",
+            PlayerFilter::You,
+        )
+        .with_target_filter(ObjectFilter::creature());
+
+        let mut ctx = ExecutionContext::new_default(source_battlefield_id, alice)
+            .with_source_snapshot(source_snapshot);
+        ctx.tag_object("chosen", chosen_snapshot);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("delayed trigger should be scheduled");
+
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+        let delayed = &game.effect_store.delayed_triggers[0];
+        assert_eq!(
+            delayed.ability_source,
+            Some(source_exile_id),
+            "the stale pre-zone-change source id should resolve to the current exile object"
+        );
+        assert_eq!(delayed.ability_source_stable_id, Some(source_stable_id));
+        assert_eq!(delayed.target_objects, vec![chosen_id]);
+        assert!(!delayed.target_objects.contains(&decoy_id));
+
+        game.move_object_by_effect(decoy_id, Zone::Graveyard)
+            .expect("decoy should leave the battlefield");
+        let decoy_entries = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .flat_map(|event| crate::triggers::check_delayed_triggers(&mut game, &event))
+            .collect::<Vec<_>>();
+        assert!(
+            decoy_entries.is_empty(),
+            "an unrelated creature leaving must not fire the delayed trigger"
+        );
+        assert_eq!(
+            game.effect_store.delayed_triggers.len(),
+            1,
+            "the one-shot trigger should remain armed after the decoy leaves"
+        );
+
+        game.move_object_by_effect(chosen_id, Zone::Graveyard)
+            .expect("chosen creature should leave the battlefield");
+        let chosen_entries = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .flat_map(|event| crate::triggers::check_delayed_triggers(&mut game, &event))
+            .collect::<Vec<_>>();
+        assert_eq!(chosen_entries.len(), 1);
+        assert_eq!(chosen_entries[0].source, source_exile_id);
+        assert_eq!(chosen_entries[0].source_stable_id, source_stable_id);
+        assert!(
+            game.effect_store.delayed_triggers.is_empty(),
+            "the one-shot delayed trigger should be consumed by the chosen creature"
+        );
+
+        let mut trigger_queue = TriggerQueue::new();
+        for entry in chosen_entries {
+            trigger_queue.add(entry);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("delayed trigger should go on the stack");
+        resolve_stack_entry(&mut game).expect("delayed trigger should resolve");
+
+        let returned_id = game
+            .find_object_by_stable_id(source_stable_id)
+            .expect("source should still exist after returning from exile");
+        let returned = game
+            .object(returned_id)
+            .expect("returned source object should exist");
+        assert_eq!(returned.zone, Zone::Battlefield);
+        assert_eq!(returned.owner, alice);
+        assert_eq!(game.controller_of(returned), alice);
     }
 }

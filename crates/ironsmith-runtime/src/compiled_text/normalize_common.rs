@@ -494,8 +494,11 @@ pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {
 
 pub(super) fn strip_leading_article(text: &str) -> &str {
     text.strip_prefix("a ")
+        .or_else(|| text.strip_prefix("A "))
         .or_else(|| text.strip_prefix("an "))
+        .or_else(|| text.strip_prefix("An "))
         .or_else(|| text.strip_prefix("the "))
+        .or_else(|| text.strip_prefix("The "))
         .unwrap_or(text)
 }
 
@@ -2340,7 +2343,14 @@ fn normalize_ability_loss_transform_surface(line: &str) -> Option<String> {
         while let Some(rest) = remainder.strip_prefix("is ") {
             remainder = rest.trim().to_string();
         }
-        let remainder = trim_ability_loss_transform_connector(&remainder);
+        let mut remainder = trim_ability_loss_transform_connector(&remainder);
+        loop {
+            let stripped = strip_leading_article(remainder);
+            if stripped.len() == remainder.len() {
+                break;
+            }
+            remainder = stripped;
+        }
         if let Some(name) = remainder.strip_prefix("named ") {
             named = Some(title_case_card_name_fragment(
                 trim_ability_loss_transform_connector(name),

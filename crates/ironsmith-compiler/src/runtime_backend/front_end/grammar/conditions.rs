@@ -168,6 +168,8 @@ pub(crate) struct SubjectDescriptorConditionAst {
 pub(crate) struct ObjectAttachedToObjectConditionAst {
     pub(crate) attachment_filter: ObjectFilter,
     pub(crate) attached_to_filter: ObjectFilter,
+    pub(crate) comparison: Comparison,
+    pub(crate) display: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1011,9 +1013,13 @@ pub(crate) fn parse_object_attached_to_object_condition(
         relation.tail_clause.tokens(),
         primitives::phrase(&["attached", "to"]),
     )?;
-    let mut attachment_filter =
-        parse_object_filter_with_grammar_entrypoint(relation.subject_clause.tokens(), false)
+    let subject_tokens = relation.subject_clause.tokens();
+    let (comparison, quantity_tokens) =
+        parse_quantity_comparison_prefix(subject_tokens, true, true, "attachment condition")
             .ok()?;
+    let attachment_tokens = subject_tokens.get(quantity_tokens..)?;
+    let mut attachment_filter =
+        parse_object_filter_with_grammar_entrypoint(attachment_tokens, false).ok()?;
     let mut attached_to_filter =
         parse_object_filter_with_grammar_entrypoint(attached_to_tokens, false).ok()?;
     attachment_filter.zone.get_or_insert(Zone::Battlefield);
@@ -1021,6 +1027,8 @@ pub(crate) fn parse_object_attached_to_object_condition(
     Some(ObjectAttachedToObjectConditionAst {
         attachment_filter,
         attached_to_filter,
+        comparison,
+        display: crate::runtime_backend::token_word_refs(tokens).join(" "),
     })
 }
 
@@ -1099,6 +1107,8 @@ pub(crate) fn parse_player_cards_in_hand_condition(
     let cards_in_hand_phrases: &[&[&str]] = &[
         &["card", "in", "hand"],
         &["cards", "in", "hand"],
+        &["card", "in", "your", "hand"],
+        &["cards", "in", "your", "hand"],
         &["card", "in", "their", "hand"],
         &["cards", "in", "their", "hand"],
     ];
@@ -1846,6 +1856,44 @@ mod tests {
             parsed.attached_to_filter.controller,
             Some(PlayerFilter::You)
         );
+        assert_eq!(parsed.comparison, Comparison::GreaterThanOrEqual(1));
+        assert_eq!(
+            parsed.display,
+            "an equipment named grooms finery is attached to a creature you control"
+        );
+
+        let tokens = lex_line("two or more Equipment are attached to it", 0)
+            .expect("lex counted attachment condition");
+        let parsed = parse_object_attached_to_object_condition(&tokens)
+            .expect("counted attachment condition");
+        assert_eq!(parsed.comparison, Comparison::GreaterThanOrEqual(2));
+        assert!(
+            parsed
+                .attachment_filter
+                .subtypes
+                .contains(&Subtype::Equipment)
+        );
+        assert!(
+            parsed
+                .attached_to_filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| {
+                    constraint.tag.as_str() == "__it__"
+                        && matches!(
+                            constraint.relation,
+                            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        )
+                })
+        );
+
+        let tokens = lex_line("another Aura is attached to enchanted creature", 0)
+            .expect("lex other-Aura attachment condition");
+        let parsed = parse_object_attached_to_object_condition(&tokens)
+            .expect("other-Aura attachment condition");
+        assert_eq!(parsed.comparison, Comparison::GreaterThanOrEqual(1));
+        assert!(parsed.attachment_filter.other);
+        assert!(parsed.attachment_filter.subtypes.contains(&Subtype::Aura));
     }
 
     #[test]

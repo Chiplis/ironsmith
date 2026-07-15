@@ -10,18 +10,21 @@ use crate::decision::{
 };
 use crate::decisions::context::{BooleanContext, DecisionContext};
 use crate::game_loop::{
-    GameLoopError, apply_attacker_declarations, apply_attacker_declarations_with_dm,
-    apply_blocker_declarations, drain_pending_trigger_events, execute_combat_damage_step,
+    AttackDeclarationTransaction, GameLoopError, apply_attack_mana_ability_window_response,
+    apply_attacker_declarations_with_dm, apply_multiplayer_blocker_declarations,
+    attack_mana_ability_window_context, begin_attack_declaration_transaction,
+    drain_pending_trigger_events, finish_attack_declaration_transaction,
     generate_and_queue_step_triggers, get_declare_attackers_decision,
-    get_declare_blockers_decision, preview_optional_attack_cost_prompts, put_triggers_on_stack,
-    queue_combat_damage_triggers,
+    get_declare_blockers_decision, preview_optional_attack_cost_prompts,
+    preview_required_attack_mana_cost, put_triggers_on_stack, queue_combat_damage_triggers,
+    try_execute_combat_damage_step, try_execute_combat_damage_step_with_first_step_snapshot,
 };
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::deals_first_strike_damage_with_game;
 use crate::rules::state_based::check_state_based_actions;
 use crate::triggers::TriggerQueue;
-use crate::turn::{execute_cleanup_step, execute_untap_step};
+use crate::turn::{execute_cleanup_step, execute_untap_step, execute_untap_step_with};
 
 /// What the caller should do next after calling [`TurnRunner::advance`].
 #[derive(Debug)]
@@ -45,6 +48,7 @@ pub enum TurnAction {
 pub enum TurnState {
     // === Beginning Phase ===
     BeginTurn,
+    Untap,
     Upkeep,
     UpkeepPriority,
     Draw,
@@ -94,6 +98,7 @@ impl TurnState {
     pub fn sync_name(&self) -> &'static str {
         match self {
             Self::BeginTurn => "begin_turn",
+            Self::Untap => "untap",
             Self::Upkeep => "upkeep",
             Self::UpkeepPriority => "upkeep_priority",
             Self::Draw => "draw",
@@ -133,6 +138,7 @@ impl TurnState {
     pub fn from_sync_name(raw: &str) -> Option<Self> {
         Some(match raw {
             "begin_turn" => Self::BeginTurn,
+            "untap" => Self::Untap,
             "upkeep" => Self::Upkeep,
             "upkeep_priority" => Self::UpkeepPriority,
             "draw" => Self::Draw,
@@ -205,7 +211,22 @@ struct PendingDrawRevealChoice {
 
 #[derive(Debug, Clone)]
 struct PendingAttackerOptionalCosts {
-    declarations: Vec<AttackerDeclaration>,
+    transaction: AttackDeclarationTransaction,
+    prompts: Vec<BooleanContext>,
+    answers: Vec<bool>,
+    required_mana_cost: u32,
+    declaration_source: ObjectId,
+}
+
+#[derive(Debug, Clone)]
+struct PendingAttackerManaWindow {
+    transaction: AttackDeclarationTransaction,
+    optional_cost_answers: Vec<bool>,
+    declaration_source: ObjectId,
+}
+
+#[derive(Debug, Clone)]
+struct PendingUntapChoices {
     prompts: Vec<BooleanContext>,
     answers: Vec<bool>,
 }
@@ -219,6 +240,18 @@ enum RunnerProgress<T> {
 struct QueuedBooleanDecisionMaker {
     answers: Vec<bool>,
     next: usize,
+}
+
+#[derive(Default)]
+struct BooleanPromptCollector {
+    prompts: Vec<BooleanContext>,
+}
+
+impl DecisionMaker for BooleanPromptCollector {
+    fn decide_boolean(&mut self, _game: &GameState, ctx: &BooleanContext) -> bool {
+        self.prompts.push(ctx.clone());
+        false
+    }
 }
 
 impl QueuedBooleanDecisionMaker {
@@ -247,10 +280,19 @@ pub struct TurnRunner {
     combat: CombatState,
     /// Whether first-strike creatures were detected this combat.
     has_first_strike: bool,
+    /// Creatures that had first or double strike as the first combat-damage
+    /// step began (CR 510.4 eligibility snapshot).
+    first_step_strikers: std::collections::HashSet<ObjectId>,
     /// Pending attacker declarations from the caller.
     pending_attackers: Option<Vec<AttackerDeclaration>>,
+    /// Mandatory choices for permanents that may remain tapped this untap step.
+    pending_untap_choices: Option<PendingUntapChoices>,
     /// Pending attacker-cost prompts and their collected answers.
     pending_attacker_optional_costs: Option<PendingAttackerOptionalCosts>,
+    /// Attack declaration paused after CR 508.1f tapping and before costs.
+    pending_attacker_mana_window: Option<PendingAttackerManaWindow>,
+    /// Pending single-option response for a runner-driven SelectOptions decision.
+    pending_option: Option<usize>,
     /// Pending blocker declarations from the caller.
     pending_blockers: Option<(Vec<BlockerDeclaration>, PlayerId)>,
     /// Pending discard selection from the caller.
@@ -267,6 +309,10 @@ pub struct TurnRunner {
     pending_legend_choice: Option<PendingLegendRuleChoice>,
     /// Defending player for the current combat.
     defending_player: Option<PlayerId>,
+    /// Defending players who still need to declare blockers, in APNAP order.
+    remaining_defending_players: Vec<PlayerId>,
+    /// Blocker declarations collected before the complete configuration is published.
+    collected_blocker_declarations: Vec<BlockerDeclaration>,
 }
 
 impl TurnRunner {
@@ -276,8 +322,12 @@ impl TurnRunner {
             state: TurnState::BeginTurn,
             combat: CombatState::default(),
             has_first_strike: false,
+            first_step_strikers: std::collections::HashSet::new(),
             pending_attackers: None,
+            pending_untap_choices: None,
             pending_attacker_optional_costs: None,
+            pending_attacker_mana_window: None,
+            pending_option: None,
             pending_blockers: None,
             pending_discard: None,
             pending_boolean: None,
@@ -286,6 +336,8 @@ impl TurnRunner {
             pending_commander_choice: None,
             pending_legend_choice: None,
             defending_player: None,
+            remaining_defending_players: Vec::new(),
+            collected_blocker_declarations: Vec::new(),
         }
     }
 
@@ -332,8 +384,55 @@ impl TurnRunner {
                 // Untap step — no priority
                 game.turn.phase = Phase::Beginning;
                 game.turn.step = Some(Step::Untap);
+
+                let mut hypothetical = game.clone();
+                let mut collector = BooleanPromptCollector::default();
+                execute_untap_step_with(&mut hypothetical, &mut collector);
+                if let Some(first_prompt) = collector.prompts.first().cloned() {
+                    self.pending_untap_choices = Some(PendingUntapChoices {
+                        prompts: collector.prompts,
+                        answers: Vec::new(),
+                    });
+                    self.pending_boolean = None;
+                    self.state = TurnState::Untap;
+                    return Ok(TurnAction::Decision(DecisionContext::Boolean(first_prompt)));
+                }
+
                 execute_untap_step(game);
 
+                self.state = TurnState::Upkeep;
+                Ok(TurnAction::Continue)
+            }
+
+            TurnState::Untap => {
+                if self.pending_untap_choices.is_none() {
+                    let mut hypothetical = game.clone();
+                    let mut collector = BooleanPromptCollector::default();
+                    execute_untap_step_with(&mut hypothetical, &mut collector);
+                    self.pending_untap_choices = Some(PendingUntapChoices {
+                        prompts: collector.prompts,
+                        answers: Vec::new(),
+                    });
+                }
+                let pending = self
+                    .pending_untap_choices
+                    .as_mut()
+                    .expect("untap choices initialized");
+                if let Some(answer) = self.pending_boolean.take() {
+                    pending.answers.push(answer);
+                }
+                if pending.answers.len() < pending.prompts.len() {
+                    return Ok(TurnAction::Decision(DecisionContext::Boolean(
+                        pending.prompts[pending.answers.len()].clone(),
+                    )));
+                }
+
+                let pending = self
+                    .pending_untap_choices
+                    .take()
+                    .expect("untap choices remain initialized");
+                let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
+                execute_untap_step_with(game, &mut dm);
                 self.state = TurnState::Upkeep;
                 Ok(TurnAction::Continue)
             }
@@ -361,6 +460,9 @@ impl TurnRunner {
             }
 
             TurnState::Draw => {
+                // CR 702.57b: a Forecast card stops being revealed as soon as
+                // a step other than upkeep begins.
+                game.clear_forecast_revealed_hand_cards();
                 game.turn.step = Some(Step::Draw);
                 let draw_events = match self.execute_draw_step_with_choices(game) {
                     RunnerProgress::Complete(draw_events) => draw_events,
@@ -451,6 +553,8 @@ impl TurnRunner {
                 game.turn.step = Some(Step::DeclareAttackers);
                 game.turn.priority_player = Some(game.turn.active_player);
                 self.pending_attacker_optional_costs = None;
+                self.pending_attacker_mana_window = None;
+                self.pending_option = None;
                 self.pending_boolean = None;
                 self.pending_dredge = None;
 
@@ -460,7 +564,43 @@ impl TurnRunner {
             }
 
             TurnState::DeclareAttackersApply => {
-                if let Some(pending) = self.pending_attacker_optional_costs.as_mut() {
+                if let Some(pending) = self.pending_attacker_mana_window.take() {
+                    let mut window_closed = false;
+                    if let Some(choice) = self.pending_option.take() {
+                        match apply_attack_mana_ability_window_response(
+                            game,
+                            tq,
+                            game.turn.active_player,
+                            choice,
+                        ) {
+                            Ok(closed) => window_closed = closed,
+                            Err(err) => {
+                                self.pending_attacker_mana_window = Some(pending);
+                                return Err(err);
+                            }
+                        }
+                    }
+
+                    if !window_closed
+                        && let Some(ctx) = attack_mana_ability_window_context(
+                            game,
+                            game.turn.active_player,
+                            pending.declaration_source,
+                        )
+                    {
+                        self.pending_attacker_mana_window = Some(pending);
+                        return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
+                    }
+
+                    let mut dm = QueuedBooleanDecisionMaker::new(pending.optional_cost_answers);
+                    finish_attack_declaration_transaction(
+                        pending.transaction,
+                        game,
+                        &mut self.combat,
+                        tq,
+                        &mut dm,
+                    )?;
+                } else if let Some(pending) = self.pending_attacker_optional_costs.as_mut() {
                     if let Some(answer) = self.pending_boolean.take() {
                         pending.answers.push(answer);
                     }
@@ -474,27 +614,106 @@ impl TurnRunner {
                         .pending_attacker_optional_costs
                         .take()
                         .expect("pending attacker optional costs should still exist");
-                    let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
-                    apply_attacker_declarations_with_dm(
-                        game,
-                        &mut self.combat,
-                        tq,
-                        &pending.declarations,
-                        &mut dm,
-                    )?;
+                    if pending.required_mana_cost > 0 {
+                        let mana_pending = PendingAttackerManaWindow {
+                            transaction: pending.transaction,
+                            optional_cost_answers: pending.answers,
+                            declaration_source: pending.declaration_source,
+                        };
+                        if let Some(ctx) = attack_mana_ability_window_context(
+                            game,
+                            game.turn.active_player,
+                            mana_pending.declaration_source,
+                        ) {
+                            self.pending_attacker_mana_window = Some(mana_pending);
+                            return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
+                        }
+                        let mut dm =
+                            QueuedBooleanDecisionMaker::new(mana_pending.optional_cost_answers);
+                        finish_attack_declaration_transaction(
+                            mana_pending.transaction,
+                            game,
+                            &mut self.combat,
+                            tq,
+                            &mut dm,
+                        )?;
+                    } else {
+                        let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
+                        finish_attack_declaration_transaction(
+                            pending.transaction,
+                            game,
+                            &mut self.combat,
+                            tq,
+                            &mut dm,
+                        )?;
+                    }
                 } else {
                     let declarations = self.pending_attackers.take().unwrap_or_default();
                     let prompts =
                         preview_optional_attack_cost_prompts(game, &self.combat, &declarations)?;
-                    if let Some(first_prompt) = prompts.first().cloned() {
-                        self.pending_attacker_optional_costs = Some(PendingAttackerOptionalCosts {
-                            declarations,
-                            prompts,
-                            answers: Vec::new(),
-                        });
-                        return Ok(TurnAction::Decision(DecisionContext::Boolean(first_prompt)));
+                    let required_mana_cost =
+                        preview_required_attack_mana_cost(game, &self.combat, &declarations)?;
+
+                    if !prompts.is_empty() || required_mana_cost > 0 {
+                        let declaration_source = declarations
+                            .first()
+                            .map(|declaration| declaration.creature)
+                            .ok_or_else(|| {
+                                GameLoopError::InvalidState(
+                                    "attack costs exist without an attacker".to_string(),
+                                )
+                            })?;
+                        let transaction = begin_attack_declaration_transaction(
+                            game,
+                            &self.combat,
+                            tq,
+                            &declarations,
+                        )?;
+                        if let Some(first_prompt) = prompts.first().cloned() {
+                            self.pending_attacker_optional_costs =
+                                Some(PendingAttackerOptionalCosts {
+                                    transaction,
+                                    prompts,
+                                    answers: Vec::new(),
+                                    required_mana_cost,
+                                    declaration_source,
+                                });
+                            return Ok(TurnAction::Decision(DecisionContext::Boolean(
+                                first_prompt,
+                            )));
+                        }
+
+                        let pending = PendingAttackerManaWindow {
+                            transaction,
+                            optional_cost_answers: Vec::new(),
+                            declaration_source,
+                        };
+                        if let Some(ctx) = attack_mana_ability_window_context(
+                            game,
+                            game.turn.active_player,
+                            declaration_source,
+                        ) {
+                            self.pending_attacker_mana_window = Some(pending);
+                            return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
+                        }
+                        let mut dm = QueuedBooleanDecisionMaker::new(Vec::new());
+                        finish_attack_declaration_transaction(
+                            pending.transaction,
+                            game,
+                            &mut self.combat,
+                            tq,
+                            &mut dm,
+                        )?;
+                    } else {
+                        let mut dm = QueuedBooleanDecisionMaker::new(Vec::new());
+                        apply_attacker_declarations_with_dm(
+                            game,
+                            &mut self.combat,
+                            tq,
+                            &declarations,
+                            &mut dm,
+                        )?;
                     }
-                    apply_attacker_declarations(game, &mut self.combat, tq, &declarations)?;
                 }
                 crate::game_loop::drain_pending_trigger_events(game, tq);
                 put_triggers_on_stack(game, tq)?;
@@ -518,6 +737,9 @@ impl TurnRunner {
                     self.state = TurnState::EndCombat;
                     Ok(TurnAction::Continue)
                 } else {
+                    self.remaining_defending_players =
+                        attacked_defending_players_in_apnap_order(game, &self.combat);
+                    self.collected_blocker_declarations.clear();
                     self.state = TurnState::DeclareBlockersDecision;
                     Ok(TurnAction::Continue)
                 }
@@ -526,11 +748,10 @@ impl TurnRunner {
             TurnState::DeclareBlockersDecision => {
                 game.turn.step = Some(Step::DeclareBlockers);
 
-                let defending_player = game
-                    .players
-                    .iter()
-                    .find(|p| p.id != game.turn.active_player && p.is_in_game())
-                    .map(|p| p.id)
+                let defending_player = self
+                    .remaining_defending_players
+                    .first()
+                    .copied()
                     .unwrap_or(game.turn.active_player);
                 self.defending_player = Some(defending_player);
 
@@ -549,13 +770,34 @@ impl TurnRunner {
                             self.defending_player.unwrap_or(game.turn.active_player),
                         )
                     });
-                apply_blocker_declarations(
+                if self.defending_player != Some(defending_player) {
+                    return Err(crate::decision::ResponseError::InvalidBlockers(
+                        "blocker declaration was submitted for the wrong defending player"
+                            .to_string(),
+                    )
+                    .into());
+                }
+                self.collected_blocker_declarations.extend(declarations);
+                if self.remaining_defending_players.first().copied() == Some(defending_player) {
+                    self.remaining_defending_players.remove(0);
+                }
+                if !self.remaining_defending_players.is_empty() {
+                    self.state = TurnState::DeclareBlockersDecision;
+                    return Ok(TurnAction::Continue);
+                }
+                if let Err(error) = apply_multiplayer_blocker_declarations(
                     game,
                     &mut self.combat,
                     tq,
-                    &declarations,
-                    defending_player,
-                )?;
+                    &self.collected_blocker_declarations,
+                ) {
+                    self.remaining_defending_players =
+                        attacked_defending_players_in_apnap_order(game, &self.combat);
+                    self.collected_blocker_declarations.clear();
+                    self.defending_player = None;
+                    self.state = TurnState::DeclareBlockersDecision;
+                    return Err(error);
+                }
                 put_triggers_on_stack(game, tq)?;
 
                 // Sync game.combat
@@ -570,7 +812,8 @@ impl TurnRunner {
                 game.empty_mana_pools();
 
                 // Check for first strike
-                self.has_first_strike = check_first_strike(game, &self.combat);
+                self.first_step_strikers = first_step_strikers(game, &self.combat);
+                self.has_first_strike = !self.first_step_strikers.is_empty();
 
                 if self.has_first_strike {
                     self.state = TurnState::CombatDamageFirstStrike;
@@ -583,7 +826,8 @@ impl TurnRunner {
             TurnState::CombatDamageFirstStrike => {
                 game.turn.step = Some(Step::CombatDamage);
 
-                let events = execute_combat_damage_step(game, &self.combat, true);
+                let events = try_execute_combat_damage_step(game, &self.combat, true)
+                    .map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
                 queue_combat_damage_triggers(game, &events, tq);
                 self.state = TurnState::CombatDamageFirstStrikeSbas;
                 Ok(TurnAction::Continue)
@@ -608,7 +852,13 @@ impl TurnRunner {
             TurnState::CombatDamageRegular => {
                 game.turn.step = Some(Step::CombatDamage);
 
-                let events = execute_combat_damage_step(game, &self.combat, false);
+                let events = try_execute_combat_damage_step_with_first_step_snapshot(
+                    game,
+                    &self.combat,
+                    false,
+                    &self.first_step_strikers,
+                )
+                .map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
                 queue_combat_damage_triggers(game, &events, tq);
                 self.state = TurnState::CombatDamageRegularSbas;
                 Ok(TurnAction::Continue)
@@ -745,6 +995,8 @@ impl TurnRunner {
     pub fn respond_attackers(&mut self, declarations: Vec<AttackerDeclaration>) {
         self.pending_attackers = Some(declarations);
         self.pending_attacker_optional_costs = None;
+        self.pending_attacker_mana_window = None;
+        self.pending_option = None;
         self.pending_boolean = None;
         self.pending_dredge = None;
     }
@@ -766,6 +1018,11 @@ impl TurnRunner {
     /// Provide a boolean response in response to a `Decision(Boolean(...))`.
     pub fn respond_boolean(&mut self, answer: bool) {
         self.pending_boolean = Some(answer);
+    }
+
+    /// Provide a response to a runner-driven single-select options decision.
+    pub fn respond_options(&mut self, option_indices: Vec<usize>) {
+        self.pending_option = option_indices.first().copied();
     }
 
     /// Signal that the priority loop has completed.
@@ -942,6 +1199,8 @@ impl TurnRunner {
                         {
                             drawn.push(new_id);
                         }
+                    } else {
+                        game.record_empty_library_draw_attempt(active_player);
                     }
                 }
             }
@@ -1065,6 +1324,7 @@ impl TurnRunner {
             let actions = check_state_based_actions_with_context(game, &view, &context);
             drop(view);
             if actions.is_empty() {
+                game.clear_empty_library_draw_attempts_since_sba();
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
                 self.pending_dredge = None;
@@ -1141,6 +1401,7 @@ impl TurnRunner {
             }
 
             let Some(obj_id) = commander_returns.first().copied() else {
+                game.clear_empty_library_draw_attempts_since_sba();
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
                 self.pending_dredge = None;
@@ -1187,17 +1448,66 @@ impl Default for TurnRunner {
     }
 }
 
-/// Check whether any creature in combat has first strike or double strike.
-fn check_first_strike(game: &GameState, combat: &CombatState) -> bool {
-    combat.attackers.iter().any(|info| {
-        game.object(info.creature)
-            .is_some_and(|obj| deals_first_strike_damage_with_game(obj, game))
-    }) || combat.blockers.values().any(|blockers| {
-        blockers.iter().any(|&id| {
-            game.object(id)
-                .is_some_and(|obj| deals_first_strike_damage_with_game(obj, game))
+/// Snapshot every combatant that had first strike or double strike as the
+/// first combat-damage step began (CR 510.4).
+fn first_step_strikers(
+    game: &GameState,
+    combat: &CombatState,
+) -> std::collections::HashSet<ObjectId> {
+    combat
+        .attackers
+        .iter()
+        .map(|info| info.creature)
+        .chain(combat.blockers.values().flatten().copied())
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| deals_first_strike_damage_with_game(object, game))
         })
-    })
+        .collect()
+}
+
+/// CR 802.4: every player actually being attacked declares blockers in APNAP order.
+fn attacked_defending_players_in_apnap_order(
+    game: &GameState,
+    combat: &CombatState,
+) -> Vec<PlayerId> {
+    let attacked = combat
+        .attackers
+        .iter()
+        .filter_map(|attacker| {
+            crate::combat_state::defending_player_for_attack_target(game, &attacker.target)
+        })
+        .collect::<std::collections::HashSet<_>>();
+
+    let turn_order = &game.turn_store.turn_order;
+    let mut ordered = Vec::new();
+    if !turn_order.is_empty() {
+        let active_position = turn_order
+            .iter()
+            .position(|player| *player == game.turn.active_player)
+            .unwrap_or(0);
+        for offset in 0..turn_order.len() {
+            let player = turn_order[(active_position + offset) % turn_order.len()];
+            if attacked.contains(&player)
+                && game
+                    .player(player)
+                    .is_some_and(|player| player.is_in_game())
+            {
+                ordered.push(player);
+            }
+        }
+    }
+    for player in game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .map(|player| player.id)
+    {
+        if attacked.contains(&player) && !ordered.contains(&player) {
+            ordered.push(player);
+        }
+    }
+    ordered
 }
 
 fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -> TurnState {
@@ -1227,12 +1537,14 @@ fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::CardDefinitionBuilder;
     use crate::combat_state::{AttackTarget, AttackerInfo};
     use crate::game_state::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::object::Object;
+    use crate::static_abilities::StaticAbility;
     use crate::tag::TagKey;
     use crate::triggers::TriggerQueue;
     use crate::types::CardType;
@@ -1251,6 +1563,88 @@ mod tests {
         let object = Object::from_card(object_id, &card, owner, Zone::Battlefield);
         game.add_object(object);
         object_id
+    }
+
+    fn create_mountain(game: &mut GameState, owner: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Mountain")
+            .card_types(vec![CardType::Land])
+            .build();
+        let id = game.create_object_from_card(&card, owner, Zone::Battlefield);
+        game.object_mut(id)
+            .expect("Mountain exists")
+            .abilities_mut()
+            .push(Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                    effects: crate::resolution::ResolutionProgram::default(),
+                    choices: vec![],
+                    timing: ActivationTiming::AnyTime,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: Some(vec![crate::mana::ManaSymbol::Red]),
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            });
+        id
+    }
+
+    fn create_optional_untap_artifact(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+    ) -> ObjectId {
+        let object_id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(object_id.0 as u32), name)
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let mut object = Object::from_card(object_id, &card, owner, Zone::Battlefield);
+        object.abilities_mut().push(Ability::static_ability(
+            crate::static_abilities::StaticAbility::may_choose_not_to_untap_during_untap_step(
+                "this artifact",
+            ),
+        ));
+        game.add_object(object);
+        object_id
+    }
+
+    #[test]
+    fn turn_runner_yields_each_may_choose_not_to_untap_decision() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let stays_tapped = create_optional_untap_artifact(&mut game, alice, "Sleeping Relic");
+        let untaps = create_optional_untap_artifact(&mut game, alice, "Waking Relic");
+        game.tap(stays_tapped);
+        game.tap(untaps);
+        let mut runner = TurnRunner::new();
+        let mut tq = TriggerQueue::new();
+
+        let first = runner.advance(&mut game, &mut tq).expect("first prompt");
+        let TurnAction::Decision(DecisionContext::Boolean(first)) = first else {
+            panic!("expected optional untap decision");
+        };
+        assert_eq!(first.player, alice);
+        assert_eq!(first.source, Some(stays_tapped));
+        assert!(game.is_tapped(stays_tapped));
+        assert!(game.is_tapped(untaps));
+
+        runner.respond_boolean(false);
+        let second = runner.advance(&mut game, &mut tq).expect("second prompt");
+        let TurnAction::Decision(DecisionContext::Boolean(second)) = second else {
+            panic!("expected second optional untap decision");
+        };
+        assert_eq!(second.source, Some(untaps));
+
+        runner.respond_boolean(true);
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("finish untap"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Upkeep));
+        assert!(game.is_tapped(stays_tapped));
+        assert!(!game.is_tapped(untaps));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -1374,6 +1768,71 @@ mod tests {
     }
 
     #[test]
+    fn draw_step_records_empty_library_attempt_for_sbas() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+        assert!(game.player(alice).expect("Alice exists").library.is_empty());
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Draw);
+        let mut tq = TriggerQueue::new();
+
+        let action = runner
+            .advance(&mut game, &mut tq)
+            .expect("draw step should advance to priority");
+
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .attempted_draw_from_empty_library
+        );
+        assert!(
+            crate::rules::state_based::check_state_based_actions(&game)
+                .iter()
+                .any(|action| matches!(
+                    action,
+                    crate::rules::state_based::StateBasedAction::PlayerLoses {
+                        player,
+                        reason: crate::rules::state_based::LoseReason::DrewFromEmptyLibrary,
+                    } if *player == alice
+                ))
+        );
+    }
+
+    #[test]
+    fn forecast_reveal_ends_exactly_when_the_draw_step_begins() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+
+        let forecast = CardBuilder::new(CardId::new(), "Forecast Reveal Probe").build();
+        let forecast_id = game.create_object_from_card(&forecast, alice, Zone::Hand);
+        assert!(game.reveal_hand_card_until_upkeep_ends(forecast_id));
+        let draw_card = CardBuilder::new(CardId::new(), "Draw Step Card").build();
+        game.create_object_from_card(&draw_card, alice, Zone::Library);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::UpkeepPriority);
+        let mut tq = TriggerQueue::new();
+        let action = runner.advance(&mut game, &mut tq).expect("upkeep ends");
+        assert!(matches!(action, TurnAction::Continue));
+        assert!(
+            game.is_hand_card_revealed_until_upkeep_ends(forecast_id),
+            "the card remains revealed until the next step actually begins"
+        );
+
+        let action = runner.advance(&mut game, &mut tq).expect("draw begins");
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.turn.step, Some(Step::Draw));
+        assert!(!game.is_hand_card_revealed_until_upkeep_ends(forecast_id));
+    }
+
+    #[test]
     fn test_turn_runner_reaches_complete() {
         let mut game = setup_game();
         let mut tq = TriggerQueue::new();
@@ -1469,6 +1928,355 @@ mod tests {
         assert!(matches!(action, TurnAction::RunPriority));
         assert!(matches!(runner.state(), TurnState::DeclareBlockersPriority));
         assert_eq!(game.turn.priority_player, Some(alice));
+    }
+
+    #[test]
+    fn multiplayer_defenders_declare_blockers_in_apnap_and_keep_every_block() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let attacks_bob = create_battlefield_creature(&mut game, alice, "Attacks Bob");
+        let attacks_charlie = create_battlefield_creature(&mut game, alice, "Attacks Charlie");
+        let bob_blocker = create_battlefield_creature(&mut game, bob, "Bob Blocker");
+        let charlie_blocker = create_battlefield_creature(&mut game, charlie, "Charlie Blocker");
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareBlockers);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareBlockersCheck);
+        runner.combat.attackers = vec![
+            AttackerInfo {
+                creature: attacks_charlie,
+                target: AttackTarget::Player(charlie),
+            },
+            AttackerInfo {
+                creature: attacks_bob,
+                target: AttackTarget::Player(bob),
+            },
+        ];
+        let mut tq = TriggerQueue::new();
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("start blockers"),
+            TurnAction::Continue
+        ));
+        let TurnAction::Decision(DecisionContext::Blockers(bob_context)) = runner
+            .advance(&mut game, &mut tq)
+            .expect("Bob should declare first")
+        else {
+            panic!("expected Bob's blocker decision");
+        };
+        assert_eq!(bob_context.player, bob);
+        assert_eq!(
+            bob_context
+                .blocker_options
+                .iter()
+                .map(|option| option.attacker)
+                .collect::<Vec<_>>(),
+            vec![attacks_bob]
+        );
+        runner.respond_blockers(
+            vec![BlockerDeclaration {
+                blocker: bob_blocker,
+                blocking: attacks_bob,
+            }],
+            bob,
+        );
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("collect Bob's blocks"),
+            TurnAction::Continue
+        ));
+
+        let TurnAction::Decision(DecisionContext::Blockers(charlie_context)) = runner
+            .advance(&mut game, &mut tq)
+            .expect("Charlie should declare second")
+        else {
+            panic!("expected Charlie's blocker decision");
+        };
+        assert_eq!(charlie_context.player, charlie);
+        assert_eq!(
+            charlie_context
+                .blocker_options
+                .iter()
+                .map(|option| option.attacker)
+                .collect::<Vec<_>>(),
+            vec![attacks_charlie]
+        );
+        runner.respond_blockers(
+            vec![BlockerDeclaration {
+                blocker: charlie_blocker,
+                blocking: attacks_charlie,
+            }],
+            charlie,
+        );
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("publish all blocks"),
+            TurnAction::RunPriority
+        ));
+
+        assert!(matches!(runner.state(), TurnState::DeclareBlockersPriority));
+        assert_eq!(
+            runner.combat.blockers.get(&attacks_bob),
+            Some(&vec![bob_blocker])
+        );
+        assert_eq!(
+            runner.combat.blockers.get(&attacks_charlie),
+            Some(&vec![charlie_blocker])
+        );
+        assert_eq!(game.turn.priority_player, Some(alice));
+    }
+
+    #[test]
+    fn defender_cannot_block_an_attacker_attacking_another_player() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let attacker = create_battlefield_creature(&mut game, alice, "Attacks Charlie");
+        let bob_blocker = create_battlefield_creature(&mut game, bob, "Bob Blocker");
+        let mut combat = CombatState {
+            attackers: vec![AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(charlie),
+            }],
+            ..CombatState::default()
+        };
+        let mut tq = TriggerQueue::new();
+
+        let error = crate::game_loop::apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut tq,
+            &[BlockerDeclaration {
+                blocker: bob_blocker,
+                blocking: attacker,
+            }],
+            bob,
+        )
+        .expect_err("Bob cannot block a creature attacking Charlie");
+
+        assert!(
+            error
+                .to_string()
+                .contains("can block only creatures attacking")
+        );
+        assert!(combat.blockers.is_empty());
+    }
+
+    fn add_attack_tax(game: &mut GameState, controller: PlayerId, amount: u32) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Runner Attack Tax")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let tax = game.create_object_from_card(&card, controller, Zone::Battlefield);
+        game.object_mut(tax)
+            .expect("attack tax exists")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(amount),
+            ));
+        tax
+    }
+
+    #[test]
+    fn attack_cost_mana_window_taps_attackers_then_allows_mana_abilities_before_payment() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_battlefield_creature(&mut game, alice, "Taxed Attacker");
+        game.remove_summoning_sickness(attacker);
+        let mountain = create_mountain(&mut game, alice);
+        let second_mountain = create_mountain(&mut game, alice);
+        add_attack_tax(&mut game, bob, 1);
+        game.refresh_continuous_state();
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        runner.state = TurnState::DeclareAttackersApply;
+        runner.pending_attackers = Some(vec![AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }]);
+
+        let first_window = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
+            other => panic!("expected the attack-cost mana window, got {other:?}"),
+        };
+        assert!(
+            game.is_tapped(attacker),
+            "CR 508.1f precedes the mana window"
+        );
+        assert!(!game.is_tapped(mountain));
+        assert!(runner.combat.attackers.is_empty());
+        assert_eq!(
+            game.player(alice).expect("Alice exists").mana_pool.total(),
+            0
+        );
+
+        let mana_choice = first_window
+            .options
+            .iter()
+            .find(|option| option.object_id == Some(mountain))
+            .map(|option| option.index)
+            .expect("the Mountain should be offered in the attack-cost mana window");
+        runner.respond_options(vec![mana_choice]);
+        let second_window = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
+            other => panic!("the repeatable mana window should remain open, got {other:?}"),
+        };
+        assert!(game.is_tapped(mountain));
+        assert_eq!(
+            game.player(alice).expect("Alice exists").mana_pool.total(),
+            1
+        );
+        assert!(runner.combat.attackers.is_empty());
+
+        let finish_choice = second_window
+            .options
+            .iter()
+            .find(|option| option.description.starts_with("Finish"))
+            .map(|option| option.index)
+            .expect("the mana window should have a finish option");
+        runner.respond_options(vec![finish_choice]);
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).unwrap(),
+            TurnAction::RunPriority
+        ));
+        assert_eq!(
+            game.player(alice).expect("Alice exists").mana_pool.total(),
+            0
+        );
+        assert_eq!(runner.combat.attackers.len(), 1);
+        assert_eq!(runner.combat.attackers[0].creature, attacker);
+        assert!(!game.is_tapped(second_mountain));
+    }
+
+    #[test]
+    fn failed_attack_cost_after_mana_activation_rolls_back_the_whole_declaration() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_battlefield_creature(&mut game, alice, "Overtaxed Attacker");
+        game.remove_summoning_sickness(attacker);
+        let mountain = create_mountain(&mut game, alice);
+        let second_mountain = create_mountain(&mut game, alice);
+        add_attack_tax(&mut game, bob, 2);
+        game.refresh_continuous_state();
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        runner.state = TurnState::DeclareAttackersApply;
+        runner.pending_attackers = Some(vec![AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }]);
+
+        let window = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
+            other => panic!("expected the attack-cost mana window, got {other:?}"),
+        };
+        let mana_choice = window
+            .options
+            .iter()
+            .find(|option| option.object_id == Some(mountain))
+            .map(|option| option.index)
+            .expect("the Mountain should be activatable");
+        runner.respond_options(vec![mana_choice]);
+        let second_window = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectOptions(ctx)) => ctx,
+            other => panic!("the second Mountain should keep the window open, got {other:?}"),
+        };
+        let finish_choice = second_window
+            .options
+            .iter()
+            .find(|option| option.description.starts_with("Finish"))
+            .map(|option| option.index)
+            .expect("the player may close the window before producing enough mana");
+        runner.respond_options(vec![finish_choice]);
+        runner
+            .advance(&mut game, &mut tq)
+            .expect_err("one mana cannot pay the two-mana attack cost");
+
+        assert!(!game.is_tapped(attacker));
+        assert!(!game.is_tapped(mountain));
+        assert!(!game.is_tapped(second_mountain));
+        assert_eq!(
+            game.player(alice).expect("Alice exists").mana_pool.total(),
+            0
+        );
+        assert!(runner.combat.attackers.is_empty());
+        assert!(tq.is_empty());
+    }
+
+    #[test]
+    fn optional_attack_cost_choice_happens_after_attackers_are_tapped() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_battlefield_creature(&mut game, alice, "Exert Order Probe");
+        game.remove_summoning_sickness(attacker);
+        game.object_mut(attacker)
+            .expect("attacker exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::exert_attack(
+                true,
+                None,
+                "You may exert this creature as it attacks",
+            )));
+        game.refresh_continuous_state();
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        runner.state = TurnState::DeclareAttackersApply;
+        runner.pending_attackers = Some(vec![AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }]);
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).unwrap(),
+            TurnAction::Decision(DecisionContext::Boolean(_))
+        ));
+        assert!(game.is_tapped(attacker));
+        assert!(runner.combat.attackers.is_empty());
+
+        runner.respond_boolean(false);
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).unwrap(),
+            TurnAction::RunPriority
+        ));
+        assert_eq!(runner.combat.attackers.len(), 1);
+        assert!(!game.object_exerted_this_turn(attacker));
     }
 
     #[test]
@@ -1598,8 +2406,8 @@ mod tests {
             "linked exert trigger should not be created before the choice is made"
         );
         assert!(
-            !game.is_tapped(attacker),
-            "attacker should remain untapped while the exert prompt is pending"
+            game.is_tapped(attacker),
+            "CR 508.1f taps the attacker before the optional 508.1g exert choice"
         );
 
         runner.respond_boolean(true);

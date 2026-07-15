@@ -33,6 +33,10 @@ pub(crate) enum EffectAst {
     Coordinated {
         effects: Vec<EffectAst>,
         leading_duration: bool,
+        /// This exact wrapper was introduced from an explicit leading
+        /// If/When-result clause, rather than by an ordinary coordinated
+        /// specialist parser.
+        result_conjunction: bool,
     },
     UnlessPays {
         effects: Vec<EffectAst>,
@@ -76,6 +80,13 @@ pub(crate) enum EffectAst {
     },
     DelayedWhenLastObjectDiesThisTurn {
         filter: Option<ObjectFilter>,
+        effects: Vec<EffectAst>,
+    },
+    /// A delayed trigger tied to the object selected or created by the
+    /// immediately preceding effect. Unlike the dies-this-turn form, this
+    /// trigger has no turn-based expiry.
+    DelayedWhenLastObjectLeavesBattlefield {
+        filter: ObjectFilter,
         effects: Vec<EffectAst>,
     },
     Conditional {
@@ -309,6 +320,7 @@ pub(crate) enum EffectAst {
     VoteStart {
         options: Vec<String>,
         secret: bool,
+        starting_with_controller: bool,
     },
     SecretChoiceStart {
         options: Vec<String>,
@@ -319,11 +331,13 @@ pub(crate) enum EffectAst {
         filter: ObjectFilter,
         count: ChoiceCount,
         secret: bool,
+        starting_with_controller: bool,
     },
     VoteStartPlayers {
         filter: PlayerFilter,
         exclude_voter: bool,
         secret: bool,
+        starting_with_controller: bool,
     },
     VoteOption {
         option: String,
@@ -565,10 +579,33 @@ impl EffectAst {
         source: TargetAst,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_prevent_all_combat_damage_from_source_with_surface(
+            source, duration, false,
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_combat_damage_source_would_deal(
+        source: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb_prevent_all_combat_damage_from_source_with_surface(
+            source, duration, true,
+        )
+    }
+
+    fn subject_verb_prevent_all_combat_damage_from_source_with_surface(
+        source: TargetAst,
+        duration: Until,
+        source_would_deal_surface: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PreventAllCombatDamageFromSource { duration, source },
+            SubjectVerbActionAst::PreventAllCombatDamageFromSource {
+                duration,
+                source,
+                source_would_deal_surface,
+            },
         )
     }
 
@@ -582,6 +619,23 @@ impl EffectAst {
             SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
                 duration,
                 source_filter,
+                excluded_source_target: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_combat_damage_from_source_filter_excluding_target(
+        source_filter: ObjectFilter,
+        excluded_source_target: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
+                duration,
+                source_filter,
+                excluded_source_target: Some(excluded_source_target),
             },
         )
     }
@@ -691,6 +745,43 @@ impl EffectAst {
                 target,
                 duration,
                 source_of_your_choice,
+                source_choice_shares_activation_mana_color: false,
+                source_target: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_damage_to_target_with_mana_color_source_choice(
+        target: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllDamageToTarget {
+                target,
+                duration,
+                source_of_your_choice: true,
+                source_choice_shares_activation_mana_color: true,
+                source_target: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_damage_to_target_from_target_source(
+        target: TargetAst,
+        source_target: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllDamageToTarget {
+                target,
+                duration,
+                source_of_your_choice: false,
+                source_choice_shares_activation_mana_color: false,
+                source_target: Some(source_target),
             },
         )
     }
@@ -1140,6 +1231,7 @@ impl EffectAst {
                 target,
                 face_down,
                 all: false,
+                explicit_return_surface: false,
             },
         )
     }
@@ -1155,8 +1247,24 @@ impl EffectAst {
                 target,
                 face_down,
                 all: true,
+                explicit_return_surface: false,
             },
         )
+    }
+
+    pub(crate) fn with_explicit_exile_return_surface(mut self) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ExileUntilSourceLeaves {
+                    explicit_return_surface,
+                    ..
+                },
+            ..
+        }) = &mut self
+        {
+            *explicit_return_surface = true;
+        }
+        self
     }
 
     pub(crate) fn subject_verb_move_to_zone(
@@ -1410,7 +1518,21 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::TargetOnly { target },
+            SubjectVerbActionAst::TargetOnly {
+                target,
+                explicit_declaration: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_explicit_target_only(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::TargetOnly {
+                target,
+                explicit_declaration: true,
+            },
         )
     }
 
@@ -1825,8 +1947,13 @@ impl EffectAst {
         name_override_surface: Option<SourceReferenceSurface>,
         add_supertypes: Vec<Supertype>,
         remove_supertypes: Vec<Supertype>,
+        add_card_types: Vec<CardType>,
+        set_card_types: Vec<CardType>,
+        add_subtypes: Vec<Subtype>,
+        set_subtypes: Vec<Subtype>,
         granted_abilities: Vec<GrantedAbilityAst>,
         set_base_power_toughness: Option<(Value, Value)>,
+        copy_exception_surface: Option<String>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -1840,8 +1967,13 @@ impl EffectAst {
                 name_override_surface,
                 add_supertypes,
                 remove_supertypes,
+                add_card_types,
+                set_card_types,
+                add_subtypes,
+                set_subtypes,
                 granted_abilities,
                 set_base_power_toughness,
+                copy_exception_surface,
             },
         )
     }
@@ -3596,7 +3728,11 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PhaseOut { target },
+            SubjectVerbActionAst::PhaseOut {
+                target,
+                duration: crate::effects::PhaseOutDuration::UntilNextUntap,
+                source_surface: None,
+            },
         )
     }
 
@@ -3604,7 +3740,26 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PhaseOutAll { filter },
+            SubjectVerbActionAst::PhaseOutAll {
+                filter,
+                duration: crate::effects::PhaseOutDuration::UntilNextUntap,
+                source_surface: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_phase_out_all_until_source_leaves(
+        filter: ObjectFilter,
+        source_surface: SourceReferenceSurface,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PhaseOutAll {
+                filter,
+                duration: crate::effects::PhaseOutDuration::UntilSourceLeaves,
+                source_surface: Some(source_surface),
+            },
         )
     }
 
@@ -4361,10 +4516,14 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_goad(target: TargetAst) -> Self {
+        Self::subject_verb_goad_for(target, Until::YourNextTurn)
+    }
+
+    pub(crate) fn subject_verb_goad_for(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Goad { target },
+            SubjectVerbActionAst::Goad { target, duration },
         )
     }
 

@@ -1179,6 +1179,12 @@ fn activation_timing_allows(
         crate::ability::ActivationTiming::DuringOpponentsTurn => {
             game.turn.active_player != controller
         }
+        crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
+            game.object(source)
+                .is_some_and(|object| object.owner == game.turn.active_player)
+                && game.turn.phase == Phase::Beginning
+                && game.turn.step == Some(crate::game_state::Step::Upkeep)
+        }
     }
 }
 

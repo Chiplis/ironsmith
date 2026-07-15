@@ -59,6 +59,14 @@ impl GameState {
                 .get(&old_id)
                 .map(|obj| self.cached_object_snapshot_with_calculated_characteristics(obj))
         });
+        if self
+            .objects
+            .get(&old_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+            && new_zone != Zone::Battlefield
+        {
+            self.release_phase_out_holds_for_source(old_id);
+        }
         if let Some(snapshot) = pre_move_snapshot.as_ref() {
             for entry in &mut self.stack {
                 if entry.is_ability
@@ -110,6 +118,7 @@ impl GameState {
         }
 
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
+        self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
         self.stable_id_index.remove(&old_object.stable_id);
         self.commander_tracking_mut()
@@ -216,6 +225,9 @@ impl GameState {
         let mut new_object = old_object;
         new_object.id = new_id;
         new_object.zone = new_zone;
+        if old_zone == Zone::Stack && new_zone != Zone::Stack {
+            new_object.end_splice_cast_overlay();
+        }
         if old_zone == Zone::Stack
             && new_zone == Zone::Battlefield
             && matches!(new_object.kind, crate::object::ObjectKind::SpellCopy)
@@ -495,6 +507,7 @@ impl GameState {
             decision_maker,
             true,
             Vec::new(),
+            None,
         )
     }
 
@@ -512,6 +525,26 @@ impl GameState {
             decision_maker,
             true,
             initial_enters_with_counters,
+            None,
+        )
+    }
+
+    pub(crate) fn move_object_with_etb_processing_with_initial_counters_and_controller_with_dm(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
+        entering_controller: Option<PlayerId>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            true,
+            initial_enters_with_counters,
+            entering_controller,
         )
     }
 
@@ -528,6 +561,7 @@ impl GameState {
             decision_maker,
             false,
             Vec::new(),
+            None,
         )
     }
 
@@ -539,6 +573,7 @@ impl GameState {
         decision_maker: &mut dyn crate::decision::DecisionMaker,
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
+        entering_controller: Option<PlayerId>,
     ) -> Option<EntersResult> {
         let old_zone = self.object(old_id)?.zone;
 
@@ -573,9 +608,23 @@ impl GameState {
             return None;
         }
 
+        let prospective_aura_entry = choose_aura_attachment
+            && (old_zone != Zone::Stack || result.enters_as_copy_of.is_some())
+            && (self
+                .object(old_id)
+                .is_some_and(|object| object.subtypes.contains(&Subtype::Aura))
+                || result.enters_as_copy_of.is_some_and(|copy_id| {
+                    self.object(copy_id)
+                        .is_some_and(|object| object.subtypes.contains(&Subtype::Aura))
+                })
+                || result.added_subtypes.contains(&Subtype::Aura));
+        // CR 303.4g is not a second zone change. If attachment proves
+        // impossible, restore this exact pre-entry state.
+        let aura_entry_checkpoint = prospective_aura_entry.then(|| self.clone());
+
         // Proceed with normal battlefield entry
         let new_id = self.move_object(old_id, Zone::Battlefield, cause.clone())?;
-        if let Some(controller) = result.controller_override {
+        if let Some(controller) = entering_controller.or(result.controller_override) {
             self.set_current_controller(new_id, controller);
         }
 
@@ -1046,7 +1095,7 @@ impl GameState {
             && obj.attached_to.is_none()
             && let Some(filter) = obj.aura_attach_filter_owned()
         {
-            let chooser = obj.owner;
+            let chooser = self.current_controller(new_id).unwrap_or(obj.owner);
             let filter_ctx = self.filter_context_for(chooser, Some(new_id));
             let chosen_target = match filter {
                 AuraAttachmentFilter::Object(filter) => {
@@ -1066,6 +1115,7 @@ impl GameState {
                     if candidates.is_empty() {
                         None
                     } else {
+                        let fallback_target = candidates.first().map(|candidate| candidate.id);
                         let ctx = crate::decisions::context::SelectObjectsContext::new(
                             chooser,
                             Some(new_id),
@@ -1078,6 +1128,7 @@ impl GameState {
                             .decide_objects(self, &ctx)
                             .first()
                             .copied()
+                            .or(fallback_target)
                             .map(AttachmentTarget::Object)
                     }
                 }
@@ -1121,15 +1172,28 @@ impl GameState {
                 }
             };
 
-            if let Some(target) = chosen_target {
-                if self.attach_object_to_target(new_id, target) {
-                    self.effect_store
-                        .continuous_effects
-                        .record_attachment(new_id);
+            let attached = chosen_target.is_some_and(|target| {
+                if !self.attach_object_to_target(new_id, target) {
+                    return false;
                 }
-            } else {
-                // No legal attachment target - put the Aura into the graveyard
-                self.move_object_by_effect(new_id, Zone::Graveyard);
+                self.effect_store
+                    .continuous_effects
+                    .record_attachment(new_id);
+                true
+            });
+            if !attached && let Some(checkpoint) = aura_entry_checkpoint {
+                *self = checkpoint;
+                if old_zone == Zone::Stack {
+                    let graveyard_id = self.move_object(old_id, Zone::Graveyard, cause)?;
+                    return Some(EntersResult {
+                        new_id: graveyard_id,
+                        enters_tapped: false,
+                    });
+                }
+                return Some(EntersResult {
+                    new_id: old_id,
+                    enters_tapped: false,
+                });
             }
         }
 
@@ -1959,6 +2023,12 @@ impl GameState {
         &self,
         id: ObjectId,
     ) -> Option<Arc<crate::continuous::CalculatedCharacteristics>> {
+        if self
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield && self.is_phased_out(id))
+        {
+            return None;
+        }
         if let Some(chars) = crate::continuous::in_progress_characteristics(id) {
             return Some(Arc::new(chars));
         }
@@ -2061,6 +2131,9 @@ impl GameState {
     /// semantic subtype implications like changeling.
     pub fn current_characteristics(&self, id: ObjectId) -> Option<CalculatedCharacteristics> {
         let object = self.object(id)?;
+        if object.zone == Zone::Battlefield && self.is_phased_out(id) {
+            return None;
+        }
         let mut chars =
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
@@ -2300,10 +2373,14 @@ impl GameState {
 
     /// Set an object's controller as derived state rather than object storage.
     pub fn set_current_controller(&mut self, id: ObjectId, controller: PlayerId) {
-        let Some(object) = self.object(id) else {
+        let Some(owner) = self.object(id).map(|object| object.owner) else {
             return;
         };
-        if object.owner == controller {
+        if self.current_controller(id) == Some(controller) {
+            return;
+        }
+        self.set_summoning_sick(id);
+        if owner == controller {
             return;
         }
         let effect = ContinuousEffect::new(

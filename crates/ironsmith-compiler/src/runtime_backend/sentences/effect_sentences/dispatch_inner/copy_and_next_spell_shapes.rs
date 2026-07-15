@@ -371,6 +371,60 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             clause_display.trim()
         )));
     }
+
+    let delayed_target_shape = delayed_shapes::parse_delayed_target_dies_subject(
+        trigger_core_tokens,
+    )
+    .map(|subject| (subject, false))
+    .or_else(|| {
+        delayed_shapes::parse_delayed_target_put_into_your_graveyard_subject(trigger_core_tokens)
+            .map(|subject| (subject, true))
+    });
+    if let Some((subject_tokens, put_into_your_graveyard)) = delayed_target_shape {
+        let filter = parse_object_filter(subject_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported delayed target dies filter (clause: '{}')",
+                clause_display.trim()
+            ))
+        })?;
+        let tag = helper_tag_for_tokens(tokens, "targeted");
+        let mut watched_filter = filter
+            .clone()
+            .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+        if put_into_your_graveyard {
+            watched_filter.owner = Some(PlayerFilter::You);
+        }
+        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        if delayed_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed target-dies effect clause (clause: '{}')",
+                clause_display.trim()
+            )));
+        }
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                // `target` identifies the chosen object, not its controller.
+                // An implicit chooser still resolves to the spell's controller
+                // without adding a "you control" restriction to the filter.
+                player: PlayerAst::Implicit,
+                tag,
+            },
+            EffectAst::DelayedTriggerThisTurn {
+                trigger: if put_into_your_graveyard {
+                    TriggerSpec::PutIntoGraveyard(watched_filter)
+                } else {
+                    TriggerSpec::Dies(watched_filter)
+                },
+                effects: delayed_effects,
+                one_shot: true,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            },
+        ]));
+    }
     let trigger = if let Some(trigger) =
         next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_core_tokens)
     {
@@ -451,6 +505,32 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         filter: delayed_filter,
         effects: delayed_effects,
     }]))
+}
+
+pub(crate) fn parse_delayed_when_that_leaves_battlefield_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = delayed_shapes::parse_delayed_tagged_leaves_shape(tokens) else {
+        return Ok(None);
+    };
+    let filter = match shape.kind {
+        delayed_shapes::DelayedLeavesObjectKind::Creature => ObjectFilter::creature(),
+        delayed_shapes::DelayedLeavesObjectKind::Permanent => ObjectFilter::permanent(),
+        delayed_shapes::DelayedLeavesObjectKind::Token => ObjectFilter::default().token(),
+    };
+    let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
+    if delayed_effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed leaves-the-battlefield effect clause (clause: '{}')",
+            crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+        )));
+    }
+    Ok(Some(vec![
+        EffectAst::DelayedWhenLastObjectLeavesBattlefield {
+            filter,
+            effects: delayed_effects,
+        },
+    ]))
 }
 
 pub(crate) fn find_from_among(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -708,6 +788,27 @@ mod copy_and_next_spell_shape_tests {
         );
         assert!(debug.contains("filter: None"), "{debug}");
         assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn delayed_that_creature_leaves_uses_captured_effect_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When that creature leaves the battlefield, return this card from exile to the battlefield under its owner's control.",
+            0,
+        )
+        .expect("that-leaves delayed text should lex");
+
+        let effects = parse_delayed_when_that_leaves_battlefield_sentence(&tokens)
+            .expect("that-leaves parser should not error")
+            .expect("that-leaves parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(
+            debug.contains("DelayedWhenLastObjectLeavesBattlefield"),
+            "{debug}"
+        );
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("Return"), "{debug}");
     }
 
     #[test]

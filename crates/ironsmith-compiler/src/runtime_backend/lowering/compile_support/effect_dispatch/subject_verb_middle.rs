@@ -527,6 +527,7 @@ pub(super) fn compile_subject_verb_middle(
             target,
             face_down,
             all,
+            explicit_return_surface,
         } => {
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -535,7 +536,8 @@ pub(super) fn compile_subject_verb_middle(
             }
             let mut effect = Effect::new(
                 crate::effects::ExileUntilEffect::source_leaves(spec.clone())
-                    .with_face_down(*face_down),
+                    .with_face_down(*face_down)
+                    .with_explicit_return_surface(*explicit_return_surface),
             );
             if spec.is_target() {
                 let tag = ctx.next_tag("exiled");
@@ -631,7 +633,8 @@ pub(super) fn compile_subject_verb_middle(
                     resolved_spec.clone(),
                     Zone::Battlefield,
                     false,
-                );
+                )
+                .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return);
                 let move_back = if *tapped {
                     move_back.tapped()
                 } else {
@@ -1129,18 +1132,22 @@ pub(super) fn compile_subject_verb_middle(
             }
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::TargetOnly { target } => {
+        SubjectVerbActionAst::TargetOnly {
+            target,
+            explicit_declaration,
+        } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             if matches!(spec.base(), ChooseSpec::Source) {
                 Ok((Vec::new(), choices))
             } else {
-                let effect = tag_object_target_effect(
-                    Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
-                    &spec,
-                    ctx,
-                    "targeted",
-                );
+                let target_only = if *explicit_declaration {
+                    crate::effects::TargetOnlyEffect::explicit(spec.clone())
+                } else {
+                    crate::effects::TargetOnlyEffect::new(spec.clone())
+                };
+                let effect =
+                    tag_object_target_effect(Effect::new(target_only), &spec, ctx, "targeted");
                 Ok((vec![effect], choices))
             }
         }
@@ -1371,6 +1378,7 @@ pub(super) fn compile_subject_verb_middle(
             })?;
             let power_value = if *power == 1 {
                 Value::EffectValue(id)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
             } else {
                 Value::Fixed(*power)
             };
@@ -1595,8 +1603,13 @@ pub(super) fn compile_subject_verb_middle(
             name_override_surface,
             add_supertypes,
             remove_supertypes,
+            add_card_types,
+            set_card_types,
+            add_subtypes,
+            set_subtypes,
             granted_abilities,
             set_base_power_toughness,
+            copy_exception_surface,
         } => {
             let refs = current_reference_env(ctx);
             let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
@@ -1616,12 +1629,38 @@ pub(super) fn compile_subject_verb_middle(
                     name_override: name_override.clone(),
                     name_override_surface: name_override_surface.clone(),
                     add_supertypes: add_supertypes.clone(),
+                    copy_exception_surface: copy_exception_surface.clone(),
                 },
                 duration.clone(),
             );
             if !remove_supertypes.is_empty() {
                 apply = apply.with_additional_modification(
                     crate::continuous::Modification::RemoveSupertypes(remove_supertypes.clone()),
+                );
+            }
+            if !add_card_types.is_empty() {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::AddCardTypes(add_card_types.clone()),
+                );
+            }
+            if !set_card_types.is_empty() {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::SetCardTypes(set_card_types.clone()),
+                );
+            }
+            if !add_subtypes.is_empty() {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::AddSubtypes(add_subtypes.clone()),
+                );
+            }
+            if !set_subtypes.is_empty() {
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                        crate::types::SubtypeFamily::Creature,
+                    ),
+                );
+                apply = apply.with_additional_modification(
+                    crate::continuous::Modification::AddSubtypes(set_subtypes.clone()),
                 );
             }
             if let Some((power, toughness)) = set_base_power_toughness {
@@ -1677,7 +1716,13 @@ pub(super) fn compile_subject_verb_middle(
                 apply = apply.with_condition(condition);
             }
 
-            Ok((vec![Effect::new(apply)], Vec::new()))
+            let mut effect = Effect::new(apply);
+            if ctx.auto_tag_object_targets {
+                let tag = ctx.next_tag("granted");
+                effect = effect.tag_all(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::RemoveAbilitiesAll {
             filter,
