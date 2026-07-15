@@ -3431,6 +3431,11 @@ struct ExternalCardSourceFile {
     canonical_name: String,
     #[serde(default)]
     aliases: Vec<ExternalCardAliasSource>,
+    /// External card data fills gaps by default. Consumers must opt in before
+    /// replacing a definition already available from the embedded registry or
+    /// a source registered earlier in the session.
+    #[serde(default)]
+    replace_existing: bool,
     group: ExternalCardSourceGroup,
 }
 

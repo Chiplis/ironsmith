@@ -15,6 +15,7 @@ scripts/__pycache__*
 !/fixtures/audit/*.json
 !/fixtures/determinism/*.json
 !/web/ui/package.json
+!/npm/ironsmith-wasm/package.template.json
 *.csv
 web/ui/node_modules
 web/ui/.pnpm

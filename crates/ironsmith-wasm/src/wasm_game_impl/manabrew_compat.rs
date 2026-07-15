@@ -86,11 +86,19 @@ fn array_value(value: Option<&Value>) -> &[Value] {
         .unwrap_or(&[])
 }
 
-fn string_value(value: Option<&Value>, fallback: &str) -> String {
-    value
-        .and_then(Value::as_str)
-        .unwrap_or(fallback)
-        .to_string()
+fn first_value<'a>(object: &'a JsonMap, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|key| object.get(*key))
+}
+
+fn scalar_string(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    let text = match value {
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        _ => return None,
+    };
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
 }
 
 fn manabrew_format(value: Option<&str>) -> MatchFormatInput {
@@ -107,6 +115,7 @@ fn manabrew_card_name(card: &Value) -> Option<String> {
         .and_then(Value::as_object)
         .and_then(|identity| identity.get("name"))
         .and_then(Value::as_str)
+        .or_else(|| card.get("name").and_then(Value::as_str))
         .unwrap_or_default()
         .trim();
     (!name.is_empty()).then(|| name.to_string())
@@ -164,6 +173,9 @@ fn manabrew_string_array(card: &JsonMap, key: &str) -> Vec<String> {
 }
 
 fn manabrew_type_line(card: &JsonMap) -> String {
+    if let Some(type_line) = scalar_string(first_value(card, &["typeLine", "type_line"])) {
+        return type_line;
+    }
     let mut front = manabrew_string_array(card, "supertypes");
     front.extend(manabrew_string_array(card, "types"));
     let front = front.join(" ");
@@ -179,24 +191,101 @@ fn manabrew_type_line(card: &JsonMap) -> String {
 fn manabrew_card_source_block(card: &Value) -> String {
     let card = object_value(card);
     let mut lines = Vec::new();
-    let mana_cost = string_value(card.get("manaCost"), "").trim().to_string();
-    if !mana_cost.is_empty() {
+    if let Some(mana_cost) = scalar_string(first_value(card, &["manaCost", "mana_cost"])) {
         lines.push(format!("Mana cost: {mana_cost}"));
     }
     lines.push(format!("Type: {}", manabrew_type_line(card)));
-    let power = card.get("power").and_then(Value::as_str).map(str::trim);
-    let toughness = card.get("toughness").and_then(Value::as_str).map(str::trim);
-    if let (Some(power), Some(toughness)) = (power, toughness)
-        && !power.is_empty()
-        && !toughness.is_empty()
-    {
+    let power = scalar_string(card.get("power"));
+    let toughness = scalar_string(card.get("toughness"));
+    if let (Some(power), Some(toughness)) = (power, toughness) {
         lines.push(format!("Power/Toughness: {power}/{toughness}"));
     }
-    let oracle_text = string_value(card.get("text"), "").trim().to_string();
-    if !oracle_text.is_empty() {
+    if let Some(loyalty) = scalar_string(card.get("loyalty")) {
+        lines.push(format!("Loyalty: {loyalty}"));
+    }
+    if let Some(defense) = scalar_string(card.get("defense")) {
+        lines.push(format!("Defense: {defense}"));
+    }
+    if let Some(oracle_text) =
+        scalar_string(first_value(card, &["text", "oracleText", "oracle_text"]))
+    {
         lines.push(oracle_text);
     }
     lines.join("\n")
+}
+
+fn manabrew_card_faces(card: &Value) -> &[Value] {
+    let card = object_value(card);
+    array_value(first_value(card, &["cardFaces", "card_faces", "faces"]))
+}
+
+fn manabrew_card_source(card: &Value) -> Option<ExternalCardSourceFile> {
+    let deck_name = manabrew_card_name(card)?;
+    let card_object = object_value(card);
+    let faces = manabrew_card_faces(card);
+    let linked_faces = faces
+        .iter()
+        .take(2)
+        .filter_map(|face| {
+            Some(ExternalCardFaceSource {
+                name: manabrew_card_name(face)?,
+                block: manabrew_card_source_block(face),
+                score: Some(1.0),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    if linked_faces.len() == 2 {
+        let front_name = linked_faces[0].name.clone();
+        let combined_name =
+            scalar_string(first_value(card_object, &["combinedName", "combined_name"]))
+                .or_else(|| deck_name.contains(" // ").then(|| deck_name.clone()))
+                .unwrap_or_else(|| format!("{} // {}", linked_faces[0].name, linked_faces[1].name));
+        let layout = scalar_string(card_object.get("layout")).unwrap_or_default();
+        let layout = if layout.eq_ignore_ascii_case("split") {
+            "split"
+        } else {
+            "transform_like"
+        };
+        let has_fuse = first_value(card_object, &["hasFuse", "has_fuse"])
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let mut aliases = Vec::new();
+        for alias in [&deck_name, &combined_name] {
+            if !alias.eq_ignore_ascii_case(&front_name)
+                && !aliases
+                    .iter()
+                    .any(|entry: &ExternalCardAliasSource| entry.alias.eq_ignore_ascii_case(alias))
+            {
+                aliases.push(ExternalCardAliasSource {
+                    alias: alias.clone(),
+                    canonical: front_name.clone(),
+                });
+            }
+        }
+        return Some(ExternalCardSourceFile {
+            canonical_name: front_name,
+            aliases,
+            replace_existing: false,
+            group: ExternalCardSourceGroup::Linked {
+                layout: layout.to_string(),
+                combined_name,
+                has_fuse,
+                faces: linked_faces,
+            },
+        });
+    }
+
+    Some(ExternalCardSourceFile {
+        canonical_name: deck_name.clone(),
+        aliases: Vec::new(),
+        replace_existing: false,
+        group: ExternalCardSourceGroup::Single {
+            name: deck_name,
+            block: manabrew_card_source_block(card),
+            score: Some(1.0),
+        },
+    })
 }
 
 fn manabrew_deck_sources(decks: &[Value]) -> Vec<ExternalCardSourceFile> {
@@ -204,21 +293,22 @@ fn manabrew_deck_sources(decks: &[Value]) -> Vec<ExternalCardSourceFile> {
     let mut sources = Vec::new();
     for deck in decks {
         for card in manabrew_all_deck_cards(deck) {
-            let Some(name) = manabrew_card_name(card) else {
+            let Some(source) = manabrew_card_source(card) else {
                 continue;
             };
-            if !seen.insert(name.to_ascii_lowercase()) {
+            let source_names = WasmGame::external_source_definition_names(&source);
+            if source_names
+                .iter()
+                .any(|name| seen.contains(&name.to_ascii_lowercase()))
+            {
                 continue;
             }
-            sources.push(ExternalCardSourceFile {
-                canonical_name: name.clone(),
-                aliases: Vec::new(),
-                group: ExternalCardSourceGroup::Single {
-                    name,
-                    block: manabrew_card_source_block(card),
-                    score: Some(1.0),
-                },
-            });
+            seen.extend(
+                source_names
+                    .into_iter()
+                    .map(|name| name.to_ascii_lowercase()),
+            );
+            sources.push(source);
         }
     }
     sources
@@ -2560,6 +2650,72 @@ mod manabrew_tests {
             input,
             binding,
         }
+    }
+
+    #[test]
+    fn deck_sources_keep_loyalty_defense_and_linked_faces() {
+        let decks = vec![serde_json::json!({
+            "cards": [{
+                "identity": { "name": "Daybound Adept" },
+                "layout": "transform",
+                "cardFaces": [{
+                    "name": "Daybound Adept",
+                    "manaCost": "{2}{U}",
+                    "typeLine": "Legendary Planeswalker — Adept",
+                    "loyalty": "4",
+                    "oracleText": "+1: Draw a card."
+                }, {
+                    "name": "Nightbound Adept",
+                    "type_line": "Battle — Siege",
+                    "defense": 5,
+                    "oracle_text": "When this enters, draw a card."
+                }]
+            }]
+        })];
+
+        let sources = manabrew_deck_sources(&decks);
+        assert_eq!(sources.len(), 1);
+        assert!(!sources[0].replace_existing);
+        assert_eq!(sources[0].canonical_name, "Daybound Adept");
+        assert!(sources[0].aliases.iter().any(|alias| {
+            alias.alias == "Daybound Adept // Nightbound Adept"
+                && alias.canonical == "Daybound Adept"
+        }));
+        let ExternalCardSourceGroup::Linked {
+            layout,
+            combined_name,
+            faces,
+            ..
+        } = &sources[0].group
+        else {
+            panic!("two supplied faces should produce a linked source");
+        };
+        assert_eq!(layout, "transform_like");
+        assert_eq!(combined_name, "Daybound Adept // Nightbound Adept");
+        assert!(faces[0].block.contains("Loyalty: 4"));
+        assert!(faces[1].block.contains("Defense: 5"));
+        assert!(faces[0].block.contains("+1: Draw a card."));
+    }
+
+    #[test]
+    fn deck_sources_accept_front_only_manabrew_cards() {
+        let decks = vec![serde_json::json!({
+            "cards": [{
+                "identity": { "name": "Front Only Walker" },
+                "manaCost": "{1}{W}",
+                "types": ["Planeswalker"],
+                "subtypes": ["Test"],
+                "loyalty": 3,
+                "text": "+1: You gain 1 life."
+            }]
+        })];
+
+        let sources = manabrew_deck_sources(&decks);
+        let ExternalCardSourceGroup::Single { block, .. } = &sources[0].group else {
+            panic!("a current Manabrew rules summary should remain a single source");
+        };
+        assert!(block.contains("Type: Planeswalker — Test"));
+        assert!(block.contains("Loyalty: 3"));
     }
 
     #[test]

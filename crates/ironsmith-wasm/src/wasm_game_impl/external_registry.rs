@@ -7,6 +7,24 @@ fn external_card_score(score: Option<f32>) -> Option<f32> {
 }
 
 impl WasmGame {
+    fn external_source_definition_names(source: &ExternalCardSourceFile) -> Vec<&str> {
+        match &source.group {
+            ExternalCardSourceGroup::Single { name, .. } => vec![name.as_str()],
+            ExternalCardSourceGroup::Linked { faces, .. } => {
+                faces.iter().map(|face| face.name.as_str()).collect()
+            }
+        }
+    }
+
+    fn register_resolvable_external_aliases(&mut self, aliases: &[ExternalCardAliasSource]) {
+        for alias in aliases {
+            if self.registry.get(&alias.canonical).is_some() {
+                self.registry
+                    .register_alias(alias.alias.clone(), alias.canonical.clone());
+            }
+        }
+    }
+
     fn remember_external_parse_source(&mut self, name: &str, source_name: &str, block: &str) {
         let key = external_card_lookup_key(name);
         if key.is_empty() {
@@ -213,6 +231,24 @@ impl WasmGame {
         &mut self,
         source: ExternalCardSourceFile,
     ) -> Result<usize, String> {
+        if !source.replace_existing {
+            let definition_names = Self::external_source_definition_names(&source);
+            self.registry
+                .ensure_cards_loaded(definition_names.iter().copied());
+
+            // Linked definitions are an atomic group: mixing an embedded face
+            // with a newly compiled face would leave their CardIds pointing at
+            // different groups. Preserve the whole existing group if any face
+            // (or the single card) is already present.
+            if definition_names
+                .iter()
+                .any(|name| self.registry.get(name).is_some())
+            {
+                self.register_resolvable_external_aliases(&source.aliases);
+                return Ok(0);
+            }
+        }
+
         self.register_external_source_metadata(&source);
 
         let definitions = match &source.group {
@@ -281,6 +317,60 @@ impl WasmGame {
         }
 
         ExternalCardRegistrationSummary { loaded, failed }
+    }
+}
+
+#[cfg(test)]
+mod external_registry_tests {
+    use super::*;
+    use ironsmith::types::CardType;
+    use serde_json::json;
+
+    #[test]
+    fn preserves_embedded_definitions_unless_replacement_is_explicit() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+
+        let replacement = json!({
+            "canonicalName": "Lightning Bolt",
+            "group": {
+                "kind": "single",
+                "name": "Lightning Bolt",
+                "block": "Type: Creature — Impostor\nPower/Toughness: 1/1",
+                "score": 1.0
+            }
+        });
+        let summary: serde_json::Value = serde_json::from_str(
+            &wasm
+                .register_external_card_sources_json(replacement.to_string())
+                .expect("external source should be accepted"),
+        )
+        .expect("registration summary should decode");
+        assert_eq!(summary["loaded"], 0);
+        let preserved = wasm
+            .registry
+            .get("Lightning Bolt")
+            .expect("registration should lazily load the embedded definition");
+        assert!(!preserved.card.card_types.contains(&CardType::Creature));
+
+        let replacement = json!({
+            "canonicalName": "Lightning Bolt",
+            "replaceExisting": true,
+            "group": {
+                "kind": "single",
+                "name": "Lightning Bolt",
+                "block": "Type: Creature — Impostor\nPower/Toughness: 1/1",
+                "score": 1.0
+            }
+        });
+        wasm.register_external_card_sources_json(replacement.to_string())
+            .expect("explicit replacement should be accepted");
+        let replaced = wasm
+            .registry
+            .get("Lightning Bolt")
+            .expect("replacement definition should be registered");
+        assert!(replaced.card.card_types.contains(&CardType::Creature));
     }
 }
 

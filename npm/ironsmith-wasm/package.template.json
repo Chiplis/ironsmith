@@ -1,0 +1,47 @@
+{
+  "name": "ironsmith-wasm",
+  "type": "module",
+  "description": "Browser-ready WebAssembly bindings for the Ironsmith Magic: The Gathering engine.",
+  "keywords": [
+    "magic-the-gathering",
+    "mtg",
+    "game-engine",
+    "webassembly",
+    "wasm"
+  ],
+  "main": "./ironsmith.js",
+  "module": "./ironsmith.js",
+  "types": "./ironsmith.d.ts",
+  "exports": {
+    ".": {
+      "types": "./ironsmith.d.ts",
+      "import": "./ironsmith.js",
+      "default": "./ironsmith.js"
+    },
+    "./ironsmith_bg.wasm": "./ironsmith_bg.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "ironsmith.js",
+    "ironsmith_bg.wasm",
+    "ironsmith.d.ts",
+    "ironsmith_bg.wasm.d.ts",
+    "snippets",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./snippets/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chiplis/ironsmith.git"
+  },
+  "homepage": "https://chiplis.com/ironsmith",
+  "bugs": {
+    "url": "https://github.com/Chiplis/ironsmith/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
