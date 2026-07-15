@@ -92,13 +92,20 @@ fn stripped_non_comment_content(path: &Path) -> String {
 }
 
 fn write_generated_meld_counterparts(manifest_dir: &str, out_dir: &Path) {
-    let cards_path = workspace_root(manifest_dir).join("cards.json");
-    println!("cargo:rerun-if-changed={}", cards_path.display());
+    let entries: Vec<MeldCardJsonEntry> = if env::var_os("CARGO_FEATURE_WASM_LEAN").is_some() {
+        // The lean browser package deliberately ships without any embedded card
+        // registry. Its card definitions (including linked faces) come from the
+        // consumer, so it must not depend on the ignored local Scryfall dump.
+        Vec::new()
+    } else {
+        let cards_path = workspace_root(manifest_dir).join("cards.json");
+        println!("cargo:rerun-if-changed={}", cards_path.display());
 
-    let payload = fs::read_to_string(&cards_path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", cards_path.display()));
-    let entries: Vec<MeldCardJsonEntry> = serde_json::from_str(&payload)
-        .unwrap_or_else(|err| panic!("failed to parse {}: {err}", cards_path.display()));
+        let payload = fs::read_to_string(&cards_path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", cards_path.display()));
+        serde_json::from_str(&payload)
+            .unwrap_or_else(|err| panic!("failed to parse {}: {err}", cards_path.display()))
+    };
 
     let mut pairs: Vec<(String, String)> = Vec::new();
     for entry in entries {

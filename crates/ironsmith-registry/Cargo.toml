@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = ["handwritten-parse-support"]
 handwritten-parse-support = []
+wasm-lean = []
 
 [dependencies]
 ironsmith-core = { path = "../ironsmith-core" }
