@@ -33,3 +33,4 @@ pkg/
 *.swp
 *.swo
 **/*/target
+**/*/ironsmith_bg.wasm
