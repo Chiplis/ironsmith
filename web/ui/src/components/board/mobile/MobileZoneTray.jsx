@@ -6,6 +6,7 @@ const ZONES = [
   { key: "exile", label: "Exile", short: "Ex", Icon: Sparkles },
   { key: "library", label: "Library", short: "Lib", Icon: Library },
   { key: "command", label: "Command", short: "Cmd", Icon: Crown },
+  { key: "ante", label: "Ante", short: "Ante", Icon: Crown },
 ];
 
 function zoneCount(player, zone) {
@@ -22,6 +23,10 @@ function zoneCount(player, zone) {
       return Array.isArray(player?.command_zone)
         ? player.command_zone.length
         : Number(player?.command_size ?? 0);
+    case "ante":
+      return Array.isArray(player?.ante_cards)
+        ? player.ante_cards.length
+        : Number(player?.ante_size ?? 0);
     default:
       return 0;
   }
@@ -33,7 +38,7 @@ export default function MobileZoneTray({ player, onOpenZone, className }) {
     const { key, label, short } = zone;
     const ZoneIcon = zone.Icon;
     const count = zoneCount(player, key);
-    if (key === "command" && count <= 0) return null;
+    if ((key === "command" || key === "ante") && count <= 0) return null;
     return (
       <button
         key={key}

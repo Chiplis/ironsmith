@@ -25,6 +25,9 @@ pub struct GrantPlayTaggedEffect {
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
+    /// When present, the persistent grant is active only on turns in which
+    /// this counter type was put on the resolving ability's source.
+    pub during_turns_counter_put_on_source: Option<crate::object::CounterType>,
     /// True when the granted pool holds more than one card, selecting plural
     /// "cast spells from among those exiled cards" wording over the singular
     /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
@@ -49,6 +52,7 @@ impl GrantPlayTaggedEffect {
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
+            during_turns_counter_put_on_source: None,
             cast_pool_is_plural: false,
         }
     }
@@ -95,6 +99,14 @@ impl GrantPlayTaggedEffect {
         self
     }
 
+    pub fn during_turns_counter_put_on_source(
+        mut self,
+        counter_type: crate::object::CounterType,
+    ) -> Self {
+        self.during_turns_counter_put_on_source = Some(counter_type);
+        self
+    }
+
     pub fn until_your_next_turn(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
         Self::new(
             tag,
@@ -111,72 +123,7 @@ impl GrantPlayTaggedEffect {
     /// multiplayer turn order, queued extra turns, and skipped turns) without
     /// mutating game state.
     fn next_turn_number_for_player(game: &GameState, player: crate::ids::PlayerId) -> u32 {
-        if game.turn_store.turn_order.is_empty() {
-            return game.turn.turn_number;
-        }
-
-        let mut simulated_active_player = game.turn.active_player;
-        let mut simulated_turn_number = game.turn.turn_number;
-        let mut simulated_extra_turns = game.turn_store.extra_turns.clone();
-        let mut simulated_skip_next_turn = game.turn_store.skip_next_turn.clone();
-
-        // Defensive bound to avoid pathological infinite loops if state is invalid.
-        let max_iterations = game
-            .turn_store
-            .turn_order
-            .len()
-            .saturating_mul(16)
-            .saturating_add(simulated_extra_turns.len().saturating_mul(2))
-            .saturating_add(16)
-            .max(1);
-
-        for _ in 0..max_iterations {
-            let next_player = if !simulated_extra_turns.is_empty() {
-                simulated_extra_turns.remove(0)
-            } else {
-                let current_index = game
-                    .turn_store
-                    .turn_order
-                    .iter()
-                    .position(|&p| p == simulated_active_player)
-                    .unwrap_or(0);
-
-                let mut next_index = (current_index + 1) % game.turn_store.turn_order.len();
-                let start_index = next_index;
-
-                loop {
-                    let candidate = game.turn_store.turn_order[next_index];
-                    let is_in_game = game.player(candidate).is_some_and(|p| p.is_in_game());
-
-                    if is_in_game {
-                        if simulated_skip_next_turn.remove(&candidate) {
-                            next_index = (next_index + 1) % game.turn_store.turn_order.len();
-                            if next_index == start_index {
-                                break;
-                            }
-                            continue;
-                        }
-                        break;
-                    }
-
-                    next_index = (next_index + 1) % game.turn_store.turn_order.len();
-                    if next_index == start_index {
-                        break;
-                    }
-                }
-
-                game.turn_store.turn_order[next_index]
-            };
-
-            simulated_turn_number = simulated_turn_number.saturating_add(1);
-            simulated_active_player = next_player;
-            if simulated_active_player == player {
-                return simulated_turn_number;
-            }
-        }
-
-        // Fallback should be unreachable in valid games.
-        game.turn.turn_number.saturating_add(1)
+        game.next_turn_number_if_player_stayed(player)
     }
 
     fn expires_end_of_turn(&self, game: &GameState, player: crate::ids::PlayerId) -> u32 {
@@ -186,7 +133,7 @@ impl GrantPlayTaggedEffect {
                 Self::next_turn_number_for_player(game, player)
             }
             GrantPlayTaggedDuration::UntilYourNextEndStep => {
-                if game.turn.active_player == player
+                if game.is_active_player(player)
                     && !matches!(game.turn.phase, crate::game_state::Phase::Ending)
                 {
                     game.turn.turn_number
@@ -253,7 +200,12 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
-            let source = if self.while_on_top_of_library {
+            let source = if let Some(counter_type) = self.during_turns_counter_put_on_source {
+                GrantSource::EffectDuringTurnsCounterPutOnSource {
+                    source_id: ctx.source,
+                    counter_type,
+                }
+            } else if self.while_on_top_of_library {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary {
                     source_id: ctx.source,
                     expires_end_of_turn,
@@ -266,13 +218,17 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     source_id: ctx.source,
                     controller: player_id,
                 }
+            } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnEnd {
+                GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
             } else {
                 GrantSource::Effect {
                     source_id: ctx.source,
                     expires_end_of_turn,
                 }
             };
-            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+                || self.during_turns_counter_put_on_source.is_some()
+            {
                 game.effect_store.grant_registry.grant_to_stable_card(
                     object_id,
                     object.stable_id,
@@ -377,10 +333,12 @@ mod tests {
             .first()
             .expect("grant should exist");
         match grant.source {
-            GrantSource::Effect {
+            GrantSource::EffectUntilPlayerNextTurnEnd {
                 expires_end_of_turn,
+                duration_player,
                 ..
             } => {
+                assert_eq!(duration_player, alice);
                 assert_eq!(
                     expires_end_of_turn,
                     game.turn.turn_number + 2,

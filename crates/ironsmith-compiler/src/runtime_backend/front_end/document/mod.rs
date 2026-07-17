@@ -2087,13 +2087,14 @@ mod tests {
         let preprocessed = preprocess_document(
             CardDefinitionBuilder::new(CardId::new(), "Saga Parse Tokens Test")
                 .card_types(vec![CardType::Enchantment]),
-            "I, II — Draw a card.",
+            "I, II — Mega Flare — Draw a card.",
         )?;
         let cst = super::parse_document_cst(&preprocessed, false)?;
 
         match cst.lines.as_slice() {
             [super::RewriteLineCst::SagaChapter(saga)] => {
-                assert_eq!(saga.text, "draw a card.");
+                assert_eq!(saga.text, "Draw a card.");
+                assert_eq!(saga.presentation_label.as_deref(), Some("Mega Flare"));
                 assert!(!saga.effects_ast.is_empty());
             }
             other => panic!("expected one saga chapter line, got {other:?}"),
@@ -2113,6 +2114,7 @@ mod tests {
         let semantic = super::lower_document_cst(
             preprocessed,
             cst,
+            None,
             super::super::ir::DocumentSemanticFacts::default(),
             false,
         )?;
@@ -2144,12 +2146,13 @@ mod tests {
         let preprocessed = preprocess_document(
             CardDefinitionBuilder::new(CardId::new(), "Saga Lowering Parse Tokens Test")
                 .card_types(vec![CardType::Enchantment]),
-            "I, II — Draw a card.",
+            "I, II — Mega Flare — Draw a card.",
         )?;
         let cst = super::parse_document_cst(&preprocessed, false)?;
         let semantic = super::lower_document_cst(
             preprocessed,
             cst,
+            None,
             super::super::ir::DocumentSemanticFacts::default(),
             false,
         )?;
@@ -2163,7 +2166,14 @@ mod tests {
             })
             .expect("expected lowered semantic document to contain a saga chapter");
 
-        assert_eq!(saga.text, "draw a card.");
+        assert_eq!(saga.text, "Draw a card.");
+        assert_eq!(
+            saga.presentation_label
+                .as_ref()
+                .and_then(PresentationLabel::display_prefix)
+                .as_deref(),
+            Some("Mega Flare")
+        );
         assert!(!saga.effects_ast.is_empty());
 
         Ok(())
@@ -3928,6 +3938,67 @@ fn split_activation_text_tokens_lexed(
     Some((cost_tokens.to_vec(), effect_tokens.to_vec()))
 }
 
+fn rewrite_cleave_bracket_document(
+    document: &PreprocessedDocument,
+    remove_bracketed_text: bool,
+) -> Result<PreprocessedDocument, CardTextError> {
+    let mut rewritten = document.clone();
+    let mut items = Vec::with_capacity(rewritten.items.len());
+
+    for item in rewritten.items {
+        let PreprocessedItem::Line(line) = item else {
+            items.push(item);
+            continue;
+        };
+        if !line
+            .tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::LBracket | TokenKind::RBracket))
+        {
+            items.push(PreprocessedItem::Line(line));
+            continue;
+        }
+
+        let mut depth = 0usize;
+        let mut tokens = Vec::with_capacity(line.tokens.len());
+        for token in &line.tokens {
+            match token.kind {
+                TokenKind::LBracket => {
+                    depth += 1;
+                }
+                TokenKind::RBracket => {
+                    if depth == 0 {
+                        return Err(CardTextError::ParseError(format!(
+                            "cleave line has an unmatched closing bracket: '{}'",
+                            line.info.raw_line
+                        )));
+                    }
+                    depth -= 1;
+                }
+                _ if depth == 0 || !remove_bracketed_text => tokens.push(token.clone()),
+                _ => {}
+            }
+        }
+        if depth != 0 {
+            return Err(CardTextError::ParseError(format!(
+                "cleave line has an unmatched opening bracket: '{}'",
+                line.info.raw_line
+            )));
+        }
+        if tokens.is_empty() {
+            continue;
+        }
+        let normalized = render_token_slice(&tokens);
+        items.push(PreprocessedItem::Line(rewrite_line_normalized(
+            &line,
+            normalized.trim(),
+        )?));
+    }
+
+    rewritten.items = items;
+    Ok(rewritten)
+}
+
 pub(crate) fn parse_text_to_semantic_document(
     builder: CardDefinitionBuilder,
     text: String,
@@ -3954,7 +4025,7 @@ pub(crate) fn parse_text_to_semantic_document(
     if !allow_unsupported && let Some(err) = preflight_known_strict_unsupported(text.as_str()) {
         return Err(err);
     }
-    let preprocessed = preprocess_document(builder, text.as_str())?;
+    let mut preprocessed = preprocess_document(builder, text.as_str())?;
     let semantic_facts = document_fact_grammar::parse_document_semantic_facts(
         preprocessed.items.iter().filter_map(|item| match item {
             PreprocessedItem::Metadata(_) => None,
@@ -3963,6 +4034,13 @@ pub(crate) fn parse_text_to_semantic_document(
             }
         }),
     );
+    let cleave_preprocessed = if semantic_facts.cleave_rewrite.is_some() {
+        let cleaved = rewrite_cleave_bracket_document(&preprocessed, true)?;
+        preprocessed = rewrite_cleave_bracket_document(&preprocessed, false)?;
+        Some(cleaved)
+    } else {
+        None
+    };
     parse_trace::event(format!(
         "preprocessed document: {} item(s)",
         preprocessed.items.len()
@@ -4001,6 +4079,10 @@ pub(crate) fn parse_text_to_semantic_document(
         );
     }
     let cst = parse_document_cst(&preprocessed, allow_unsupported)?;
+    let cleave_cst = cleave_preprocessed
+        .as_ref()
+        .map(|document| parse_document_cst(document, allow_unsupported))
+        .transpose()?;
     parse_trace::event(format!("cst lines: {}", cst.lines.len()));
     if parser_trace_enabled() {
         eprintln!(
@@ -4008,7 +4090,13 @@ pub(crate) fn parse_text_to_semantic_document(
             cst.lines.len()
         );
     }
-    let semantic = lower_document_cst(preprocessed, cst, semantic_facts, allow_unsupported)?;
+    let semantic = lower_document_cst(
+        preprocessed,
+        cst,
+        cleave_cst,
+        semantic_facts,
+        allow_unsupported,
+    )?;
     let annotations = semantic.annotations.clone();
     parse_trace::event(format!("semantic items: {}", semantic.items.len()));
     if parser_trace_enabled() {
@@ -4054,13 +4142,23 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
 
-                if let Some((chapters, text)) =
-                    parse_saga_chapter_prefix(&line.info.normalized.normalized)
+                if let Some((chapters, presentation_label, text)) =
+                    parse_saga_chapter_prefix(&line.info.raw_line)
                 {
+                    // Retain the authored casing and chapter label from the raw
+                    // line, but compile the preprocessed body. The latter has
+                    // reminder text removed, so token reminder abilities cannot
+                    // leak into the Saga chapter's executable effect program.
+                    let parse_text = parse_saga_chapter_prefix(&line.info.normalized.normalized)
+                        .filter(|(normalized_chapters, _, _)| normalized_chapters == &chapters)
+                        .map(|(_, _, normalized_text)| normalized_text)
+                        .unwrap_or_else(|| text.clone());
                     let cst = RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
                         line,
                         chapters,
+                        presentation_label,
                         text.as_str(),
+                        parse_text.as_str(),
                     )?);
                     trace_cst_line(&cst);
                     lines.push(cst);
@@ -4281,6 +4379,7 @@ pub(crate) fn parse_document_cst(
 fn lower_document_cst(
     preprocessed: PreprocessedDocument,
     cst: RewriteDocumentCst,
+    cleave_cst: Option<RewriteDocumentCst>,
     semantic_facts: super::ir::DocumentSemanticFacts,
     allow_unsupported: bool,
 ) -> Result<RewriteSemanticDocument, CardTextError> {
@@ -4295,6 +4394,26 @@ fn lower_document_cst(
                 };
                 items.push(lower_non_metadata_rewrite_line_cst(
                     line,
+                    allow_unsupported,
+                )?);
+            }
+            Ok::<_, CardTextError>(items)
+        })
+        .transpose()?;
+    let cleave_items = semantic_facts
+        .cleave_rewrite
+        .as_ref()
+        .zip(cleave_cst.as_ref())
+        .map(|(payload, cleave_cst)| {
+            let mut items = Vec::new();
+            for line in &cleave_cst.lines {
+                if rewrite_line_cst_source_index(line) == Some(payload.keyword_line_index)
+                    || matches!(line, RewriteLineCst::Metadata(_))
+                {
+                    continue;
+                }
+                items.push(lower_non_metadata_rewrite_line_cst(
+                    line.clone(),
                     allow_unsupported,
                 )?);
             }
@@ -4323,6 +4442,7 @@ fn lower_document_cst(
         annotations: preprocessed.annotations,
         items,
         overload_items,
+        cleave_items,
         allow_unsupported,
     })
 }

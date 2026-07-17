@@ -5,7 +5,7 @@ use crate::decisions::context::DecisionHiddenCardVisibility;
 use crate::decisions::{make_decision_with_fallback, specs::MaySpec};
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -25,6 +25,7 @@ fn describe_move(zone: Zone, game: &GameState, object_id: crate::ids::ObjectId) 
         Zone::Library => format!("Put {object_name} into its owner's library?"),
         Zone::Battlefield => format!("Put {object_name} onto the battlefield?"),
         Zone::Command => format!("Put {object_name} into the command zone?"),
+        Zone::Ante => format!("Ante {object_name}?"),
         Zone::Stack => format!("Move {object_name} to the stack?"),
         Zone::OutsideGame => format!("Move {object_name} outside the game?"),
     }
@@ -61,7 +62,8 @@ impl EffectExecutor for MayMoveToZoneEffect {
         let Some(object_id) = object_ids.first().copied() else {
             return Ok(EffectOutcome::count(0));
         };
-        let decider = resolve_player_filter(game, &self.decider, ctx)?;
+        let decider =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.decider, ctx)?;
         let description = describe_move(self.zone, game, object_id);
         let mut spec = MaySpec::new(ctx.source, description);
         let decision_player = game.controlling_player_for(decider);

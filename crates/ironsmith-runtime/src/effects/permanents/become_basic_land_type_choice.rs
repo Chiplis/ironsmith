@@ -11,7 +11,6 @@ use crate::continuous::Modification;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
@@ -46,7 +45,11 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
                 .find(|(candidate, _, _)| *candidate == subtype)
                 .expect("fixed basic land subtype must be one of the five basic land types")
         } else {
-            let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+            let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(
+                game,
+                &self.chooser,
+                ctx,
+            )?;
 
             let options: Vec<SelectableOption> = subtype_options()
                 .iter()

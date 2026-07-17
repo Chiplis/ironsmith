@@ -29,8 +29,8 @@ use super::looked_cards_family;
 use super::sentence_helpers::*;
 use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
 use super::{
-    SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_restriction_duration,
-    parse_token_copy_modifier_sentence, trim_edge_punctuation, try_build_unless,
+    SubjectVerbPrimitiveClause, parse_effect_sentence_lexed, parse_token_copy_modifier_sentence,
+    trim_edge_punctuation, try_build_unless,
 };
 use crate::cards::builders::{
     CardTextError, CarryContext, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
@@ -42,6 +42,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::parse_trace;
+use crate::static_abilities::StaticAbility;
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint,
     TaggedOpbjectRelation,
@@ -126,9 +127,15 @@ fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Un
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::BecomeBasePtCreature {
                 duration: effect_duration,
+                animation_duration_surface,
                 ..
+            } => {
+                *effect_duration = duration.clone();
+                *animation_duration_surface =
+                    Some(ironsmith_core::AnimationDurationSurface::Leading);
+                true
             }
-            | SubjectVerbActionAst::SetBasePowerToughness {
+            SubjectVerbActionAst::SetBasePowerToughness {
                 duration: effect_duration,
                 ..
             }
@@ -274,20 +281,25 @@ fn repair_that_object_power_damage_subject(
             continue;
         };
         match &subject_verb.action {
-            SubjectVerbActionAst::DealDamage { amount, target, .. }
-                if matches!(amount, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))
-                    && matches!(target, TargetAst::Source(_)) =>
+            SubjectVerbActionAst::DealDamage {
+                amount,
+                target,
+                unpreventable,
+            } if matches!(amount, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))
+                && matches!(target, TargetAst::Source(_)) =>
             {
                 subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
                     source: source_target.clone(),
                     amount: Value::PowerOf(Box::new(ChooseSpec::Source)),
                     target: target.clone(),
+                    unpreventable: *unpreventable,
                 };
             }
             SubjectVerbActionAst::DealDamageEqualToPower {
                 source,
                 amount,
                 target,
+                unpreventable,
             } if (matches!(source, TargetAst::Source(_))
                 || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG))
                 && matches!(target, TargetAst::Source(_)) =>
@@ -296,6 +308,7 @@ fn repair_that_object_power_damage_subject(
                     source: source_target.clone(),
                     amount: amount.clone(),
                     target: target.clone(),
+                    unpreventable: *unpreventable,
                 };
             }
             _ => {}
@@ -1701,6 +1714,26 @@ fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        if is_play_magic_subgame_sentence(sentences[sentence_idx].lexed()) {
+            let consumes_nonwinner_sentence = sentences
+                .get(sentence_idx + 1)
+                .is_some_and(|sentence| is_subgame_half_life_nonwinner_sentence(sentence.lexed()));
+            let nonwinner_effects = consumes_nonwinner_sentence
+                .then(|| {
+                    vec![EffectAst::subject_verb(
+                        SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::That,
+                        SubjectVerbActionAst::LoseLife {
+                            amount: Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer),
+                        },
+                    )]
+                })
+                .unwrap_or_default();
+            effects.push(EffectAst::PlaySubgame { nonwinner_effects });
+            carried_context = None;
+            sentence_idx += if consumes_nonwinner_sentence { 2 } else { 1 };
+            continue;
+        }
         if let Some(restart) = parse_restart_game_sentence(sentences[sentence_idx].lexed())? {
             effects.push(restart);
             carried_context = None;
@@ -1731,13 +1764,17 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
 
         let leading_duration_tokens = trim_edge_punctuation(sentence);
-        if let Some((duration, remainder)) = parse_restriction_duration(&leading_duration_tokens)?
-            && should_apply_leading_duration_become_shortcut(&remainder)
+        if let Some(duration_shape) =
+            effect_grammar::parse_search_restriction_duration_shape_lexed(&leading_duration_tokens)?
+            && duration_shape.placement
+                == effect_grammar::SearchRestrictionDurationPlacement::Prefix
+            && should_apply_leading_duration_become_shortcut(&duration_shape.remainder)
         {
-            let mut inner_effects = parse_effect_sentences_lexed(&remainder)?;
+            let mut inner_effects = parse_effect_sentences_lexed(&duration_shape.remainder)?;
             let mut applied = false;
             for effect in &mut inner_effects {
-                applied |= apply_leading_duration_to_become_effect(effect, &duration);
+                applied |=
+                    apply_leading_duration_to_become_effect(effect, &duration_shape.duration);
             }
             if applied {
                 effects.append(&mut inner_effects);
@@ -2064,10 +2101,16 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effects: if_result_effects,
             } = effect
         {
-            if matches!(&*predicate, IfResultPredicate::Did)
-                && matches!(previous_effect, EffectAst::UnlessPays { .. })
-            {
-                *predicate = IfResultPredicate::DidNot;
+            if matches!(previous_effect, EffectAst::UnlessPays { .. }) {
+                *predicate = match &*predicate {
+                    // An UnlessPays effect happens when the payer declines and
+                    // its consequence is carried out.  Modal result wording
+                    // refers to the payment instead, so both polarities must
+                    // be inverted before the result is bound to that effect.
+                    IfResultPredicate::Did => IfResultPredicate::DidNot,
+                    IfResultPredicate::DidNot => IfResultPredicate::Did,
+                    other => other.clone(),
+                };
             }
             if let Some(previous_target) = primary_damage_target_from_effect(previous_effect) {
                 replace_it_damage_target_in_effects(
@@ -2641,6 +2684,10 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
 fn parse_effect_sentences_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_temporary_per_blocker_tax(tokens)? {
+        return Ok(vec![effect]);
+    }
+
     if let Some(effect) = reflected_prevent_next_damage_from_tokens(tokens) {
         return Ok(vec![effect]);
     }
@@ -2675,6 +2722,75 @@ fn parse_effect_sentences_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
+}
+
+/// Parse a resolving effect that establishes a turn-long cost for each
+/// creature declared as a blocker. The affected creature filter remains live
+/// for the duration, while the activation's X value is captured at resolution.
+fn parse_temporary_per_blocker_tax(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.as_slice()
+        != [
+            "this",
+            "turn",
+            "creatures",
+            "can't",
+            "block",
+            "unless",
+            "their",
+            "controller",
+            "pays",
+            "for",
+            "each",
+            "blocking",
+            "creature",
+            "they",
+            "control",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let Some(pays_index) = tokens.iter().position(|token| token.is_word("pays")) else {
+        return Ok(None);
+    };
+    let Some(for_index) = tokens
+        .iter()
+        .enumerate()
+        .skip(pays_index + 1)
+        .find_map(|(index, token)| token.is_word("for").then_some(index))
+    else {
+        return Ok(None);
+    };
+    let cost_tokens = trim_edge_punctuation(&tokens[pays_index + 1..for_index]);
+    let mana_cost = crate::runtime_backend::grammar::values::parse_mana_cost_tokens(&cost_tokens)?;
+    if !mana_cost.has_x() {
+        return Ok(None);
+    }
+    let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(
+        ironsmith_core::DynamicManaCost::new(
+            mana_cost,
+            None,
+            None,
+            None,
+            ironsmith_core::DynamicManaDisplayHint::Default,
+        ),
+    ));
+    let block_cost = StaticAbility::block_cost(
+        ObjectFilter::source(),
+        ObjectFilter::creature(),
+        cost,
+        "This creature can't block unless its controller pays {X}",
+    );
+    Ok(Some(
+        EffectAst::subject_verb_grant_abilities_all_dynamically(
+            ObjectFilter::creature(),
+            vec![GrantedAbilityAst::StaticAbility(block_cost)],
+            Until::EndOfTurn,
+        ),
+    ))
 }
 
 fn parse_restart_game_sentence(
@@ -2770,6 +2886,31 @@ fn parse_restart_game_sentence(
         cards_left_in_exile: Some(ChooseSpec::All(filter)),
         source_surface: Some(source_surface),
     }))
+}
+
+fn is_play_magic_subgame_sentence(tokens: &[OwnedLexToken]) -> bool {
+    crate::runtime_backend::token_word_refs(tokens).as_slice()
+        == [
+            "players",
+            "play",
+            "a",
+            "magic",
+            "subgame",
+            "using",
+            "their",
+            "libraries",
+            "as",
+            "their",
+            "decks",
+        ]
+}
+
+fn is_subgame_half_life_nonwinner_sentence(tokens: &[OwnedLexToken]) -> bool {
+    crate::runtime_backend::token_word_refs(tokens).as_slice()
+        == [
+            "each", "player", "who", "doesn't", "win", "the", "subgame", "loses", "half", "their",
+            "life", "rounded", "up",
+        ]
 }
 
 fn split_leading_amass_comma_then_sentences<'a>(
@@ -3077,6 +3218,157 @@ mod tests {
     }
 
     #[test]
+    fn disturbed_slumber_keeps_leading_duration_pt_and_land_surfaces() {
+        let tokens = lex_line(
+            "Until end of turn, target land you control becomes a 4/4 Dinosaur creature with reach and haste. It's still a land. It must be blocked this turn if able.",
+            0,
+        )
+        .expect("Disturbed Slumber should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("Disturbed Slumber should parse through generic effect rules");
+        let mut found = false;
+        let inspect = |effects: &[crate::cards::builders::EffectAst], found: &mut bool| {
+            for effect in effects {
+                if let crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                                animation_pt_surface,
+                                animation_duration_surface,
+                                type_retention_surface,
+                                duration,
+                                ..
+                            },
+                        ..
+                    },
+                ) = effect
+                    && *animation_pt_surface
+                        == Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness)
+                    && *animation_duration_surface
+                        == Some(ironsmith_core::AnimationDurationSurface::Leading)
+                    && *type_retention_surface
+                        == Some(ironsmith_core::TypeRetentionSurface::StillALand)
+                    && *duration == crate::effect::Until::EndOfTurn
+                {
+                    *found = true;
+                }
+            }
+        };
+        inspect(&parsed, &mut found);
+        for effect in &parsed {
+            super::for_each_nested_effects(effect, true, |nested| inspect(nested, &mut found));
+        }
+
+        assert!(
+            found,
+            "Disturbed Slumber's animation surfaces must survive its follow-ups: {parsed:#?}"
+        );
+    }
+
+    #[test]
+    fn trailing_animation_duration_is_not_reclassified_as_leading() {
+        let tokens = lex_line(
+            "Target artifact you control becomes an artifact creature with base power and toughness 5/5 for as long as this creature remains on the battlefield.",
+            0,
+        )
+        .expect("trailing-duration animation should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("trailing-duration animation should parse");
+        let (duration_surface, duration) = parsed
+            .iter()
+            .find_map(|effect| match effect {
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                                animation_duration_surface,
+                                duration,
+                                ..
+                            },
+                        ..
+                    },
+                ) => Some((animation_duration_surface, duration)),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("expected typed animation, got {parsed:#?}"));
+
+        assert_eq!(*duration_surface, None);
+        assert_eq!(*duration, crate::effect::Until::ThisLeavesTheBattlefield);
+    }
+
+    #[test]
+    fn majestic_metamorphosis_keeps_leading_duration_and_pt_surfaces() {
+        let tokens = lex_line(
+            "Until end of turn, target artifact or creature becomes a 4/4 Angel artifact creature and gains flying. Draw a card.",
+            0,
+        )
+        .expect("Majestic Metamorphosis should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("Majestic Metamorphosis should parse through generic effect rules");
+        let coordinated = parsed
+            .iter()
+            .find_map(|effect| match effect {
+                crate::cards::builders::EffectAst::Coordinated {
+                    effects,
+                    leading_duration: true,
+                    result_conjunction: false,
+                } => Some(effects),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("expected leading-duration coordination: {parsed:#?}"));
+        let (pt_surface, duration_surface, duration) = coordinated
+            .iter()
+            .find_map(|effect| match effect {
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action:
+                            crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                                animation_pt_surface,
+                                animation_duration_surface,
+                                duration,
+                                ..
+                            },
+                        ..
+                    },
+                ) => Some((animation_pt_surface, animation_duration_surface, duration)),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("expected coordinated animation: {coordinated:#?}"));
+
+        assert_eq!(
+            *pt_surface,
+            Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness)
+        );
+        assert_eq!(*duration_surface, None);
+        assert_eq!(*duration, crate::effect::Until::EndOfTurn);
+        assert!(coordinated.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::GrantAbilitiesToTarget { .. },
+                    ..
+                }
+            )
+        )));
+        assert!(
+            parsed.iter().any(|effect| matches!(
+                effect,
+                crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                        ..
+                    }
+                )
+            )),
+            "draw follow-up was lost: {parsed:#?}"
+        );
+    }
+
+    #[test]
     fn consult_mana_value_condition_normalizes_spell_apostrophe_prefix() {
         let tokens = lex_line("if that spell's mana value is 3 or less", 0)
             .expect("rewrite lexer should classify consult mana-value condition");
@@ -3370,18 +3662,29 @@ mod tests {
             .expect("Hurkyl reveal bundle helper should not error")
             .expect("Hurkyl reveal bundle helper should parse");
 
-        // Now composed from reusable primitives: look + reveal-tagged + per-card-type
-        // conditional choose (gated on a matching spell cast this turn) +
-        // move-group-to-hand + remainder-to-bottom.
+        // One public reveal producer owns the collection tag. Per-card-type
+        // conditional choices, the move, and the complement all reuse it.
         assert!(matches!(
             parsed.first(),
             Some(crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards {
+                        reveal: true,
+                        ..
+                    },
                     ..
                 }
             ))
         ));
+        assert!(!parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
+                    ..
+                }
+            )
+        )));
         assert!(parsed.iter().any(|effect| matches!(
             effect,
             crate::cards::builders::EffectAst::Conditional {
@@ -3420,29 +3723,37 @@ mod tests {
         .expect("Atraxa reveal bundle helper should not error")
         .expect("Atraxa reveal bundle helper should parse");
 
-        // Now composed from reusable primitives: look + reveal-tagged + per-card-type
-        // choose-across-zones (ungated) + move-group-to-hand + remainder-to-bottom.
+        // One public reveal producer owns the collection tag. Per-card-type
+        // choices, the move, and the complement all reuse it.
         assert!(matches!(
             parsed.first(),
             Some(crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards {
+                        reveal: true,
+                        ..
+                    },
                     ..
                 }
             ))
         ));
-        assert!(matches!(
-            parsed.get(1),
-            Some(crate::cards::builders::EffectAst::SubjectVerb(
+        assert!(!parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
                 crate::cards::builders::SubjectVerbEffectAst {
                     action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
                     ..
                 }
-            ))
-        ));
+            )
+        )));
         assert!(parsed.iter().any(|effect| matches!(
             effect,
             crate::cards::builders::EffectAst::ChooseObjectsAcrossZones { .. }
+        )));
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::ChooseObjectsAcrossZones { filter, .. }
+                if filter.card_types == [crate::types::CardType::Kindred]
         )));
         assert!(parsed.iter().any(|effect| matches!(
             effect,
@@ -4088,6 +4399,7 @@ pub(crate) fn replace_unbound_x_in_damage_effect(
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::GainLife { amount }
             | SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::PayLife { amount }
             | SubjectVerbActionAst::DealDamage { amount, .. }
             | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. } => {
@@ -4308,6 +4620,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::Draw { count: amount }
             | SubjectVerbActionAst::ExileTopOfLibrary { count: amount, .. }
             | SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::PayLife { amount }
             | SubjectVerbActionAst::GainLife { amount }
             | SubjectVerbActionAst::Mill { count: amount }
             | SubjectVerbActionAst::Scry { count: amount }
@@ -4349,7 +4662,11 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::MoveToLibraryNthFromTop {
                 position: amount, ..
             }
-            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
+            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. }
+            | SubjectVerbActionAst::HealDamage {
+                amount: Some(amount),
+                ..
+            } => {
                 replace_value(amount, replacement, clause)?;
             }
             SubjectVerbActionAst::Incubate { amount, count } => {
@@ -4465,6 +4782,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
+            | SubjectVerbActionAst::HealDamage { amount: None, .. }
             | SubjectVerbActionAst::Earthbend { .. }
             | SubjectVerbActionAst::Behold { .. }
             | SubjectVerbActionAst::Fight { .. }
@@ -4474,6 +4792,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RollDie { .. }
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
@@ -4499,6 +4818,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::EndTurn
+            | SubjectVerbActionAst::EndCombatPhase
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -5166,6 +5486,7 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedTriggerForDuration { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. }
         | EffectAst::VoteOption { effects, .. } => Some(effects),

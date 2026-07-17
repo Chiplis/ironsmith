@@ -178,6 +178,7 @@ body {
 
 .battlefield-zone-entry[data-zone-id="library"],
 .battlefield-zone-entry[data-zone-id="command"],
+.battlefield-zone-entry[data-zone-id="ante"],
 .battlefield-zone-entry[data-zone-id="hand"] {
   z-index: 2;
 }

@@ -17,6 +17,7 @@ use crate::effect::{Until, Value};
 use crate::filter::{ComparisonRuntimeExt, LayeredSubject, PlayerFilterExt};
 use crate::game_state::ObjectMap;
 use crate::ids::{ObjectId, PlayerId};
+use crate::mana::ManaCost;
 use crate::marker::CounterTypeExt;
 use crate::object::{CounterType, Object, SharedStr, SharedVec};
 use crate::object_query::candidate_ids_for_filter;
@@ -244,6 +245,33 @@ impl ContinuousEffectId {
     }
 }
 
+thread_local! {
+    /// Duration predicates may ask for calculated characteristics while those
+    /// characteristics are already checking the same effect's duration. The
+    /// nested check treats the duration as provisionally active; the outer
+    /// check then decides and latches the real result.
+    static IN_PROGRESS_DURATION_PREDICATES: RefCell<HashSet<ContinuousEffectId>> =
+        RefCell::new(HashSet::new());
+}
+
+struct DurationPredicateEvaluationGuard(ContinuousEffectId);
+
+impl DurationPredicateEvaluationGuard {
+    fn enter(id: ContinuousEffectId) -> Option<Self> {
+        IN_PROGRESS_DURATION_PREDICATES.with(|in_progress| {
+            in_progress.borrow_mut().insert(id).then_some(Self(id))
+        })
+    }
+}
+
+impl Drop for DurationPredicateEvaluationGuard {
+    fn drop(&mut self) {
+        IN_PROGRESS_DURATION_PREDICATES.with(|in_progress| {
+            in_progress.borrow_mut().remove(&self.0);
+        });
+    }
+}
+
 /// Shared identifier for the layer-parts of a single continuous effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ContinuousEffectGroupId(pub u64);
@@ -415,6 +443,13 @@ pub enum Modification {
         force_once_each_turn: bool,
     },
 
+    /// Copy selected complete static-ability instances from matching objects.
+    CopyStaticAbilityVariants {
+        filter: ObjectFilter,
+        selectors: Vec<ironsmith_core::StaticAbilityVariantSelector>,
+        exclude_source_id: bool,
+    },
+
     /// Copy triggered abilities from objects matching a filter.
     CopyTriggeredAbilities {
         filter: ObjectFilter,
@@ -429,8 +464,12 @@ pub enum Modification {
     /// Remove an ability
     RemoveAbility(StaticAbility),
 
-    /// Remove a specific object ability.
-    RemoveAbilityGeneric(Ability),
+    /// Remove a specific object ability, optionally prohibiting later grants
+    /// of the same ability while this continuous effect applies.
+    RemoveAbilityGeneric {
+        ability: Ability,
+        mode: ironsmith_core::AbilityLossMode,
+    },
 
     /// Remove all abilities
     RemoveAllAbilities,
@@ -488,7 +527,7 @@ impl Modification {
         modification: ironsmith_core::CompiledContinuousModification<StaticModel, AbilityModel>,
         mut convert_static_ability: impl FnMut(StaticModel) -> Result<StaticAbility, Error>,
         mut convert_ability: impl FnMut(AbilityModel) -> Result<Ability, Error>,
-        mut convert_removed_ability: impl FnMut(AbilityModel) -> Result<StaticAbility, Error>,
+        mut convert_removed_ability: impl FnMut(AbilityModel) -> Result<Ability, Error>,
     ) -> Result<Self, Error> {
         Ok(match modification {
             ironsmith_core::CompiledContinuousModification::AddAbility(ability) => {
@@ -498,7 +537,10 @@ impl Modification {
                 Self::AddAbilityGeneric(convert_ability(ability)?)
             }
             ironsmith_core::CompiledContinuousModification::RemoveAbility(ability) => {
-                Self::RemoveAbility(convert_removed_ability(ability)?)
+                Self::RemoveAbilityGeneric {
+                    ability: convert_removed_ability(ability)?,
+                    mode: ironsmith_core::AbilityLossMode::Lose,
+                }
             }
             ironsmith_core::CompiledContinuousModification::AddCardTypes(card_types) => {
                 Self::AddCardTypes(card_types)
@@ -583,10 +625,11 @@ impl Modification {
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
-            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::CantBeBlocked
@@ -667,6 +710,13 @@ pub struct ContinuousEffectManager {
     /// characteristic calculations.
     revision: u64,
 
+    /// CR 611.2b latch state for predicate-bearing durations. This is
+    /// interior-mutable because calculated-characteristic queries are the
+    /// point at which a current-state predicate can first be observed false.
+    /// Cloning a game clones this map, so simulations do not mutate the
+    /// authoritative game's duration state.
+    latched_duration_states: RefCell<FxMap<ContinuousEffectId, LatchedDurationState>>,
+
     // === Timestamp tracking per Rule 613.7 ===
     /// Timestamps for when objects entered their current zone.
     /// Per Rule 613.7d, objects get a timestamp when entering a zone.
@@ -680,6 +730,12 @@ pub struct ContinuousEffectManager {
     /// Timestamps for when auras/equipment became attached.
     /// Per Rule 613.7e, attachments get a new timestamp when attached.
     attachment_timestamps: FxMap<ObjectId, u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LatchedDurationState {
+    Started,
+    Expired,
 }
 
 impl ContinuousEffectManager {
@@ -698,6 +754,11 @@ impl ContinuousEffectManager {
             effect.timestamp = self.next_timestamp();
         }
 
+        if matches!(effect.duration, Until::ForAsLongAs(_)) {
+            self.latched_duration_states
+                .get_mut()
+                .insert(id, LatchedDurationState::Started);
+        }
         Arc::make_mut(&mut self.effects).push(effect);
         self.revision += 1;
         id
@@ -715,6 +776,7 @@ impl ContinuousEffectManager {
         let before = effects.len();
         effects.retain(|e| e.id != id);
         if effects.len() != before {
+            self.latched_duration_states.get_mut().remove(&id);
             self.revision += 1;
         }
     }
@@ -722,9 +784,99 @@ impl ContinuousEffectManager {
     /// Remove all effects from a specific source.
     pub fn remove_effects_from_source(&mut self, source: ObjectId) {
         let effects = Arc::make_mut(&mut self.effects);
+        let removed_ids: Vec<_> = effects
+            .iter()
+            .filter(|effect| effect.source == source)
+            .map(|effect| effect.id)
+            .collect();
         let before = effects.len();
         effects.retain(|e| e.source != source);
         if effects.len() != before {
+            let states = self.latched_duration_states.get_mut();
+            for id in removed_ids {
+                states.remove(&id);
+            }
+            self.revision += 1;
+        }
+    }
+
+    fn latched_duration_is_expired(&self, id: ContinuousEffectId) -> bool {
+        self.latched_duration_states
+            .borrow()
+            .get(&id)
+            .is_some_and(|state| *state == LatchedDurationState::Expired)
+    }
+
+    fn expire_latched_duration(&self, id: ContinuousEffectId) {
+        if let Some(state) = self.latched_duration_states.borrow_mut().get_mut(&id) {
+            *state = LatchedDurationState::Expired;
+        }
+    }
+
+    /// CR 702.140f: effects that modified a mutating creature spell apply to
+    /// the merged permanent it becomes.  The target permanent keeps its object
+    /// identity, so rewrite only references to the former stack object.
+    pub fn retarget_merged_spell(&mut self, spell: ObjectId, permanent: ObjectId) {
+        let effects = Arc::make_mut(&mut self.effects);
+        let mut changed = false;
+        for effect in effects {
+            if effect.source == spell {
+                effect.source = permanent;
+                changed = true;
+            }
+            match &mut effect.applies_to {
+                EffectTarget::Specific(id) | EffectTarget::AttachedTo(id) if *id == spell => {
+                    *id = permanent;
+                    changed = true;
+                }
+                _ => {}
+            }
+            if let EffectSourceType::Resolution { locked_targets } = &mut effect.source_type {
+                for target in locked_targets {
+                    if *target == spell {
+                        *target = permanent;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if changed {
+            self.revision += 1;
+        }
+    }
+
+    /// Apply the continuous-effect parts of the multiplayer leave-game rules.
+    ///
+    /// CR 800.4a ends only effects that give the departing player control; a
+    /// resolved effect does not otherwise end merely because its controller
+    /// left. CR 800.4m makes turn-relative durations owned by that player last
+    /// until the turn in question would have begun.
+    pub fn prepare_for_departing_player(
+        &mut self,
+        player: PlayerId,
+        last_turn_before_boundary: u32,
+    ) {
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(
+            |effect| !matches!(effect.modification, Modification::ChangeController(p) if p == player),
+        );
+        let mut duration_changed = false;
+        for effect in effects.iter_mut().filter(|effect| {
+            effect.controller == player
+                && matches!(
+                    effect.duration,
+                    Until::YourNextTurn
+                        | Until::YourNextTurnEnd
+                        | Until::YourNextUpkeep
+                        | Until::ControllersNextUntapStep
+                )
+        }) {
+            effect.duration = Until::YourNextTurnEnd;
+            effect.expires_end_of_turn = last_turn_before_boundary;
+            duration_changed = true;
+        }
+        if effects.len() != before || duration_changed {
             self.revision += 1;
         }
     }
@@ -750,6 +902,16 @@ impl ContinuousEffectManager {
         let effects = Arc::make_mut(&mut self.effects);
         let before = effects.len();
         effects.retain(|e| !matches!(e.duration, Until::EndOfTurn));
+        if effects.len() != before {
+            self.revision += 1;
+        }
+    }
+
+    /// Remove all effects whose duration ends with the current combat.
+    pub fn cleanup_end_of_combat(&mut self) {
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(|effect| !matches!(effect.duration, Until::EndOfCombat));
         if effects.len() != before {
             self.revision += 1;
         }
@@ -1131,16 +1293,26 @@ impl ContinuousEffect {
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
     pub name: SharedStr,
+    pub mana_cost: Option<ManaCost>,
     pub compiled_card_text: Arc<str>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
     pub card_types: SharedVec<CardType>,
     pub subtypes: SharedVec<Subtype>,
     pub supertypes: SharedVec<Supertype>,
+    /// Timestamp at which the object most recently began continuously having
+    /// the World supertype. This is tracked through layers so the world-rule
+    /// SBA can distinguish printed/copied World from a later granted World
+    /// supertype and can detect simultaneous ties.
+    pub world_supertype_since: Option<u64>,
     pub colors: ColorSet,
+    pub loyalty: Option<u32>,
     pub abilities: SharedVec<Ability>,
     /// Static abilities that this object currently has (including from effects)
     pub static_abilities: SharedVec<StaticAbility>,
+    /// Ability templates that this object is prohibited from having or gaining
+    /// while the corresponding layer-6 continuous effects apply.
+    pub(crate) ability_gain_prohibitions: Vec<Ability>,
     pub aura_attach_filter: Option<crate::object::AuraAttachmentFilter>,
     pub controller: PlayerId,
 }
@@ -1278,17 +1450,22 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         restored
     });
     let object = restored.as_ref().unwrap_or(object);
+    let supertypes = object.supertypes.clone();
     CalculatedCharacteristics {
         name: object.name.clone(),
+        mana_cost: object.mana_cost_owned(),
         compiled_card_text: object.compiled_card_text.clone(),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: object.card_types.clone(),
         subtypes: object.subtypes.clone(),
-        supertypes: object.supertypes.clone(),
+        world_supertype_since: supertypes.contains(&Supertype::World).then_some(0),
+        supertypes,
         colors: object.colors(),
+        loyalty: object.base_loyalty,
         abilities: object.abilities.clone().into(),
         static_abilities: extract_static_abilities(&object.abilities).into(),
+        ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.owner,
     }
@@ -1337,6 +1514,7 @@ fn copy_characteristics_from_copiable_values(
     let preserved_abilities = preserve_source_abilities.then(|| chars.abilities.clone());
 
     chars.name = values.name.clone().into();
+    chars.mana_cost = values.mana_cost.clone();
     chars.compiled_card_text = values.compiled_card_text.clone().into();
     chars.power = values.power;
     chars.toughness = values.toughness;
@@ -1344,6 +1522,7 @@ fn copy_characteristics_from_copiable_values(
     chars.subtypes = values.subtypes.clone().into();
     chars.supertypes = values.supertypes.clone().into();
     chars.colors = values.colors;
+    chars.loyalty = values.loyalty;
     chars.abilities = values.abilities.as_ref().clone().into();
     chars.aura_attach_filter = values.aura_attach_filter.clone();
 
@@ -1366,6 +1545,19 @@ fn apply_face_down_layer(object: &Object, chars: &mut CalculatedCharacteristics)
     }
     let values = CopiableValues::from_object(object);
     copy_characteristics_from_copiable_values(&values, chars, false, &None, &None, &[]);
+}
+
+pub(crate) fn update_world_supertype_since(
+    chars: &mut CalculatedCharacteristics,
+    had_world: bool,
+    transition_timestamp: u64,
+) {
+    let has_world = chars.supertypes.contains(&Supertype::World);
+    match (had_world, has_world) {
+        (false, true) => chars.world_supertype_since = Some(transition_timestamp),
+        (true, false) => chars.world_supertype_since = None,
+        _ => {}
+    }
 }
 
 fn object_has_reconfigure_ability(object: &Object) -> bool {
@@ -1621,7 +1813,14 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(object) = objects.get(&id) else {
             continue;
         };
-        let chars = initial_characteristics(object);
+        let mut chars = initial_characteristics(object);
+        if chars.world_supertype_since.is_some() {
+            chars.world_supertype_since = game
+                .effect_store
+                .continuous_effects
+                .get_entry_timestamp(object.id)
+                .or(Some(0));
+        }
         guards.push(CharacteristicCalculationGuard::begin(id, &chars));
         chars_by_id.insert(id, chars);
     }
@@ -1660,6 +1859,16 @@ fn calculate_characteristics_layer_batch_with_effects(
         Layer::Color,
         Layer::Ability,
     ] {
+        if layer == Layer::Ability {
+            for (idx, &id) in order.iter().enumerate() {
+                let (Some(object), Some(chars)) = (objects.get(&id), chars_by_id.get_mut(&id))
+                else {
+                    continue;
+                };
+                game.apply_deploy_creatures_ability_layer(object, chars);
+                guards[idx].update(chars);
+            }
+        }
         let Some(layer_effects) = effects_by_layer.get(&layer) else {
             if layer == Layer::Copy {
                 for (idx, &id) in order.iter().enumerate() {
@@ -1669,7 +1878,16 @@ fn calculate_characteristics_layer_batch_with_effects(
                     let Some(chars) = chars_by_id.get_mut(&id) else {
                         continue;
                     };
+                    let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, chars);
+                    update_world_supertype_since(
+                        chars,
+                        had_world,
+                        game.effect_store
+                            .continuous_effects
+                            .get_entry_timestamp(object.id)
+                            .unwrap_or(0),
+                    );
                     guards[idx].update(chars);
                 }
             }
@@ -1695,6 +1913,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                         continue;
                     };
                     apply_ability_counters_through(object, chars, counters, next_counter, None);
+                    prune_ability_gain_prohibitions(chars);
                     guards[idx].update(chars);
                 }
             }
@@ -1711,7 +1930,7 @@ fn calculate_characteristics_layer_batch_with_effects(
             HashMap::new()
         };
 
-        let sorted_effects = if needs_baseline_dependency_sort(layer_effects) {
+        let sorted_effects = if needs_baseline_dependency_sort(layer_effects, game) {
             let baseline = chars_by_id.clone();
             sort_layer_effects_with_baseline_and_started_groups(
                 layer_effects,
@@ -1742,10 +1961,17 @@ fn calculate_characteristics_layer_batch_with_effects(
                         next_counter,
                         Some(effect.timestamp),
                     );
+                    prune_ability_gain_prohibitions(chars);
                     guards[idx].update(chars);
                 }
             }
-            if !continuous_effect_duration_and_condition_are_active(effect, game) {
+            if !continuous_effect_duration_is_active(effect, game) {
+                continue;
+            }
+            let condition_active = continuous_effect_condition_is_active(effect, game);
+            let group_started =
+                continuous_effect_group_started_for_any_object(effect, &started_groups_by_object);
+            if !condition_active && !group_started {
                 continue;
             }
             let source_active =
@@ -1769,6 +1995,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 objects,
                 &chars_by_id,
                 &started_groups_by_object,
+                condition_active,
                 needs_source_tracking,
                 source_active,
                 game,
@@ -1783,6 +2010,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 let mut removed = abilities_removed.contains(id);
+                let had_world = chars.supertypes.contains(&Supertype::World);
                 apply_modification_to_chars(
                     &effect.modification,
                     chars,
@@ -1795,6 +2023,16 @@ fn calculate_characteristics_layer_batch_with_effects(
                     battlefield,
                     commanders,
                     game,
+                );
+                update_world_supertype_since(
+                    chars,
+                    had_world,
+                    effect.timestamp.max(
+                        game.effect_store
+                            .continuous_effects
+                            .get_entry_timestamp(object.id)
+                            .unwrap_or(0),
+                    ),
                 );
                 if removed {
                     abilities_removed.insert(*id);
@@ -1820,7 +2058,16 @@ fn calculate_characteristics_layer_batch_with_effects(
                 let Some(chars) = chars_by_id.get_mut(&id) else {
                     continue;
                 };
+                let had_world = chars.supertypes.contains(&Supertype::World);
                 apply_face_down_layer(object, chars);
+                update_world_supertype_since(
+                    chars,
+                    had_world,
+                    game.effect_store
+                        .continuous_effects
+                        .get_entry_timestamp(object.id)
+                        .unwrap_or(0),
+                );
                 guards[idx].update(chars);
             }
         } else if layer == Layer::Type {
@@ -1844,6 +2091,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                     continue;
                 };
                 apply_ability_counters_through(object, chars, counters, next_counter, None);
+                prune_ability_gain_prohibitions(chars);
                 guards[idx].update(chars);
             }
         }
@@ -1864,10 +2112,8 @@ fn calculate_characteristics_layer_batch_with_effects(
             chars.toughness = Some(lt);
             guards[idx].update(chars);
         }
-        let level_abilities = get_level_granted_abilities(object);
-        for ability in level_abilities {
-            push_static_ability_once(chars, ability);
-        }
+        apply_level_granted_abilities(object, chars);
+        prune_ability_gain_prohibitions(chars);
         guards[idx].update(chars);
     }
 
@@ -1882,7 +2128,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         } else {
             HashMap::new()
         };
-        let sorted_pt = if needs_baseline_dependency_sort(pt_effects) {
+        let sorted_pt = if needs_baseline_dependency_sort(pt_effects, game) {
             let baseline = chars_by_id.clone();
             sort_layer_effects_with_baseline_and_started_groups(
                 pt_effects,
@@ -1897,7 +2143,13 @@ fn calculate_characteristics_layer_batch_with_effects(
 
         let mut applicability_cache = Vec::new();
         for effect in sorted_pt {
-            if !continuous_effect_duration_and_condition_are_active(effect, game) {
+            if !continuous_effect_duration_is_active(effect, game) {
+                continue;
+            }
+            let condition_active = continuous_effect_condition_is_active(effect, game);
+            let group_started =
+                continuous_effect_group_started_for_any_object(effect, &started_groups_by_object);
+            if !condition_active && !group_started {
                 continue;
             }
             let source_active =
@@ -1921,6 +2173,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 objects,
                 &chars_by_id,
                 &started_groups_by_object,
+                condition_active,
                 needs_source_tracking,
                 source_active,
                 game,
@@ -1980,6 +2233,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         guards[idx].update(chars);
 
         add_intrinsic_basic_land_mana_abilities(chars);
+        prune_ability_gain_prohibitions(chars);
         guards[idx].update(chars);
 
         retain_active_static_abilities(chars, game, id);
@@ -2068,7 +2322,7 @@ pub(crate) fn copiable_values_with_effects(
         let needs_source_tracking =
             layer_needs_source_activity_tracking(&layer_effects, effects.iter(), Layer::Copy);
         let baseline =
-            crate::dependency::needs_baseline_dependency_sort(&layer_effects).then(|| {
+            crate::dependency::needs_baseline_dependency_sort(&layer_effects, game).then(|| {
                 build_layer_baseline(
                     objects,
                     effects,
@@ -2191,7 +2445,7 @@ pub fn text_box_characteristics_with_effects(
         let needs_source_tracking =
             layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
         let baseline =
-            crate::dependency::needs_baseline_dependency_sort(layer_effects).then(|| {
+            crate::dependency::needs_baseline_dependency_sort(layer_effects, game).then(|| {
                 build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
             });
         let tracked_source_ids =
@@ -2328,6 +2582,13 @@ fn calculate_with_layers_direct_internal(
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
     let mut chars = initial_characteristics(object);
+    if chars.world_supertype_since.is_some() {
+        chars.world_supertype_since = game
+            .effect_store
+            .continuous_effects
+            .get_entry_timestamp(object.id)
+            .or(Some(0));
+    }
     let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
     let mut started_groups = HashSet::new();
 
@@ -2360,11 +2621,24 @@ fn calculate_with_layers_direct_internal(
     let mut next_ability_counter = 0;
 
     for layer in layers_1_to_6 {
+        if layer == Layer::Ability {
+            game.apply_deploy_creatures_ability_layer(object, &mut chars);
+            calc_guard.update(&chars);
+        }
         let layer_effects = match effects_by_layer.get(&layer) {
             Some(effects) => effects,
             None => {
                 if layer == Layer::Copy {
+                    let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, &mut chars);
+                    update_world_supertype_since(
+                        &mut chars,
+                        had_world,
+                        game.effect_store
+                            .continuous_effects
+                            .get_entry_timestamp(object.id)
+                            .unwrap_or(0),
+                    );
                     calc_guard.update(&chars);
                 }
                 if layer == Layer::Type {
@@ -2379,6 +2653,7 @@ fn calculate_with_layers_direct_internal(
                         &mut next_ability_counter,
                         None,
                     );
+                    prune_ability_gain_prohibitions(&mut chars);
                     calc_guard.update(&chars);
                 }
                 continue;
@@ -2387,7 +2662,7 @@ fn calculate_with_layers_direct_internal(
         let needs_source_tracking =
             layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
         let needs_sort_baseline = matches!(sort_mode, DependencySortMode::Baseline)
-            && needs_baseline_dependency_sort(layer_effects);
+            && needs_baseline_dependency_sort(layer_effects, game);
         let baseline = needs_sort_baseline.then(|| {
             build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
         });
@@ -2441,6 +2716,7 @@ fn calculate_with_layers_direct_internal(
                     &mut next_ability_counter,
                     Some(effect.timestamp),
                 );
+                prune_ability_gain_prohibitions(&mut chars);
                 calc_guard.update(&chars);
             }
             let effect_active = if needs_source_tracking {
@@ -2479,6 +2755,7 @@ fn calculate_with_layers_direct_internal(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
+            let had_world = chars.supertypes.contains(&Supertype::World);
             apply_modification_to_chars(
                 &effect.modification,
                 &mut chars,
@@ -2492,11 +2769,30 @@ fn calculate_with_layers_direct_internal(
                 commanders,
                 game,
             );
+            update_world_supertype_since(
+                &mut chars,
+                had_world,
+                effect.timestamp.max(
+                    game.effect_store
+                        .continuous_effects
+                        .get_entry_timestamp(object.id)
+                        .unwrap_or(0),
+                ),
+            );
             calc_guard.update(&chars);
         }
 
         if layer == Layer::Copy {
+            let had_world = chars.supertypes.contains(&Supertype::World);
             apply_face_down_layer(object, &mut chars);
+            update_world_supertype_since(
+                &mut chars,
+                had_world,
+                game.effect_store
+                    .continuous_effects
+                    .get_entry_timestamp(object.id)
+                    .unwrap_or(0),
+            );
             calc_guard.update(&chars);
         } else if layer == Layer::Type {
             apply_reconfigure_attached_type_rule(object, &mut chars);
@@ -2509,6 +2805,7 @@ fn calculate_with_layers_direct_internal(
                 &mut next_ability_counter,
                 None,
             );
+            prune_ability_gain_prohibitions(&mut chars);
             calc_guard.update(&chars);
         }
     }
@@ -2525,10 +2822,8 @@ fn calculate_with_layers_direct_internal(
             calc_guard.update(&chars);
         }
         // Add level-granted abilities to the characteristics
-        let level_abilities = get_level_granted_abilities(object);
-        for ability in level_abilities {
-            push_static_ability_once(&mut chars, ability);
-        }
+        apply_level_granted_abilities(object, &mut chars);
+        prune_ability_gain_prohibitions(&mut chars);
         calc_guard.update(&chars);
     }
 
@@ -2559,7 +2854,7 @@ fn calculate_with_layers_direct_internal(
         let sorted_pt = match sort_mode {
             DependencySortMode::Heuristic => sort_layer_effects(pt_effects),
             DependencySortMode::Baseline => {
-                if needs_baseline_dependency_sort(pt_effects) {
+                if needs_baseline_dependency_sort(pt_effects, game) {
                     let baseline = build_layer_baseline(
                         objects,
                         effects,
@@ -2644,6 +2939,7 @@ fn calculate_with_layers_direct_internal(
     calc_guard.update(&chars);
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
+    prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
 
     retain_active_static_abilities(&mut chars, game, object.id);
@@ -2679,7 +2975,7 @@ fn effect_applies_to_direct_or_started(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> bool {
-    if !continuous_effect_duration_and_condition_are_active(effect, game) {
+    if !continuous_effect_duration_is_active(effect, game) {
         return false;
     }
 
@@ -2717,6 +3013,17 @@ fn continuous_effect_group_started_for_object(
         .is_some_and(|group| started_groups.contains(&(group, object_id)))
 }
 
+fn continuous_effect_group_started_for_any_object(
+    effect: &ContinuousEffect,
+    started_groups: &HashSet<(ContinuousEffectGroupId, ObjectId)>,
+) -> bool {
+    effect.group.is_some_and(|group| {
+        started_groups
+            .iter()
+            .any(|(started_group, _)| *started_group == group)
+    })
+}
+
 fn mark_continuous_effect_group_started(
     effect: &ContinuousEffect,
     started_groups: &mut HashSet<ContinuousEffectGroupId>,
@@ -2730,10 +3037,14 @@ pub(crate) fn continuous_effect_duration_and_condition_are_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
 ) -> bool {
-    if !continuous_effect_duration_is_active(effect, game) {
-        return false;
-    }
+    continuous_effect_duration_is_active(effect, game)
+        && continuous_effect_condition_is_active(effect, game)
+}
 
+fn continuous_effect_condition_is_active(
+    effect: &ContinuousEffect,
+    game: &crate::game_state::GameState,
+) -> bool {
     if let Some(condition) = &effect.condition {
         let iterated_player = match effect.applies_to {
             EffectTarget::AttachedTo(source_id) => game
@@ -2814,6 +3125,7 @@ fn affected_objects_for_effect(
     objects: &ObjectMap,
     chars_by_id: &HashMap<ObjectId, CalculatedCharacteristics>,
     started_groups_by_object: &HashSet<(ContinuousEffectGroupId, ObjectId)>,
+    condition_active: bool,
     needs_source_tracking: bool,
     source_active: bool,
     game: &crate::game_state::GameState,
@@ -2845,7 +3157,10 @@ fn affected_objects_for_effect(
         let Some(chars) = chars_by_id.get(&id) else {
             continue;
         };
-        if group_started || effect_target_applies_to_direct(effect, object, chars, objects, game) {
+        if group_started
+            || (condition_active
+                && effect_target_applies_to_direct(effect, object, chars, objects, game))
+        {
             affected.push((idx, id));
         }
     }
@@ -2941,6 +3256,10 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
         | PlayerFilter::MaxSpeed { base, .. } => player_filter_source_independent(base),
+        // The comparison reads the current battlefield and may contain
+        // source-relative object constraints, so it is never safe to share an
+        // applicability cache entry across effects.
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_source_independent(base) && player_filter_source_independent(excluded)
         }
@@ -2965,12 +3284,12 @@ fn continuous_effect_duration_is_active(
     match effect.duration {
         Until::YourNextTurn => {
             !(game.turn.turn_number > effect.expires_end_of_turn
-                && game.turn.active_player == effect.controller)
+                && game.is_active_player(effect.controller))
         }
         Until::YourNextTurnEnd => game.turn.turn_number <= effect.expires_end_of_turn,
         Until::YourNextUpkeep => {
             if game.turn.turn_number <= effect.expires_end_of_turn
-                || game.turn.active_player != effect.controller
+                || !game.is_active_player(effect.controller)
             {
                 true
             } else if matches!(game.turn.phase, crate::game_state::Phase::Beginning) {
@@ -2994,13 +3313,124 @@ fn continuous_effect_duration_is_active(
                     .current_controller_excluding_change_effect(effect.source, Some(effect.id))
                     .is_some_and(|controller| controller == effect.controller)
         }),
+        Until::ForAsLongAs(ref predicate) => {
+            let manager = &game.effect_store.continuous_effects;
+            if manager.latched_duration_is_expired(effect.id) {
+                return false;
+            }
+            let Some(_guard) = DurationPredicateEvaluationGuard::enter(effect.id) else {
+                return true;
+            };
+            let active = continuous_duration_predicate_matches(predicate, game);
+            if !active {
+                manager.expire_latched_duration(effect.id);
+            }
+            active
+        }
         _ => true,
+    }
+}
+
+fn continuous_duration_object_id(
+    reference: &ironsmith_core::ContinuousDurationObject,
+) -> Option<ObjectId> {
+    match reference {
+        ironsmith_core::ContinuousDurationObject::Specific(id) => Some(*id),
+        _ => None,
+    }
+}
+
+fn continuous_duration_player_id(
+    reference: &ironsmith_core::ContinuousDurationPlayer,
+) -> Option<PlayerId> {
+    match reference {
+        ironsmith_core::ContinuousDurationPlayer::Specific(id) => Some(*id),
+        _ => None,
+    }
+}
+
+fn continuous_duration_object_is_visible(
+    game: &crate::game_state::GameState,
+    id: ObjectId,
+) -> bool {
+    game.object(id)
+        .is_some_and(|object| object.zone == Zone::Battlefield)
+        && !game.is_phased_out(id)
+}
+
+pub(crate) fn continuous_duration_predicate_matches(
+    predicate: &ironsmith_core::ContinuousDurationPredicate,
+    game: &crate::game_state::GameState,
+) -> bool {
+    use ironsmith_core::ContinuousDurationPredicate as Predicate;
+
+    match predicate {
+        Predicate::All(predicates) => predicates
+            .iter()
+            .all(|predicate| continuous_duration_predicate_matches(predicate, game)),
+        Predicate::ObjectOnBattlefield(object) => continuous_duration_object_id(object)
+            .is_some_and(|id| continuous_duration_object_is_visible(game, id)),
+        Predicate::ObjectTapped(object) => continuous_duration_object_id(object).is_some_and(|id| {
+            continuous_duration_object_is_visible(game, id) && game.is_tapped(id)
+        }),
+        Predicate::ObjectHasCounter {
+            object,
+            counter_type,
+            minimum,
+        } => continuous_duration_object_id(object).is_some_and(|id| {
+            continuous_duration_object_is_visible(game, id)
+                && game
+                    .object(id)
+                    .and_then(|object| object.counters.get(counter_type).copied())
+                    .unwrap_or(0)
+                    >= *minimum
+        }),
+        Predicate::ObjectAttachedTo {
+            attachment,
+            attached_to,
+        } => continuous_duration_object_id(attachment)
+            .zip(continuous_duration_object_id(attached_to))
+            .is_some_and(|(attachment, attached_to)| {
+                continuous_duration_object_is_visible(game, attachment)
+                    && continuous_duration_object_is_visible(game, attached_to)
+                    && game.object(attachment).is_some_and(|object| {
+                        object.attached_to
+                            == Some(crate::object::AttachmentTarget::Object(attached_to))
+                    })
+            }),
+        Predicate::ObjectIsEnchanted(object) => continuous_duration_object_id(object).is_some_and(
+            |enchanted| {
+                continuous_duration_object_is_visible(game, enchanted)
+                    && game.battlefield.iter().copied().any(|attachment| {
+                        continuous_duration_object_is_visible(game, attachment)
+                            && game.object(attachment).is_some_and(|object| {
+                                object.attached_to
+                                    == Some(crate::object::AttachmentTarget::Object(enchanted))
+                            })
+                            && game.current_has_subtype(attachment, Subtype::Aura)
+                    })
+            },
+        ),
+        Predicate::PlayerIsMonarch(player) => continuous_duration_player_id(player)
+            .is_some_and(|player| game.is_monarch(player)),
+        Predicate::ObjectPowerAtMostObject { lesser, greater } => {
+            continuous_duration_object_id(lesser)
+                .zip(continuous_duration_object_id(greater))
+                .is_some_and(|(lesser, greater)| {
+                    continuous_duration_object_is_visible(game, lesser)
+                        && continuous_duration_object_is_visible(game, greater)
+                        && game
+                            .calculated_power(lesser)
+                            .zip(game.calculated_power(greater))
+                            .is_some_and(|(lesser, greater)| lesser <= greater)
+                })
+        }
     }
 }
 
 /// Canonical filter matching for layer/dependency paths that need calculated characteristics
 /// without recursively requesting calculated P/T.
-fn filter_matches_with_characteristics(
+pub(crate) fn filter_matches_with_characteristics(
     filter: &ObjectFilter,
     object: &Object,
     chars: &CalculatedCharacteristics,
@@ -3480,13 +3910,171 @@ fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: Playe
 }
 
 fn push_static_ability_once(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
-    let runtime_ability = Ability::static_ability(ability.clone());
-    if !chars.abilities.contains(&runtime_ability) {
-        chars.abilities.push(runtime_ability);
+    let instance_id = ability.instance_id();
+    if !chars.abilities.iter().any(|runtime_ability| {
+        matches!(
+            &runtime_ability.kind,
+            AbilityKind::Static(existing) if existing.instance_id() == instance_id
+        )
+    }) {
+        chars
+            .abilities
+            .push(Ability::static_ability(ability.clone()));
     }
-    if !chars.static_abilities.contains(&ability) {
+    if !chars
+        .static_abilities
+        .iter()
+        .any(|existing| existing.instance_id() == instance_id)
+    {
         chars.static_abilities.push(ability);
     }
+}
+
+fn static_ability_is_concrete_copy_variant(ability: &StaticAbility) -> bool {
+    if ability.id() == crate::static_abilities::StaticAbilityId::CopyStaticAbilityVariants {
+        return false;
+    }
+    let Some(model) = ability.compiled_model() else {
+        return true;
+    };
+    if !matches!(&model.payload, ironsmith_core::StaticAbilityPayload::None) {
+        return true;
+    }
+    StaticAbility::from_compiler_model_parts(model.id, model.label.clone()).is_ok()
+}
+
+pub(crate) fn static_ability_matches_variant_selector(
+    ability: &StaticAbility,
+    selector: ironsmith_core::StaticAbilityVariantSelector,
+) -> bool {
+    if !static_ability_is_concrete_copy_variant(ability) {
+        return false;
+    }
+    match selector {
+        ironsmith_core::StaticAbilityVariantSelector::Any(id) => ability.id() == id,
+        ironsmith_core::StaticAbilityVariantSelector::ProtectionFromColor => {
+            if ability.id() != crate::static_abilities::StaticAbilityId::Protection {
+                return false;
+            }
+            match ability.protection_from() {
+                Some(crate::ability::ProtectionFrom::Color(colors)) => !colors.is_empty(),
+                Some(crate::ability::ProtectionFrom::AllColors) => true,
+                _ => false,
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn copy_static_ability_variants_into(
+    chars: &mut CalculatedCharacteristics,
+    filter: &ObjectFilter,
+    selectors: &[ironsmith_core::StaticAbilityVariantSelector],
+    exclude_source_id: bool,
+    object: &Object,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    game: &crate::game_state::GameState,
+    effect_controller: PlayerId,
+    effect_source: ObjectId,
+) {
+    let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
+    candidate_ids.sort();
+
+    for candidate_id in candidate_ids {
+        let Some(candidate) = objects.get(&candidate_id) else {
+            continue;
+        };
+        if exclude_source_id && candidate.id == object.id {
+            continue;
+        }
+        let Some(candidate_chars) = calculate_characteristics_with_effects_simple(
+            candidate.id,
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            game,
+        ) else {
+            continue;
+        };
+        if !filter_matches_with_characteristics(
+            filter,
+            candidate,
+            &candidate_chars,
+            game,
+            effect_controller,
+            effect_source,
+        ) {
+            continue;
+        }
+
+        for ability in candidate_chars.static_abilities.iter().filter(|ability| {
+            selectors
+                .iter()
+                .copied()
+                .any(|selector| static_ability_matches_variant_selector(ability, selector))
+        }) {
+            push_static_ability_once(chars, ability.clone());
+        }
+    }
+}
+
+/// Runtime abilities contain erased trigger/effect payloads whose derived
+/// `PartialEq` is intentionally conservative across cloned trait objects.
+/// Layer-six loss effects still need structural matching against the cloned
+/// executable ability used by the corresponding grant.
+fn object_abilities_match(candidate: &Ability, template: &Ability) -> bool {
+    match (&candidate.kind, &template.kind) {
+        (AbilityKind::Static(candidate), AbilityKind::Static(template)) => candidate == template,
+        _ => format!("{candidate:?}") == format!("{template:?}"),
+    }
+}
+
+/// Record and enforce characteristic-level ability prohibitions.
+///
+/// Unlike ordinary layer-6 removals, a "can't have or gain" prohibition wins
+/// over grants regardless of timestamp. Keeping the templates on the in-flight
+/// calculated characteristics also makes dependency simulations observe the
+/// same result as the main layer calculators.
+pub(crate) fn enforce_ability_gain_prohibitions(
+    chars: &mut CalculatedCharacteristics,
+    modification: &Modification,
+) {
+    if let Modification::RemoveAbilityGeneric { ability, mode } = modification
+        && mode.prohibits_gain()
+        && !chars
+            .ability_gain_prohibitions
+            .iter()
+            .any(|existing| object_abilities_match(existing, ability))
+    {
+        chars.ability_gain_prohibitions.push(ability.clone());
+    }
+
+    prune_ability_gain_prohibitions(chars);
+}
+
+pub(crate) fn prune_ability_gain_prohibitions(chars: &mut CalculatedCharacteristics) {
+    if chars.ability_gain_prohibitions.is_empty() {
+        return;
+    }
+
+    let prohibited = chars.ability_gain_prohibitions.clone();
+    chars.abilities.retain(|candidate| {
+        !prohibited
+            .iter()
+            .any(|template| object_abilities_match(candidate, template))
+    });
+    chars.static_abilities.retain(|candidate| {
+        !prohibited.iter().any(|template| {
+            matches!(
+                &template.kind,
+                AbilityKind::Static(prohibited_static) if candidate == prohibited_static
+            )
+        })
+    });
 }
 
 /// Apply a modification to calculated characteristics.
@@ -3697,6 +4285,26 @@ fn apply_modification_to_chars(
                 }
             }
         }
+        Modification::CopyStaticAbilityVariants {
+            filter,
+            selectors,
+            exclude_source_id,
+        } => {
+            copy_static_ability_variants_into(
+                chars,
+                filter,
+                selectors,
+                *exclude_source_id,
+                object,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                game,
+                effect_controller,
+                effect_source,
+            );
+        }
         Modification::CopyTriggeredAbilities {
             filter,
             exclude_source_name,
@@ -3765,14 +4373,22 @@ fn apply_modification_to_chars(
             chars.abilities.retain(|a| {
                 if let AbilityKind::Static(ref sa) = a.kind {
                     sa != ability
+                        && !(ability.id() == crate::static_abilities::StaticAbilityId::Banding
+                            && sa.id() == crate::static_abilities::StaticAbilityId::BandsWithOther)
                 } else {
                     true
                 }
             });
-            chars.static_abilities.retain(|sa| sa != ability);
+            chars.static_abilities.retain(|sa| {
+                sa != ability
+                    && !(ability.id() == crate::static_abilities::StaticAbilityId::Banding
+                        && sa.id() == crate::static_abilities::StaticAbilityId::BandsWithOther)
+            });
         }
-        Modification::RemoveAbilityGeneric(ability) => {
-            chars.abilities.retain(|a| a != ability);
+        Modification::RemoveAbilityGeneric { ability, .. } => {
+            chars
+                .abilities
+                .retain(|candidate| !object_abilities_match(candidate, ability));
             if let AbilityKind::Static(static_ability) = &ability.kind {
                 chars.static_abilities.retain(|sa| sa != static_ability);
             }
@@ -3972,4 +4588,5 @@ fn apply_modification_to_chars(
             // Combat/untap restrictions, not characteristic changes
         }
     }
+    enforce_ability_gain_prohibitions(chars, modification);
 }

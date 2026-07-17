@@ -371,7 +371,8 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
                 || effects_reference_tag_in_object_position(if_true, tag)
                 || effects_reference_tag_in_object_position(if_false, tag)
         }
-        EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::TrailingIf { predicate, effects }
+        | EffectAst::TrailingUnless { predicate, effects } => {
             predicate_references_tag(predicate, tag)
                 || effects_reference_tag_in_object_position(effects, tag)
         }
@@ -402,6 +403,42 @@ pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         .tagged_constraints
         .iter()
         .any(|constraint| constraint.tag.as_str() == tag)
+        || filter
+            .controller
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .owner
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .cast_by
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .targets_player
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .targets_only_player
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .attached_to_player
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .entered_battlefield_controller
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .discarded_or_cycled_this_turn_by
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
+        || filter
+            .dealt_damage_to_player_this_turn
+            .as_ref()
+            .is_some_and(|player| player_filter_references_tag(player, tag))
         || filter
             .could_be_targeted_by
             .as_ref()
@@ -506,7 +543,8 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                 || effects_reference_tag(if_true, tag)
                 || effects_reference_tag(if_false, tag)
         }
-        EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::TrailingIf { predicate, effects }
+        | EffectAst::TrailingUnless { predicate, effects } => {
             predicate_references_tag(predicate, tag) || effects_reference_tag(effects, tag)
         }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -521,6 +559,7 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                     source,
                     amount,
                     target,
+                    ..
                 },
             ..
         }) => {
@@ -714,8 +753,13 @@ pub(crate) fn object_ref_references_tag(reference: &ObjectRef, tag: &str) -> boo
 
 pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> bool {
     match filter {
-        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
-            player_filter_references_tag(inner, tag)
+        PlayerFilter::Target(inner)
+        | PlayerFilter::AliasedTarget(inner)
+        | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::MaxSpeed { base: inner, .. } => player_filter_references_tag(inner, tag),
+        PlayerFilter::Excluding { base, excluded } => {
+            player_filter_references_tag(base, tag) || player_filter_references_tag(excluded, tag)
         }
         PlayerFilter::ControllerOf(reference)
         | PlayerFilter::OwnerOf(reference)
@@ -728,15 +772,9 @@ pub(crate) fn player_filter_references_tag(filter: &PlayerFilter, tag: &str) -> 
 pub(crate) fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
     match target {
         TargetAst::Tagged(found, _) => found.as_str() == tag,
-        TargetAst::Object(filter, _, _) => filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == tag),
+        TargetAst::Object(filter, _, _) => filter_references_tag(filter, tag),
         TargetAst::ObjectOrPlayer(object_filter, player_filter, _) => {
-            object_filter
-                .tagged_constraints
-                .iter()
-                .any(|constraint| constraint.tag.as_str() == tag)
+            filter_references_tag(object_filter, tag)
                 || player_filter_references_tag(player_filter, tag)
         }
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
@@ -854,6 +892,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         SubjectVerbActionAst::Incubate { amount, .. } => Some(amount),
         SubjectVerbActionAst::Monstrosity { amount } => Some(amount),
         SubjectVerbActionAst::LoseLife { amount }
+        | SubjectVerbActionAst::PayLife { amount }
         | SubjectVerbActionAst::GainLife { amount }
         | SubjectVerbActionAst::DealDamage { amount, .. }
         | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
@@ -885,7 +924,11 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::MoveToLibraryNthFromTop {
             position: amount, ..
         }
-        | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => Some(amount),
+        | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. }
+        | SubjectVerbActionAst::HealDamage {
+            amount: Some(amount),
+            ..
+        } => Some(amount),
         SubjectVerbActionAst::PayMana {
             x_value: Some(value),
             ..
@@ -924,6 +967,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RollDie { .. }
         | SubjectVerbActionAst::RollDiceChooseResult { .. }
         | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+        | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
         | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
         | SubjectVerbActionAst::ReorderGraveyard
         | SubjectVerbActionAst::ChooseColor
@@ -953,6 +997,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::DoubleManaPool
         | SubjectVerbActionAst::EmptyManaPool
         | SubjectVerbActionAst::EndTurn
+        | SubjectVerbActionAst::EndCombatPhase
         | SubjectVerbActionAst::SkipTurn
         | SubjectVerbActionAst::SkipCombatPhases
         | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -979,6 +1024,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Goad { .. }
         | SubjectVerbActionAst::Suspect { .. }
         | SubjectVerbActionAst::ClearSuspected { .. }
+        | SubjectVerbActionAst::HealDamage { amount: None, .. }
         | SubjectVerbActionAst::RemoveFromCombat { .. }
         | SubjectVerbActionAst::Flip { .. }
         | SubjectVerbActionAst::Regenerate { .. }
@@ -1368,6 +1414,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 count,
                 tags,
                 accumulated_tags,
+                ..
             } => {
                 value_references_tag(count, IT_TAG)
                     || tags.iter().any(|tag| tag.as_str() == IT_TAG)
@@ -1409,6 +1456,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 source,
                 amount,
                 target,
+                ..
             } => {
                 target_references_tag(source, IT_TAG)
                     || value_references_tag(amount, IT_TAG)
@@ -1451,7 +1499,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
-        EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::TrailingIf { predicate, effects }
+        | EffectAst::TrailingUnless { predicate, effects } => {
             predicate_uses_implicit_it_reference(predicate)
                 || predicate_references_tag(predicate, IT_TAG)
                 || effects_reference_it_tag(effects)

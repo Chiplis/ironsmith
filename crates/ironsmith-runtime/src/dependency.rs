@@ -19,8 +19,8 @@ use std::collections::{HashMap, HashSet};
 use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectGroupId, EffectSourceType,
-    EffectTarget, Layer, Modification, PtSublayer, replace_card_types_and_prune_subtypes,
-    replace_subtypes_in_family,
+    EffectTarget, Layer, Modification, PtSublayer, enforce_ability_gain_prohibitions,
+    replace_card_types_and_prune_subtypes, replace_subtypes_in_family,
 };
 use crate::effect::Value;
 use crate::filter::PlayerFilterExt;
@@ -32,11 +32,22 @@ fn push_static_ability_once(
     chars: &mut CalculatedCharacteristics,
     ability: crate::static_abilities::StaticAbility,
 ) {
-    let runtime_ability = Ability::static_ability(ability.clone());
-    if !chars.abilities.contains(&runtime_ability) {
-        chars.abilities.push(runtime_ability);
+    let instance_id = ability.instance_id();
+    if !chars.abilities.iter().any(|runtime_ability| {
+        matches!(
+            &runtime_ability.kind,
+            AbilityKind::Static(existing) if existing.instance_id() == instance_id
+        )
+    }) {
+        chars
+            .abilities
+            .push(Ability::static_ability(ability.clone()));
     }
-    if !chars.static_abilities.contains(&ability) {
+    if !chars
+        .static_abilities
+        .iter()
+        .any(|existing| existing.instance_id() == instance_id)
+    {
         chars.static_abilities.push(ability);
     }
 }
@@ -160,10 +171,12 @@ fn check_dependency_relationship(
         (Modification::RemoveAllAbilities, Modification::AddAbility(_))
         | (Modification::RemoveAllAbilities, Modification::AddAbilityGeneric(_))
         | (Modification::RemoveAllAbilities, Modification::CopyActivatedAbilities { .. })
+        | (Modification::RemoveAllAbilities, Modification::CopyStaticAbilityVariants { .. })
         | (Modification::RemoveAllAbilities, Modification::AddCombatDamageDrawAbility)
         | (Modification::SetAbilities(_), Modification::AddAbility(_))
         | (Modification::SetAbilities(_), Modification::AddAbilityGeneric(_))
         | (Modification::SetAbilities(_), Modification::CopyActivatedAbilities { .. })
+        | (Modification::SetAbilities(_), Modification::CopyStaticAbilityVariants { .. })
         | (Modification::SetAbilities(_), Modification::AddCombatDamageDrawAbility)
         | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddAbility(_))
         | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddAbilityGeneric(_))
@@ -171,19 +184,29 @@ fn check_dependency_relationship(
             Modification::RemoveAllAbilitiesExceptMana,
             Modification::CopyActivatedAbilities { .. },
         )
+        | (
+            Modification::RemoveAllAbilitiesExceptMana,
+            Modification::CopyStaticAbilityVariants { .. },
+        )
         | (Modification::RemoveAllAbilitiesExceptMana, Modification::AddCombatDamageDrawAbility)
         | (Modification::AddAbility(_), Modification::RemoveAllAbilities)
         | (Modification::AddAbilityGeneric(_), Modification::RemoveAllAbilities)
         | (Modification::CopyActivatedAbilities { .. }, Modification::RemoveAllAbilities)
+        | (Modification::CopyStaticAbilityVariants { .. }, Modification::RemoveAllAbilities)
         | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilities)
         | (Modification::AddAbility(_), Modification::SetAbilities(_))
         | (Modification::AddAbilityGeneric(_), Modification::SetAbilities(_))
         | (Modification::CopyActivatedAbilities { .. }, Modification::SetAbilities(_))
+        | (Modification::CopyStaticAbilityVariants { .. }, Modification::SetAbilities(_))
         | (Modification::AddCombatDamageDrawAbility, Modification::SetAbilities(_))
         | (Modification::AddAbility(_), Modification::RemoveAllAbilitiesExceptMana)
         | (Modification::AddAbilityGeneric(_), Modification::RemoveAllAbilitiesExceptMana)
         | (
             Modification::CopyActivatedAbilities { .. },
+            Modification::RemoveAllAbilitiesExceptMana,
+        )
+        | (
+            Modification::CopyStaticAbilityVariants { .. },
             Modification::RemoveAllAbilitiesExceptMana,
         )
         | (Modification::AddCombatDamageDrawAbility, Modification::RemoveAllAbilitiesExceptMana)
@@ -562,6 +585,34 @@ fn effect_output_changed(
         return before != after;
     }
 
+    if let Modification::CopyStaticAbilityVariants {
+        filter,
+        selectors,
+        exclude_source_id,
+    } = &a.modification
+    {
+        let before = collect_static_ability_variant_signatures(
+            filter,
+            selectors,
+            *exclude_source_id,
+            a,
+            baseline,
+            objects,
+            game,
+        );
+        let baseline_after = apply_effect_to_baseline(b, baseline, objects, game);
+        let after = collect_static_ability_variant_signatures(
+            filter,
+            selectors,
+            *exclude_source_id,
+            a,
+            &baseline_after,
+            objects,
+            game,
+        );
+        return before != after;
+    }
+
     let (a_power_value, a_toughness_value) = match &a.modification {
         Modification::SetPower { value, .. } => (Some(value), None),
         Modification::SetToughness { value, .. } => (None, Some(value)),
@@ -714,12 +765,15 @@ fn evaluate_value(
             let filter_ctx = crate::filter::FilterContext {
                 you: Some(effect_controller),
                 source: Some(source),
+                source_snapshot: None,
                 caster: None,
                 active_player: None,
                 opponents: Vec::new(),
                 teammates: Vec::new(),
                 defending_player: None,
+                defending_players: Vec::new(),
                 attacking_player: None,
+                attacking_players: Vec::new(),
                 your_commanders: Vec::new(),
                 iterated_player: None,
                 x_value: None,
@@ -729,6 +783,7 @@ fn evaluate_value(
                 tagged_objects: std::collections::HashMap::new(),
                 tagged_players: std::collections::HashMap::new(),
                 effect_outcomes: std::collections::HashMap::new(),
+                players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
             for player in game.players.iter().filter(|p| p.is_in_game()) {
@@ -746,12 +801,15 @@ fn evaluate_value(
             let filter_ctx = crate::filter::FilterContext {
                 you: Some(effect_controller),
                 source: Some(source),
+                source_snapshot: None,
                 caster: None,
                 active_player: None,
                 opponents: Vec::new(),
                 teammates: Vec::new(),
                 defending_player: None,
+                defending_players: Vec::new(),
                 attacking_player: None,
+                attacking_players: Vec::new(),
                 your_commanders: Vec::new(),
                 iterated_player: None,
                 x_value: None,
@@ -761,6 +819,7 @@ fn evaluate_value(
                 tagged_objects: std::collections::HashMap::new(),
                 tagged_players: std::collections::HashMap::new(),
                 effect_outcomes: std::collections::HashMap::new(),
+                players_in_range: game.range_players_for_source(effect_controller, Some(source)),
             };
             let mut total = 0i32;
             for player in game.players.iter().filter(|p| p.is_in_game()) {
@@ -1017,6 +1076,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::MostCardsInHand
             | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
             | PlayerFilter::HasMoreLifeThanYou { .. }
+            | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::Teammate
@@ -1187,6 +1247,44 @@ fn collect_activated_ability_signatures(
         }
     }
 
+    signatures
+}
+
+fn collect_static_ability_variant_signatures(
+    filter: &ObjectFilter,
+    selectors: &[ironsmith_core::StaticAbilityVariantSelector],
+    exclude_source_id: bool,
+    effect: &ContinuousEffect,
+    baseline: &HashMap<ObjectId, CalculatedCharacteristics>,
+    objects: &ObjectMap,
+    game: &GameState,
+) -> HashSet<String> {
+    let mut signatures = HashSet::new();
+    for (&id, chars) in baseline {
+        let Some(object) = objects.get(&id) else {
+            continue;
+        };
+        if exclude_source_id && id == effect.source {
+            continue;
+        }
+        if !crate::continuous::filter_matches_with_characteristics(
+            filter,
+            object,
+            chars,
+            game,
+            effect.controller,
+            effect.source,
+        ) {
+            continue;
+        }
+        for ability in &chars.static_abilities {
+            if selectors.iter().copied().any(|selector| {
+                crate::continuous::static_ability_matches_variant_selector(ability, selector)
+            }) {
+                signatures.insert(format!("{ability:?}"));
+            }
+        }
+    }
     signatures
 }
 
@@ -1370,6 +1468,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 .collect();
         }
         Modification::CopyActivatedAbilities { .. }
+        | Modification::CopyStaticAbilityVariants { .. }
         | Modification::CopyTriggeredAbilities { .. } => {}
         Modification::AddCombatDamageDrawAbility => {
             chars.abilities.push(crate::ability::Ability::triggered(
@@ -1389,7 +1488,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
             });
             chars.static_abilities.retain(|sa| sa != ability);
         }
-        Modification::RemoveAbilityGeneric(ability) => {
+        Modification::RemoveAbilityGeneric { ability, .. } => {
             chars.abilities.retain(|a| a != ability);
             if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
                 chars.static_abilities.retain(|sa| sa != static_ability);
@@ -1446,6 +1545,7 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         | Modification::CantBlock
         | Modification::DoesntUntap => {}
     }
+    enforce_ability_gain_prohibitions(chars, modification);
 }
 
 fn evaluate_value_simple(value: &Value, chars: &CalculatedCharacteristics) -> ValueEval {
@@ -1530,7 +1630,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
-        | Value::PlayersWhoControlMoreThanYou(_)
+        | Value::PlayersWhoControlMoreThanYou { .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
         | Value::PartySize(_)
         | Value::Devotion { .. }
@@ -1727,7 +1827,7 @@ pub fn sort_with_dependencies<'a>(effects: &[&'a ContinuousEffect]) -> Vec<&'a C
 ///
 /// This is a conservative gate: we only return `false` when we can prove that
 /// dependency ordering cannot matter for the given set.
-pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
+pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect], game: &GameState) -> bool {
     if effects.len() <= 1 {
         return false;
     }
@@ -1744,7 +1844,7 @@ pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
     // effects are present, except for simple object-isolated text effects whose
     // applicability cannot change based on other effects in the same layer.
     if layer != Layer::PowerToughness {
-        return !non_pt_group_has_trivial_ordering(effects);
+        return !non_pt_group_has_trivial_ordering(effects, game);
     }
 
     // Dependencies are only meaningful within the same P/T sublayer.
@@ -1761,7 +1861,7 @@ pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
         if sublayer_effects.len() <= 1 {
             continue;
         }
-        if !sublayer_group_has_trivial_ordering(sublayer_effects) {
+        if !sublayer_group_has_trivial_ordering(sublayer_effects, game) {
             return true;
         }
     }
@@ -1769,7 +1869,7 @@ pub fn needs_baseline_dependency_sort(effects: &[&ContinuousEffect]) -> bool {
     false
 }
 
-fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
+fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameState) -> bool {
     if effects.iter().all(|effect| {
         effect.condition.is_none()
             && effect.originating_static_ability.is_none()
@@ -1788,7 +1888,139 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
         return true;
     }
 
+    if attachment_scoped_effects_have_disjoint_scopes(effects, game) {
+        return true;
+    }
+
     non_pt_group_has_no_dynamic_dependencies(effects)
+}
+
+/// The single battlefield object this effect can ever apply to, when the
+/// effect is scoped to its own source's attachment target ("enchanted …" /
+/// "equipped …") and its condition, if any, only reads that same object.
+fn attachment_scoped_effect_object(
+    effect: &ContinuousEffect,
+    game: &GameState,
+) -> Option<ObjectId> {
+    let source_scoped = match &effect.applies_to {
+        EffectTarget::AttachedTo(source_id) => *source_id == effect.source,
+        EffectTarget::Filter(filter) => {
+            filter.tagged_constraints.len() == 1
+                && filter.tagged_constraints.iter().all(|constraint| {
+                    matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    ) && (constraint.tag == crate::tag::TagKey::from("enchanted")
+                        || constraint.tag == crate::tag::TagKey::from("equipped"))
+                })
+        }
+        _ => false,
+    };
+    if !source_scoped {
+        return None;
+    }
+    if !effect
+        .condition
+        .as_ref()
+        .is_none_or(condition_reads_only_source_attachment)
+    {
+        return None;
+    }
+    if !modification_reads_only_scope_object(&effect.modification) {
+        return None;
+    }
+    game.object(effect.source)?
+        .attached_to
+        .and_then(|target| target.object_id())
+}
+
+/// True when applying this modification only reads and writes the object it
+/// applies to, so its output cannot change based on any other object's
+/// characteristics.
+fn modification_reads_only_scope_object(modification: &Modification) -> bool {
+    match modification {
+        Modification::SetCardTypes(_)
+        | Modification::AddCardTypes(_)
+        | Modification::RemoveCardTypes(_)
+        | Modification::AddSubtypes(_)
+        | Modification::RemoveSubtypes(_)
+        | Modification::SetSubtypes(_)
+        | Modification::AddSupertypes(_)
+        | Modification::RemoveSupertypes(_)
+        | Modification::AddColors(_)
+        | Modification::RemoveColors(_)
+        | Modification::SetColors(_)
+        | Modification::MakeColorless
+        | Modification::ModifyPower(_)
+        | Modification::ModifyToughness(_)
+        | Modification::ModifyPowerToughness { .. } => true,
+        Modification::SetPower { value, .. } | Modification::SetToughness { value, .. } => {
+            value_reads_only_iterated_object(value)
+        }
+        Modification::SetPowerToughness {
+            power, toughness, ..
+        } => value_reads_only_iterated_object(power) && value_reads_only_iterated_object(toughness),
+        _ => false,
+    }
+}
+
+fn value_reads_only_iterated_object(value: &Value) -> bool {
+    match value {
+        Value::Fixed(_) => true,
+        Value::ManaValueOf(spec) => {
+            matches!(spec.as_ref(), crate::target::ChooseSpec::Iterated)
+        }
+        _ => false,
+    }
+}
+
+/// True when the condition only inspects characteristic-class dimensions of
+/// the source's own attachment target, so applying an effect to any other
+/// object cannot change its outcome.
+fn condition_reads_only_source_attachment(condition: &crate::ConditionExpr) -> bool {
+    match condition {
+        crate::ConditionExpr::AttachedToSourceMatches(filter) => {
+            filter_supports_chars_class_dedup(filter)
+        }
+        crate::ConditionExpr::Not(inner) => condition_reads_only_source_attachment(inner),
+        crate::ConditionExpr::And(left, right) | crate::ConditionExpr::Or(left, right) => {
+            condition_reads_only_source_attachment(left)
+                && condition_reads_only_source_attachment(right)
+        }
+        _ => false,
+    }
+}
+
+/// True when every effect in the group is attachment-scoped (see
+/// [`attachment_scoped_effect_object`]) and the scope objects are pairwise
+/// distinct and never another effect's source. Such effects cannot form a CR
+/// 613.8 dependency — applying one cannot change whether another applies,
+/// what it applies to, or what it does — so baseline simulation would only
+/// reproduce timestamp order at a quadratic full-board cost (several
+/// independent animation auras previously made every characteristics
+/// recompute rebuild layer baselines for the entire object map).
+fn attachment_scoped_effects_have_disjoint_scopes(
+    effects: &[&ContinuousEffect],
+    game: &GameState,
+) -> bool {
+    let mut scopes: Vec<(ObjectId, ObjectId)> = Vec::with_capacity(effects.len());
+    for effect in effects {
+        let Some(scope) = attachment_scoped_effect_object(effect, game) else {
+            return false;
+        };
+        scopes.push((scope, effect.source));
+    }
+    for (index, &(scope, _)) in scopes.iter().enumerate() {
+        for (other_index, &(other_scope, other_source)) in scopes.iter().enumerate() {
+            if index == other_index {
+                continue;
+            }
+            if scope == other_scope || scope == other_source {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn non_pt_group_has_no_dynamic_dependencies(effects: &[&ContinuousEffect]) -> bool {
@@ -1832,7 +2064,7 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
             | Modification::SetSubtypes(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
-            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
@@ -1841,7 +2073,9 @@ fn modification_can_remove_static_ability_presence(modification: &Modification) 
 fn modification_can_affect_dependency_output(a: &Modification, b: &Modification) -> bool {
     matches!(
         a,
-        Modification::CopyActivatedAbilities { .. } | Modification::CopyTriggeredAbilities { .. }
+        Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyStaticAbilityVariants { .. }
+            | Modification::CopyTriggeredAbilities { .. }
     ) && modification_can_change_abilities_or_matching_characteristics(b)
 }
 
@@ -1873,10 +2107,11 @@ fn modification_can_change_abilities_or_matching_characteristics(
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
-            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
@@ -1939,10 +2174,11 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
-            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => {
                 filter_uses_ability_characteristics(filter)
@@ -2005,7 +2241,7 @@ fn modification_can_change_type_characteristics(modification: &Modification) -> 
     )
 }
 
-fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
+fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameState) -> bool {
     // P/T adders in 7c are commutative. Color-count modifiers also only read
     // layer-5 color characteristics, so other 7c modifiers cannot change their
     // output.
@@ -2017,6 +2253,10 @@ fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect]) -> bool {
     }
 
     if sublayer_group_has_same_fixed_pt_setting(effects) {
+        return true;
+    }
+
+    if attachment_scoped_effects_have_disjoint_scopes(effects, game) {
         return true;
     }
 
@@ -2525,15 +2765,19 @@ mod tests {
             object.id,
             CalculatedCharacteristics {
                 name: object.name.clone(),
+                mana_cost: object.mana_cost_owned(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 power: object.base_power.as_ref().map(|p| p.base_value()),
                 toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: object.card_types.clone(),
                 subtypes: object.subtypes.clone(),
                 supertypes: object.supertypes.clone(),
+                world_supertype_since: None,
                 colors: object.colors(),
+                loyalty: object.base_loyalty,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
             },
@@ -2577,15 +2821,19 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 name: land.name.clone(),
+                mana_cost: land.mana_cost_owned(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
                 subtypes: land.subtypes.clone(),
                 supertypes: land.supertypes.clone(),
+                world_supertype_since: None,
                 colors: land.colors(),
+                loyalty: land.base_loyalty,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
             },
@@ -2690,15 +2938,19 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 name: land.name.clone(),
+                mana_cost: land.mana_cost_owned(),
                 compiled_card_text: land.compiled_card_text.clone(),
                 power: land.base_power.as_ref().map(|p| p.base_value()),
                 toughness: land.base_toughness.as_ref().map(|t| t.base_value()),
                 card_types: land.card_types.clone(),
                 subtypes: land.subtypes.clone(),
                 supertypes: land.supertypes.clone(),
+                world_supertype_since: None,
                 colors: land.colors(),
+                loyalty: land.base_loyalty,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
             },
@@ -2997,7 +3249,7 @@ mod tests {
         cda_b.source_type = EffectSourceType::CharacteristicDefining;
 
         let effects = vec![&cda_a, &cda_b];
-        assert!(!needs_baseline_dependency_sort(&effects));
+        assert!(!needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
     }
 
     #[test]
@@ -3024,6 +3276,7 @@ mod tests {
             object.id,
             CalculatedCharacteristics {
                 name: object.name.clone(),
+                mana_cost: object.mana_cost_owned(),
                 compiled_card_text: object.compiled_card_text.clone(),
                 power: object.base_power.as_ref().map(|power| power.base_value()),
                 toughness: object
@@ -3033,9 +3286,12 @@ mod tests {
                 card_types: object.card_types.clone(),
                 subtypes: object.subtypes.clone(),
                 supertypes: object.supertypes.clone(),
+                world_supertype_since: None,
                 colors: object.colors(),
+                loyalty: object.base_loyalty,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
             },
@@ -3105,7 +3361,7 @@ mod tests {
         cda_fixed.source_type = EffectSourceType::CharacteristicDefining;
 
         let effects = vec![&cda_source_power, &cda_fixed];
-        assert!(needs_baseline_dependency_sort(&effects));
+        assert!(needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
     }
 
     #[test]
@@ -3131,7 +3387,7 @@ mod tests {
         );
 
         let effects = vec![&cda, &modifier];
-        assert!(!needs_baseline_dependency_sort(&effects));
+        assert!(!needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
     }
 
     #[test]
@@ -3163,6 +3419,6 @@ mod tests {
         };
 
         let effects = vec![&first, &second];
-        assert!(!needs_baseline_dependency_sort(&effects));
+        assert!(!needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
     }
 }

@@ -32,6 +32,51 @@ fn rewrite_count_that_number_life_total_trigger_tokens(
     Some(rewritten)
 }
 
+fn trigger_has_moved_or_cast_origin_condition(
+    trigger: &crate::runtime_backend::ast::TriggerSpec,
+) -> bool {
+    match trigger {
+        crate::runtime_backend::ast::TriggerSpec::WithIntro { trigger, .. } => {
+            trigger_has_moved_or_cast_origin_condition(trigger)
+        }
+        crate::runtime_backend::ast::TriggerSpec::EntersBattlefieldOneOrMore {
+            origin_condition:
+                Some(ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom(_)),
+            ..
+        } => true,
+        _ => false,
+    }
+}
+
+fn moved_or_cast_origin_trigger_split_index(
+    tokens: &[OwnedLexToken],
+    trigger_start: usize,
+) -> Option<usize> {
+    let mut inside_quotes = false;
+    for (separator_idx, separator) in tokens.iter().enumerate() {
+        if separator.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if inside_quotes
+            || separator.kind != TokenKind::Comma
+            || separator_idx <= trigger_start
+            || separator_idx + 1 >= tokens.len()
+        {
+            continue;
+        }
+
+        let trigger_tokens = trim_lexed_commas(&tokens[trigger_start..separator_idx]);
+        let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) else {
+            continue;
+        };
+        if trigger_has_moved_or_cast_origin_condition(&trigger) {
+            return Some(separator_idx);
+        }
+    }
+    None
+}
+
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
 ) -> Result<TriggeredLineCst, CardTextError> {
@@ -87,14 +132,16 @@ pub(super) fn parse_triggered_line_cst(
 
     let mut best_probe_error = None;
     let mut typed_conditional_fallback = None;
+    let moved_or_cast_origin_split =
+        moved_or_cast_origin_trigger_split_index(tokens_without_cap, 1);
 
     // Once a triggered ability explicitly starts its post-trigger clause with
     // `if`, that condition is semantic: it is an intervening-if check, not
     // expendable punctuation. Keep track of the surface shape independently
     // of whether the typed predicate grammar can model it so the generic
     // comma splitter below cannot silently turn the ability unconditional.
-    let has_explicit_intervening_if =
-        grammar::split_lexed_once_on_comma(tokens_without_cap).is_some_and(
+    let has_explicit_intervening_if = moved_or_cast_origin_split.is_none()
+        && grammar::split_lexed_once_on_comma(tokens_without_cap).is_some_and(
             |(_, after_trigger)| {
                 after_trigger.first().is_some_and(|token| {
                     token.kind == TokenKind::Word && token.parser_text() == "if"
@@ -102,7 +149,10 @@ pub(super) fn parse_triggered_line_cst(
             },
         );
 
-    if let Some(spec) = structure::split_triggered_conditional_clause_lexed(tokens_without_cap, 1) {
+    if moved_or_cast_origin_split.is_none()
+        && let Some(spec) =
+            structure::split_triggered_conditional_clause_lexed(tokens_without_cap, 1)
+    {
         let probe = probe_triggered_split(
             spec.trigger_tokens,
             spec.effects_tokens,
@@ -146,9 +196,15 @@ pub(super) fn parse_triggered_line_cst(
         }));
     }
 
-    if let Some((leading_tokens, effect_tokens)) =
-        grammar::split_lexed_once_on_comma(tokens_without_cap)
-    {
+    let preferred_comma_split = moved_or_cast_origin_split
+        .map(|separator_idx| {
+            (
+                &tokens_without_cap[..separator_idx],
+                &tokens_without_cap[separator_idx + 1..],
+            )
+        })
+        .or_else(|| grammar::split_lexed_once_on_comma(tokens_without_cap));
+    if let Some((leading_tokens, effect_tokens)) = preferred_comma_split {
         if leading_tokens.len() > 1
             && !comma_split_tail_starts_with_filter_list_continuation(effect_tokens)
         {
@@ -179,6 +235,9 @@ pub(super) fn parse_triggered_line_cst(
             continue;
         }
         if inside_quotes || separator.kind != TokenKind::Comma || separator_idx <= 1 {
+            continue;
+        }
+        if moved_or_cast_origin_split.is_some_and(|owned_split| separator_idx < owned_split) {
             continue;
         }
         if tokens_without_cap[1..separator_idx]
@@ -344,6 +403,13 @@ pub(super) fn parse_static_line_cst(
         || is_additional_land_play_static_line(lexed)
         || is_can_block_additional_creatures_static_line(lexed)
         || is_any_number_named_deck_construction_line(lexed)
+        || matches!(
+            semantic_lowering::parse_static_special_line_tokens(lexed),
+            Some(
+                semantic_lowering::StaticSpecialLineShape::HiddenAgenda
+                    | semantic_lowering::StaticSpecialLineShape::DoubleAgenda
+            )
+        )
     {
         return Ok(Some(make_static(None)));
     }
@@ -555,9 +621,15 @@ pub(super) fn parse_level_item_cst(
 }
 
 pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeCst, CardTextError> {
-    let point_cost = leading_modal_point_cost_tokens(&line.tokens);
-    let parse_tokens =
-        strip_non_keyword_label_prefix_lexed(strip_modal_bullet_prefix_tokens(&line.tokens));
+    let spree_prefix = parse_spree_mode_prefix(&line.tokens);
+    let point_cost = spree_prefix
+        .as_ref()
+        .map_or_else(|| leading_modal_point_cost_tokens(&line.tokens), |_| None);
+    let parse_tokens = if let Some((_, body_first)) = spree_prefix.as_ref() {
+        line.tokens.get(*body_first..).unwrap_or_default()
+    } else {
+        strip_non_keyword_label_prefix_lexed(strip_modal_bullet_prefix_tokens(&line.tokens))
+    };
     let mode_text = render_original_text_for_token_slice(line, parse_tokens)
         .unwrap_or_else(|| render_token_slice(parse_tokens))
         .trim()
@@ -567,8 +639,27 @@ pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeC
         info: line.info.clone(),
         text: mode_text,
         point_cost,
+        additional_mana_cost: spree_prefix.map(|(cost, _)| cost),
         effects_ast,
     })
+}
+
+fn parse_spree_mode_prefix(tokens: &[OwnedLexToken]) -> Option<(crate::mana::ManaCost, usize)> {
+    if !tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Plus)
+    {
+        return None;
+    }
+    let mana = super::super::grammar::leaf::parse_leaf_mana_cost_prefix_tokens(&tokens[1..])?;
+    let delimiter = 1 + mana.consumed;
+    if !tokens
+        .get(delimiter)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+    {
+        return None;
+    }
+    Some((mana.cost, delimiter + 1))
 }
 
 fn leading_modal_point_cost_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -589,14 +680,17 @@ fn strip_modal_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
 pub(super) fn parse_saga_chapter_line_cst(
     line: &PreprocessedLine,
     chapters: Vec<u32>,
-    text: &str,
+    presentation_label: Option<String>,
+    display_text: &str,
+    parse_text: &str,
 ) -> Result<SagaChapterLineCst, CardTextError> {
-    let parse_tokens = lexed_tokens(text, line.info.line_index)?;
+    let parse_tokens = lexed_tokens(parse_text, line.info.line_index)?;
     let effects_ast = parse_effect_sentences_lexed(&parse_tokens)?;
     Ok(SagaChapterLineCst {
         info: line.info.clone(),
         chapters,
-        text: text.to_string(),
+        presentation_label,
+        text: display_text.to_string(),
         effects_ast,
     })
 }

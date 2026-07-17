@@ -37,7 +37,7 @@ impl TriggerMatcher for PlayerRollsResultTrigger {
         let Some(e) = event.downcast::<DieRolledEvent>() else {
             return false;
         };
-        if e.result != self.result {
+        if e.is_planar || e.result != self.result {
             return false;
         }
 
@@ -69,7 +69,7 @@ impl TriggerMatcher for PlayerRollsHighestNaturalResultTrigger {
         let Some(e) = event.downcast::<DieRolledEvent>() else {
             return false;
         };
-        if e.natural_result != e.sides {
+        if e.is_planar || e.natural_result != e.sides {
             return false;
         }
 

@@ -1058,6 +1058,15 @@ pub(super) fn parse_object_filter_inner(
         &mut segment_tokens,
     );
 
+    // Token provenance is a source-instance relationship. Consume the source
+    // noun before the ordinary type pass can misread "this enchantment" as a
+    // requirement that the selected token itself be an enchantment.
+    try_apply_created_with_source_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
+
     // "... entered the battlefield ... this turn" marks a battlefield entry this turn.
     try_apply_entered_battlefield_this_turn_clause(
         &mut filter,
@@ -1109,6 +1118,8 @@ pub(super) fn parse_object_filter_inner(
     strip_be_put_on_reference_prefix(&mut all_words, &segment_tokens);
 
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
+
+    let _ = try_apply_target_choice_attribution_reference(&mut filter, &mut all_words);
 
     let _ = try_apply_entered_since_your_last_turn_ended_clause(&mut filter, &mut all_words);
 
@@ -1284,7 +1295,9 @@ pub(super) fn parse_object_filter_inner(
                 idx += consumed.max(1);
                 continue;
             }
-            if let Some(consumed) = try_apply_negated_you_relation_clause(&mut filter, slice) {
+            if let Some(consumed) =
+                try_apply_negated_you_relation_clause(&mut filter, slice, &pronoun_player_filter)
+            {
                 idx += consumed.max(1);
                 continue;
             }
@@ -1339,6 +1352,13 @@ pub(super) fn parse_object_filter_inner(
                 parse_filter_counter_constraint_words(&all_words[has_idx + 1..])
         {
             filter.with_counter = Some(counter_constraint);
+            has_idx += 1 + consumed;
+            continue;
+        }
+        if let Some((constraint, consumed)) =
+            parse_filter_keyword_constraint_words(&all_words[has_idx + 1..])
+        {
+            apply_filter_keyword_constraint(&mut filter, constraint, false);
             has_idx += 1 + consumed;
             continue;
         }
@@ -1752,6 +1772,15 @@ pub(super) fn parse_object_filter_inner(
         filter.attacked_this_turn = true;
     }
 
+    let basic_land_type_basic_indices = all_words
+        .windows(3)
+        .enumerate()
+        .filter_map(|(idx, window)| {
+            (window[0] == "basic" && window[1] == "land" && matches!(window[2], "type" | "types"))
+                .then_some(idx)
+        })
+        .collect::<std::collections::HashSet<_>>();
+
     for (idx, word) in all_words.iter().enumerate() {
         let idx: usize = idx;
         if word_is_in_ranges(idx, &comparison_rhs_ranges) {
@@ -1828,6 +1857,9 @@ pub(super) fn parse_object_filter_inner(
                 }
             }
             "noncommander" | "noncommanders" => filter.noncommander = true,
+            "basic" if set_has(&basic_land_type_basic_indices, &idx) => {
+                filter.has_basic_land_type = true;
+            }
             "nonbasic" => {
                 if all_words.get(idx + 1).is_some_and(|word| *word == "land")
                     && all_words.get(idx + 2).is_some_and(|word| *word == "type")
@@ -1886,6 +1918,7 @@ pub(super) fn parse_object_filter_inner(
         }
 
         if let Some(supertype) = parse_supertype_word(word)
+            && !set_has(&basic_land_type_basic_indices, &idx)
             && !slice_has(&filter.supertypes, &supertype)
         {
             filter.supertypes.push(supertype);
@@ -2381,6 +2414,8 @@ pub(super) fn parse_object_filter_inner(
         || filter.color_count.is_some()
         || filter.historic
         || filter.nonhistoric
+        || filter.has_basic_land_type
+        || filter.has_nonbasic_land_type
         || filter.power.is_some()
         || filter.power_parity.is_some()
         || filter.power_toughness_relation.is_some()
@@ -2583,7 +2618,10 @@ fn preserve_relative_characteristic_list_surface(
             "that's" | "thats" | "isn't" | "isnt" | "aren't" | "arent"
         )
     }) || words.windows(2).any(|pair| {
-        matches!(pair, ["that", "is"] | ["that", "are"] | ["is", "not"] | ["are", "not"])
+        matches!(
+            pair,
+            ["that", "is"] | ["that", "are"] | ["is", "not"] | ["are", "not"]
+        )
     });
     if has_relative_copula {
         filter.set_relative_characteristic_list_surface(true);
@@ -2633,22 +2671,22 @@ fn strip_other_than_basic_land_cards_clause(
 fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<OwnedLexToken>) {
     let mut idx = 0usize;
     while idx + 3 < segment_tokens.len() {
-        if parse_phrase_at_head(
-            &non_article_parser_word_refs(&segment_tokens[idx..]),
-            OTHER_THAN_BASIC_LAND_PREFIX,
-        )
-        .is_none()
-        {
+        let word_at = |offset: usize| segment_tokens.get(offset).and_then(OwnedLexToken::as_word);
+        if word_at(idx) != Some("other") || word_at(idx + 1) != Some("than") {
             idx += 1;
             continue;
         }
 
-        let mut end = idx + 4;
-        if segment_tokens.get(end).is_some_and(|token| {
-            token
-                .as_word()
-                .is_some_and(|word| parse_word_choice(word, CARD_OR_CARDS_WORDS).is_some())
-        }) {
+        let mut end = idx + 2;
+        if word_at(end).is_some_and(is_article) {
+            end += 1;
+        }
+        if word_at(end) != Some("basic") || word_at(end + 1) != Some("land") {
+            idx += 1;
+            continue;
+        }
+        end += 2;
+        if word_at(end).is_some_and(|word| parse_word_choice(word, CARD_OR_CARDS_WORDS).is_some()) {
             end += 1;
         }
         segment_tokens.drain(idx..end);
@@ -2864,28 +2902,28 @@ fn try_apply_no_shared_creature_type_with_chosen_creature_clause(
 ) -> bool {
     for phrase in [
         [
-            "that", "doesn't", "share", "creature", "type", "with", "chosen", "creature",
-            "they", "control",
+            "that", "doesn't", "share", "creature", "type", "with", "chosen", "creature", "they",
+            "control",
         ]
         .as_slice(),
         [
-            "that", "doesnt", "share", "creature", "type", "with", "chosen", "creature",
-            "they", "control",
+            "that", "doesnt", "share", "creature", "type", "with", "chosen", "creature", "they",
+            "control",
         ]
         .as_slice(),
         [
-            "that", "don't", "share", "creature", "type", "with", "chosen", "creature",
-            "they", "control",
+            "that", "don't", "share", "creature", "type", "with", "chosen", "creature", "they",
+            "control",
         ]
         .as_slice(),
         [
-            "that", "dont", "share", "creature", "type", "with", "chosen", "creature",
-            "they", "control",
+            "that", "dont", "share", "creature", "type", "with", "chosen", "creature", "they",
+            "control",
         ]
         .as_slice(),
         [
-            "that", "do", "not", "share", "creature", "type", "with", "chosen", "creature",
-            "they", "control",
+            "that", "do", "not", "share", "creature", "type", "with", "chosen", "creature", "they",
+            "control",
         ]
         .as_slice(),
     ] {

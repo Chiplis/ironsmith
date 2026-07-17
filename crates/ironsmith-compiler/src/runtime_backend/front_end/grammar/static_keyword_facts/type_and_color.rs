@@ -215,7 +215,20 @@ pub(crate) fn parse_subjects_are_basic_tokens(
 }
 
 pub(crate) fn parse_subject_color_tokens(tokens: &[OwnedLexToken]) -> Option<SubjectColorFact<'_>> {
-    primitives::parse_all(tokens, parse_subject_color, "static subject color").ok()
+    let fact = primitives::parse_all(tokens, parse_subject_color, "static subject color").ok()?;
+    let trailing_subject_word = fact
+        .subject_tokens
+        .iter()
+        .rev()
+        .find_map(OwnedLexToken::as_word)?;
+    // The atomic color shape must own a nominal subject, not the first half of
+    // a compound predicate. For example, in "enchanted creature gets +3/+1
+    // and is black", the copular splitter otherwise treats the dangling
+    // "and" as part of the subject and hides the preceding anthem clause.
+    if matches!(trailing_subject_word, "and" | "or" | "and/or") {
+        return None;
+    }
+    Some(fact)
 }
 
 pub(crate) fn parse_basic_land_subtype_tokens(
@@ -651,6 +664,18 @@ mod tests {
         let color_tokens = lex("All creatures are all colors.");
         let color = parse_subject_color_tokens(&color_tokens).unwrap();
         assert_eq!(color.color, Color::ALL.into_iter().collect::<ColorSet>());
+        assert!(
+            parse_subject_color_tokens(&lex("Enchanted creature gets +3/+1 and is black."))
+                .is_none(),
+            "an atomic color fact must not consume a preceding compound predicate"
+        );
+        let conjoined_subject_tokens = lex("Artifacts and creatures are blue.");
+        let conjoined_subject = parse_subject_color_tokens(&conjoined_subject_tokens)
+            .expect("a complete conjoined nominal subject should remain valid");
+        assert_eq!(
+            render_token_slice(conjoined_subject.subject_tokens),
+            "Artifacts and creatures"
+        );
 
         let subtype_tokens = lex("Nonbasic lands are Mountains.");
         let subtype = parse_basic_land_subtype_tokens(&subtype_tokens).unwrap();

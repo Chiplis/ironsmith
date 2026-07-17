@@ -4,15 +4,29 @@
 //! must implement. Each trigger type (ETB, dies, upkeep, etc.) implements this trait
 //! with its own matching logic.
 
-use crate::events::EventKind;
+use crate::events::{DamageTarget, EventKind};
+use crate::filter::PlayerFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
-use crate::target::FilterContext;
+use crate::target::{FilterContext, PlayerFilter};
 use std::collections::HashMap;
 
 use super::TriggerEvent;
+
+/// Rules grouping key for a trigger that says "one or more" damage sources or
+/// recipients. Matches with the same key during one simultaneous action queue
+/// the ability only once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum SimultaneousTriggerKey {
+    /// All matching damage assignments in the action form one event group.
+    DamageBatch,
+    /// Damage assignments are grouped independently for each source.
+    DamageSource(ObjectId),
+    /// Damage assignments are grouped independently for each recipient.
+    DamageTarget(DamageTarget),
+}
 
 /// Context provided to trigger matchers for determining if they match an event.
 ///
@@ -30,6 +44,9 @@ pub struct TriggerContext<'a> {
 
     /// Reference to the game state for additional lookups.
     pub game: &'a GameState,
+
+    /// Structural identity of the enclosing triggered ability, when known.
+    pub trigger_identity: Option<super::TriggerIdentity>,
 }
 
 impl<'a> TriggerContext<'a> {
@@ -45,7 +62,13 @@ impl<'a> TriggerContext<'a> {
             controller,
             filter_ctx,
             game,
+            trigger_identity: None,
         }
+    }
+
+    pub fn with_trigger_identity(mut self, trigger_identity: super::TriggerIdentity) -> Self {
+        self.trigger_identity = Some(trigger_identity);
+        self
     }
 
     /// Create a trigger context for a source permanent.
@@ -63,6 +86,41 @@ impl<'a> TriggerContext<'a> {
         let mut filter_ctx = game.filter_context_for(controller, Some(source_id));
         filter_ctx.tagged_objects = tagged_objects.clone();
         Self::new(source_id, controller, filter_ctx, game)
+    }
+}
+
+/// Match a player-valued turn restriction against every active member of a
+/// shared turn. `active_player_id()` is only the CR 805 primary-player anchor;
+/// it cannot by itself answer whether a nonprimary teammate is taking a turn.
+pub(crate) fn current_turn_matches_player_filter(
+    filter: &PlayerFilter,
+    ctx: &TriggerContext<'_>,
+    iterated_player: Option<PlayerId>,
+) -> bool {
+    match filter {
+        PlayerFilter::You => ctx.game.is_active_player(ctx.controller),
+        PlayerFilter::NotYou => {
+            ctx.game.active_player_id().is_some() && !ctx.game.is_active_player(ctx.controller)
+        }
+        PlayerFilter::Opponent => ctx
+            .game
+            .active_players()
+            .into_iter()
+            .any(|player| ctx.game.are_opponents(ctx.controller, player)),
+        PlayerFilter::Teammate => ctx
+            .game
+            .active_players()
+            .into_iter()
+            .any(|player| ctx.game.are_teammates(ctx.controller, player)),
+        PlayerFilter::Any | PlayerFilter::Active => ctx.game.active_player_id().is_some(),
+        PlayerFilter::Specific(player) => ctx.game.is_active_player(*player),
+        PlayerFilter::IteratedPlayer => {
+            iterated_player.is_some_and(|player| ctx.game.is_active_player(player))
+        }
+        _ => ctx.game.active_players().into_iter().any(|active_player| {
+            let filter_ctx = ctx.filter_ctx.clone().with_active_player(active_player);
+            filter.matches_player(active_player, &filter_ctx)
+        }),
     }
 }
 
@@ -139,6 +197,12 @@ pub trait TriggerMatcher:
     /// returning `true` must never exclude a match for another object.
     fn source_must_match_event_object(&self, _event_kind: EventKind) -> bool {
         false
+    }
+
+    /// Return a grouping key when this matcher represents an authored
+    /// "one or more" trigger over simultaneous events.
+    fn simultaneous_trigger_key(&self, _event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
+        None
     }
 
     /// Human-readable display text for this trigger.

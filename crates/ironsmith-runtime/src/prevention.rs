@@ -368,12 +368,10 @@ impl PreventionEffectManager {
                 PreventionTarget::Permanent(p) => *p == permanent,
                 PreventionTarget::YouAndPermanentsYouControl => s.controller == controller,
                 PreventionTarget::PermanentsMatching(_)
-                | PreventionTarget::YouAndPermanentsMatching(_) => {
-                    protected_filter_matches
-                        .get(&s.id)
-                        .copied()
-                        .unwrap_or(false)
-                }
+                | PreventionTarget::YouAndPermanentsMatching(_) => protected_filter_matches
+                    .get(&s.id)
+                    .copied()
+                    .unwrap_or(false),
                 PreventionTarget::All => true,
                 _ => false,
             })

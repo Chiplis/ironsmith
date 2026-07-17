@@ -13,7 +13,9 @@ use super::super::permission_helpers::{
 use super::super::util::{
     helper_tag_for_tokens, parse_subject, parse_target_phrase, span_from_tokens, trim_commas, words,
 };
-use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
+use super::dispatch_entry::{
+    SentenceInput, parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
+};
 use super::zone_handlers::{parse_exile_top_library_clause, split_exile_face_down_suffix};
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryConsultModeAst,
@@ -64,11 +66,104 @@ pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
     Ok(Some(spec))
 }
 
+fn parse_during_counter_on_source_turn_play_permission(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let token_words = words(tokens);
+    if token_words.get(..5)? != ["during", "any", "turn", "you", "put"] {
+        return None;
+    }
+    let counter_index = token_words.iter().position(|word| *word == "counter")?;
+    let counter_type = crate::runtime_backend::grammar::filters::parse_counter_type_words(
+        token_words.get(5..=counter_index)?,
+    )?;
+    let allow_land = match token_words.get(counter_index + 1..)? {
+        ["on", "this", "saga", "you", "may", "play", "that", "card"] => true,
+        ["on", "this", "saga", "you", "may", "cast", "that", "card"] => false,
+        _ => return None,
+    };
+    Some(
+        EffectAst::subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            allow_land,
+            counter_type,
+        ),
+    )
+}
+
+fn parse_inline_exile_top_then_put_from_among_bundle(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::runtime_backend::front_end::grammar::primitives as grammar;
+
+    let Some((exile_tokens, put_tokens)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+    else {
+        return Ok(None);
+    };
+    super::sequence_rules::generic_subject_verb_sequences::exiled_collections::parse_exile_top_then_put_from_among_tokens(
+        &trim_commas(exile_tokens),
+        &trim_commas(put_tokens),
+    )
+}
+
+fn parse_inline_mill_then_put_from_among_bundle(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::runtime_backend::front_end::grammar::primitives as grammar;
+
+    let Some((mill_tokens, put_tokens)) =
+        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
+    else {
+        return Ok(None);
+    };
+    let sentences = [
+        SentenceInput::from_lexed(&trim_commas(mill_tokens)),
+        SentenceInput::from_lexed(&trim_commas(put_tokens)),
+    ];
+    let Some(effects) = super::sequence_rules::generic_subject_verb_sequences::pairs::parse_mill_then_may_put_from_among_into_hand(
+        &sentences,
+        0,
+    )? else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+        result_conjunction: false,
+    }]))
+}
+
 fn parse_exile_top_library_then_play_bundle(
     first_sentence: &[OwnedLexToken],
     second_sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((verb, verb_idx)) = effect_sentences::find_verb(first_sentence) else {
+    use crate::runtime_backend::front_end::grammar::primitives as grammar;
+
+    let mut leading_effects = Vec::new();
+    let mut exile_sentence = first_sentence.to_vec();
+    if let Some((prefix, suffix)) =
+        grammar::split_lexed_once_on_separator(first_sentence, || grammar::kw("then").void())
+    {
+        let prefix = trim_commas(prefix);
+        let suffix = trim_commas(suffix);
+        if let Ok(prefix_effects) = effect_sentences::parse_effect_sentence_lexed(&prefix)
+            && matches!(
+                prefix_effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ShuffleLibrary,
+                    ..
+                })]
+            )
+            && effect_sentences::find_verb(&suffix).is_some_and(|(verb, _)| verb == Verb::Exile)
+        {
+            leading_effects = prefix_effects;
+            exile_sentence = suffix;
+        }
+    }
+
+    let Some((verb, verb_idx)) = effect_sentences::find_verb(&exile_sentence) else {
         return Ok(None);
     };
     if verb != Verb::Exile {
@@ -78,9 +173,25 @@ fn parse_exile_top_library_then_play_bundle(
     let exile_subject = if verb_idx == 0 {
         None
     } else {
-        Some(parse_subject(&trim_commas(&first_sentence[..verb_idx])))
+        Some(parse_subject(&trim_commas(&exile_sentence[..verb_idx])))
     };
-    let exile_tokens = trim_commas(&first_sentence[verb_idx + 1..]);
+    let mut exile_tokens = trim_commas(&exile_sentence[verb_idx + 1..]);
+    let mut inline_choice_tokens = None;
+    if let Some((before_then, after_then)) =
+        grammar::split_lexed_once_on_separator(&exile_tokens, || grammar::kw("then").void())
+    {
+        let after_then = trim_commas(after_then);
+        if matches!(
+            words(&after_then).as_slice(),
+            ["choose", "one", "of", "them"]
+                | ["you", "choose", "one", "of", "them"]
+                | ["choose", "one", "of", "those", "cards"]
+                | ["you", "choose", "one", "of", "those", "cards"]
+        ) {
+            exile_tokens = trim_commas(before_then);
+            inline_choice_tokens = Some(after_then);
+        }
+    }
     let (exile_core, face_down) = split_exile_face_down_suffix(&exile_tokens);
     let exile_effect = if face_down {
         let default_player = exile_subject
@@ -136,8 +247,10 @@ fn parse_exile_top_library_then_play_bundle(
         effect
     };
     let permission_effect = if let Some(effect) =
-        parse_until_end_of_turn_may_play_tagged_clause(second_sentence)?
+        parse_during_counter_on_source_turn_play_permission(second_sentence)
     {
+        effect
+    } else if let Some(effect) = parse_until_end_of_turn_may_play_tagged_clause(second_sentence)? {
         effect
     } else if let Some(effect) = parse_until_your_next_turn_may_play_tagged_clause(second_sentence)?
     {
@@ -219,6 +332,27 @@ fn parse_exile_top_library_then_play_bundle(
         return Ok(None);
     };
 
+    let (permission_tag, inline_choice_effect) = if let Some(choice_tokens) = inline_choice_tokens {
+        let chosen_tag = helper_tag_for_tokens(&choice_tokens, "chosen_exiled");
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        (
+            chosen_tag.clone(),
+            Some(EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: ChoiceCount::exactly(1),
+                player: PlayerAst::You,
+                tag: chosen_tag,
+                zone: Zone::Exile,
+            }),
+        )
+    } else {
+        (tag, None)
+    };
+
     let permission_effect = match permission_effect {
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -231,7 +365,7 @@ fn parse_exile_top_library_then_play_bundle(
                 },
             ..
         }) => EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            tag,
+            permission_tag,
             player,
             allow_land,
             without_paying_mana_cost,
@@ -249,11 +383,17 @@ fn parse_exile_top_library_then_play_bundle(
         }) => {
             if until_next_end_step {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
-                    tag, player, allow_land, false,
+                    permission_tag,
+                    player,
+                    allow_land,
+                    false,
                 )
             } else {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                    tag, player, allow_land, false,
+                    permission_tag,
+                    player,
+                    allow_land,
+                    false,
                 )
             }
         }
@@ -265,21 +405,38 @@ fn parse_exile_top_library_then_play_bundle(
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
                     filter,
+                    during_turns_counter_put_on_source,
                     ..
                 },
             ..
-        }) => EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            tag,
-            player,
-            allow_land,
-            without_paying_mana_cost,
-            allow_any_color_for_cast,
-            filter,
-        ),
+        }) => {
+            if let Some(counter_type) = during_turns_counter_put_on_source {
+                EffectAst::subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
+                    permission_tag,
+                    player,
+                    allow_land,
+                    counter_type,
+                )
+            } else {
+                EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                    permission_tag,
+                    player,
+                    allow_land,
+                    without_paying_mana_cost,
+                    allow_any_color_for_cast,
+                    filter,
+                )
+            }
+        }
         _ => return Ok(None),
     };
 
-    Ok(Some(vec![exile_effect, permission_effect]))
+    leading_effects.push(exile_effect);
+    if let Some(choice_effect) = inline_choice_effect {
+        leading_effects.push(choice_effect);
+    }
+    leading_effects.push(permission_effect);
+    Ok(Some(leading_effects))
 }
 
 fn parse_hidden_exile_partition_permission_bundle(
@@ -313,6 +470,7 @@ fn parse_hidden_exile_partition_permission_bundle(
                 SubjectVerbActionAst::Exile {
                     target: TargetAst::Tagged(exile_tag, None),
                     face_down: true,
+                    ..
                 },
             ..
         }),
@@ -465,7 +623,11 @@ fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -
 fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match subject_verb.action {
-            SubjectVerbActionAst::Exile { target, face_down } => Some(
+            SubjectVerbActionAst::Exile {
+                target,
+                face_down,
+                source_top_only: false,
+            } => Some(
                 EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
                     .with_explicit_exile_return_surface(),
             ),
@@ -1117,6 +1279,7 @@ fn parse_look_hand_optional_exile_play_tax_bundle(
                 SubjectVerbActionAst::Exile {
                     target,
                     face_down: false,
+                    ..
                 },
             ..
         }),
@@ -1148,6 +1311,7 @@ fn parse_look_hand_optional_exile_play_tax_bundle(
                     without_paying_mana_cost: false,
                     allow_any_color_for_cast,
                     filter: None,
+                    ..
                 },
             ..
         }),
@@ -1518,6 +1682,12 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     if let Some(effects) = parse_untap_then_phase_out_until_source_leaves_bundle(tokens) {
         return Some(effects);
     }
+    if let Ok(Some(effects)) = parse_inline_exile_top_then_put_from_among_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Ok(Some(effects)) = parse_inline_mill_then_put_from_among_bundle(tokens) {
+        return Some(effects);
+    }
     if let Ok(Some(effects)) = parse_hidden_exile_partition_permission_bundle(tokens) {
         return Some(effects);
     }
@@ -1778,6 +1948,118 @@ mod tests {
     }
 
     #[test]
+    fn inline_exile_top_then_put_binds_the_exact_exiled_collection() {
+        let tokens = lex_line(
+            "Exile the top seven cards of that player's library, then put a creature card from among them onto the battlefield under your control.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens)
+            .expect("inline exile-top collection bundle should parse");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileTopOfLibrary { count, tags, .. },
+                ..
+            }),
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: choice_count,
+                tag: chosen_tag,
+                zone,
+                ..
+            },
+            EffectAst::ForEachTagged { tag: loop_tag, .. },
+        ] = effects.as_slice()
+        else {
+            panic!("expected exile/choose/put typed bundle, got {effects:#?}");
+        };
+        assert_eq!(count, &Value::Fixed(7));
+        assert_eq!(choice_count, &ChoiceCount::exactly(1));
+        assert_eq!(zone, &Zone::Exile);
+        assert_eq!(chosen_tag, loop_tag);
+        assert!(filter.card_types.contains(&CardType::Creature));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            tags.first() == Some(&constraint.tag)
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
+    fn inline_exile_top_choose_one_rebinds_the_play_permission() {
+        let tokens = lex_line(
+            "Exile the top two cards of your library, then choose one of them. You may play that card this turn.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens)
+            .expect("inline choose-one exile permission should parse");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileTopOfLibrary { count, tags, .. },
+                ..
+            }),
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: choice_count,
+                tag: chosen_tag,
+                ..
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        tag: permission_tag,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected exile/choose/permission typed bundle, got {effects:#?}");
+        };
+        assert_eq!(count, &Value::Fixed(2));
+        assert_eq!(choice_count, &ChoiceCount::exactly(1));
+        assert_eq!(chosen_tag, permission_tag);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            tags.first() == Some(&constraint.tag)
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
+    fn shuffle_prefix_stays_in_the_exile_top_free_play_bundle() {
+        let tokens = lex_line(
+            "Shuffle your library, then exile the top card. Until end of turn, you may play that card without paying its mana cost.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens)
+            .expect("shuffle/exile/free-play bundle should parse");
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ShuffleLibrary,
+                        ..
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ExileTopOfLibrary { .. },
+                        ..
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                            without_paying_mana_cost: true,
+                            ..
+                        },
+                        ..
+                    }),
+                ]
+            ),
+            "expected typed shuffle/exile/free-play sequence, got {effects:#?}"
+        );
+    }
+
+    #[test]
     fn selected_hand_double_choice_builds_distinct_filters_with_one_accumulating_tag() {
         let tokens = lex_line(
             "Target opponent reveals their hand. You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater. That player discards those cards.",
@@ -1897,6 +2179,7 @@ mod tests {
                     SubjectVerbActionAst::Exile {
                         target: TargetAst::Tagged(exile_tag, None),
                         face_down: true,
+                        ..
                     },
                 ..
             }),
@@ -1977,6 +2260,7 @@ mod tests {
                     SubjectVerbActionAst::Exile {
                         target: TargetAst::Tagged(exile_tag, None),
                         face_down: false,
+                        ..
                     },
                 ..
             }),
@@ -1989,5 +2273,84 @@ mod tests {
         assert_eq!(choice_tag, exile_tag);
         assert_eq!(choice_tag, permission_tag);
         assert_eq!(choice_tag, tax_tag);
+    }
+
+    #[test]
+    fn inline_mill_then_optional_filtered_return_keeps_one_milled_collection() {
+        let tokens = lex_line(
+            "Mill three cards, then you may put an artifact or land card from among the milled cards into your hand.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("inline mill bundle");
+        let [
+            EffectAst::Coordinated {
+                effects,
+                leading_duration: false,
+                result_conjunction: false,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected an authored inline sequence boundary, got {effects:#?}");
+        };
+        let [
+            EffectAst::TagAffected {
+                tag: milled_tag,
+                effect: mill,
+            },
+            EffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count,
+                tag: chosen_tag,
+                ..
+            },
+            EffectAst::ForEachTagged {
+                tag: moved_tag,
+                effects: move_effects,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected linked mill, choice, and move program, got {effects:#?}");
+        };
+
+        assert!(matches!(
+            mill.as_ref(),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Mill {
+                    count: Value::Fixed(3),
+                },
+                ..
+            })
+        ));
+        assert_eq!(count, &ChoiceCount::up_to(1));
+        assert_eq!(chosen_tag, moved_tag);
+        assert_eq!(
+            filter.prior_effect_action_surface(),
+            Some(ironsmith_core::PriorEffectAction::Milled)
+        );
+        for card_type in [CardType::Artifact, CardType::Land] {
+            assert!(
+                filter.card_types.contains(&card_type)
+                    || filter
+                        .any_of
+                        .iter()
+                        .any(|branch| branch.card_types.contains(&card_type)),
+                "{filter:#?}"
+            );
+        }
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *milled_tag
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(matches!(
+            move_effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    zone: Zone::Hand,
+                    ..
+                },
+                ..
+            })]
+        ));
     }
 }

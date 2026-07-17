@@ -1911,8 +1911,8 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
 
     match condition {
         ThisSpellCostCondition::Always => true,
-        ThisSpellCostCondition::YourTurn => game.turn.active_player == controller,
-        ThisSpellCostCondition::NotYourTurn => game.turn.active_player != controller,
+        ThisSpellCostCondition::YourTurn => game.is_active_player(controller),
+        ThisSpellCostCondition::NotYourTurn => !game.is_active_player(controller),
         ThisSpellCostCondition::YouLifeTotalOrLess(n) => game
             .player(controller)
             .is_some_and(|player| player.life <= *n),

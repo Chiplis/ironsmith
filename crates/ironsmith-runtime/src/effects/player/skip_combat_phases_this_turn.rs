@@ -24,15 +24,21 @@ impl EffectExecutor for SkipCombatPhasesThisTurnEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if player_id == game.turn.active_player
+        if game.is_active_player(player_id)
             && matches!(
                 game.turn.phase,
                 Phase::Beginning | Phase::FirstMain | Phase::Combat
             )
+            && ctx.claim_shared_team_structure_operation(
+                game,
+                player_id,
+                "skip_combat_phases_this_turn",
+            )
         {
+            let turn_player = game.team_turn_representative(player_id);
             game.turn_store
                 .skip_current_turn_combat_phases
-                .insert(player_id);
+                .insert(turn_player);
         }
         Ok(EffectOutcome::resolved())
     }
@@ -60,6 +66,8 @@ mod tests {
         advance_phase(&mut game).expect("normal combat should be skipped");
         assert_eq!(game.turn.phase, Phase::NextMain);
 
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
         game.turn_store.additional_phases.push(Phase::Combat);
         advance_phase(&mut game).expect("additional combat should also be skipped");
         assert_eq!(game.turn.phase, Phase::NextMain);

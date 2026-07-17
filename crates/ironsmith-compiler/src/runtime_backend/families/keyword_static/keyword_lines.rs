@@ -11,6 +11,9 @@ pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<Keyword
             crate::effect::Value::Count(parsed.count_filter),
         )]);
     }
+    if let Some(action) = parse_dynamic_firebending(tokens) {
+        return Some(vec![action]);
+    }
     if let Some(action @ KeywordAction::CumulativeUpkeep { .. }) = parse_ability_phrase(tokens) {
         return Some(vec![action]);
     }
@@ -63,6 +66,24 @@ pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<Keyword
     } else {
         Some(actions)
     }
+}
+
+pub(crate) fn parse_dynamic_firebending(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    let view = crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    if words.first().copied() != Some("firebending") || words.get(1).copied() != Some("x") {
+        return None;
+    }
+    let where_word = words.iter().position(|word| *word == "where")?;
+    let binding_range = view.token_span_for_words(where_word, view.len())?;
+    let amount = parse_value_binding_clause(&tokens[binding_range])?;
+    let surface_range = view.token_span_for_words(1, view.len())?;
+    let surface =
+        crate::runtime_backend::front_end::lexer::render_token_slice(&tokens[surface_range])
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+    Some(KeywordAction::FirebendingValue { amount, surface })
 }
 
 pub(crate) fn reject_unimplemented_keyword_actions(

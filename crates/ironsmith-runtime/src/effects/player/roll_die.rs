@@ -1,20 +1,11 @@
-use crate::decision::FallbackStrategy;
-use crate::decisions::{ask_choose_one, ask_may_choice};
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::other::DieRolledEvent;
-use crate::filter::PlayerFilterExt as _;
 use crate::game_state::GameState;
-use crate::static_abilities::DieRollResultAdjustmentSpec;
 use crate::target::PlayerFilter;
 
-#[derive(Debug, Clone)]
-struct AvailableDieRollAdjustment {
-    source: crate::ids::ObjectId,
-    controller: crate::ids::PlayerId,
-    spec: DieRollResultAdjustmentSpec,
-}
+use super::die_roll_transaction::roll_dice_with_modifiers;
 
 /// Roll a die for a player using the game's deterministic RNG.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,156 +43,34 @@ impl EffectExecutor for RollDieEffect {
         if self.sides == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        if let Some(forced) = game.take_forced_die_roll() {
-            let result = forced.clamp(1, self.sides);
-            let Some(adjusted) = apply_die_roll_result_adjustments(game, ctx, player, result)
-            else {
-                return Ok(EffectOutcome::count(0));
-            };
-            game.turn_store
-                .turn_history
-                .record_die_roll(player, adjusted);
-            game.record_ui_effect_event(
-                "die_roll",
-                Some(player),
-                None,
-                Vec::new(),
-                Some(i64::from(adjusted)),
-                Some(format!("d{}", self.sides)),
-            );
-            return Ok(EffectOutcome::count(adjusted as i32)
-                .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                    DieRolledEvent::new_with_natural_result(
-                        player, ctx.source, result, adjusted, self.sides,
-                    ),
-                    ctx.provenance,
-                ))
-                .with_execution_fact(ExecutionFact::ChosenNumber(adjusted)));
-        }
-
-        let mut faces: Vec<u32> = (1..=self.sides).collect();
-        game.shuffle_slice(&mut faces);
-        let result = faces[0];
-        let Some(adjusted) = apply_die_roll_result_adjustments(game, ctx, player, result) else {
+        let Some(mut rolls) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)? else {
             return Ok(EffectOutcome::count(0));
         };
+        let roll = rolls.remove(0);
         game.turn_store
             .turn_history
-            .record_die_roll(player, adjusted);
+            .record_die_roll(player, roll.result);
         game.record_ui_effect_event(
             "die_roll",
             Some(player),
             None,
             Vec::new(),
-            Some(i64::from(adjusted)),
+            Some(i64::from(roll.result)),
             Some(format!("d{}", self.sides)),
         );
-        Ok(EffectOutcome::count(adjusted as i32)
+        Ok(EffectOutcome::count(roll.result as i32)
             .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                 DieRolledEvent::new_with_natural_result(
-                    player, ctx.source, result, adjusted, self.sides,
+                    player,
+                    ctx.source,
+                    roll.natural_result,
+                    roll.result,
+                    self.sides,
                 ),
                 ctx.provenance,
             ))
-            .with_execution_fact(ExecutionFact::ChosenNumber(adjusted)))
+            .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)))
     }
-}
-
-fn available_die_roll_adjustments(
-    game: &GameState,
-    player: crate::ids::PlayerId,
-) -> Vec<AvailableDieRollAdjustment> {
-    game.battlefield
-        .iter()
-        .filter_map(|source| {
-            let object = game.object(*source)?;
-            let controller = game.controller_of(object);
-            let filter_context = game.filter_context_for(controller, Some(*source));
-            object.abilities.iter().find_map(|ability| {
-                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
-                    return None;
-                };
-                let spec = static_ability.die_roll_result_adjustment_spec()?;
-                if spec.once_each_turn
-                    && game
-                        .turn_store
-                        .turn_history
-                        .die_roll_result_adjusted_this_turn(*source)
-                {
-                    return None;
-                }
-                if !spec.player.matches_player(player, &filter_context) {
-                    return None;
-                }
-                if !game.can_pay_life(controller, spec.life_cost) {
-                    return None;
-                }
-                Some(AvailableDieRollAdjustment {
-                    source: *source,
-                    controller,
-                    spec,
-                })
-            })
-        })
-        .collect()
-}
-
-fn apply_die_roll_result_adjustments(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    player: crate::ids::PlayerId,
-    result: u32,
-) -> Option<u32> {
-    let mut adjusted = result;
-    for adjustment in available_die_roll_adjustments(game, player) {
-        let description = format!(
-            "pay {} life to increase or decrease the die result by {}",
-            adjustment.spec.life_cost, adjustment.spec.amount
-        );
-        let should_adjust = ask_may_choice(
-            game,
-            &mut ctx.decision_maker,
-            adjustment.controller,
-            adjustment.source,
-            description,
-            FallbackStrategy::Decline,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return None;
-        }
-        if !should_adjust {
-            continue;
-        }
-        let options = [
-            ("Increase".to_string(), adjustment.spec.amount as i32),
-            ("Decrease".to_string(), -(adjustment.spec.amount as i32)),
-        ];
-        let chosen_delta = ask_choose_one(
-            game,
-            &mut ctx.decision_maker,
-            adjustment.controller,
-            adjustment.source,
-            &options,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return None;
-        }
-        let delta = chosen_delta.unwrap_or(adjustment.spec.amount as i32);
-        if !game.pay_life(adjustment.controller, adjustment.spec.life_cost) {
-            continue;
-        }
-        adjusted = if delta.is_negative() {
-            adjusted.saturating_sub(delta.unsigned_abs())
-        } else {
-            adjusted.saturating_add(delta as u32)
-        };
-        if adjustment.spec.once_each_turn {
-            game.turn_store
-                .turn_history
-                .record_die_roll_result_adjustment(adjustment.source);
-        }
-    }
-    Some(adjusted)
 }
 
 #[cfg(test)]

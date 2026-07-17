@@ -41,11 +41,32 @@ pub(super) fn mill_then_compound_payment_if_you_do_choice_uses_milled_cards() {
     assert!(debug.contains("TaggedEffect"), "{debug}");
     assert!(debug.contains("milled_0"), "{debug}");
     assert!(debug.contains("PayManaEffect"), "{debug}");
-    assert!(debug.contains("LoseLifeEffect"), "{debug}");
+    assert!(debug.contains("PayLifeEffect"), "{debug}");
     assert!(debug.contains("Graveyard"), "{debug}");
     assert!(
         !debug.contains("Library"),
         "milled-card choice should not look back into the library: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn fixed_life_payment_parser_preserves_payment_action() {
+    let tokens =
+        lex_line("That player pays 2 life.", 0).expect("fixed life-payment sentence should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("fixed life-payment sentence should parse");
+
+    let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+        panic!("expected one subject-verb payment, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            &subject_verb.action,
+            SubjectVerbActionAst::PayLife {
+                amount: Value::Fixed(2)
+            }
+        ),
+        "authored payment must not collapse into ordinary life loss: {subject_verb:#?}"
     );
 }
 

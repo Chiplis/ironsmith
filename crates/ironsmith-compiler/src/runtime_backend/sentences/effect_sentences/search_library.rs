@@ -154,7 +154,17 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 player,
             ));
         } else if has_hand_clause {
-            effects.push(EffectAst::subject_verb_shuffle_hand_and_graveyard_into_library(player));
+            let words = crate::runtime_backend::token_word_refs(tokens);
+            let includes_owned_permanents = words
+                .windows(4)
+                .any(|window| matches!(window, ["all", "permanents", "you" | "they", "own"]));
+            effects.push(if includes_owned_permanents {
+                EffectAst::subject_verb_shuffle_hand_graveyard_and_owned_permanents_into_library(
+                    player,
+                )
+            } else {
+                EffectAst::subject_verb_shuffle_hand_and_graveyard_into_library(player)
+            });
         } else {
             effects.push(EffectAst::subject_verb_shuffle_graveyard_into_library(
                 player,
@@ -307,7 +317,11 @@ fn shuffle_target_moves_all(tokens: &[OwnedLexToken]) -> bool {
     matches!(words.as_slice(), ["all" | "each", ..])
         || matches!(
             words.as_slice(),
-            ["the", "cards" | "creatures" | "permanents" | "tokens" | "objects", ..]
+            [
+                "the",
+                "cards" | "creatures" | "permanents" | "tokens" | "objects",
+                ..
+            ]
         )
 }
 

@@ -34,6 +34,8 @@ pub struct KeywordActionEvent {
     pub player_tags: HashMap<TagKey, Vec<PlayerId>>,
     /// Optional tagged object snapshots attached to the action event.
     pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Combat-phase ordinal in which the action occurred, when combat-scoped.
+    pub combat_phase: Option<u32>,
 }
 
 impl KeywordActionEvent {
@@ -47,6 +49,7 @@ impl KeywordActionEvent {
             snapshot: None,
             player_tags: HashMap::new(),
             object_tags: HashMap::new(),
+            combat_phase: None,
         }
     }
 
@@ -67,6 +70,11 @@ impl KeywordActionEvent {
 
     pub fn with_object_tags(mut self, tags: HashMap<TagKey, Vec<ObjectSnapshot>>) -> Self {
         self.object_tags.extend(tags);
+        self
+    }
+
+    pub fn with_combat_phase(mut self, combat_phase: u32) -> Self {
+        self.combat_phase = Some(combat_phase);
         self
     }
 }
@@ -195,6 +203,10 @@ mod tests {
         assert_eq!(
             KeywordActionKind::from_trigger_word("fatesealed"),
             Some(KeywordActionKind::Fateseal)
+        );
+        assert_eq!(
+            KeywordActionKind::from_trigger_word("healed"),
+            Some(KeywordActionKind::Heal)
         );
         assert_eq!(
             KeywordActionKind::from_trigger_word("manifested"),

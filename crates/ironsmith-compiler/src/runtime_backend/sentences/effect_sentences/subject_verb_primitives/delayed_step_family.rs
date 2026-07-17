@@ -62,6 +62,7 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
             player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
             effects,
         },
+        DelayedNextStepKind::EndOfCombat => EffectAst::DelayedUntilEndOfCombat { effects },
     }
 }
 
@@ -91,6 +92,9 @@ fn wrap_delayed_timing_effects(
             player: marker.player,
             effects,
         },
+        delayed_grammar::DelayedTimingStepShape::EndOfCombat => {
+            EffectAst::DelayedUntilEndOfCombat { effects }
+        }
     })
 }
 
@@ -808,6 +812,30 @@ mod tests {
     use crate::runtime_backend::lexer::lex_line;
 
     #[test]
+    fn end_of_combat_suffix_wraps_generic_actions_in_delayed_effects() {
+        for text in [
+            "Remove a +1/+1 counter from it at end of combat.",
+            "Put a -1/-1 counter on it at end of combat.",
+            "Put it on top of its owner's library at end of combat.",
+        ] {
+            let tokens = lex_line(text, 0).expect("end-of-combat action should lex");
+            let effects =
+                parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                    .expect("end-of-combat action should parse")
+                    .expect("end-of-combat suffix should match");
+            let [EffectAst::DelayedUntilEndOfCombat { effects: delayed }] = effects.as_slice()
+            else {
+                panic!("expected only a delayed end-of-combat action for {text}: {effects:#?}");
+            };
+            assert_eq!(
+                delayed.len(),
+                1,
+                "expected one delayed payload for {text}: {delayed:#?}"
+            );
+        }
+    }
+
+    #[test]
     fn delayed_suffix_keeps_result_gate_outside_scheduled_action() {
         let tokens = lex_line(
             "If you do, unattach it at the beginning of the next end step.",
@@ -1121,6 +1149,8 @@ pub(crate) fn parse_sentence_implicit_become_clause(
                 Vec::new(),
                 Vec::new(),
                 false,
+                None,
+                Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
                 None,
                 duration,
             )]));

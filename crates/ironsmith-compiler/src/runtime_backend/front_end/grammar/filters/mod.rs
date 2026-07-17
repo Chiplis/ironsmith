@@ -25,7 +25,8 @@ use super::super::util::{
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};
 use super::values::parse_mana_symbol;
 use crate::cards::builders::{
-    CardTextError, IT_TAG, PlayerAst, PredicateAst, THIS_WAY_SACRIFICED_TAG, TagKey,
+    ABILITY_CONTROLLER_TARGET_CHOICE_TAG, ADDITIONAL_COST_OBJECT_TAG, CardTextError, IT_TAG,
+    OPPONENT_TARGET_CHOICE_TAG, PlayerAst, PredicateAst, THIS_WAY_SACRIFICED_TAG, TagKey,
     TurnHistoryPredicateAst,
 };
 use crate::color::{Color, ColorSet};
@@ -87,7 +88,7 @@ pub(crate) use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_pr
 pub(crate) use reference_tag_stage::parse_object_filter_with_grammar_entrypoint_lexed;
 pub(crate) use simple::{
     parse_filter_face_state_words, parse_simple_object_filter_lexed,
-    parse_simple_object_filter_words,
+    parse_simple_object_filter_words, preserve_branch_scoped_card_type_union,
 };
 pub(crate) use spell_filters::{
     parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,

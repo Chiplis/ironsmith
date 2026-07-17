@@ -633,7 +633,7 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
         }
         count
     };
-    Ok(Some(vec![
+    let mut effects = vec![
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             PlayerAst::You,
@@ -643,10 +643,24 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
-            shape.other_player,
+            if shape.another_target_player {
+                PlayerAst::That
+            } else {
+                shape.other_player
+            },
             SubjectVerbActionAst::Draw { count },
         ),
-    ]))
+    ];
+    if shape.another_target_player {
+        effects.insert(
+            0,
+            EffectAst::subject_verb_target_only(TargetAst::Player(
+                PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::You),
+                None,
+            )),
+        );
+    }
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_sentence_you_and_target_player_each_draw(

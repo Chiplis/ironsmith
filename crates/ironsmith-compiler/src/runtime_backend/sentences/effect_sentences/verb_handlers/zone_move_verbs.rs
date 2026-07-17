@@ -582,10 +582,9 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
         let target = parse_counter_target_phrase(spec.leading_tokens)?;
-        return Ok(EffectAst::Conditional {
+        return Ok(EffectAst::TrailingIf {
             predicate: spec.predicate,
-            if_true: vec![EffectAst::subject_verb_counter(target)],
-            if_false: Vec::new(),
+            effects: vec![EffectAst::subject_verb_counter(target)],
         });
     }
 
@@ -816,15 +815,11 @@ fn parse_counter_unless_source_damage(
         return Ok(None);
     };
     let damage_tokens = damage_clause.tokens();
-    if damage_tokens
-        .get(used)
-        .and_then(OwnedLexToken::as_word)
-        != Some("damage")
-    {
+    if damage_tokens.get(used).and_then(OwnedLexToken::as_word) != Some("damage") {
         return Ok(None);
     }
-    let target_words = SubjectVerbPrimitiveClause::new(&damage_tokens[used + 1..])
-        .trimmed_word_refs();
+    let target_words =
+        SubjectVerbPrimitiveClause::new(&damage_tokens[used + 1..]).trimmed_word_refs();
     if !matches!(
         target_words.as_slice(),
         ["them"] | ["to", "them"] | ["that", "player"] | ["to", "that", "player"]

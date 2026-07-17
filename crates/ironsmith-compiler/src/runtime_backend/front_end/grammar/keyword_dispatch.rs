@@ -41,6 +41,7 @@ pub(crate) enum KeywordDispatchHint {
     Squad,
     Splice,
     Transmute,
+    Transfigure,
     CastThisSpellOnly,
     Gift,
     Warp,
@@ -129,7 +130,10 @@ fn parse_keyword_dispatch_hint_lexed<'a>(
                 primitives::kw("mutate").value(KeywordDispatchHint::Mutate),
             )),
             primitives::kw("squad").value(KeywordDispatchHint::Squad),
-            primitives::kw("transmute").value(KeywordDispatchHint::Transmute),
+            alt((
+                primitives::kw("transmute").value(KeywordDispatchHint::Transmute),
+                primitives::kw("transfigure").value(KeywordDispatchHint::Transfigure),
+            )),
             primitives::kw("reconfigure").value(KeywordDispatchHint::Reconfigure),
             primitives::kw("eternalize").value(KeywordDispatchHint::Eternalize),
             primitives::phrase(&["cast", "this", "spell", "only"])

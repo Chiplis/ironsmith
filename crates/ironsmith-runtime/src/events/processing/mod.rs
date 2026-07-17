@@ -212,9 +212,18 @@ fn resolve_tribute_response(
     }
 }
 
-fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementEffect) -> String {
+pub(crate) fn replacement_effect_choice_description(
+    game: &GameState,
+    effect: &ReplacementEffect,
+) -> String {
     match &effect.replacement {
         ReplacementAction::Additionally(_) => {
+            format!(
+                "Do not apply {}",
+                replacement_option_description(game, effect.source)
+            )
+        }
+        ReplacementAction::DeclineOptional(_) => {
             format!(
                 "Do not apply {}",
                 replacement_option_description(game, effect.source)
@@ -227,6 +236,19 @@ fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementE
             format!("Enter as a copy of {source_name}")
         }
         _ => replacement_option_description(game, effect.source),
+    }
+}
+
+fn mark_applied_replacement_choice(
+    state: &mut TraitEventProcessingState,
+    effect: &ReplacementEffect,
+) {
+    state.mark_applied_effect(effect);
+    if let Some(decline) = effect.optional_decline_effect() {
+        state.applied_effect_keys.insert(decline.application_key());
+    }
+    if let ReplacementAction::DeclineOptional(declined_key) = &effect.replacement {
+        state.applied_effect_keys.insert(declined_key.clone());
     }
 }
 
@@ -249,6 +271,7 @@ fn push_enter_as_copy_effects_for_spec(
     source: ObjectId,
     controller: PlayerId,
     spec: &crate::static_abilities::EnterAsCopyAsEntersSpec,
+    reserved_objects: &std::collections::HashSet<ObjectId>,
     copy_choice_effects: &mut Vec<ReplacementEffect>,
 ) {
     let filter_ctx = game.filter_context_for(controller, Some(source));
@@ -276,6 +299,7 @@ fn push_enter_as_copy_effects_for_spec(
         game.objects_in_deterministic_order()
             .into_iter()
             .filter(|candidate| candidate.id != entering_object)
+            .filter(|candidate| !reserved_objects.contains(&candidate.id))
             .filter(|candidate| spec.filter.matches(candidate, &filter_ctx, game))
             .map(|candidate| candidate.id)
             .collect::<Vec<_>>()
@@ -557,7 +581,7 @@ fn process_event_direct(
         let chosen_effect = at_highest[0].clone();
         let effect_id = chosen_effect.id;
         let result = apply_trait_replacement(game, event.clone(), &chosen_effect);
-        state.mark_applied_effect(&chosen_effect);
+        mark_applied_replacement_choice(state, &chosen_effect);
         consume_one_shot_if_applied(game, effect_id, &result);
         return match result {
             TraitApplyResult::Modified(modified_event) => process_event_direct(
@@ -630,7 +654,7 @@ fn process_event_direct(
     };
 
     let result = apply_trait_replacement(game, event.clone(), &chosen_effect);
-    state.mark_applied_effect(&chosen_effect);
+    mark_applied_replacement_choice(state, &chosen_effect);
     consume_one_shot_if_applied(game, effect_id, &result);
 
     match result {
@@ -979,7 +1003,7 @@ impl DiscardResult {
 pub fn zone_allows_type_verification(zone: Zone) -> bool {
     match zone {
         // Public zones - cards are visible, characteristics can be verified
-        Zone::Graveyard | Zone::Battlefield | Zone::Stack | Zone::Command => true,
+        Zone::Graveyard | Zone::Battlefield | Zone::Stack | Zone::Command | Zone::Ante => true,
         // Hidden zones - characteristics become undefined per rule 701.8c
         Zone::Library | Zone::Hand | Zone::OutsideGame => false,
         // Exile is special - face-up cards can be verified, face-down cannot
@@ -1351,6 +1375,9 @@ fn find_applicable_trait_replacements(
     event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Vec<(ReplacementEffect, ReplacementPriority)> {
     let mut applicable = Vec::new();
+    let prospective_etb_game =
+        crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+            .and_then(|etb| etb.prospective_game_state(game));
 
     // Check registered replacement effects in the game
     for effect in game.effect_store.replacement_effects.effects() {
@@ -1360,9 +1387,13 @@ fn find_applicable_trait_replacements(
         }
 
         // Check if effect matches using trait-based matcher
-        if let Some(priority) =
-            trait_effect_matches_event(game, effect, event, event_source_snapshot)
-        {
+        if let Some(priority) = trait_effect_matches_event(
+            game,
+            effect,
+            event,
+            event_source_snapshot,
+            prospective_etb_game.as_ref(),
+        ) {
             applicable.push((effect.clone(), priority));
         }
     }
@@ -1375,9 +1406,13 @@ fn find_applicable_trait_replacements(
         }
 
         // Check if effect matches
-        if let Some(priority) =
-            trait_effect_matches_event(game, effect, event, event_source_snapshot)
-        {
+        if let Some(priority) = trait_effect_matches_event(
+            game,
+            effect,
+            event,
+            event_source_snapshot,
+            prospective_etb_game.as_ref(),
+        ) {
             applicable.push((effect.clone(), priority));
         }
     }
@@ -1391,6 +1426,7 @@ fn trait_effect_matches_event(
     effect: &ReplacementEffect,
     event: &Event,
     event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    prospective_etb_game: Option<&GameState>,
 ) -> Option<ReplacementPriority> {
     use crate::events::ReplacementPriority as TraitPriority;
 
@@ -1398,6 +1434,7 @@ fn trait_effect_matches_event(
     let matcher = effect.matcher.as_ref()?;
 
     let ctx = EventContext::for_replacement_effect(effect.controller, effect.source, game)
+        .with_prospective_etb_game(prospective_etb_game)
         .with_event_source_snapshot(event_source_snapshot);
     if !matcher.matches_event(event.inner(), &ctx) {
         return None;
@@ -1892,6 +1929,36 @@ pub fn process_zone_change_with_additional_effects(
     process_zone_change_inner(game, object, from, to, cause, dm, additional_effects, None)
 }
 
+fn merged_card_only_change_destinations(
+    game: &GameState,
+    event: &crate::events::ZoneChangeEvent,
+    additional_effects: &[ReplacementEffect],
+) -> std::collections::HashSet<Zone> {
+    game.effect_store
+        .replacement_effects
+        .effects()
+        .iter()
+        .chain(additional_effects.iter())
+        .filter_map(|effect| {
+            let matcher = effect.matcher.as_ref()?;
+            let ctx = crate::events::context::EventContext::for_replacement_effect(
+                effect.controller,
+                effect.source,
+                game,
+            );
+            if !matcher.matches_merged_card_component_only(event, &ctx) {
+                return None;
+            }
+            match &effect.replacement {
+                crate::replacement::ReplacementAction::ChangeDestination(destination) => {
+                    Some(*destination)
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 fn process_zone_change_inner(
     game: &mut GameState,
     object: crate::ids::ObjectId,
@@ -1927,6 +1994,10 @@ fn process_zone_change_inner(
         })
     });
 
+    let zone_event =
+        ZoneChangeEvent::with_cause(object, from, requested_to, cause.clone(), snapshot.clone());
+    let merged_card_only_destinations =
+        merged_card_only_change_destinations(game, &zone_event, additional_effects);
     let event = Event::zone_change(object, from, requested_to, cause.clone(), snapshot.clone());
     let mut additional_effects = additional_effects.to_vec();
     assign_ephemeral_effect_ids(&mut additional_effects, (u64::MAX / 2).saturating_add(1024));
@@ -1936,11 +2007,18 @@ fn process_zone_change_inner(
     match result {
         TraitEventResult::Prevented => EventOutcome::Prevented,
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
-            if let Some(zone_change) = downcast_event::<ZoneChangeEvent>(e.inner()) {
-                EventOutcome::Proceed(zone_change.to)
+            let final_zone = if let Some(zone_change) = downcast_event::<ZoneChangeEvent>(e.inner())
+            {
+                zone_change.to
             } else {
-                EventOutcome::Proceed(requested_to)
+                requested_to
+            };
+            if merged_card_only_destinations.contains(&final_zone) {
+                game.prepare_merged_token_card_component_destinations(object, to, final_zone);
+            } else {
+                game.prepare_merged_component_destinations(object, final_zone, dm);
             }
+            EventOutcome::Proceed(final_zone)
         }
         TraitEventResult::Replaced {
             effects,
@@ -2110,6 +2188,193 @@ pub fn process_draw(
     }
 }
 
+/// Result of applying one impending game-loss event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerLossOutcome {
+    /// The loss was not replaced and the player left the game.
+    Lost,
+    /// A replacement effect replaced the loss with its effect sequence.
+    Replaced,
+    /// A rule restriction or replacement effect prevented the loss.
+    Prevented,
+}
+
+fn loss_replacement_source_destination(
+    game: &GameState,
+    player: PlayerId,
+    source: crate::ids::ObjectId,
+    effects: &[crate::effect::Effect],
+) -> Option<crate::zone::Zone> {
+    for effect in effects {
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>()
+            && matches!(exile.spec.base(), crate::target::ChooseSpec::Source)
+        {
+            return Some(crate::zone::Zone::Exile);
+        }
+        if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && matches!(
+                move_to_zone.target.base(),
+                crate::target::ChooseSpec::Source
+            )
+        {
+            return Some(move_to_zone.zone);
+        }
+        if let Some(shuffle) =
+            effect.downcast_ref::<crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect>()
+            && shuffle.include_owned_permanents
+            && game
+                .object(source)
+                .is_some_and(|object| object.owner == player)
+        {
+            return Some(crate::zone::Zone::Library);
+        }
+    }
+    None
+}
+
+fn choose_mutually_exclusive_source_destination(
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    replacement_destination: crate::zone::Zone,
+    sba_destination: crate::zone::Zone,
+    dm: &mut (impl DecisionMaker + ?Sized),
+) -> crate::zone::Zone {
+    let chooser = game
+        .current_controller(source)
+        .or_else(|| game.object(source).map(|object| object.owner));
+    let Some(chooser) = chooser else {
+        return replacement_destination;
+    };
+    let source_name = game
+        .object(source)
+        .map(|object| object.name.to_string())
+        .unwrap_or_else(|| "the object".to_string());
+    let options = vec![
+        crate::decisions::DisplayOption::new(
+            0,
+            format!("Move {source_name} to {replacement_destination:?} (replacement effect)"),
+        ),
+        crate::decisions::DisplayOption::new(
+            1,
+            format!("Move {source_name} to {sba_destination:?} (state-based action)"),
+        ),
+    ];
+    let selected = crate::decisions::make_decision(
+        game,
+        dm,
+        chooser,
+        Some(source),
+        crate::decisions::ChoiceSpec::single(source, options),
+    );
+    if selected.first().copied() == Some(1) {
+        sba_destination
+    } else {
+        replacement_destination
+    }
+}
+
+/// Process and apply a game loss through the ordinary replacement framework.
+///
+/// Both spell/ability effects and state-based actions use this entry point so
+/// an impending loss is never committed before applicable CR 614 effects are
+/// chosen. The replacement source is snapshotted before its effects execute;
+/// that preserves source LKI when the replacement moves its own source as its
+/// first instruction (for example, Exquisite Archangel).
+pub fn process_player_loss(
+    game: &mut GameState,
+    player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+) -> PlayerLossOutcome {
+    process_player_loss_with_simultaneous_zone_changes(
+        game,
+        player,
+        dm,
+        &std::collections::HashMap::new(),
+    )
+}
+
+/// Process a loss that is simultaneous with other SBA zone changes.
+///
+/// CR 400.6 lets an object's controller (or owner when it has no controller)
+/// choose between mutually exclusive destinations. The chosen destination is
+/// carried through the replacement sequence so the object moves exactly once.
+pub(crate) fn process_player_loss_with_simultaneous_zone_changes(
+    game: &mut GameState,
+    player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+    simultaneous_zone_changes: &std::collections::HashMap<crate::ids::ObjectId, crate::zone::Zone>,
+) -> PlayerLossOutcome {
+    if !game.can_lose_game(player)
+        || game
+            .player(player)
+            .is_none_or(|player| !player.is_in_game())
+    {
+        return PlayerLossOutcome::Prevented;
+    }
+
+    game.update_replacement_effects();
+    let event = Event::player_loses_game(player);
+    match process_with_dm(game, event, dm) {
+        TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {
+            if game.mark_player_lost(player) {
+                PlayerLossOutcome::Lost
+            } else {
+                PlayerLossOutcome::Prevented
+            }
+        }
+        TraitEventResult::Prevented => PlayerLossOutcome::Prevented,
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source,
+            controller,
+            ..
+        } => {
+            let source_snapshot = game.object(source).map(|object| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    object, game,
+                )
+            });
+            game.effect_store
+                .replacement_effects
+                .mark_effect_used(effect_id);
+            let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm);
+            ctx.source_snapshot = source_snapshot;
+            if let Some(sba_destination) = simultaneous_zone_changes.get(&source).copied()
+                && let Some(replacement_destination) =
+                    loss_replacement_source_destination(game, player, source, &effects)
+                && replacement_destination != sba_destination
+            {
+                let chosen_destination = choose_mutually_exclusive_source_destination(
+                    game,
+                    source,
+                    replacement_destination,
+                    sba_destination,
+                    &mut *ctx.decision_maker,
+                );
+                if chosen_destination != replacement_destination {
+                    ctx.replacement
+                        .simultaneous_zone_destinations
+                        .insert(source, chosen_destination);
+                }
+            }
+            for effect in effects {
+                if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx) {
+                    for trigger_event in outcome.events {
+                        game.queue_trigger_event(trigger_event.provenance(), trigger_event);
+                    }
+                }
+            }
+            PlayerLossOutcome::Replaced
+        }
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+            // Synchronous SBA/effect callers cannot commit a loss while a
+            // replacement choice is outstanding.
+            PlayerLossOutcome::Prevented
+        }
+    }
+}
+
 /// Process an event through replacement effects, using a DecisionMaker to resolve choices.
 ///
 /// When `NeedsChoice` is returned (multiple effects at same priority), this function
@@ -2242,7 +2507,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                     continue;
                 };
 
-                state.mark_applied_effect(&chosen_effect);
+                mark_applied_replacement_choice(&mut state, &chosen_effect);
 
                 let apply_result = apply_trait_replacement(game, *boxed_event, &chosen_effect);
                 consume_one_shot_if_applied(game, effect_id, &apply_result);
@@ -2378,6 +2643,8 @@ pub struct EtbEventResult {
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// If set, the controller to use as the object enters.
     pub controller_override: Option<crate::ids::PlayerId>,
+    /// As-entry choices collected before the destination object exists.
+    pub(crate) prepared_choices: Option<crate::game_state::PreparedEtbChoices>,
     /// Keyword payment labels set by as-enters replacements.
     pub paid_labels: Vec<String>,
     /// An interactive replacement that requires player input.
@@ -2551,6 +2818,50 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
             return false;
         }
 
+        // CR 801.13b keys range to whichever side the prevention effect
+        // specifies: source, recipient, or both when neither is specified.
+        let range_exempt = ctx.game.source_is_exempt_from_range(Some(shield.source));
+        let source_in_range = range_exempt
+            || ctx.game.object(damage.source).map_or_else(
+                || {
+                    self.source_snapshot.as_ref().is_some_and(|snapshot| {
+                        ctx.game
+                            .player_is_within_range(shield.controller, snapshot.controller)
+                    })
+                },
+                |_| {
+                    ctx.game.object_is_within_range(
+                        shield.controller,
+                        damage.source,
+                        Some(shield.source),
+                    )
+                },
+            );
+        let recipient_in_range = range_exempt
+            || match damage.target {
+                DamageTarget::Player(player) => {
+                    ctx.game.player_is_within_range(shield.controller, player)
+                }
+                DamageTarget::Object(object) => {
+                    ctx.game
+                        .object_is_within_range(shield.controller, object, Some(shield.source))
+                }
+            };
+        let source_is_specified = shield.damage_filter.from_source.is_some()
+            || shield.damage_filter.from_colors.is_some()
+            || shield.damage_filter.from_card_types.is_some()
+            || shield.damage_filter.from_specific_source.is_some()
+            || shield.damage_filter.excluded_specific_source.is_some();
+        let recipient_is_specified = shield.protected != crate::prevention::PreventionTarget::All;
+        if (source_is_specified && !source_in_range)
+            || (recipient_is_specified && !recipient_in_range)
+            || (!source_is_specified
+                && !recipient_is_specified
+                && !(source_in_range && recipient_in_range))
+        {
+            return false;
+        }
+
         let protects_target = match (damage.target, &shield.protected) {
             (DamageTarget::Player(player), crate::prevention::PreventionTarget::Player(p)) => {
                 player == *p
@@ -2698,19 +3009,11 @@ fn affected_player_for_damage(
 }
 
 fn apnap_position(game: &GameState, player: PlayerId) -> usize {
-    let turn_order = &game.turn_store.turn_order;
-    if turn_order.is_empty() {
-        return player.index();
-    }
-    let active = turn_order
-        .iter()
-        .position(|candidate| *candidate == game.turn.active_player)
-        .unwrap_or(0);
-    turn_order
+    let order = game.team_apnap_player_order();
+    order
         .iter()
         .position(|candidate| *candidate == player)
-        .map(|position| (position + turn_order.len() - active) % turn_order.len())
-        .unwrap_or(turn_order.len() + player.index())
+        .unwrap_or(order.len() + player.index())
 }
 
 fn collect_simultaneous_prevention_allocations(
@@ -2836,6 +3139,7 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
 ) -> Vec<ProcessedDamageResult> {
     game.update_cant_effects();
     game.update_replacement_effects();
+    let pending_event_start = game.effect_store.pending_trigger_events.len();
     let allocations = collect_simultaneous_prevention_allocations(game, events, dm);
     let mut results = Vec::with_capacity(events.len());
     for (index, item) in events.iter().enumerate() {
@@ -2854,7 +3158,45 @@ pub fn process_simultaneous_damage_assignments_with_event_with_dm(
             ),
         );
     }
+    coalesce_simultaneous_shield_prevention_events(game, pending_event_start);
     results
+}
+
+fn coalesce_simultaneous_shield_prevention_events(game: &mut GameState, start_index: usize) {
+    let removed = game.remove_pending_trigger_events_matching_from(start_index, |event| {
+        event
+            .downcast::<crate::events::DamagePreventedEvent>()
+            .is_some_and(|prevented| prevented.prevention_shield.is_some())
+    });
+    let mut grouped: Vec<(
+        crate::provenance::ProvNodeId,
+        crate::events::DamagePreventedEvent,
+    )> = Vec::new();
+    for trigger_event in removed {
+        let provenance = trigger_event.provenance();
+        let Some(prevented) = trigger_event
+            .downcast::<crate::events::DamagePreventedEvent>()
+            .cloned()
+        else {
+            continue;
+        };
+        if grouped
+            .iter_mut()
+            .any(|(_, existing)| existing.merge_simultaneous(prevented.clone()))
+        {
+            continue;
+        }
+        grouped.push((provenance, prevented));
+    }
+    for (provenance, prevented) in grouped {
+        game.queue_trigger_event(
+            provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(
+                prevented,
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+    }
 }
 
 /// Deterministic convenience wrapper for a simultaneous damage batch.
@@ -3018,7 +3360,20 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
 
     let mut assignments = Vec::new();
     let final_damage = replaced.amount;
-    if final_damage > 0 {
+    let source_controller = game
+        .object(replaced.source)
+        .map(|source| game.controller_of(source))
+        .or_else(|| source_snapshot.map(|source| source.controller));
+    let target_is_in_source_range = source_controller.is_none_or(|controller| {
+        game.source_snapshot_is_exempt_from_range(Some(replaced.source), source_snapshot)
+            || match replaced.target {
+                DamageTarget::Player(player) => game.player_is_within_range(controller, player),
+                DamageTarget::Object(object) => {
+                    game.object_is_within_range(controller, object, Some(replaced.source))
+                }
+            }
+    });
+    if final_damage > 0 && target_is_in_source_range {
         assignments.push(ProcessedDamageAssignment {
             target: replaced.target,
             amount: final_damage,
@@ -3369,6 +3724,68 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
     dm: &mut dyn DecisionMaker,
     initial_enters_with_counters: Vec<(CounterType, u32)>,
 ) -> EtbEventResult {
+    process_etb_with_event_and_dm_with_initial_counters_and_reservations(
+        game,
+        object,
+        from,
+        dm,
+        initial_enters_with_counters,
+        None,
+        &std::collections::HashSet::new(),
+    )
+}
+
+pub(crate) fn process_etb_with_event_and_dm_with_initial_counters_and_controller(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    dm: &mut dyn DecisionMaker,
+    initial_enters_with_counters: Vec<(CounterType, u32)>,
+    entering_controller: Option<PlayerId>,
+) -> EtbEventResult {
+    process_etb_with_event_and_dm_with_initial_counters_and_reservations(
+        game,
+        object,
+        from,
+        dm,
+        initial_enters_with_counters,
+        entering_controller,
+        &std::collections::HashSet::new(),
+    )
+}
+
+/// Prepare one member of a simultaneous ETB event without committing its zone
+/// change. Reserved objects are already changing zones in this event (or were
+/// selected by another entry replacement) and cannot be selected again.
+pub(crate) fn process_etb_batch_proposal_with_initial_counters(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    dm: &mut dyn DecisionMaker,
+    initial_enters_with_counters: Vec<(CounterType, u32)>,
+    entering_controller: Option<PlayerId>,
+    reserved_objects: &std::collections::HashSet<ObjectId>,
+) -> EtbEventResult {
+    process_etb_with_event_and_dm_with_initial_counters_and_reservations(
+        game,
+        object,
+        from,
+        dm,
+        initial_enters_with_counters,
+        entering_controller,
+        reserved_objects,
+    )
+}
+
+fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
+    game: &mut GameState,
+    object: crate::ids::ObjectId,
+    from: Zone,
+    dm: &mut dyn DecisionMaker,
+    initial_enters_with_counters: Vec<(CounterType, u32)>,
+    entering_controller: Option<PlayerId>,
+    batch_reserved_objects: &std::collections::HashSet<ObjectId>,
+) -> EtbEventResult {
     use crate::ability::AbilityKind;
     use crate::decisions::{
         make_decision,
@@ -3385,6 +3802,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
     // Gather ETB replacement effects from the object's abilities.
     let mut object_etb_effects: Vec<ReplacementEffect> = Vec::new();
     let mut copy_choice_effects: Vec<ReplacementEffect> = Vec::new();
+    let mut reserved_objects = batch_reserved_objects.clone();
 
     if let Some(obj) = game.object(object) {
         if let Some(loyalty) = obj.base_loyalty
@@ -3396,7 +3814,16 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             let loyalty = loyalty_after_compleated_life_payment(obj, loyalty);
             enters_with_counters.push((CounterType::Loyalty, loyalty));
         }
-        let controller = game.controller_of(obj);
+        if obj.card_types.contains(&CardType::Battle)
+            && let Some(defense) = obj.base_defense
+            && defense > 0
+        {
+            // Battles intrinsically enter with defense counters equal to their
+            // printed defense. Keep these in the ETB proposal so ordinary
+            // replacement effects can modify the event.
+            enters_with_counters.push((CounterType::Defense, defense));
+        }
+        let controller = entering_controller.unwrap_or_else(|| game.controller_of(obj));
         let view = crate::derived_view::DerivedGameView::new(game);
         let current_static_abilities = view.static_abilities_rc(object).unwrap_or_else(|| {
             std::rc::Rc::new(
@@ -3421,6 +3848,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     object,
                     controller,
                     spec,
+                    &reserved_objects,
                     &mut copy_choice_effects,
                 );
             }
@@ -3447,6 +3875,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 *source,
                 game.controller_of(source_obj),
                 spec,
+                &reserved_objects,
                 &mut copy_choice_effects,
             );
         }
@@ -3489,6 +3918,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     source,
                     controller,
                     spec,
+                    &reserved_objects,
                     &mut copy_choice_effects,
                 );
             }
@@ -3519,7 +3949,8 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
-            controller_override: None,
+            controller_override: entering_controller,
+            prepared_choices: None,
         },
         etb_event_provenance,
     );
@@ -3527,6 +3958,9 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
     let mut paid_labels = Vec::new();
 
     loop {
+        if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner()) {
+            reserved_objects.extend(etb.linked_exile_with_entering.iter().copied());
+        }
         let copy_choice_consumed = copy_choice_effects
             .iter()
             .any(|effect| state.was_applied(effect.id));
@@ -3572,6 +4006,28 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             }
             TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
                 if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(e.inner()) {
+                    // Copy-as-enters effects are applied before other ETB
+                    // modifications. Recompute a battle's intrinsic defense
+                    // proposal from the copied values so effects such as
+                    // Doubling Season can still modify those counters.
+                    if !copy_choice_consumed && let Some(copy_source) = etb.enters_as_copy_of {
+                        let mut copied_etb = etb.clone();
+                        copied_etb
+                            .enters_with_counters
+                            .retain(|(counter, _)| *counter != CounterType::Defense);
+                        if let Some(defense) = game
+                            .object(copy_source)
+                            .filter(|source| source.card_types.contains(&CardType::Battle))
+                            .and_then(|source| source.base_defense)
+                            .filter(|defense| *defense > 0)
+                        {
+                            copied_etb
+                                .enters_with_counters
+                                .push((CounterType::Defense, defense));
+                        }
+                        current_event = Event::new_with_provenance(copied_etb, e.provenance());
+                        continue;
+                    }
                     let copied_effects = copied_object_etb_replacement_effects(
                         game,
                         object,
@@ -3584,7 +4040,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         current_event = e;
                         continue;
                     }
-                    return EtbEventResult {
+                    let event_result = EtbEventResult {
                         enters_tapped: etb.enters_tapped,
                         enters_with_counters: etb.enters_with_counters.clone(),
                         linked_exile_with_entering: etb.linked_exile_with_entering.clone(),
@@ -3599,9 +4055,28 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         added_abilities: etb.added_abilities.clone(),
                         set_base_power_toughness: etb.set_base_power_toughness,
                         controller_override: etb.controller_override,
-                        paid_labels,
+                        prepared_choices: etb.prepared_choices.clone(),
+                        paid_labels: paid_labels.clone(),
                         interactive_replacement: None,
                     };
+                    if etb.prepared_choices.is_none() {
+                        let Some(prepared) = game.prepare_etb_entry_with_controller_and_dm(
+                            object,
+                            event_result,
+                            etb.controller_override,
+                            dm,
+                        ) else {
+                            return EtbEventResult {
+                                prevented: true,
+                                ..Default::default()
+                            };
+                        };
+                        let mut prepared_event = etb.clone();
+                        prepared_event.prepared_choices = Some(prepared.choices);
+                        current_event = Event::new_with_provenance(prepared_event, e.provenance());
+                        continue;
+                    }
+                    return event_result;
                 }
                 if let Some(zone_change) = downcast_event::<ZoneChangeEvent>(e.inner()) {
                     return EtbEventResult {
@@ -3677,7 +4152,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     continue;
                 };
 
-                state.mark_applied_effect(&chosen_effect);
+                mark_applied_replacement_choice(&mut state, &chosen_effect);
                 if matches!(
                     chosen_effect.priority_override,
                     Some(crate::events::ReplacementPriority::CopyEffect)
@@ -3743,7 +4218,9 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                                     InteractiveReplacementResponse::Decline
                                 }
                             }
-                            crate::decisions::context::DecisionContext::SelectObjects(ctx) => {
+                            crate::decisions::context::DecisionContext::SelectObjects(mut ctx) => {
+                                ctx.candidates
+                                    .retain(|candidate| !reserved_objects.contains(&candidate.id));
                                 InteractiveReplacementResponse::Objects(
                                     dm.decide_objects(game, &ctx),
                                 )
@@ -3840,7 +4317,9 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             InteractiveReplacementResponse::Decline
                         }
                     }
-                    crate::decisions::context::DecisionContext::SelectObjects(ctx) => {
+                    crate::decisions::context::DecisionContext::SelectObjects(mut ctx) => {
+                        ctx.candidates
+                            .retain(|candidate| !reserved_objects.contains(&candidate.id));
                         InteractiveReplacementResponse::Objects(dm.decide_objects(game, &ctx))
                     }
                     crate::decisions::context::DecisionContext::SelectOptions(ctx) => {
@@ -4221,7 +4700,7 @@ pub fn process_event_with_chosen_replacement_trait_and_applied_effects(
     let apply_result = apply_trait_replacement(game, event.clone(), &effect);
     consume_one_shot_if_applied(game, chosen_effect_id, &apply_result);
 
-    state.mark_applied_effect(&effect);
+    mark_applied_replacement_choice(&mut state, &effect);
 
     match apply_result {
         TraitApplyResult::Modified(modified) => {
@@ -4277,7 +4756,7 @@ mod tests {
     use crate::prevention::{PreventionShield, PreventionTarget};
     use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
     use crate::static_abilities::{Anthem, StaticAbility};
-    use crate::target::ChooseSpec;
+    use crate::target::{ChooseSpec, ObjectFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -4333,6 +4812,346 @@ mod tests {
             },
             "Creatures enter as a copy of this creature.".to_string(),
         )
+    }
+
+    fn create_noncreature_in_zone(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        zone: Zone,
+        card_type: CardType,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![card_type])
+            .build();
+        game.create_object_from_card(&card, controller, zone)
+    }
+
+    #[test]
+    fn later_etb_replacement_sees_characteristics_added_by_an_earlier_replacement() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_noncreature_in_zone(
+            &mut game,
+            "Characteristic Source",
+            alice,
+            Zone::Battlefield,
+            CardType::Enchantment,
+        );
+        let entering = create_noncreature_in_zone(
+            &mut game,
+            "Entering Relic",
+            alice,
+            Zone::Hand,
+            CardType::Artifact,
+        );
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any(),
+                ReplacementAction::EnterWithCharacteristics {
+                    added_card_types: vec![CardType::Creature],
+                    added_subtypes: Vec::new(),
+                    set_base_power_toughness: Some((2, 2)),
+                },
+            ));
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                source,
+                alice,
+                ObjectFilter::creature(),
+            ));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+
+        assert!(
+            result.enters_tapped,
+            "the creature-only replacement must be re-evaluated against the evolving ETB event"
+        );
+        assert!(result.added_card_types.contains(&CardType::Creature));
+    }
+
+    #[test]
+    fn prospective_etb_matching_does_not_invent_an_unapplied_characteristic() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_noncreature_in_zone(
+            &mut game,
+            "Negative Characteristic Source",
+            alice,
+            Zone::Battlefield,
+            CardType::Enchantment,
+        );
+        let entering = create_noncreature_in_zone(
+            &mut game,
+            "Entering Noncreature",
+            alice,
+            Zone::Hand,
+            CardType::Artifact,
+        );
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                source,
+                alice,
+                ObjectFilter::creature(),
+            ));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+
+        assert!(!result.enters_tapped);
+        assert!(!result.added_card_types.contains(&CardType::Creature));
+    }
+
+    #[test]
+    fn copy_priority_changes_later_etb_replacement_applicability() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let copy_source = create_creature(&mut game, "Prospective Copy Creature", alice);
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                copy_source,
+                alice,
+                ObjectFilter::creature(),
+            ));
+        let entering = create_noncreature_in_zone(
+            &mut game,
+            "Entering Copy Shell",
+            alice,
+            Zone::Hand,
+            CardType::Artifact,
+        );
+        game.object_mut(entering)
+            .expect("entering object should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::with_enter_as_copy_as_enters(
+                    crate::static_abilities::EnterAsCopyAsEntersSpec {
+                        filter: ObjectFilter::creature(),
+                        affected_filter: None,
+                        may: false,
+                        enters_tapped_if_chosen: false,
+                        copy_duration: None,
+                        linked_exile_pair: None,
+                        copy_source_self: false,
+                        copy_source_enchanted: false,
+                        name_override: None,
+                        added_card_types: Vec::new(),
+                        removed_supertypes: Vec::new(),
+                        added_subtypes: Vec::new(),
+                        added_abilities: Vec::new(),
+                        set_base_power_toughness: None,
+                        set_base_power_toughness_from_self: false,
+                    },
+                    "This permanent enters as a copy of a creature.".to_string(),
+                ),
+            ));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+
+        assert_eq!(result.enters_as_copy_of, Some(copy_source));
+        assert!(
+            result.enters_tapped,
+            "the ordinary replacement must match after the higher-priority copy replacement"
+        );
+    }
+
+    #[test]
+    fn entrants_own_battlefield_static_effect_is_used_for_etb_matching() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_noncreature_in_zone(
+            &mut game,
+            "Creature Entry Watcher",
+            alice,
+            Zone::Battlefield,
+            CardType::Enchantment,
+        );
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                source,
+                alice,
+                ObjectFilter::creature(),
+            ));
+        let entering = create_noncreature_in_zone(
+            &mut game,
+            "Self-Animating Relic",
+            alice,
+            Zone::Hand,
+            CardType::Artifact,
+        );
+        game.object_mut(entering)
+            .expect("entering object should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::add_card_types(ObjectFilter::source(), vec![CardType::Creature]),
+            ));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+
+        assert!(
+            result.enters_tapped,
+            "the entrant's own static effect must animate it in the prospective battlefield view"
+        );
+    }
+
+    #[test]
+    fn existing_continuous_effect_is_used_for_prospective_etb_matching() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_noncreature_in_zone(
+            &mut game,
+            "Existing Animation Source",
+            alice,
+            Zone::Battlefield,
+            CardType::Enchantment,
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(crate::continuous::ContinuousEffect::new(
+                source,
+                alice,
+                crate::continuous::EffectTarget::Filter(
+                    ObjectFilter::artifact().in_zone(Zone::Battlefield),
+                ),
+                crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+            ));
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                source,
+                alice,
+                ObjectFilter::creature(),
+            ));
+        let entering = create_noncreature_in_zone(
+            &mut game,
+            "Continuously Animated Relic",
+            alice,
+            Zone::Hand,
+            CardType::Artifact,
+        );
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+
+        assert!(
+            result.enters_tapped,
+            "continuous effects already present must apply to the provisional battlefield object"
+        );
+    }
+
+    #[test]
+    fn control_change_priority_changes_later_etb_replacement_applicability() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_noncreature_in_zone(
+            &mut game,
+            "Bob's Entry Source",
+            bob,
+            Zone::Battlefield,
+            CardType::Enchantment,
+        );
+        game.effect_store.replacement_effects.add_effect(
+            ReplacementEffect::with_matcher(
+                source,
+                bob,
+                crate::events::zones::matchers::WouldEnterBattlefieldMatcher::any(),
+                ReplacementAction::EnterUnderControl(bob),
+            )
+            .with_priority_override(crate::events::ReplacementPriority::ControlChanging),
+        );
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                source,
+                bob,
+                ObjectFilter::creature().you_control(),
+            ));
+        let entering = create_creature_in_zone(
+            &mut game,
+            "Changing-Control Entrant",
+            alice,
+            Zone::Hand,
+            2,
+            2,
+        );
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+
+        let result = process_etb_with_event_and_dm(&mut game, entering, Zone::Hand, &mut dm);
+
+        assert_eq!(result.controller_override, Some(bob));
+        assert!(
+            result.enters_tapped,
+            "the later controller-relative filter must see the higher-priority control change"
+        );
+    }
+
+    #[test]
+    fn prepared_as_enters_choice_changes_later_replacement_applicability() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_noncreature_in_zone(
+            &mut game,
+            "Chosen Characteristic Watcher",
+            alice,
+            Zone::Battlefield,
+            CardType::Enchantment,
+        );
+        game.effect_store
+            .replacement_effects
+            .add_effect(ReplacementEffect::enters_tapped(
+                source,
+                alice,
+                ObjectFilter::creature(),
+            ));
+        let entering = create_noncreature_in_zone(
+            &mut game,
+            "Choice-Animated Relic",
+            alice,
+            Zone::Hand,
+            CardType::Artifact,
+        );
+        game.object_mut(entering)
+            .expect("entering object should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
+                    vec![
+                        crate::static_abilities::PowerToughnessChoiceOption::with_abilities(
+                            2,
+                            2,
+                            vec![StaticAbility::add_card_types(
+                                ObjectFilter::source(),
+                                vec![CardType::Creature],
+                            )],
+                        ),
+                    ],
+                    "As this enters, choose its characteristics.".to_string(),
+                ),
+            ));
+
+        let result = game
+            .move_object_with_etb_processing(entering, Zone::Battlefield)
+            .expect("the prepared entry should commit");
+
+        assert!(
+            result.enters_tapped,
+            "the later matcher must see abilities granted by the pre-entry choice"
+        );
+        assert!(
+            game.current_card_types(result.new_id)
+                .is_some_and(|types| types.contains(&CardType::Creature))
+        );
     }
 
     #[test]
@@ -5109,6 +5928,183 @@ mod tests {
     }
 
     #[test]
+    fn applying_a_prevention_effect_emits_one_prevented_damage_event() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let protected = create_creature(&mut game, "Protected Bear", alice);
+        let damage_source = create_creature(&mut game, "Shock Bear", bob);
+        let prevention_source = create_creature(&mut game, "Shield Bear", alice);
+        game.object_mut(prevention_source)
+            .expect("prevention source")
+            .abilities_mut()
+            .push(crate::ability::Ability::triggered(
+                crate::triggers::Trigger::damage_prevented(),
+                vec![],
+            ));
+        game.effect_store
+            .prevention_effects
+            .add_shield(PreventionShield::prevent_next_n(
+                prevention_source,
+                alice,
+                PreventionTarget::Permanent(protected),
+                2,
+            ));
+
+        let processed = process_damage_assignments_with_event(
+            &mut game,
+            damage_source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            EventCause::effect(),
+        );
+
+        assert_eq!(
+            processed.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Object(protected),
+                amount: 1,
+            }]
+        );
+        let events = game.take_pending_trigger_events();
+        assert_eq!(events.len(), 1, "one prevention application event");
+        let event = events[0]
+            .downcast::<crate::events::DamagePreventedEvent>()
+            .expect("typed prevented-damage event");
+        assert_eq!(event.damage_source, damage_source);
+        assert_eq!(event.target, DamageTarget::Object(protected));
+        assert_eq!(event.amount, 2);
+        assert_eq!(event.prevention_source, prevention_source);
+        assert_eq!(
+            crate::triggers::check_triggers(&game, &events[0]).len(),
+            1,
+            "the event must be consumable by downstream triggers"
+        );
+    }
+
+    #[test]
+    fn one_shield_applied_across_simultaneous_damage_emits_one_prevention_event() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let damage_source_one = create_creature(&mut game, "First Attacker", bob);
+        let damage_source_two = create_creature(&mut game, "Second Attacker", bob);
+        let prevention_source = create_creature(&mut game, "Shared Shield", alice);
+        game.effect_store
+            .prevention_effects
+            .add_shield(PreventionShield::prevent_next_n(
+                prevention_source,
+                alice,
+                PreventionTarget::Player(alice),
+                4,
+            ));
+
+        let results = process_simultaneous_damage_assignments_with_event(
+            &mut game,
+            &[
+                SimultaneousDamageEvent {
+                    source: damage_source_one,
+                    target: DamageTarget::Player(alice),
+                    amount: 3,
+                    is_combat: true,
+                    unpreventable: false,
+                    cause: EventCause::effect(),
+                    source_snapshot: None,
+                },
+                SimultaneousDamageEvent {
+                    source: damage_source_two,
+                    target: DamageTarget::Player(alice),
+                    amount: 3,
+                    is_combat: true,
+                    unpreventable: false,
+                    cause: EventCause::effect(),
+                    source_snapshot: None,
+                },
+            ],
+        );
+
+        assert_eq!(results[0].assignments, Vec::new());
+        assert_eq!(
+            results[1].assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(alice),
+                amount: 2,
+            }]
+        );
+        let prevented = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<crate::events::DamagePreventedEvent>()
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            prevented.len(),
+            1,
+            "CR 615.13 triggers once when one prevention effect is applied across simultaneous damage events"
+        );
+        assert_eq!(prevented[0].amount, 4);
+        assert_eq!(prevented[0].applications.len(), 2);
+        assert_eq!(
+            prevented[0].applications[0].damage_source,
+            damage_source_one
+        );
+        assert_eq!(prevented[0].applications[0].amount, 3);
+        assert_eq!(
+            prevented[0].applications[1].damage_source,
+            damage_source_two
+        );
+        assert_eq!(prevented[0].applications[1].amount, 1);
+    }
+
+    #[test]
+    fn static_partial_prevention_emits_the_amount_actually_prevented() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let prevention_source = create_creature(&mut game, "Defending Cleric", alice);
+        game.object_mut(prevention_source)
+            .expect("prevention source")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::prevent_damage_to_you_from_source_filter(
+                    1,
+                    ObjectFilter::creature(),
+                    "If a creature would deal damage to you, prevent 1 of that damage.",
+                ),
+            ));
+        let damage_source = create_creature(&mut game, "Attacking Bear", bob);
+
+        let processed = process_damage_assignments_with_event(
+            &mut game,
+            damage_source,
+            DamageTarget::Player(alice),
+            3,
+            true,
+            EventCause::effect(),
+        );
+
+        assert_eq!(
+            processed.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Player(alice),
+                amount: 2,
+            }]
+        );
+        let events = game.take_pending_trigger_events();
+        let prevented = events
+            .iter()
+            .filter_map(|event| event.downcast::<crate::events::DamagePreventedEvent>())
+            .collect::<Vec<_>>();
+        assert_eq!(prevented.len(), 1);
+        assert_eq!(prevented[0].amount, 1);
+        assert_eq!(prevented[0].prevention_source, prevention_source);
+    }
+
+    #[test]
     fn unpreventable_damage_keeps_shield_and_executes_follow_up_once() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
@@ -5170,6 +6166,12 @@ mod tests {
                 game.effect_store.prevention_effects.shields()[0].amount_remaining,
                 Some(3),
                 "unpreventable damage must not consume the shield"
+            );
+            assert!(
+                game.take_pending_trigger_events().iter().all(|event| event
+                    .downcast::<crate::events::DamagePreventedEvent>()
+                    .is_none()),
+                "a prevention effect that prevents zero damage must not emit the CR 615.13 event"
             );
         }
     }
@@ -5269,6 +6271,47 @@ mod tests {
             game.counter_count(protected, CounterType::PlusOnePlusOne),
             3,
             "replacement follow-up should put counters equal to the prevented damage"
+        );
+        let prevented = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<crate::events::DamagePreventedEvent>()
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(prevented.len(), 1);
+        assert_eq!(prevented[0].amount, 3);
+        assert_eq!(prevented[0].prevention_source, protected);
+
+        let unpreventable = process_damage_assignments_with_event_with_source_snapshot_opts(
+            &mut game,
+            source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            true,
+            EventCause::effect(),
+            None,
+        );
+        assert_eq!(
+            unpreventable.assignments,
+            vec![ProcessedDamageAssignment {
+                target: DamageTarget::Object(protected),
+                amount: 3,
+            }]
+        );
+        assert_eq!(
+            game.counter_count(protected, CounterType::PlusOnePlusOne),
+            3,
+            "the additional part still runs with zero damage prevented"
+        );
+        assert!(
+            game.take_pending_trigger_events().iter().all(|event| event
+                .downcast::<crate::events::DamagePreventedEvent>()
+                .is_none()),
+            "zero prevented damage must not emit CR 615.13"
         );
     }
 
@@ -5458,6 +6501,41 @@ mod tests {
         assert!(
             departed.assignments.is_empty(),
             "red calculated characteristics captured in source LKI must keep matching prevention"
+        );
+    }
+
+    #[test]
+    fn intrinsic_battle_defense_counters_are_modified_by_etb_replacements() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let doubler = create_creature(&mut game, "Defense Doubler", alice);
+        game.object_mut(doubler)
+            .expect("counter doubler")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::double_counters_replacement(
+                    crate::target::ObjectFilter::permanent(),
+                    Some(CounterType::Defense),
+                    "If counters would be put on a permanent, put twice that many instead."
+                        .to_string(),
+                ),
+            ));
+
+        let siege_card = CardBuilder::new(CardId::new(), "Doubled Siege")
+            .card_types(vec![CardType::Battle])
+            .subtypes(vec![crate::types::Subtype::Siege])
+            .defense(4)
+            .build();
+        let siege = game.create_object_from_card(&siege_card, alice, Zone::Hand);
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let entered = game
+            .move_object_with_etb_processing_with_dm(siege, Zone::Battlefield, &mut decision_maker)
+            .expect("the Siege should enter");
+
+        assert_eq!(
+            game.counter_count(entered.new_id, CounterType::Defense),
+            8,
+            "the intrinsic defense-counter replacement must use the ordinary ETB event"
         );
     }
 }

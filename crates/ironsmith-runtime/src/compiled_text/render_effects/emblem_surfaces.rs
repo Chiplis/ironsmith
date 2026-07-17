@@ -40,8 +40,10 @@ fn replace_whole_phrase_case_insensitive(text: &str, needle: &str, replacement: 
     rendered
 }
 
-/// Prefer the parser-captured emblem rules sentence, while using typed trigger
+/// Prefer the parser-captured emblem rules sentences, while using typed trigger
 /// filters to recover canonical subtype capitalization lost during lowering.
+/// Separate quoted abilities are stored on separate lines, so preserve their
+/// individual quote boundaries in the returned quote payload.
 pub(super) fn stored_emblem_rules_text(
     emblem: &crate::effect::EmblemDescription,
 ) -> Option<String> {
@@ -72,7 +74,22 @@ pub(super) fn stored_emblem_rules_text(
         text = replace_whole_phrase_case_insensitive(&text, &subtype, &subtype);
     }
 
-    Some(capitalize_first(&ensure_trailing_period(&text)))
+    let mut abilities = text
+        .lines()
+        .map(str::trim)
+        .filter(|ability| !ability.is_empty())
+        .map(|ability| {
+            capitalize_first(
+                ability.trim_end_matches(|character| matches!(character, '.' | '!' | '?')),
+            )
+        })
+        .collect::<Vec<_>>();
+    if abilities.len() == 1 {
+        abilities[0] = ensure_trailing_period(&abilities[0]);
+    } else if let Some(last) = abilities.last_mut() {
+        *last = ensure_trailing_period(last);
+    }
+    (!abilities.is_empty()).then(|| abilities.join("\" and \""))
 }
 
 #[cfg(test)]
@@ -88,6 +105,18 @@ mod tests {
                 "Elf",
             ),
             "whenever you cast an Elf spell, it grants itself haste"
+        );
+    }
+
+    #[test]
+    fn separate_emblem_abilities_keep_separate_quote_boundaries() {
+        let emblem = crate::effect::EmblemDescription::new(
+            "Test Emblem",
+            "untap all permanents you control.\nyou draw a card.",
+        );
+        assert_eq!(
+            stored_emblem_rules_text(&emblem).as_deref(),
+            Some("Untap all permanents you control\" and \"You draw a card.")
         );
     }
 }

@@ -192,6 +192,7 @@ fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
     let spell_cast = TriggerSpec::SpellCast {
         filter: Some(ObjectFilter::instant_or_sorcery()),
         caster: PlayerFilter::You,
+        timing: None,
         during_turn: None,
         min_spells_this_turn: None,
         exact_spells_this_turn: None,

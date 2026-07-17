@@ -50,6 +50,7 @@ pub(crate) struct ActivationCostCst {
     pub(crate) segments: Vec<ActivationCostSegmentCst>,
     pub(crate) alternative_branches: Vec<ActivationCostCst>,
     pub(crate) is_loyalty_shorthand: bool,
+    pub(crate) waterbend_generic: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +101,7 @@ pub(crate) enum ActivationCostSegmentCst {
     ExileChosen {
         choice_count: ChoiceCount,
         filter: ObjectFilter,
+        top_only: bool,
     },
     ExileSelfAndNamedArtifacts {
         names: Vec<String>,

@@ -818,6 +818,28 @@ fn cloned_state_cows_auxiliary_tracking() {
 }
 
 #[test]
+fn face_down_exile_visibility_follows_current_player_control() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = CardDefinitionBuilder::new(CardId::from_raw(98_003), "Exile Probe").build();
+    let exiled = game.create_object_from_definition(&card, alice, Zone::Exile);
+    game.set_face_down(exiled);
+    game.grant_face_down_exile_view(exiled, alice);
+
+    assert!(game.can_player_look_at_face_down_exiled_card(exiled, alice));
+    assert!(!game.can_player_look_at_face_down_exiled_card(exiled, bob));
+
+    let control_token = game.add_scoped_player_control(bob, alice, None);
+    assert!(game.can_player_look_at_face_down_exiled_card(exiled, alice));
+    assert!(game.can_player_look_at_face_down_exiled_card(exiled, bob));
+
+    game.remove_scoped_player_control(control_token);
+    assert!(game.can_player_look_at_face_down_exiled_card(exiled, alice));
+    assert!(!game.can_player_look_at_face_down_exiled_card(exiled, bob));
+}
+
+#[test]
 fn cloned_state_cows_choice_store() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -1065,6 +1087,39 @@ fn stack_to_battlefield_preserves_cast_x_value_for_permanent() {
         .move_object_by_effect(battlefield_id, Zone::Graveyard)
         .expect("permanent should move to graveyard");
     assert_eq!(game.object(graveyard_id).expect("card").x_value, None);
+}
+
+#[test]
+fn instant_and_sorcery_cards_remain_in_their_previous_zone_instead_of_entering() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let instant = CardDefinitionBuilder::new(CardId::from_raw(79_410), "Blocked Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let sorcery = CardDefinitionBuilder::new(CardId::from_raw(79_411), "Blocked Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let instant_id = game.create_object_from_definition(&instant, alice, Zone::Hand);
+    let sorcery_id = game.create_object_from_definition(&sorcery, alice, Zone::Graveyard);
+
+    assert_eq!(
+        game.move_object_by_effect(instant_id, Zone::Battlefield),
+        None
+    );
+    assert_eq!(
+        game.move_object_by_game_rule(sorcery_id, Zone::Battlefield),
+        None
+    );
+    assert_eq!(
+        game.object(instant_id).expect("instant remains").zone,
+        Zone::Hand
+    );
+    assert_eq!(
+        game.object(sorcery_id).expect("sorcery remains").zone,
+        Zone::Graveyard
+    );
+    assert!(!game.battlefield.contains(&instant_id));
+    assert!(!game.battlefield.contains(&sorcery_id));
 }
 
 #[test]
@@ -1638,4 +1693,556 @@ fn stop_controlling_duration_does_not_self_justify_control_effect() {
     );
 
     assert_eq!(game.current_controller(source_id), Some(bob));
+}
+
+struct PendingBattleProtectorDecisionMaker {
+    prompted: bool,
+}
+
+impl crate::decision::DecisionMaker for PendingBattleProtectorDecisionMaker {
+    fn awaiting_choice(&self) -> bool {
+        self.prompted
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        context: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        assert_eq!(
+            context.description,
+            "Choose a player to protect this battle"
+        );
+        assert_eq!(context.options.len(), 2);
+        self.prompted = true;
+        Vec::new()
+    }
+}
+
+#[test]
+fn pending_siege_protector_choice_does_not_commit_entry() {
+    use crate::card::CardBuilder;
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let siege = CardBuilder::new(CardId::from_raw(403), "Pending Siege")
+        .card_types(vec![CardType::Battle])
+        .subtypes(vec![crate::types::Subtype::Siege])
+        .defense(4)
+        .build();
+    let siege_id = game.create_object_from_card(&siege, alice, Zone::Hand);
+    let mut decision_maker = PendingBattleProtectorDecisionMaker { prompted: false };
+
+    let result = game.move_object_with_etb_processing_with_dm(
+        siege_id,
+        Zone::Battlefield,
+        &mut decision_maker,
+    );
+
+    assert!(result.is_none());
+    assert!(decision_maker.prompted);
+    assert_eq!(
+        game.object(siege_id).map(|object| object.zone),
+        Some(Zone::Hand)
+    );
+    assert_eq!(
+        game.counter_count(siege_id, crate::object::CounterType::Defense),
+        0
+    );
+    assert_eq!(game.battle_protector(siege_id), None);
+}
+
+#[test]
+fn multiplayer_leave_game_applies_800_4a_in_order_without_owned_object_zone_changes() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::EventKind;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let creature = CardBuilder::new(CardId::from_raw(50_001), "Leave Game Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let spell = CardBuilder::new(CardId::from_raw(50_002), "Borrowed Stack Card")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+
+    let owned_permanent = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let owned_hand_card = game.create_object_from_card(&spell, alice, Zone::Hand);
+    let borrowed_permanent = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let surviving_source = game.create_object_from_card(&creature, charlie, Zone::Battlefield);
+    let borrowed_spell = game.create_object_from_card(&spell, bob, Zone::Stack);
+    let borrowed_spell_stable = game.object(borrowed_spell).expect("spell").stable_id;
+
+    game.effect_store.continuous_effects.add_effect(
+        ContinuousEffect::gain_control(owned_permanent, alice, borrowed_permanent, alice)
+            .until(Until::Forever),
+    );
+    game.push_to_stack(StackEntry::new(borrowed_spell, alice));
+    let mut copied_ability = StackEntry::new(surviving_source, alice);
+    copied_ability.is_ability = true;
+    game.push_to_stack(copied_ability);
+    game.effect_store.replacement_effects.add_effect(
+        crate::replacement::ReplacementEffect::prevent_damage(surviving_source, alice, 1),
+    );
+    game.effect_store.prevention_effects.add_shield(
+        crate::prevention::PreventionShield::prevent_next_n(
+            surviving_source,
+            alice,
+            crate::prevention::PreventionTarget::You,
+            1,
+        ),
+    );
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn_store.extra_turns.extend([charlie, alice]);
+    game.set_monarch(Some(alice));
+    game.set_initiative(Some(alice));
+    game.effect_store.pending_trigger_events.clear();
+
+    assert!(game.mark_player_lost(alice));
+
+    assert!(game.object(owned_permanent).is_none());
+    assert!(game.object(owned_hand_card).is_none());
+    assert_eq!(game.current_controller(borrowed_permanent), Some(bob));
+    assert!(game.stack.is_empty());
+    let exiled_spell = game
+        .find_object_by_stable_id(borrowed_spell_stable)
+        .expect("remaining controlled card spell should be exiled");
+    assert_eq!(
+        game.object(exiled_spell).map(|object| object.zone),
+        Some(Zone::Exile)
+    );
+    assert_eq!(game.turn.active_player, alice, "the current turn continues");
+    assert_eq!(game.turn.priority_player, Some(bob));
+    assert_eq!(game.turn_store.extra_turns, vec![charlie]);
+    assert_eq!(game.monarch, Some(bob));
+    assert_eq!(game.initiative, Some(bob));
+    assert!(game.object(surviving_source).is_some());
+    assert_eq!(game.effect_store.replacement_effects.effects().len(), 1);
+    assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
+    assert_eq!(
+        game.effect_store
+            .pending_trigger_events
+            .iter()
+            .filter(|event| event.kind() == EventKind::ZoneChange)
+            .count(),
+        1,
+        "only exiling the remaining controlled spell is a zone change"
+    );
+    assert!(
+        game.effect_store
+            .pending_trigger_events
+            .iter()
+            .any(|event| {
+                event.kind() == EventKind::PlayerLosesGame && event.player() == Some(alice)
+            })
+    );
+}
+
+#[test]
+fn multiplayer_leave_game_active_turn_continues_without_an_active_player() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    assert!(game.leave_game(alice));
+
+    assert_eq!(
+        game.turn.active_player, alice,
+        "the departed player's turn remains the turn-progression anchor"
+    );
+    assert!(
+        game.active_player().is_none(),
+        "CR 800.4j says the rest of this turn has no active player"
+    );
+    assert!(
+        game.active_player_mut().is_none(),
+        "mutable active-player access must not expose departed live storage"
+    );
+    let filter_context = game.filter_context_for(bob, None);
+    assert_eq!(
+        filter_context.active_player, None,
+        "object/player filters must not retain the departed turn anchor as an active player"
+    );
+    assert!(
+        !crate::target::PlayerFilter::Active.matches_player(alice, &filter_context),
+        "shared player-filter matching must observe the rules-active player, not the turn anchor"
+    );
+    assert!(
+        !crate::triggers::player_filter_matches_with_context(
+            &crate::target::PlayerFilter::Active,
+            alice,
+            bob,
+            &game,
+            None,
+        ),
+        "trigger matchers must not treat the departed player as active"
+    );
+    let context = crate::effects::ExecutionContext::new_default(ObjectId::from_raw(50_011), bob);
+    assert!(
+        crate::effects::helpers::resolve_player_filter(
+            &game,
+            &crate::target::PlayerFilter::Active,
+            &context,
+        )
+        .is_err(),
+        "effects cannot resolve an active-player recipient after that player leaves"
+    );
+    assert_eq!(
+        game.turn.priority_player,
+        Some(bob),
+        "priority passes to the next player still in the game"
+    );
+}
+
+#[test]
+fn multiplayer_leave_game_clamps_next_turn_ability_grants_to_the_would_be_boundary() {
+    use crate::effects::{EffectExecutor, ExecutionContext, GrantEffect, ResolvedTarget};
+    use crate::grant::{GrantDuration, Grantable};
+    use crate::static_abilities::StaticAbility;
+    use crate::target::{ChooseSpec, ObjectFilter};
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let source_card = crate::card::CardBuilder::new(CardId::from_raw(50_009), "Grant Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let target_card = crate::card::CardBuilder::new(CardId::from_raw(50_010), "Grant Target")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source = game.create_object_from_card(&source_card, bob, Zone::Battlefield);
+    let target = game.create_object_from_card(&target_card, charlie, Zone::Hand);
+    let flash = StaticAbility::flash();
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut context = ExecutionContext::new_default(source, bob);
+    context.targets = vec![ResolvedTarget::Object(target)];
+    GrantEffect::new(
+        Grantable::ability(flash.clone()),
+        ChooseSpec::Object(ObjectFilter::default().in_zone(Zone::Hand)),
+        GrantDuration::UntilYourNextTurnEnd,
+    )
+    .execute(&mut game, &mut context)
+    .expect("the turn-relative grant should resolve");
+    assert!(game.effect_store.grant_registry.card_has_granted_ability(
+        &game,
+        target,
+        Zone::Hand,
+        charlie,
+        &flash,
+    ));
+
+    assert!(game.leave_game(bob));
+    assert!(
+        game.effect_store.grant_registry.card_has_granted_ability(
+            &game,
+            target,
+            Zone::Hand,
+            charlie,
+            &flash,
+        ),
+        "CR 800.4m keeps the effect until Bob's next turn would begin"
+    );
+
+    game.next_turn();
+    assert_eq!(game.turn.active_player, charlie);
+    assert!(
+        !game.effect_store.grant_registry.card_has_granted_ability(
+            &game,
+            target,
+            Zone::Hand,
+            charlie,
+            &flash,
+        ),
+        "the grant must expire when Bob's next turn would have begun"
+    );
+}
+
+#[test]
+fn multiplayer_leave_game_800_4i_k_m_preserves_lki_and_expires_at_would_be_turn() {
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::events::LifeLossEvent;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let creature = CardBuilder::new(CardId::from_raw(50_005), "Duration Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let target = game.create_object_from_card(&creature, charlie, Zone::Battlefield);
+    game.effect_store.continuous_effects.add_effect(
+        ContinuousEffect::pump(source, bob, target, 2, 2, Until::YourNextTurn)
+            .with_expires_end_of_turn(game.turn.turn_number),
+    );
+    game.add_goad_effect(target, bob, Until::YourNextTurn, source);
+    game.add_restriction_effect(
+        crate::effect::Restriction::Attack(crate::target::ObjectFilter::specific(target)),
+        Until::YourNextTurn,
+        source,
+        bob,
+        None,
+    );
+    game.player_mut(bob).expect("Bob").life = 7;
+    game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+        LifeLossEvent::new(bob, 3, false),
+        crate::provenance::ProvNodeId::default(),
+    ));
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.set_monarch(Some(bob));
+    game.set_initiative(Some(bob));
+    game.refresh_continuous_state();
+    assert_eq!(game.calculated_power(target), Some(4));
+
+    assert!(game.leave_game(bob));
+
+    assert_eq!(game.player(bob).map(|player| player.life), Some(7));
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_life_lost_for_players(&[bob]),
+        3,
+        "actions by the departed player remain observable"
+    );
+    assert_eq!(game.calculated_power(target), Some(4));
+    assert!(game.effect_store.goad_effects[0].is_active(&game, game.turn.turn_number));
+    assert!(game.effect_store.restriction_effects[0].is_active(&game, game.turn.turn_number));
+    assert_eq!(game.monarch, Some(alice));
+    assert_eq!(game.initiative, Some(alice));
+
+    game.next_turn();
+
+    assert_eq!(
+        game.turn.active_player, charlie,
+        "Bob's future turn is skipped"
+    );
+    assert_eq!(game.calculated_power(target), Some(2));
+    assert!(!game.effect_store.goad_effects[0].is_active(&game, game.turn.turn_number));
+    assert!(!game.effect_store.restriction_effects[0].is_active(&game, game.turn.turn_number));
+}
+
+#[test]
+fn multiplayer_leave_game_800_4i_freezes_player_information_before_owned_objects_leave() {
+    use crate::card::CardBuilder;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let bob = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::from_raw(50_006), "Departing Hand Card").build();
+    let first = game.create_object_from_card(&card, bob, Zone::Hand);
+    let second = game.create_object_from_card(&card, bob, Zone::Hand);
+    game.player_mut(bob).expect("Bob").life = 7;
+
+    assert!(game.leave_game(bob));
+
+    assert!(game.object(first).is_none());
+    assert!(game.object(second).is_none());
+    let lki = game
+        .player_last_known_information(bob)
+        .expect("departed player LKI should be retained");
+    assert_eq!(lki.life, 7);
+    assert_eq!(lki.hand.len(), 2);
+    assert!(lki.has_left_game);
+    assert_eq!(game.player(bob).map(|player| player.hand.len()), Some(2));
+
+    game.player_mut(bob)
+        .expect("live storage remains addressable")
+        .life = 1;
+    assert_eq!(
+        game.player_last_known_information(bob)
+            .expect("LKI remains frozen")
+            .life,
+        7,
+        "post-departure storage changes must not rewrite player LKI"
+    );
+    assert_eq!(game.player(bob).map(|player| player.life), Some(7));
+}
+
+#[test]
+fn multiplayer_leave_game_800_4i_retains_actions_and_expires_last_turn_at_would_be_boundary() {
+    use crate::card::CardBuilder;
+    use crate::effect::Condition;
+    use crate::effects::ExecutionContext;
+    use crate::events::LifeLossEvent;
+    use crate::events::spells::SpellCastEvent;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let spell_card = CardBuilder::new(CardId::from_raw(50_007), "Historical Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source_card = CardBuilder::new(CardId::from_raw(50_008), "History Observer")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+    let lost_life_last_turn = Condition::TurnHistory(
+        ironsmith_core::TurnHistoryCondition::PlayerLostLifeLastTurn(
+            crate::target::PlayerFilter::Specific(bob),
+        ),
+    );
+    let context = ExecutionContext::new_default(source, alice);
+
+    game.next_turn();
+    assert_eq!(game.turn.active_player, bob);
+    let spell = game.create_object_from_card(&spell_card, bob, Zone::Stack);
+    let snapshot = ObjectSnapshot::from_object(game.object(spell).expect("spell"), &game);
+    game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+        SpellCastEvent::new_with_snapshot(spell, bob, Zone::Hand, snapshot),
+        crate::provenance::ProvNodeId::default(),
+    ));
+    game.record_turn_history_event(&crate::triggers::TriggerEvent::new(
+        LifeLossEvent::new(bob, 3, false),
+        crate::provenance::ProvNodeId::default(),
+    ));
+    game.move_object_by_effect(spell, Zone::Graveyard);
+    game.next_turn();
+    assert_eq!(game.turn.active_player, charlie);
+
+    assert!(game.leave_game(bob));
+    assert_eq!(
+        game.action_history_for_player(bob)
+            .filter(|record| {
+                record
+                    .event
+                    .downcast::<SpellCastEvent>()
+                    .is_some_and(|event| event.caster == bob)
+            })
+            .count(),
+        1,
+        "unqualified action history remains available for departed players"
+    );
+    assert_eq!(
+        game.last_turn_history_for_player(bob)
+            .map(|history| history.spells_cast_by_player(bob)),
+        Some(1)
+    );
+    assert!(
+        crate::condition_eval::evaluate_condition_resolution(
+            &game,
+            &lost_life_last_turn,
+            &context,
+        )
+        .expect("last-turn condition should evaluate")
+    );
+
+    game.next_turn();
+    assert_eq!(game.turn.active_player, alice);
+    assert_eq!(
+        game.last_turn_history_for_player(bob)
+            .map(|history| history.spells_cast_by_player(bob)),
+        Some(1),
+        "Bob's last-turn actions remain visible before his turn would begin"
+    );
+
+    game.next_turn();
+    assert_eq!(game.turn.active_player, charlie);
+    assert!(
+        game.last_turn_history_for_player(bob).is_none(),
+        "Bob's last-turn window expires exactly when his next turn would have begun"
+    );
+    assert!(
+        !crate::condition_eval::evaluate_condition_resolution(
+            &game,
+            &lost_life_last_turn,
+            &context,
+        )
+        .expect("expired last-turn condition should evaluate")
+    );
+    assert_eq!(
+        game.action_history_for_player(bob)
+            .filter(|record| {
+                record
+                    .event
+                    .downcast::<SpellCastEvent>()
+                    .is_some_and(|event| event.caster == bob)
+            })
+            .count(),
+        1,
+        "ordinary action history does not expire with the narrower last-turn window"
+    );
+}
+
+#[test]
+fn multiplayer_leave_game_800_4c_exiles_when_default_controller_already_left() {
+    use crate::card::{CardBuilder, PowerToughness};
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let creature = CardBuilder::new(CardId::from_raw(50_003), "Orphaned Permanent")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source = game.create_object_from_card(&creature, charlie, Zone::Battlefield);
+    let permanent = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let stable_id = game.object(permanent).expect("permanent").stable_id;
+    game.effect_store.continuous_effects.add_effect(
+        ContinuousEffect::gain_control(source, charlie, permanent, bob).until(Until::Forever),
+    );
+    game.player_mut(alice).expect("Alice").has_left_game = true;
+    assert_eq!(game.current_controller(permanent), Some(bob));
+
+    assert!(game.leave_game(bob));
+
+    let exiled = game
+        .find_object_by_stable_id(stable_id)
+        .expect("orphaned permanent should still be represented in exile");
+    assert_eq!(
+        game.object(exiled).map(|object| object.zone),
+        Some(Zone::Exile)
+    );
+}
+
+#[test]
+fn multiplayer_leave_game_routes_800_4g_h_choices_and_rejects_800_4f_costs() {
+    use crate::card::CardBuilder;
+
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let card = CardBuilder::new(CardId::from_raw(50_004), "Choice Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source = game.create_object_from_card(&card, charlie, Zone::Battlefield);
+    game.effect_store.pending_replacement_choice = Some(PendingReplacementChoice {
+        event: crate::events::Event::player_loses_game(alice),
+        applicable_effects: Vec::new(),
+        applied_effects: HashSet::new(),
+        applied_effect_keys: HashSet::new(),
+        player: alice,
+    });
+
+    assert!(game.leave_game(alice));
+
+    assert_eq!(game.controlling_player_for(charlie), charlie);
+    assert_eq!(game.controlling_player_for(alice), bob);
+    assert!(
+        game.effect_store.pending_replacement_choice.is_none(),
+        "a pending choice with no surviving applicable effects should be discarded"
+    );
+    assert!(
+        crate::cost::can_pay_cost(&game, source, alice, &crate::cost::TotalCost::free()).is_err()
+    );
 }

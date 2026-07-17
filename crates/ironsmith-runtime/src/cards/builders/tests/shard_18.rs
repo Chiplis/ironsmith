@@ -259,7 +259,8 @@ pub(super) fn pinnacle_starcage_enter_exiles_all_matching_permanents_until_sourc
         .expect("Pinnacle Starcage should have an enters trigger");
 
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let cheap_artifact = CardDefinitionBuilder::new(CardId::from_raw(91_197), "Cheap Artifact")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
@@ -3411,9 +3412,29 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
         &crate::PriorityResponse::PriorityAction(ordinary_room_action),
         &mut dm,
     );
+    let room_activation = match room_activation {
+        Ok(crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        )) => {
+            let finish_index = ctx
+                .options
+                .iter()
+                .find(|option| option.description == "Finish activating mana abilities")
+                .map(|option| option.index)
+                .expect("activation payment should expose the mana-ability-window finish action");
+            crate::game_loop::apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &crate::PriorityResponse::ManaPayment(finish_index),
+                &mut dm,
+            )
+        }
+        other => other,
+    };
     assert!(
         room_activation.is_err(),
-        "Creeping Peeper mana must not be offered for ordinary activated abilities on Room permanents"
+        "Creeping Peeper mana must not be offered for ordinary activated abilities on Room permanents: {room_activation:?}"
     );
     assert!(
         game.can_pay_mana_cost_with_reason(
@@ -3480,7 +3501,6 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
             )),
         ));
     game.set_face_down(face_up_probe_id);
-
     crate::special_actions::perform(
         crate::special_actions::SpecialAction::TurnFaceUp {
             permanent_id: face_up_probe_id,

@@ -107,6 +107,14 @@ fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
         AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
             obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
         }),
+        AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
+            obj.zone == Zone::Battlefield
+                && obj.has_card_type(CardType::Battle)
+                && game.battle_protector(*battle).is_some_and(|protector| {
+                    game.player(protector)
+                        .is_some_and(|player| player.is_in_game())
+                })
+        }),
     }
 }
 
@@ -458,6 +466,93 @@ fn evaluate_self_replacement_branch(
     result
 }
 
+fn bind_singular_active_player_choice(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    references_active_player: bool,
+) -> bool {
+    if !references_active_player
+        || !game.shared_team_turns_enabled()
+        || game.active_players().len() <= 1
+        || game
+            .singular_active_player(ctx.combat.chosen_player)
+            .is_some_and(|player| ctx.combat.chosen_player == Some(player))
+    {
+        return true;
+    }
+
+    let options = game
+        .active_players()
+        .into_iter()
+        .filter_map(|player| {
+            game.player(player)
+                .map(|candidate| (candidate.name.to_string(), player))
+        })
+        .collect::<Vec<_>>();
+    let Some(chosen) = crate::decisions::ask_choose_one(
+        game,
+        &mut ctx.decision_maker,
+        ctx.controller,
+        ctx.source,
+        &options,
+    ) else {
+        return false;
+    };
+    if ctx.decision_maker.awaiting_choice() {
+        return false;
+    }
+    ctx.combat.chosen_player = Some(chosen);
+    true
+}
+
+fn bind_singular_combat_player_choice(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    references_player: bool,
+    anchor: Option<PlayerId>,
+    attacking: bool,
+) -> bool {
+    if !references_player || !game.shared_team_turns_enabled() {
+        return true;
+    }
+    let Some(anchor) = anchor else {
+        return true;
+    };
+    let options = game
+        .team_players_for(anchor)
+        .into_iter()
+        .filter_map(|player| {
+            game.player(player)
+                .map(|candidate| (candidate.name.to_string(), player))
+        })
+        .collect::<Vec<_>>();
+    let chosen = match options.as_slice() {
+        [] => return true,
+        [(_, player)] => *player,
+        _ => {
+            let Some(chosen) = crate::decisions::ask_choose_one(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                ctx.source,
+                &options,
+            ) else {
+                return false;
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return false;
+            }
+            chosen
+        }
+    };
+    if attacking {
+        ctx.combat.attacking_player = Some(chosen);
+    } else {
+        ctx.combat.defending_player = Some(chosen);
+    }
+    true
+}
+
 pub(crate) fn execute_resolution_program(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -467,6 +562,33 @@ pub(crate) fn execute_resolution_program(
     chosen_modes: Option<&[usize]>,
     valid_target_assignments: &[crate::game_state::TargetAssignment],
 ) -> Result<Vec<crate::triggers::TriggerEvent>, GameLoopError> {
+    // CR 805.9: a singular "active player" in an ability is selected by that
+    // ability's controller when its effect is applied. Bind the selection once
+    // for this resolution so player filters, object filters, values, and nested
+    // effects all observe the same active teammate.
+    let program_debug = format!("{program:?}");
+    let attacking_anchor = ctx.combat.attacking_player;
+    let defending_anchor = ctx.combat.defending_player;
+    if !bind_singular_active_player_choice(game, ctx, program_debug.contains("Active"))
+        || !bind_singular_combat_player_choice(
+            game,
+            ctx,
+            program_debug.contains("Attacking"),
+            attacking_anchor,
+            true,
+        )
+        || !bind_singular_combat_player_choice(
+            game,
+            ctx,
+            program_debug.contains("Defending"),
+            defending_anchor,
+            false,
+        )
+    {
+        return Ok(Vec::new());
+    }
+
+    let initial_subgame_depth = game.subgame_depth();
     let mut all_events = Vec::new();
     let mut consumed_modal_selection = false;
     let mut assignment_cursor = 0usize;
@@ -607,6 +729,16 @@ pub(crate) fn execute_resolution_program(
                 }
                 Err(crate::effects::ExecutionError::InvalidTarget) => {}
                 Err(err) => return Err(GameLoopError::ResolutionFailed(err.to_string())),
+            }
+            // CR 724.1b/724.2b exile the resolving object. No later
+            // instructions in its resolution program are performed.
+            if game.turn_store.end_turn_procedure_pending
+                || game.turn_store.end_combat_phase_procedure_pending
+            {
+                return Ok(Vec::new());
+            }
+            if game.subgame_depth() > initial_subgame_depth {
+                return Ok(all_events);
             }
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(all_events);
@@ -769,6 +901,18 @@ pub(super) fn resolve_stack_entry_full(
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
         validate_stack_entry_targets_with_view(game, &entry, &target_validation_view);
 
+    let mutating_creature_spell = !entry.is_ability
+        && obj.as_ref().is_some_and(|obj| {
+            obj.zone == Zone::Stack
+                && stack_entry_cast_with_named_alternative(game, &entry, obj, "Mutate")
+        });
+    let mutate_target = mutating_creature_spell.then(|| {
+        valid_targets.iter().find_map(|target| match target {
+            crate::effects::ResolvedTarget::Object(id) => Some(*id),
+            crate::effects::ResolvedTarget::Player(_) => None,
+        })
+    });
+
     let bestow_resolves_as_creature_after_illegal_target = !entry.is_ability
         && all_targets_invalid
         && obj
@@ -781,11 +925,19 @@ pub(super) fn resolve_stack_entry_full(
         }
     }
 
+    // CR 702.140b: an illegally targeted mutating creature spell does not
+    // fizzle. It stops being a mutating creature spell and continues resolving
+    // as an ordinary creature spell.
+    let mutate_resolves_as_creature_after_illegal_target =
+        mutating_creature_spell && all_targets_invalid;
+
     // If the spell/ability had targets and ALL are now invalid, it fizzles.
-    // Bestow is the exception from CR 702.103e: it stops being bestowed and
-    // continues resolving as a creature spell.
+    // Bestow and Mutate are keyword-specific exceptions: each stops using its
+    // alternative permanent behavior and continues resolving as a creature.
     if !entry.targets.is_empty() && all_targets_invalid {
-        if !bestow_resolves_as_creature_after_illegal_target {
+        if !bestow_resolves_as_creature_after_illegal_target
+            && !mutate_resolves_as_creature_after_illegal_target
+        {
             // Spell fizzles - move to graveyard without executing effects
             if let Some(obj) = &obj
                 && obj.zone == Zone::Stack
@@ -810,6 +962,17 @@ pub(super) fn resolve_stack_entry_full(
     }
     if let Some(ability_index) = entry.ability_index {
         game.record_activated_ability_resolved(execution_source, ability_index);
+    }
+
+    if !bind_singular_active_player_choice(
+        game,
+        &mut ctx,
+        entry
+            .intervening_if
+            .as_ref()
+            .is_some_and(|condition| format!("{condition:?}").contains("Active")),
+    ) {
+        return Ok(());
     }
 
     // Check intervening-if condition at resolution time
@@ -858,6 +1021,7 @@ pub(super) fn resolve_stack_entry_full(
         .then(|| resolved_chapter_ability_event(game, &entry))
         .flatten();
 
+    let initial_subgame_depth = game.subgame_depth();
     let all_events = execute_resolution_program(
         game,
         &mut ctx,
@@ -867,6 +1031,18 @@ pub(super) fn resolve_stack_entry_full(
         entry.chosen_modes.as_deref(),
         &valid_target_assignments,
     )?;
+    if game.subgame_depth() > initial_subgame_depth {
+        return Ok(());
+    }
+    if game.turn_store.end_turn_procedure_pending
+        || game.turn_store.end_combat_phase_procedure_pending
+    {
+        // The ending procedure already handled the resolving stack object.
+        // Preserve its newly emitted events for the procedure's deferred
+        // trigger check and suppress ordinary post-resolution processing.
+        game.turn.priority_player = None;
+        return Ok(());
+    }
     if ctx.decision_maker.awaiting_choice() {
         return Ok(());
     }
@@ -917,6 +1093,51 @@ pub(super) fn resolve_stack_entry_full(
     // Move spell to appropriate zone after resolution
     if let Some(obj) = &obj {
         if obj.zone == Zone::Stack && obj.is_permanent() {
+            if let Some(target_id) = mutate_target.flatten() {
+                let options = vec![
+                    crate::decisions::SelectableOption::new(0, "Put the mutating spell on top")
+                        .with_object(entry.object_id),
+                    crate::decisions::SelectableOption::new(1, "Put the mutating spell on bottom")
+                        .with_object(target_id),
+                ];
+                let choice_context = crate::decisions::SelectOptionsContext::new(
+                    entry.controller,
+                    Some(entry.object_id),
+                    "Choose the order of the merged permanent",
+                    options,
+                    1,
+                    1,
+                );
+                let spell_on_top = decision_maker
+                    .decide_options(game, &choice_context)
+                    .into_iter()
+                    .next()
+                    .unwrap_or(0)
+                    == 0;
+                if decision_maker.awaiting_choice() {
+                    return Ok(());
+                }
+
+                if game
+                    .merge_mutating_creature_spell(entry.object_id, target_id, spell_on_top)
+                    .is_some()
+                {
+                    let event_provenance = game
+                        .provenance_graph_mut()
+                        .alloc_root_event(crate::events::EventKind::Mutated);
+                    let event = TriggerEvent::new_with_provenance(
+                        crate::events::other::MutatedEvent::new(target_id, entry.controller),
+                        event_provenance,
+                    );
+                    if let Some(ref mut tq) = trigger_queue {
+                        queue_triggers_from_event(game, tq, event, false);
+                    } else {
+                        game.record_turn_history_event(&event);
+                    }
+                    return Ok(());
+                }
+            }
+
             let chosen_player = entry
                 .chosen_player
                 .or_else(|| game.chosen_player(entry.object_id));
@@ -1439,6 +1660,7 @@ pub(super) fn resolve_stack_entry_full(
                             x_value: entry.x_value,
                             not_before_turn: None,
                             expires_at_turn: None,
+                            expires_before_controller_turn_after: None,
                             expires_at_end_of_combat: false,
                             target_objects: vec![exiled_id],
                             ability_source: None,
@@ -2221,6 +2443,133 @@ mod tests {
             alice_life_before - 19,
             "Backdraft should still deal half of Blasphemous Act's 39 damage after the player choice"
         );
+    }
+
+    #[test]
+    fn shared_turn_resolution_asks_the_ability_controller_for_singular_active_player() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Diana".into(),
+            ],
+            20,
+        );
+        let [alice, bob, charlie, diana] = [
+            PlayerId::from_index(0),
+            PlayerId::from_index(1),
+            PlayerId::from_index(2),
+            PlayerId::from_index(3),
+        ];
+        game.set_teams(vec![vec![alice, bob], vec![charlie, diana]])
+            .expect("teams");
+        game.enable_shared_team_turns().expect("shared turns");
+        let source = game.new_object_id();
+        let program =
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::gain_life_player(
+                1,
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Active),
+            )]);
+        let mut dm = MatchingOptionDecisionMaker::new("Alice");
+        let mut ctx = ExecutionContext::new(source, charlie, &mut dm);
+
+        execute_resolution_program(&mut game, &mut ctx, charlie, source, &program, None, &[])
+            .expect("resolution");
+
+        assert_eq!(game.player(alice).expect("Alice").life, 21);
+        assert_eq!(game.player(bob).expect("Bob").life, 20);
+    }
+
+    #[test]
+    fn shared_combat_resolution_selects_singular_attacking_and_defending_players() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Diana".into(),
+            ],
+            20,
+        );
+        let [alice, bob, charlie, diana] = [
+            PlayerId::from_index(0),
+            PlayerId::from_index(1),
+            PlayerId::from_index(2),
+            PlayerId::from_index(3),
+        ];
+        game.set_teams(vec![vec![alice, bob], vec![charlie, diana]])
+            .expect("teams");
+        game.enable_shared_team_turns().expect("shared turns");
+        let source = game.new_object_id();
+
+        let creature_card = CardBuilder::new(CardId::from_raw(805_010), "Team Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let charlie_creature =
+            game.create_object_from_card(&creature_card, charlie, Zone::Battlefield);
+        let diana_creature = game.create_object_from_card(&creature_card, diana, Zone::Battlefield);
+        let target_spec = crate::target::ChooseSpec::Object(
+            crate::target::ObjectFilter::creature()
+                .controlled_by(crate::target::PlayerFilter::Defending),
+        );
+        let view = crate::derived_view::DerivedGameView::new(&game);
+        let legal_targets =
+            crate::targeting::compute_legal_targets_with_tagged_objects_combat_context_with_view(
+                &game,
+                &target_spec,
+                alice,
+                Some(source),
+                None,
+                None,
+                Some((charlie, alice)),
+                &view,
+            );
+        assert!(legal_targets.contains(&crate::game_state::Target::Object(charlie_creature)));
+        assert!(legal_targets.contains(&crate::game_state::Target::Object(diana_creature)));
+
+        let attacking_program =
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::gain_life_player(
+                1,
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Attacking),
+            )]);
+        let mut attacking_dm = MatchingOptionDecisionMaker::new("Bob");
+        let mut attacking_ctx =
+            ExecutionContext::new(source, charlie, &mut attacking_dm).with_attacking_player(alice);
+        execute_resolution_program(
+            &mut game,
+            &mut attacking_ctx,
+            charlie,
+            source,
+            &attacking_program,
+            None,
+            &[],
+        )
+        .expect("attacking-player resolution");
+
+        let defending_program =
+            crate::resolution::ResolutionProgram::from_effects(vec![Effect::gain_life_player(
+                1,
+                crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Defending),
+            )]);
+        let mut defending_dm = MatchingOptionDecisionMaker::new("Diana");
+        let mut defending_ctx =
+            ExecutionContext::new(source, alice, &mut defending_dm).with_defending_player(charlie);
+        execute_resolution_program(
+            &mut game,
+            &mut defending_ctx,
+            alice,
+            source,
+            &defending_program,
+            None,
+            &[],
+        )
+        .expect("defending-player resolution");
+
+        assert_eq!(game.player(alice).expect("Alice").life, 20);
+        assert_eq!(game.player(bob).expect("Bob").life, 21);
+        assert_eq!(game.player(charlie).expect("Charlie").life, 20);
+        assert_eq!(game.player(diana).expect("Diana").life, 21);
     }
 
     #[test]

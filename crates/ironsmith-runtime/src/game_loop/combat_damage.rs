@@ -449,12 +449,24 @@ fn plan_general_combat_damage(
         let cause = combat_damage_cause(game, attacker_id);
 
         if !is_blocked(combat, attacker_id) {
+            if let AttackTarget::Player(player) = attacker_info.target
+                && !game
+                    .player(player)
+                    .is_some_and(|candidate| candidate.is_in_game())
+            {
+                // CR 800.4e: combat damage is not assigned to a player who
+                // has left the game.
+                continue;
+            }
             let (target, rules_target) = match attacker_info.target {
                 AttackTarget::Player(player) => (
                     EventDamageTarget::Player(player),
                     DamageTarget::Player(player),
                 ),
                 AttackTarget::Planeswalker(object) => {
+                    (EventDamageTarget::Object(object), DamageTarget::Permanent)
+                }
+                AttackTarget::Battle(object) => {
                     (EventDamageTarget::Object(object), DamageTarget::Permanent)
                 }
             };
@@ -536,6 +548,9 @@ fn plan_general_combat_damage(
         }
         if excess > 0
             && let AttackTarget::Player(player) = attacker_info.target
+            && game
+                .player(player)
+                .is_some_and(|candidate| candidate.is_in_game())
         {
             planned.push(PlannedCombatDamage {
                 source: attacker_id,
@@ -821,6 +836,12 @@ fn plan_unblocked_player_damage(
             unreachable!("fast path only accepts attackers targeting players");
         };
         let target = *target;
+        if !game
+            .player(target)
+            .is_some_and(|player| player.is_in_game())
+        {
+            continue;
+        }
         let Some(attacker) = game.object(attacker_id) else {
             continue;
         };
@@ -1124,10 +1145,8 @@ pub(super) fn apply_combat_lifelink(
         controller,
         total_damage_dealt,
     );
-    if life_to_gain > 0
-        && let Some(player) = game.player_mut(controller)
-    {
-        player.gain_life(life_to_gain);
+    if life_to_gain > 0 {
+        game.gain_life(controller, life_to_gain);
     }
 }
 
@@ -1448,16 +1467,20 @@ pub(super) fn deal_damage_to_blockers(
     // Calculate excess damage result
     let excess_damage_result = if excess > 0 {
         if let Some(AttackTarget::Player(player_id)) = attack_target {
-            Some((
-                player_id,
-                calculate_damage_with_game(
-                    game,
-                    attacker,
-                    DamageTarget::Player(player_id),
-                    excess,
-                    true,
-                ),
-            ))
+            game.player(player_id)
+                .is_some_and(|player| player.is_in_game())
+                .then(|| {
+                    (
+                        player_id,
+                        calculate_damage_with_game(
+                            game,
+                            attacker,
+                            DamageTarget::Player(player_id),
+                            excess,
+                            true,
+                        ),
+                    )
+                })
         } else {
             None
         }
@@ -1512,6 +1535,12 @@ pub(super) fn deal_damage_to_defender(
 
     match target {
         AttackTarget::Player(player_id) => {
+            if !game
+                .player(*player_id)
+                .is_some_and(|player| player.is_in_game())
+            {
+                return None;
+            }
             let damage_result = calculate_damage_with_game(
                 game,
                 attacker,
@@ -1533,7 +1562,7 @@ pub(super) fn deal_damage_to_defender(
                 result: damage_result,
             })
         }
-        AttackTarget::Planeswalker(pw_id) => {
+        AttackTarget::Planeswalker(pw_id) | AttackTarget::Battle(pw_id) => {
             use crate::events::DamageTarget as EventDamageTarget;
             use crate::events::processing::process_damage_assignments_with_event;
 
@@ -1609,7 +1638,7 @@ pub(super) fn deal_damage_to_defender(
     }
 }
 
-/// Apply damage to a permanent (creature or planeswalker).
+/// Apply damage to a permanent (creature, planeswalker, or battle).
 ///
 /// This processes the damage through replacement/prevention effects before applying.
 #[derive(Debug, Clone, Copy)]
@@ -2464,5 +2493,27 @@ mod tests {
         assert_eq!(attacker_events, vec![(DamageEventTarget::Object(first), 4)]);
         assert_eq!(game.damage_on(first), 4);
         assert_eq!(game.damage_on(second), 0);
+    }
+
+    #[test]
+    fn multiplayer_800_4e_assigns_no_combat_damage_to_player_who_left() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_creature(&mut game, "Late Attacker", 4, 4, alice, vec![]);
+        game.player_mut(bob).expect("Bob").has_left_game = true;
+        let combat = CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        };
+
+        let events = try_execute_combat_damage_step(&mut game, &combat, false)
+            .expect("a departed defender is simply omitted from assignment");
+
+        assert!(events.is_empty());
+        assert_eq!(game.player(bob).expect("Bob").life, 20);
     }
 }

@@ -43,6 +43,10 @@ pub(crate) struct TargetPlayerChoiceShape<'a> {
     pub(crate) actor: TargetPlayerChoiceActor,
     pub(crate) count: ChoiceCount,
     pub(crate) filter_tokens: &'a [OwnedLexToken],
+    /// The same clause beginning at its `choose`/`chooses` verb. This lets the
+    /// shared object-choice grammar retain trailing dynamic counts and chosen-
+    /// set constraints without duplicating those rules for player subjects.
+    pub(crate) object_choice_tokens: &'a [OwnedLexToken],
     pub(crate) filter_facts: ChoiceObjectFilterFacts,
     pub(crate) filter_is_player_target: bool,
 }
@@ -56,6 +60,7 @@ pub(crate) fn parse_target_player_choice_tokens(
         Err(_) => return Ok(None),
     };
     let consumed = tokens.len().saturating_sub(input.len());
+    let object_choice_tokens = tokens.get(consumed.saturating_sub(1)..).unwrap_or_default();
     let body = trim_punctuation_edges(tokens.get(consumed..).unwrap_or_default());
     if body.is_empty() {
         return Err(ChoiceObjectClauseSyntaxError::MissingObject);
@@ -79,6 +84,7 @@ pub(crate) fn parse_target_player_choice_tokens(
         actor,
         count,
         filter_tokens,
+        object_choice_tokens,
         filter_facts: parse_choice_object_filter_facts_words(&filter_words),
         filter_is_player_target: parse_player_target_prefix_words(&filter_words),
     }))

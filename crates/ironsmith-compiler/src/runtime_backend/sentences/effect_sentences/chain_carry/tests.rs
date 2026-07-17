@@ -1,10 +1,11 @@
 use crate::ability::AbilityKind;
 use crate::cards::builders::{
     CardDefinitionBuilder, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbSubjectAst,
 };
 use crate::effect::Value;
 use crate::ids::CardId;
-use crate::types::CardType;
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
 use super::super::super::lexer::lex_line;
@@ -14,6 +15,104 @@ use super::{
     parse_effect_clause_with_trailing_if_lexed, parse_effect_sentence_lexed,
     parse_leading_player_may_lexed, starts_like_create_fragment_lexed,
 };
+
+#[test]
+fn duration_scoped_combat_damage_trigger_reaches_the_trigger_parser_intact() {
+    for (text, expected_effect, expected_either_surface) in [
+        (
+            "Until your next turn, whenever either of those creatures deals combat damage, you draw a card.",
+            "Draw",
+            true,
+        ),
+        (
+            "Until your next turn, whenever a creature deals combat damage to this, destroy that creature.",
+            "Destroy",
+            false,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).expect("duration-scoped damage trigger should lex");
+        let effects = parse_effect_chain_lexed(&tokens)
+            .expect("the duration prefix must not expose combat damage as an effect clause");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("DelayedTriggerForDuration"), "{debug}");
+        assert!(debug.contains("DealsCombatDamage"), "{debug}");
+        assert!(debug.contains("YourNextTurn"), "{debug}");
+        assert!(debug.contains(expected_effect), "{debug}");
+        assert_eq!(
+            debug.contains("either_of_watched_objects: true"),
+            expected_either_surface,
+            "{debug}"
+        );
+    }
+}
+
+#[test]
+fn duration_scoped_becomes_tapped_trigger_reaches_the_trigger_parser_intact() {
+    let tokens = lex_line(
+        "Until your next turn, whenever a creature becomes tapped, destroy it.",
+        0,
+    )
+    .expect("duration-scoped becomes-tapped trigger should lex");
+    let effects = parse_effect_chain_lexed(&tokens)
+        .expect("the duration prefix must not expose 'becomes tapped' as an effect clause");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("DelayedTriggerForDuration"), "{debug}");
+    assert!(debug.contains("PermanentBecomesTapped"), "{debug}");
+    assert!(debug.contains("YourNextTurn"), "{debug}");
+    assert!(debug.contains("Destroy"), "{debug}");
+}
+
+#[test]
+fn duration_scoped_delayed_triggers_compile_for_the_three_real_cards() {
+    let dont_move = CardDefinitionBuilder::new(CardId::new(), "Don't Move")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy all tapped creatures. Until your next turn, whenever a creature becomes tapped, destroy it.",
+        )
+        .expect("Don't Move should compile through the delayed-trigger runtime effect");
+    let dont_move_debug = format!("{dont_move:#?}");
+    assert!(
+        dont_move_debug.contains("ScheduleDelayedTriggerEffect")
+            && dont_move_debug.contains("PermanentBecomesTapped")
+            && dont_move_debug.contains("UntilControllerNextTurn")
+            && dont_move_debug.contains("DestroyEffect"),
+        "{dont_move_debug}"
+    );
+
+    let tamiyo = CardDefinitionBuilder::new(CardId::new(), "Tamiyo, Field Researcher")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "+1: Choose up to two target creatures. Until your next turn, whenever either of those creatures deals combat damage, you draw a card.\n−2: Tap up to two target nonland permanents. They don't untap during their controller's next untap step.\n−7: Draw three cards. You get an emblem with \"You may cast spells from your hand without paying their mana costs.\"",
+        )
+        .expect("Tamiyo should compile through the delayed-trigger runtime effect");
+    let tamiyo_debug = format!("{tamiyo:#?}");
+    assert!(
+        tamiyo_debug.contains("ScheduleDelayedTriggerEffect")
+            && tamiyo_debug.contains("DealsCombatDamage")
+            && tamiyo_debug.contains("UntilControllerNextTurn")
+            && tamiyo_debug.contains("either_of_watched_objects: true")
+            && tamiyo_debug.contains("watch_all_object_targets: true")
+            && tamiyo_debug.contains("DrawCardsEffect"),
+        "{tamiyo_debug}"
+    );
+
+    let vraska = CardDefinitionBuilder::new(CardId::new(), "Vraska the Unseen")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "+1: Until your next turn, whenever a creature deals combat damage to Vraska, destroy that creature.\n−3: Destroy target nonland permanent.\n−7: Create three 1/1 black Assassin creature tokens with \"Whenever this token deals combat damage to a player, that player loses the game.\"",
+        )
+        .expect("Vraska should compile through the delayed-trigger runtime effect");
+    let vraska_debug = format!("{vraska:#?}");
+    assert!(
+        vraska_debug.contains("ScheduleDelayedTriggerEffect")
+            && vraska_debug.contains("DealsCombatDamageTo")
+            && vraska_debug.contains("UntilControllerNextTurn")
+            && vraska_debug.contains("watch_ability_source: true")
+            && vraska_debug.contains("DestroyEffect"),
+        "{vraska_debug}"
+    );
+}
 
 #[test]
 fn effect_sentence_inner_preserves_coordinated_if_result_body() {
@@ -543,6 +642,127 @@ fn source_damage_then_keyword_grant_keeps_coordinated_surface() {
 }
 
 #[test]
+fn source_damage_then_tagged_keyword_loss_keeps_both_coordinated_actions() {
+    let tokens = lex_line(
+        "This creature deals 2 damage to target creature with flying and that creature loses flying until end of turn.",
+        0,
+    )
+    .expect("source damage-and-loss fixture should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("source damage-and-loss fixture should parse");
+
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+            result_conjunction: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected coordinated source damage-and-loss clause, got {effects:#?}");
+    };
+    assert_eq!(coordinated.len(), 2, "{coordinated:#?}");
+    let debug = format!("{coordinated:#?}");
+    assert!(debug.contains("DealDamage"), "{debug}");
+    assert!(debug.contains("RemoveAbilitiesFromTarget"), "{debug}");
+    assert!(debug.contains("Flying"), "{debug}");
+}
+
+#[test]
+fn trailing_duration_applies_to_both_gain_and_loss_arms() {
+    let tokens = lex_line(
+        "This creature gains flying and loses trample until end of turn.",
+        0,
+    )
+    .expect("gain-and-loss duration fixture should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("gain-and-loss duration fixture should parse");
+
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+            result_conjunction: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected coordinated gain-and-loss clause, got {effects:#?}");
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesToTarget {
+                    duration: first_duration,
+                    ..
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                    duration: second_duration,
+                    ..
+                },
+            ..
+        }),
+    ] = coordinated.as_slice()
+    else {
+        panic!("expected source gain followed by source loss, got {coordinated:#?}");
+    };
+    assert_eq!(first_duration, &crate::effect::Until::EndOfTurn);
+    assert_eq!(second_duration, &crate::effect::Until::EndOfTurn);
+}
+
+#[test]
+fn trailing_duration_applies_to_ability_loss_before_type_change() {
+    let tokens = lex_line(
+        "This creature loses defender and becomes a Human until end of turn.",
+        0,
+    )
+    .expect("loss-and-type duration fixture should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("loss-and-type duration fixture should parse");
+
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: false,
+            result_conjunction: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected coordinated loss-and-type clause, got {effects:#?}");
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+                    duration: first_duration,
+                    ..
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                (SubjectVerbActionAst::SetCreatureSubtypes {
+                    duration: second_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::AddSubtypes {
+                    duration: second_duration,
+                    ..
+                }),
+            ..
+        }),
+    ] = coordinated.as_slice()
+    else {
+        panic!("expected source loss followed by source type change, got {coordinated:#?}");
+    };
+    assert_eq!(first_duration, &crate::effect::Until::EndOfTurn);
+    assert_eq!(second_duration, &crate::effect::Until::EndOfTurn);
+}
+
+#[test]
 fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
     let tokens = lex_line(
         "Tap target creature and it doesn't untap during its controller's next untap step.",
@@ -687,6 +907,127 @@ fn discard_up_to_two_then_draw_binds_the_actual_discard_outcome() {
             metric: ironsmith_core::EffectMetric::Count,
         }
     ));
+}
+
+#[test]
+fn targeted_discard_for_each_clauses_keep_dynamic_counts() {
+    for (card, text) in [
+        (
+            "Mind Sludge",
+            "Target player discards a card for each Swamp you control.",
+        ),
+        (
+            "Shrine of Limitless Power",
+            "Target player discards a card for each charge counter on this artifact.",
+        ),
+        (
+            "Sink into Takenuma",
+            "Target player discards a card for each Swamp returned this way.",
+        ),
+    ] {
+        let tokens = lex_line(text, 0).expect("targeted discard clause should lex");
+        let effects = parse_effect_chain_lexed(&tokens)
+            .unwrap_or_else(|error| panic!("{card} discard clause should parse: {error}"));
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject:
+                    SubjectVerbSubjectAst {
+                        player: PlayerAst::Target,
+                        ..
+                    },
+                action: SubjectVerbActionAst::Discard { count, .. },
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("{card} should lower to one targeted discard effect: {effects:#?}");
+        };
+
+        assert_ne!(
+            count,
+            &Value::Fixed(1),
+            "{card} must keep its dynamic for-each discard count"
+        );
+    }
+}
+
+#[test]
+fn congregate_targeted_gain_for_each_keeps_dynamic_amount() {
+    let tokens = lex_line(
+        "Target player gains 2 life for each creature on the battlefield.",
+        0,
+    )
+    .expect("Congregate life-gain clause should lex");
+    let effects = parse_effect_chain_lexed(&tokens)
+        .expect("Congregate life-gain clause should parse through the gain-life family");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                SubjectVerbSubjectAst {
+                    player: PlayerAst::Target,
+                    ..
+                },
+            action: SubjectVerbActionAst::GainLife { amount },
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("Congregate should lower to one targeted life-gain effect: {effects:#?}");
+    };
+    let Value::CountScaled(filter, 2) = amount.unhinted() else {
+        panic!("Congregate must scale a creature count by two: {amount:#?}");
+    };
+
+    assert!(
+        filter.card_types.contains(&CardType::Creature),
+        "Congregate must count creatures: {filter:#?}"
+    );
+    assert_eq!(filter.zone, Some(Zone::Battlefield), "{filter:#?}");
+}
+
+#[test]
+fn devouring_greed_targeted_loss_keeps_base_plus_scaled_sacrifice_count() {
+    let tokens = lex_line(
+        "Target player loses 2 life plus 2 life for each Spirit sacrificed this way.",
+        0,
+    )
+    .expect("Devouring Greed life-loss clause should lex");
+    let effects = parse_effect_chain_lexed(&tokens)
+        .expect("Devouring Greed life-loss clause should parse through the lose-life family");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                SubjectVerbSubjectAst {
+                    player: PlayerAst::Target,
+                    ..
+                },
+            action: SubjectVerbActionAst::LoseLife { amount },
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("Devouring Greed should lower to one targeted life-loss effect: {effects:#?}");
+    };
+    let Value::Add(base, addend) = amount.unhinted() else {
+        panic!("Devouring Greed must retain its base and dynamic terms: {amount:#?}");
+    };
+    assert_eq!(base.unhinted(), &Value::Fixed(2), "{amount:#?}");
+    let Value::Scaled(metric, 2) = addend.unhinted() else {
+        panic!("Devouring Greed dynamic term must be doubled: {amount:#?}");
+    };
+    let Value::PendingPriorEffectMetric(query) = metric.unhinted() else {
+        panic!("Devouring Greed must count the prior sacrifice result: {amount:#?}");
+    };
+
+    assert_eq!(
+        query.action,
+        Some(ironsmith_core::PriorEffectAction::Sacrificed),
+        "{query:#?}"
+    );
+    assert!(
+        query
+            .filter
+            .as_ref()
+            .is_some_and(|filter| filter.subtypes.contains(&Subtype::Spirit)),
+        "Devouring Greed must count sacrificed Spirits: {query:#?}"
+    );
 }
 
 #[test]
@@ -1205,7 +1546,7 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
     assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
     assert!(matches!(
         count_value.unhinted(),
-        Value::CountersOnSource(crate::object::CounterType::Named(name)) if name == "despair"
+        Value::CountersOnSource(crate::object::CounterType::Named(name)) if *name == "despair"
     ));
     assert!(
         !filter.any_of.iter().any(|arm| {
@@ -1301,5 +1642,138 @@ fn quantified_subject_tail_stays_nested_after_prior_actions() {
             ))
         ),
         "expected a typed opponent fanout after the copy actions, got {effects:#?}"
+    );
+}
+
+#[test]
+fn opportunistic_dragon_keeps_source_lifetime_target_effects_in_its_trigger() {
+    let clause = lex_line(
+        "For as long as this creature remains on the battlefield, gain control of that permanent, it loses all abilities, and it can't attack or block.",
+        0,
+    )
+    .expect("source-lifetime clause should lex");
+    let clause_effects = parse_effect_chain_lexed(&clause)
+        .expect("source-lifetime clause should parse as a resolution chain");
+    assert!(
+        format!("{clause_effects:#?}").contains("ThisLeavesTheBattlefield"),
+        "{clause_effects:#?}"
+    );
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Opportunistic Dragon")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flying\nWhen this creature enters, choose target Human or artifact an opponent controls. For as long as this creature remains on the battlefield, gain control of that permanent, it loses all abilities, and it can't attack or block.",
+        )
+        .expect("Opportunistic Dragon source-lifetime trigger should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ChangeControllerToEffectController"),
+        "{debug}"
+    );
+    assert!(debug.contains("ThisLeavesTheBattlefield"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+    assert!(
+        debug.contains("BeBlocked") || debug.contains("Block"),
+        "{debug}"
+    );
+    assert!(debug.contains("Attack"), "{debug}");
+    assert!(
+        !debug.contains("RemoveAllAbilitiesForFilter"),
+        "targeted loss must not become a global static ability: {debug}"
+    );
+}
+
+#[test]
+fn wondrous_wasp_keeps_source_lifetime_ability_loss_on_the_tapped_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Wondrous Wasp")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flash\nFlying\nWasp's Sting — When The Wondrous Wasp enters, tap up to one target creature. It loses all abilities for as long as The Wondrous Wasp remains on the battlefield.",
+        )
+        .expect("The Wondrous Wasp source-lifetime trigger should parse");
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("TapEffect"), "{debug}");
+    assert!(debug.contains("ThisLeavesTheBattlefield"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+    assert!(
+        !debug.contains("RemoveAllAbilitiesForFilter"),
+        "targeted loss must not become a global static ability: {debug}"
+    );
+}
+
+#[test]
+fn base_pt_where_x_full_chains_keep_duration_and_binding_together() {
+    for (card, text, expected_value) in [
+        (
+            "Candlekeep Inspiration",
+            "Until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards you own in exile and in your graveyard that are instant cards, are sorcery cards, and/or have an Adventure.",
+            "Adventure",
+        ),
+        (
+            "Jolrael, Mwonvuli Recluse",
+            "Until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards in your hand.",
+            "CardsInHand",
+        ),
+    ] {
+        let tokens = lex_line(text, 0).expect("base-P/T where-X chain should lex");
+        let effects = parse_effect_chain_lexed(&tokens)
+            .unwrap_or_else(|error| panic!("{card} full effect chain should parse: {error}"));
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::SetBasePowerToughness {
+                        power,
+                        toughness,
+                        duration,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("{card} should lower to one typed base-P/T effect: {effects:#?}");
+        };
+
+        assert_eq!(duration, &crate::effect::Until::EndOfTurn, "{effects:#?}");
+        assert_eq!(power, toughness, "{effects:#?}");
+        assert!(!matches!(power.unhinted(), Value::X), "{effects:#?}");
+        assert!(
+            format!("{power:#?}").contains(expected_value),
+            "{card} should retain its authored where-X value: {effects:#?}"
+        );
+    }
+}
+
+#[test]
+fn base_pt_where_x_full_cards_compile_candlekeep_and_jolrael() {
+    let candlekeep = CardDefinitionBuilder::new(CardId::new(), "Candlekeep Inspiration")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards you own in exile and in your graveyard that are instant cards, are sorcery cards, and/or have an Adventure.",
+        )
+        .expect("Candlekeep Inspiration's complete rules text should compile");
+    let candlekeep_debug = format!("{candlekeep:#?}");
+    assert!(
+        candlekeep_debug.contains("ApplyContinuousEffect")
+            && candlekeep_debug.contains("resolve_set_pt_values_at_resolution: true")
+            && candlekeep_debug.contains("Adventure")
+            && candlekeep_debug.contains("Graveyard")
+            && candlekeep_debug.contains("Exile"),
+        "Candlekeep should keep its typed multi-zone where-X value: {candlekeep_debug}"
+    );
+
+    let jolrael = CardDefinitionBuilder::new(CardId::new(), "Jolrael, Mwonvuli Recluse")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you draw your second card each turn, create a 2/2 green Cat creature token.\n{4}{G}{G}: Until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards in your hand.",
+        )
+        .expect("Jolrael, Mwonvuli Recluse's complete rules text should compile");
+    let jolrael_debug = format!("{jolrael:#?}");
+    assert!(
+        jolrael_debug.contains("ApplyContinuousEffect")
+            && jolrael_debug.contains("resolve_set_pt_values_at_resolution: true")
+            && jolrael_debug.contains("Hand")
+            && jolrael_debug.contains("WhereXIs"),
+        "Jolrael should keep its typed cards-in-hand where-X value: {jolrael_debug}"
     );
 }

@@ -10,6 +10,7 @@ use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 #[derive(Debug, Clone)]
 pub(crate) struct JointDrawShape<'a> {
     pub(crate) other_player: PlayerAst,
+    pub(crate) another_target_player: bool,
     pub(crate) amount_tokens: &'a [OwnedLexToken],
 }
 
@@ -38,28 +39,34 @@ pub(crate) struct AttackingPlayerDrawLoseShape<'a> {
     pub(crate) lose_tokens: &'a [OwnedLexToken],
 }
 
-fn player_object<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
+fn player_object<'a>(input: &mut LexStream<'a>) -> WResult<(PlayerAst, bool)> {
     alt((
+        (
+            primitives::kw("another"),
+            primitives::kw("target"),
+            alt((primitives::kw("player"), primitives::kw("players"))),
+        )
+            .value((PlayerAst::Target, true)),
         (
             primitives::kw("target"),
             alt((primitives::kw("opponent"), primitives::kw("opponents"))),
         )
-            .value(PlayerAst::TargetOpponent),
+            .value((PlayerAst::TargetOpponent, false)),
         (
             primitives::kw("target"),
             alt((primitives::kw("player"), primitives::kw("players"))),
         )
-            .value(PlayerAst::Target),
+            .value((PlayerAst::Target, false)),
         (
             primitives::kw("that"),
             alt((primitives::kw("player"), primitives::kw("players"))),
         )
-            .value(PlayerAst::That),
+            .value((PlayerAst::That, false)),
     ))
     .parse_next(input)
 }
 
-fn joint_prefix<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
+fn joint_prefix<'a>(input: &mut LexStream<'a>) -> WResult<(PlayerAst, bool)> {
     primitives::phrase(&["you", "and"]).parse_next(input)?;
     let player = player_object.parse_next(input)?;
     opt(primitives::kw("each")).parse_next(input)?;
@@ -74,18 +81,19 @@ fn remainder<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
 }
 
 fn joint_draw<'a>(input: &mut LexStream<'a>) -> WResult<JointDrawShape<'a>> {
-    let other_player = joint_prefix.parse_next(input)?;
+    let (other_player, another_target_player) = joint_prefix.parse_next(input)?;
     alt((primitives::kw("draw"), primitives::kw("draws"))).parse_next(input)?;
     let amount_tokens = remainder.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(JointDrawShape {
         other_player,
+        another_target_player,
         amount_tokens,
     })
 }
 
 fn joint_life<'a>(input: &mut LexStream<'a>) -> WResult<JointLifeShape<'a>> {
-    let other_player = joint_prefix.parse_next(input)?;
+    let (other_player, _) = joint_prefix.parse_next(input)?;
     let gains = alt((
         alt((primitives::kw("gain"), primitives::kw("gains"))).value(true),
         alt((primitives::kw("lose"), primitives::kw("loses"))).value(false),
@@ -101,7 +109,7 @@ fn joint_life<'a>(input: &mut LexStream<'a>) -> WResult<JointLifeShape<'a>> {
 }
 
 fn joint_create<'a>(input: &mut LexStream<'a>) -> WResult<JointCreateShape<'a>> {
-    let other_player = joint_prefix.parse_next(input)?;
+    let (other_player, _) = joint_prefix.parse_next(input)?;
     let effect_tokens = (
         alt((primitives::kw("create"), primitives::kw("creates"))),
         remainder,
@@ -116,7 +124,7 @@ fn joint_create<'a>(input: &mut LexStream<'a>) -> WResult<JointCreateShape<'a>> 
 }
 
 fn joint_sacrifice<'a>(input: &mut LexStream<'a>) -> WResult<JointSacrificeShape<'a>> {
-    let other_player = joint_prefix.parse_next(input)?;
+    let (other_player, _) = joint_prefix.parse_next(input)?;
     alt((primitives::kw("sacrifice"), primitives::kw("sacrifices"))).parse_next(input)?;
     let object_tokens = remainder.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;

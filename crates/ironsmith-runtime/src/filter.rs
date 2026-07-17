@@ -23,7 +23,7 @@ use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
     AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectFilterUnionConnective,
     ObjectFilterUnionSurface, ObjectRef, ParityRequirement, PlayerFilter, PowerToughnessRelation,
-    PtReference, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
+    PtReference, SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
     TaggedOpbjectRelation, TargetabilityConstraint,
 };
 
@@ -666,7 +666,8 @@ fn tagged_constraint_matches_subject(
     game: &GameState,
 ) -> bool {
     match relation {
-        TaggedOpbjectRelation::IsTaggedObject => tagged_snapshots
+        TaggedOpbjectRelation::IsTaggedObject
+        | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.object_id == subject.subject_object_id()),
         TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SharesPermanentType => {
@@ -795,6 +796,10 @@ pub struct FilterContext {
     /// The source object of the ability
     pub source: Option<ObjectId>,
 
+    /// Last known source characteristics when the source left its zone while
+    /// paying a cost or during resolution.
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+
     /// The player casting the spell currently being evaluated, if any.
     pub caster: Option<PlayerId>,
 
@@ -807,11 +812,21 @@ pub struct FilterContext {
     /// Players who are teammates of "you" (for team games)
     pub teammates: Vec<PlayerId>,
 
+    /// Frozen CR 801.2c membership for this source/controller. `None` means
+    /// unlimited range or an exempt Planechase source.
+    pub players_in_range: Option<Vec<PlayerId>>,
+
     /// The defending player (in combat)
     pub defending_player: Option<PlayerId>,
 
+    /// Candidate defending-team players before CR 805.10e selects one.
+    pub defending_players: Vec<PlayerId>,
+
     /// The attacking player (in combat)
     pub attacking_player: Option<PlayerId>,
+
+    /// Candidate attacking-team players before CR 805.10c selects one.
+    pub attacking_players: Vec<PlayerId>,
 
     /// Commander IDs controlled by "you" (for Commander format)
     pub your_commanders: Vec<ObjectId>,
@@ -858,6 +873,14 @@ impl FilterContext {
     /// Set the source object.
     pub fn with_source(mut self, source: ObjectId) -> Self {
         self.source = Some(source);
+        self
+    }
+
+    pub fn with_source_snapshot(
+        mut self,
+        snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) -> Self {
+        self.source_snapshot = snapshot;
         self
     }
 
@@ -1359,13 +1382,17 @@ fn resolve_filter_comparison_rhs_value(
         },
         Value::ManaValueOf(spec) => match spec.base() {
             ChooseSpec::Source => {
-                let source = game.object(ctx.source?)?;
-                Some(
-                    source
-                        .mana_cost
-                        .as_ref()
-                        .map_or(0, |cost| cost.mana_value() as i32),
-                )
+                let mana_value = game
+                    .object(ctx.source?)
+                    .and_then(|source| source.mana_cost.as_ref())
+                    .map(|cost| cost.mana_value() as i32)
+                    .or_else(|| {
+                        ctx.source_snapshot
+                            .as_ref()
+                            .and_then(|snapshot| snapshot.mana_cost.as_ref())
+                            .map(|cost| cost.mana_value() as i32)
+                    });
+                Some(mana_value.unwrap_or(0))
             }
             ChooseSpec::Tagged(tag) => {
                 let snapshot = ctx.tagged_objects.get(tag)?.first()?;
@@ -1551,6 +1578,13 @@ impl PlayerFilterExt for PlayerFilter {
     /// Note: Some variants (EachOpponent, EachPlayer, Target, ControllerOf, OwnerOf, IteratedPlayer)
     /// are resolved at runtime during effect execution, not through this method.
     fn matches_player(&self, player: PlayerId, ctx: &FilterContext) -> bool {
+        if ctx
+            .players_in_range
+            .as_ref()
+            .is_some_and(|players| !players.contains(&player))
+        {
+            return false;
+        }
         match self {
             PlayerFilter::Any => true,
 
@@ -1564,9 +1598,21 @@ impl PlayerFilterExt for PlayerFilter {
 
             PlayerFilter::Active => ctx.active_player.is_some_and(|ap| player == ap),
 
-            PlayerFilter::Defending => ctx.defending_player.is_some_and(|dp| player == dp),
+            PlayerFilter::Defending => {
+                if ctx.defending_players.is_empty() {
+                    ctx.defending_player.is_some_and(|dp| player == dp)
+                } else {
+                    ctx.defending_players.contains(&player)
+                }
+            }
 
-            PlayerFilter::Attacking => ctx.attacking_player.is_some_and(|ap| player == ap),
+            PlayerFilter::Attacking => {
+                if ctx.attacking_players.is_empty() {
+                    ctx.attacking_player.is_some_and(|ap| player == ap)
+                } else {
+                    ctx.attacking_players.contains(&player)
+                }
+            }
 
             PlayerFilter::DamagedPlayer => ctx
                 .tagged_players
@@ -1584,6 +1630,7 @@ impl PlayerFilterExt for PlayerFilter {
                 base.matches_player(player, ctx)
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
+            PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
             PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -1661,6 +1708,35 @@ pub(crate) fn player_filter_matches_game(
             let your_life = game.player(you).map(|p| p.life).unwrap_or(0);
             candidate_life > your_life
         }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: reference_filter,
+            filter: object_filter,
+        } => {
+            if ctx
+                .players_in_range
+                .as_ref()
+                .is_some_and(|players| !players.contains(&player))
+            {
+                return false;
+            }
+
+            game.players
+                .iter()
+                .filter(|candidate| candidate.is_in_game())
+                .filter(|candidate| {
+                    player_filter_matches_game(reference_filter, candidate.id, game, ctx)
+                })
+                .any(|reference| {
+                    game.are_opponents(reference.id, player)
+                        && controlled_matching_object_count(game, player, object_filter, ctx)
+                            > controlled_matching_object_count(
+                                game,
+                                reference.id,
+                                object_filter,
+                                ctx,
+                            )
+                })
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -1682,6 +1758,39 @@ pub(crate) fn player_filter_matches_game(
         }
         other => other.matches_player(player, ctx),
     }
+}
+
+fn controlled_matching_object_count(
+    game: &crate::game_state::GameState,
+    controller: PlayerId,
+    filter: &ObjectFilter,
+    ctx: &FilterContext,
+) -> usize {
+    let mut object_ctx = ctx.clone();
+    object_ctx.you = Some(controller);
+    object_ctx.opponents = game
+        .players
+        .iter()
+        .filter(|candidate| candidate.is_in_game() && game.are_opponents(controller, candidate.id))
+        .map(|candidate| candidate.id)
+        .collect();
+    object_ctx.teammates = game
+        .players
+        .iter()
+        .filter(|candidate| candidate.is_in_game() && game.are_teammates(controller, candidate.id))
+        .map(|candidate| candidate.id)
+        .collect();
+    object_ctx.your_commanders = game
+        .player(controller)
+        .map(|player| player.commanders.clone())
+        .unwrap_or_default();
+
+    game.battlefield
+        .iter()
+        .filter_map(|object_id| game.object(*object_id))
+        .filter(|object| game.controller_of(object) == controller)
+        .filter(|object| filter.matches(object, &object_ctx, game))
+        .count()
 }
 
 pub(crate) trait ObjectFilterExt {
@@ -1766,6 +1875,12 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if ctx
+            .you
+            .is_some_and(|observer| !game.object_is_within_range(observer, object.id, ctx.source))
+        {
+            return false;
+        }
         if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object.id) {
             return false;
         }
@@ -1779,6 +1894,12 @@ impl ObjectFilterExt for ObjectFilter {
         game: &crate::game_state::GameState,
         view: &crate::derived_view::DerivedGameView<'_>,
     ) -> bool {
+        if ctx
+            .you
+            .is_some_and(|observer| !game.object_is_within_range(observer, object.id, ctx.source))
+        {
+            return false;
+        }
         if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object.id) {
             return false;
         }
@@ -1795,6 +1916,12 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if ctx
+            .you
+            .is_some_and(|observer| !game.object_is_within_range(observer, object.id, ctx.source))
+        {
+            return false;
+        }
         if object.zone == crate::zone::Zone::Battlefield && game.is_phased_out(object.id) {
             return false;
         }
@@ -2133,6 +2260,18 @@ impl ObjectFilterExt for ObjectFilter {
             })
         {
             return false;
+        }
+
+        if self.created_with_source {
+            let source_stable_id = ctx
+                .source
+                .and_then(|source_id| game.object(source_id).map(|source| source.stable_id))
+                .or_else(|| ctx.source_snapshot.as_ref().map(|source| source.stable_id));
+            if source_stable_id.is_none_or(|source_stable_id| {
+                !game.was_token_created_with_source(source_stable_id, object.stable_id)
+            }) {
+                return false;
+            }
         }
 
         if let Some(targetability) = &self.could_be_targeted_by
@@ -2585,6 +2724,13 @@ impl ObjectFilterExt for ObjectFilter {
             if !filter_subject_matches_subtype(object, layered_subject, chosen_type, game) {
                 return false;
             }
+        }
+        if self.has_basic_land_type
+            && !object_subtypes
+                .iter()
+                .any(|subtype| subtype.is_basic_land_type())
+        {
+            return false;
         }
         if self.has_nonbasic_land_type
             && !object_subtypes
@@ -3112,6 +3258,12 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if ctx
+            .you
+            .is_some_and(|observer| !game.snapshot_is_within_range(observer, snapshot, ctx.source))
+        {
+            return false;
+        }
         if let Some(id) = self.specific
             && snapshot.object_id != id
         {
@@ -3141,6 +3293,18 @@ impl ObjectFilterExt for ObjectFilter {
             })
         {
             return false;
+        }
+
+        if self.created_with_source {
+            let source_stable_id = ctx
+                .source
+                .and_then(|source_id| game.object(source_id).map(|source| source.stable_id))
+                .or_else(|| ctx.source_snapshot.as_ref().map(|source| source.stable_id));
+            if source_stable_id.is_none_or(|source_stable_id| {
+                !game.was_token_created_with_source(source_stable_id, snapshot.stable_id)
+            }) {
+                return false;
+            }
         }
 
         if let Some(targetability) = &self.could_be_targeted_by
@@ -3285,6 +3449,14 @@ impl ObjectFilterExt for ObjectFilter {
             if !snapshot_matches_subtype(snapshot, chosen_type, game) {
                 return false;
             }
+        }
+        if self.has_basic_land_type
+            && !snapshot
+                .subtypes
+                .iter()
+                .any(|subtype| subtype.is_basic_land_type())
+        {
+            return false;
         }
         if self.has_nonbasic_land_type
             && !snapshot
@@ -3800,6 +3972,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -3892,6 +4067,9 @@ impl ObjectFilterExt for ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -4030,32 +4208,39 @@ impl ObjectFilterExt for ObjectFilter {
         }
         for constraint in &self.tagged_constraints {
             match constraint.relation {
-                TaggedOpbjectRelation::IsTaggedObject => match constraint.tag.as_str() {
-                    "it" | "__it__" => parts.push("that".to_string()),
-                    "enchanted" => parts.push("enchanted".to_string()),
-                    "equipped" => parts.push("equipped".to_string()),
-                    "convoked_this_spell" => {
-                        post_noun_qualifiers.push("that convoked this spell".to_string());
+                TaggedOpbjectRelation::IsTaggedObject
+                | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
+                    match constraint.tag.as_str() {
+                        "it" | "__it__" => parts.push("that".to_string()),
+                        "enchanted" => parts.push("enchanted".to_string()),
+                        "equipped" => parts.push("equipped".to_string()),
+                        "convoked_this_spell" => {
+                            post_noun_qualifiers.push("that convoked this spell".to_string());
+                        }
+                        "improvised_this_spell" => {
+                            post_noun_qualifiers.push("that improvised this spell".to_string());
+                        }
+                        "crewed_it_this_turn" => {
+                            post_noun_qualifiers.push("that crewed it this turn".to_string());
+                        }
+                        "saddled_it_this_turn" => {
+                            post_noun_qualifiers.push("that saddled it this turn".to_string());
+                        }
+                        crate::tag::SOURCE_EXILED_TAG => {
+                            post_noun_qualifiers.push("exiled with this permanent".to_string());
+                        }
+                        _ => {}
                     }
-                    "improvised_this_spell" => {
-                        post_noun_qualifiers.push("that improvised this spell".to_string());
-                    }
-                    "crewed_it_this_turn" => {
-                        post_noun_qualifiers.push("that crewed it this turn".to_string());
-                    }
-                    "saddled_it_this_turn" => {
-                        post_noun_qualifiers.push("that saddled it this turn".to_string());
-                    }
-                    crate::tag::SOURCE_EXILED_TAG => {
-                        post_noun_qualifiers.push("exiled with this permanent".to_string());
-                    }
-                    _ => {}
-                },
+                }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
                     parts.push("other".to_string());
                 }
                 TaggedOpbjectRelation::SameNameAsTagged => {
-                    post_noun_qualifiers.push("with the same name as it".to_string());
+                    let antecedent = self
+                        .same_name_antecedent_surface()
+                        .map(SameNameAntecedentSurface::phrase)
+                        .unwrap_or("it");
+                    post_noun_qualifiers.push(format!("with the same name as {antecedent}"));
                 }
                 TaggedOpbjectRelation::DifferentNameFromTagged => {
                     post_noun_qualifiers
@@ -4358,6 +4543,7 @@ impl ObjectFilterExt for ObjectFilter {
                     | Some(Zone::Library)
                     | Some(Zone::Exile)
                     | Some(Zone::Command)
+                    | Some(Zone::Ante)
                     | Some(Zone::OutsideGame) => "card",
                     _ => "source",
                 }
@@ -4379,6 +4565,7 @@ impl ObjectFilterExt for ObjectFilter {
                     | Some(Zone::Library)
                     | Some(Zone::Exile)
                     | Some(Zone::Command)
+                    | Some(Zone::Ante)
                     | Some(Zone::OutsideGame) => "card",
                 }
             };
@@ -4648,9 +4835,10 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
         if let Some(counter_requirement) = self.with_counter {
-            let (plural_noun, plural_subject) = self.counter_requirement_surface();
+            let (one_or_more, plural_noun, plural_subject) = self.counter_requirement_surface();
             parts.push(format!(
-                "with {} on {}",
+                "with {}{} on {}",
+                if one_or_more { "one or more " } else { "" },
                 describe_counter_constraint(counter_requirement, plural_noun),
                 if plural_subject { "them" } else { "it" }
             ));
@@ -4694,6 +4882,7 @@ impl ObjectFilterExt for ObjectFilter {
                 Zone::Exile => Some("exile"),
                 Zone::Stack => None,
                 Zone::Command => Some("command zone"),
+                Zone::Ante => Some("ante"),
                 Zone::OutsideGame => Some("outside the game"),
             };
             if zone == Zone::Exile && has_source_exiled_constraint {
@@ -4759,6 +4948,15 @@ impl ObjectFilterExt for ObjectFilter {
                 .map(ironsmith_core::SourceReferenceSurface::display_text)
                 .unwrap_or_else(|| "this permanent".to_string());
             parts.push(format!("put onto the battlefield with {source}"));
+        }
+
+        if self.created_with_source {
+            let source = self
+                .created_with_source_surface
+                .as_ref()
+                .map(ironsmith_core::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            parts.push(format!("created with {source}"));
         }
 
         if self.entered_graveyard_from_battlefield_this_turn && self.zone == Some(Zone::Graveyard) {

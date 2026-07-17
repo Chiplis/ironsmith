@@ -4,9 +4,12 @@ use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 
 mod count_backref_surfaces;
 mod countered_spell_replacement_surfaces;
+mod duration_scoped_delayed_triggers;
+mod dynamic_token_count_surfaces;
 mod exile_top_play_boundaries;
 mod history_draw_surface;
 mod movement_surfaces;
+mod roll_result_surfaces;
 mod shard_00;
 mod shard_01;
 mod shard_02;

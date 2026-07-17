@@ -321,11 +321,16 @@
     }
 
     if visible_effects.len() == 2
-        && let Some(for_players) =
-            visible_effects[0].downcast_ref::<crate::effects::ForPlayersEffect>()
-        && let Some(destroy) = visible_effects[1].downcast_ref::<crate::effects::DestroyEffect>()
-        && let Some(compact) =
+        && let Some(compact) = describe_for_players_choose_then_destroy_chosen_collection_pair(
+            visible_effects[0],
+            visible_effects[1],
+        )
+        .or_else(|| {
+            let for_players = structural_unwrap_render_wrappers(visible_effects[0])
+                .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+            let destroy = destroy_effect_for_choose_compaction(visible_effects[1])?;
             describe_for_players_may_choose_then_destroy_chosen(for_players, destroy)
+        })
     {
         return compact;
     }
@@ -376,6 +381,9 @@
 
 
     if let Some(compact) = render_necromentia_shape(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = render_reveal_hand_choose_same_name_exile_shuffle(&raw_effects) {
         return compact;
     }
     if let Some(compact) = render_choose_name_search_same_name_exile_shuffle(&raw_effects) {

@@ -51,8 +51,54 @@ pub enum ManaSpendGrantedKeyword {
     Riot,
 }
 
+/// The engine-facing reason for a complete mana-payment transaction.
+///
+/// This deliberately lives in the shared model rather than the runtime cost
+/// payer so a mana unit's predicate can be compiled without depending on the
+/// runtime crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaPaymentPurpose {
+    CastSpell,
+    ActivateAbility,
+    ActivateManaAbility,
+    CumulativeUpkeep,
+    UnlockDoor,
+    TurnFaceUp,
+    Effect,
+    Other,
+}
+
+/// A composable predicate over the complete transaction a mana unit would pay.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ManaUsageRestriction {
+pub enum ManaPaymentPredicate {
+    Any,
+    Purpose(ManaPaymentPurpose),
+    SourceMatches(ObjectFilter),
+    CostContains(ManaSymbol),
+    CostContainsX,
+    SharesCreatureTypeWithPayersCommander,
+    All(Vec<ManaPaymentPredicate>),
+    AnyOf(Vec<ManaPaymentPredicate>),
+    Not(Box<ManaPaymentPredicate>),
+}
+
+impl Eq for ManaPaymentPredicate {}
+
+/// A generic payload carried by one produced mana unit.
+///
+/// Each matching unit creates its own copy of this program when spent, which
+/// is the per-unit multiplicity required by CR 106.6a.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaSpendPayload<E> {
+    pub predicate: ManaPaymentPredicate,
+    pub effects: ResolutionProgram<E>,
+    pub choices: Vec<crate::ChooseSpec>,
+}
+
+impl<E: PartialEq> Eq for ManaSpendPayload<E> {}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ManaUsageRestriction<E> {
     CastSpell {
         card_types: Vec<CardType>,
         subtype_requirement: Option<ManaUsageSubtypeRequirement>,
@@ -87,19 +133,106 @@ pub enum ManaUsageRestriction {
         spell_filter: ObjectFilter,
     },
     ActivateAbility,
+    /// Generic CR 106.6 transaction rule. An empty `on_spend` list is a pure
+    /// spending restriction; a predicate of `Any` with payloads is an
+    /// unrestricted mana unit carrying only additional effects.
+    PaymentTransaction {
+        restriction: Option<ManaPaymentPredicate>,
+        on_spend: Vec<ManaSpendPayload<E>>,
+    },
 }
 
-impl Eq for ManaUsageRestriction {}
+impl<E: PartialEq> Eq for ManaUsageRestriction<E> {}
+
+impl<E> ManaUsageRestriction<E> {
+    pub fn try_map_effects<E2: Clone, Error>(
+        self,
+        map_effect: &mut impl FnMut(E) -> Result<E2, Error>,
+    ) -> Result<ManaUsageRestriction<E2>, Error> {
+        Ok(match self {
+            Self::CastSpell {
+                card_types,
+                subtype_requirement,
+                restrict_to_matching_spell,
+                grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+            } => ManaUsageRestriction::CastSpell {
+                card_types,
+                subtype_requirement,
+                restrict_to_matching_spell,
+                grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+            },
+            Self::CastSpellMatching {
+                filter,
+                restrict_to_matching_spell,
+                grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+            } => ManaUsageRestriction::CastSpellMatching {
+                filter,
+                restrict_to_matching_spell,
+                grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+            },
+            Self::CastSpellWithManaBonus {
+                filter,
+                condition,
+                grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+                granted_keywords,
+            } => ManaUsageRestriction::CastSpellWithManaBonus {
+                filter,
+                condition,
+                grant_uncounterable,
+                enters_with_counters,
+                granted_abilities,
+                granted_keywords,
+            },
+            Self::CastSpellOrActivateAbilitySourceMatching {
+                spell_filter,
+                ability_source_filter,
+            } => ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+                spell_filter,
+                ability_source_filter,
+            },
+            Self::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter } => {
+                ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter }
+            }
+            Self::ActivateAbility => ManaUsageRestriction::ActivateAbility,
+            Self::PaymentTransaction {
+                restriction,
+                on_spend,
+            } => ManaUsageRestriction::PaymentTransaction {
+                restriction,
+                on_spend: on_spend
+                    .into_iter()
+                    .map(|payload| {
+                        Ok(ManaSpendPayload {
+                            predicate: payload.predicate,
+                            effects: payload.effects.try_map_effects(&mut *map_effect)?,
+                            choices: payload.choices,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?,
+            },
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RestrictedManaUnit {
+pub struct RestrictedManaUnit<E> {
     pub symbol: ManaSymbol,
     pub source: ObjectId,
     pub source_chosen_creature_type: Option<Subtype>,
-    pub restrictions: Vec<ManaUsageRestriction>,
+    pub restrictions: Vec<ManaUsageRestriction<E>>,
 }
 
-impl Eq for RestrictedManaUnit {}
+impl<E: PartialEq> Eq for RestrictedManaUnit<E> {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ability<SA, T, E, C> {
@@ -139,7 +272,9 @@ pub struct LevelAbility<SA> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PresentationKeyword {
     Prowess,
+    Firebending(String),
     Toxic(u32),
+    Poisonous(u32),
     Afflict(u32),
     Amplify(u32),
     Devour(u32),
@@ -159,8 +294,14 @@ impl PresentationKeyword {
         if lower == "suspend" {
             return Some(Self::Suspend);
         }
+        if let Some(rest) = lower.strip_prefix("firebending ") {
+            return Some(Self::Firebending(rest.trim().to_string()));
+        }
         if let Some(rest) = lower.strip_prefix("toxic ") {
             return rest.parse().ok().map(Self::Toxic);
+        }
+        if let Some(rest) = lower.strip_prefix("poisonous ") {
+            return rest.parse().ok().map(Self::Poisonous);
         }
         if let Some(rest) = lower.strip_prefix("afflict ") {
             return rest.parse().ok().map(Self::Afflict);
@@ -186,7 +327,9 @@ impl PresentationKeyword {
     pub fn display(&self) -> String {
         match self {
             Self::Prowess => "Prowess".to_string(),
+            Self::Firebending(amount) => format!("Firebending {amount}"),
             Self::Toxic(amount) => format!("Toxic {amount}"),
+            Self::Poisonous(amount) => format!("Poisonous {amount}"),
             Self::Afflict(amount) => format!("Afflict {amount}"),
             Self::Amplify(amount) => format!("Amplify {amount}"),
             Self::Devour(amount) => format!("Devour {amount}"),
@@ -203,7 +346,9 @@ impl PresentationKeyword {
             (self, lower.as_str()),
             (Self::Prowess, "prowess")
                 | (Self::Suspend, "suspend")
+                | (Self::Firebending(_), "firebending")
                 | (Self::Toxic(_), "toxic")
+                | (Self::Poisonous(_), "poisonous")
                 | (Self::Afflict(_), "afflict")
                 | (Self::Amplify(_), "amplify")
                 | (Self::Devour(_), "devour")
@@ -343,7 +488,7 @@ pub struct ActivatedAbility<E, C> {
     pub activation_restrictions: Vec<Condition>,
     pub mana_output: Option<Vec<ManaSymbol>>,
     pub activation_condition: Option<Condition>,
-    pub mana_usage_restrictions: Vec<ManaUsageRestriction>,
+    pub mana_usage_restrictions: Vec<ManaUsageRestriction<E>>,
 }
 
 impl<SA, T, E, C> Ability<SA, T, E, C>
@@ -525,7 +670,11 @@ where
                 activation_restrictions: activated.activation_restrictions,
                 mana_output: activated.mana_output,
                 activation_condition: activated.activation_condition,
-                mana_usage_restrictions: activated.mana_usage_restrictions,
+                mana_usage_restrictions: activated
+                    .mana_usage_restrictions
+                    .into_iter()
+                    .map(|restriction| restriction.try_map_effects(&mut map_effect))
+                    .collect::<Result<Vec<_>, Error>>()?,
             }),
         };
 
@@ -637,15 +786,42 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C> {
     }
 
     pub fn has_tap_cost(&self) -> bool {
-        self.mana_cost.costs().iter().any(|c| c.requires_tap())
+        fn contains_tap<C: CoreCostComponent>(cost: &TotalCost<C>) -> bool {
+            match cost.kind() {
+                crate::TotalCostKind::All(costs) => costs.iter().any(|cost| cost.requires_tap()),
+                crate::TotalCostKind::OneOf(branches) => branches.iter().any(contains_tap),
+            }
+        }
+
+        contains_tap(&self.mana_cost)
     }
 
     pub fn has_sacrifice_self_cost(&self) -> bool {
-        self.mana_cost.costs().iter().any(|c| c.is_sacrifice_self())
+        fn contains_sacrifice_self<C: CoreCostComponent>(cost: &TotalCost<C>) -> bool {
+            match cost.kind() {
+                crate::TotalCostKind::All(costs) => {
+                    costs.iter().any(|cost| cost.is_sacrifice_self())
+                }
+                crate::TotalCostKind::OneOf(branches) => {
+                    branches.iter().any(contains_sacrifice_self)
+                }
+            }
+        }
+
+        contains_sacrifice_self(&self.mana_cost)
     }
 
     pub fn life_cost_amount(&self) -> Option<u32> {
-        self.mana_cost.costs().iter().find_map(|c| c.life_amount())
+        fn first_life_cost<C: CoreCostComponent>(cost: &TotalCost<C>) -> Option<u32> {
+            match cost.kind() {
+                crate::TotalCostKind::All(costs) => {
+                    costs.iter().find_map(|cost| cost.life_amount())
+                }
+                crate::TotalCostKind::OneOf(branches) => branches.iter().find_map(first_life_cost),
+            }
+        }
+
+        first_life_cost(&self.mana_cost)
     }
 
     pub fn is_exhaust_ability(&self) -> bool {

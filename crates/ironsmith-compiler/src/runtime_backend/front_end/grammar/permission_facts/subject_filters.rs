@@ -100,7 +100,11 @@ pub(crate) fn parse_permission_subject_filter_tokens(
 pub(crate) fn parse_cast_permission_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    if parse_spell_subject_facts(tokens).starts_with_generic_spell {
+    let spell_subject = parse_spell_subject_facts(tokens);
+    if matches!(
+        spell_subject.exact,
+        Some(ExactPermissionSubject::GenericSpell | ExactPermissionSubject::GenericSpells)
+    ) {
         return Ok(Some(ObjectFilter::default()));
     }
     if let Some(filter) = parse_simple_spell_type_list_filter_tokens(tokens) {
@@ -363,5 +367,19 @@ mod tests {
             .expect("permanent filter");
         assert!(permanent.card_types.contains(&CardType::Creature));
         assert!(permanent.card_types.contains(&CardType::Planeswalker));
+    }
+
+    #[test]
+    fn qualified_generic_spell_subjects_keep_keyword_constraints() {
+        let cycling =
+            parse_cast_permission_filter_tokens(&lex("spells that have a cycling ability"))
+                .expect("qualified spell subject should not hard-error")
+                .expect("qualified spell subject should produce a filter");
+        assert_eq!(cycling.ability_markers, vec!["cycling".to_string()]);
+
+        let generic = parse_cast_permission_filter_tokens(&lex("spells"))
+            .expect("generic spell subject should not hard-error")
+            .expect("generic spell subject should produce a filter");
+        assert_eq!(generic, ObjectFilter::default());
     }
 }

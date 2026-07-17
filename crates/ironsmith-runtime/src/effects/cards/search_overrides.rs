@@ -373,7 +373,9 @@ fn library_search_casting_method_is_legal(
                 spell,
                 spell.id,
                 base_cost.as_ref(),
-                method.overload_effects(),
+                method
+                    .overload_effects()
+                    .or_else(|| method.cleave_effects()),
                 &requirements,
                 casting_method,
                 &ctx,
@@ -483,7 +485,9 @@ fn library_search_cast_effect_program(
     casting_method: &CastingMethod,
 ) -> Option<ResolutionProgram> {
     if let Some(method) = library_search_alternative_method(game, caster, spell, casting_method)
-        && let Some(effects) = method.overload_effects()
+        && let Some(effects) = method
+            .overload_effects()
+            .or_else(|| method.cleave_effects())
     {
         return Some(ResolutionProgram::from_effects(effects.to_vec()));
     }

@@ -207,6 +207,7 @@ pub(super) fn attacking_defending_player_for_object(
         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
             .object(*planeswalker_id)
             .map(|object| game.controller_of(object)),
+        crate::combat_state::AttackTarget::Battle(battle_id) => game.battle_protector(*battle_id),
     }
 }
 
@@ -218,6 +219,7 @@ pub(super) fn attacking_player_for_object(
     match crate::combat_state::get_attack_target(combat, object_id)? {
         crate::combat_state::AttackTarget::Player(player_id) => Some(*player_id),
         crate::combat_state::AttackTarget::Planeswalker(_) => None,
+        crate::combat_state::AttackTarget::Battle(_) => None,
     }
 }
 
@@ -246,6 +248,9 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::HasMoreLifeThanYou { .. } => format!("{}'s", describe_player_filter(filter)),
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+            format!("{}'s", describe_player_filter(filter))
+        }
         PlayerFilter::MaxSpeed { .. } => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
@@ -315,6 +320,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

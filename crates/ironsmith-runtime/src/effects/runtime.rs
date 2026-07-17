@@ -23,6 +23,25 @@ pub fn validate_target(
     ctx: &ExecutionContext,
 ) -> bool {
     let filter_ctx = ctx.filter_context(game);
+    let range_exempt =
+        game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref());
+    let within_range = match target {
+        ResolvedTarget::Object(id) => game.object(*id).map_or_else(
+            || {
+                ctx.target_snapshots.get(id).is_some_and(|snapshot| {
+                    range_exempt
+                        || game.snapshot_is_within_range(ctx.controller, snapshot, Some(ctx.source))
+                })
+            },
+            |_| range_exempt || game.object_is_within_range(ctx.controller, *id, Some(ctx.source)),
+        ),
+        ResolvedTarget::Player(id) => {
+            range_exempt || game.player_is_within_range(ctx.controller, *id)
+        }
+    };
+    if !within_range {
+        return false;
+    }
 
     match (target, spec) {
         // Selection wrappers do not change target legality.
@@ -81,7 +100,28 @@ pub fn execute_effect(
     effect: &Effect,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let mut outcome = effect.0.execute(game, ctx)?;
+    // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
+    // executors route child effects through this function, so this guard also
+    // suppresses later instructions inside a sequence, modal branch, loop, or
+    // other nested effect after EndTurnEffect requests the scheduler jump.
+    if game.turn_store.end_turn_procedure_pending
+        || game.turn_store.end_combat_phase_procedure_pending
+    {
+        return Ok(EffectOutcome::resolved());
+    }
+    let previous_effect = ctx.executing_effect;
+    let effect_identity =
+        effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize;
+    ctx.executing_effect = Some(effect_identity);
+    let execution = effect.0.execute(game, ctx);
+    ctx.executing_effect = previous_effect;
+    let mut outcome = match execution {
+        Ok(outcome) => outcome,
+        // CR 801.10: only the out-of-range portion does nothing. Treat that
+        // instruction as resolved so later instructions still happen.
+        Err(ExecutionError::OutOfRange) => EffectOutcome::resolved(),
+        Err(error) => return Err(error),
+    };
 
     if !outcome.events.is_empty() {
         let execution_node = game.provenance_graph_mut().alloc_child(

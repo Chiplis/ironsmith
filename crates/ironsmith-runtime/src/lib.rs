@@ -11,6 +11,7 @@ pub mod card;
 pub mod cards;
 pub mod color;
 pub mod combat_state;
+pub mod companion;
 pub mod compiled_text;
 pub mod condition_eval;
 pub mod continuous;
@@ -92,6 +93,11 @@ pub use ability::{Ability, AbilityKind, ActivatedAbility, TriggeredAbility};
 pub use alternative_cast::{AlternativeCastingMethod, CastingMethod, TrapCondition};
 pub use card::{Card, CardBuilder, PowerToughness, PtValue};
 pub use color::{Color, ColorSet};
+pub use companion::{
+    CompanionDesignationError, companion_deck_facts_from_definition,
+    companion_deck_facts_from_object, companion_definition_condition,
+    validate_companion_definition,
+};
 pub use continuous::{
     ContinuousEffect, ContinuousEffectId, ContinuousEffectManager, EffectSourceType, Layer,
     Modification, PtSublayer,
@@ -129,8 +135,18 @@ pub use filter::{
     Comparison, FilterContext, ObjectFilter, PlayerFilter, PlayerFilterExt, TaggedObjectConstraint,
     TaggedOpbjectRelation,
 };
-pub use game_state::{CantEffectTracker, GameState, Phase, StackEntry, Step, Target, TurnState};
+pub use game_state::{
+    AlternatingTeamsState, ArchenemyState, ArchenemyVariant, AttackDirection, CantEffectTracker,
+    CommanderDraftBooster, CommanderDraftProduct, CommanderDraftState, ConspiracyDraftState,
+    ConspiracySetupCard, ConspiracyState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
+    EmperorState, FreeForAllAttackOption, FreeForAllState,
+    GameState, GrandMeleeMarkerRestore, GrandMeleeMarkerStatus, GrandMeleeMarkerView,
+    GrandMeleeRestore, GrandMeleeState, Phase, PlanarCardKind, PlanarDieFace, PlanechaseState,
+    SharedTeamTurnsState, StackEntry, Step, Target, TeamState, TeamVsTeamState, TurnState,
+    TwoHeadedGiantState,
+};
 pub use ids::{CardId, ObjectId, PlayerId};
+pub use ironsmith_core::{CoinFace, CoinFlipKind};
 pub use mana::{ManaCost, ManaSymbol};
 pub use object::{CounterType, Object, ObjectKind};
 pub use player::{ManaPool, Player};
@@ -142,7 +158,7 @@ pub use replacement::{
     ReplacementAction, ReplacementEffect, ReplacementEffectId, ReplacementEffectManager,
 };
 pub use resolution::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
-pub use static_abilities::StaticAbility;
+pub use static_abilities::{CompanionDeckCardFacts, CompanionDeckCondition, StaticAbility};
 pub use tag::TagKey;
 pub use target::ChooseSpec;
 pub use types::{CardType, Subtype, Supertype};
@@ -199,7 +215,8 @@ pub use targeting::{
 };
 pub use triggers::{
     AttackEventTarget, DamageEventTarget, TriggerEvent, TriggerQueue, TriggeredAbilityEntry,
-    check_triggers, generate_step_trigger_events, player_filter_matches_with_context,
+    check_triggers, generate_step_trigger_events, generate_step_trigger_events_for_active_players,
+    player_filter_matches_with_context,
 };
 pub use turn::{
     PriorityResult, PriorityTracker, TurnError, advance_phase, advance_step,

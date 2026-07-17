@@ -14,6 +14,11 @@ pub use crate::payload::{IfResultPredicate, KeywordAction};
 pub use ironsmith_core::TagKey;
 
 pub const IT_TAG: &str = "__it__";
+/// Stable parse-time alias for the object selected by the most recent
+/// additional cost. The reference pass snapshots this alias to the concrete
+/// `sacrifice_cost_*` / `exile_cost_*` tag before lowering the spell body, so
+/// later effects cannot accidentally rebind it through ordinary `it` memory.
+pub const ADDITIONAL_COST_OBJECT_TAG: &str = "__additional_cost_object__";
 /// Parse-time marker for a passive "was sacrificed this way" reference.
 ///
 /// Unlike a bare `IT_TAG`, this remains tied to the sacrifice event even when

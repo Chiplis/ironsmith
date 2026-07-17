@@ -145,6 +145,7 @@ mod tests {
                 marker: CounterType::Energy.into(),
                 location: alice.into(),
                 amount: 1,
+                count_after: None,
                 source: None,
                 source_controller: None,
             },

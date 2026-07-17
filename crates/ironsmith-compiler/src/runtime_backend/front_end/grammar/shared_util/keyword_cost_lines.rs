@@ -346,6 +346,62 @@ pub(crate) fn parse_transmute(
     }))
 }
 
+pub(crate) fn parse_transfigure(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !permission_shapes::prefix_words(&words, &["transfigure"])
+        || words.iter().any(|word| matches!(*word, "has" | "have"))
+    {
+        return Ok(None);
+    }
+    let mana_prefix = leaf::parse_leaf_mana_cost_prefix_tokens(&tokens[1..]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "transfigure keyword missing mana cost (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    let base_mana_cost = mana_prefix.cost;
+    let mut merged_costs = TotalCost::mana(base_mana_cost.clone()).costs().to_vec();
+    merged_costs.push(Cost::sacrifice_self());
+    let mana_cost = TotalCost::from_costs(merged_costs);
+    let filter = ObjectFilter::default()
+        .with_type(crate::types::CardType::Creature)
+        .with_mana_value(Comparison::EqualExpr(Box::new(Value::ManaValueOf(
+            Box::new(ChooseSpec::Source),
+        ))));
+    let text = format!("Transfigure {}", base_mana_cost.to_oracle());
+    Ok(Some(ParsedAbility {
+        ability: Ability {
+            kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+                    crate::effects::SearchLibraryEffect::to_battlefield(
+                        filter,
+                        crate::target::PlayerFilter::You,
+                        false,
+                    ),
+                )]),
+                choices: Vec::new(),
+                timing: ActivationTiming::SorcerySpeed,
+                additional_restrictions: Vec::new(),
+                activation_restrictions: Vec::new(),
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        }
+        .into(),
+        text: Some(text),
+        effects_ast: None,
+        reference_imports: ReferenceImports::default(),
+        trigger_spec: None,
+    }))
+}
+
 #[derive(Clone, Copy)]
 enum ReminderBoundary {
     MayPay,

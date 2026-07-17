@@ -4,9 +4,7 @@ use super::super::grammar::effects::{
     split_change_target_clause_lexed, split_change_target_unless_clause_lexed,
     split_choose_new_targets_clause_lexed,
 };
-use super::super::grammar::trigger_surface;
 use super::super::lexer::{LexedClause, TokenWordView};
-use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
     parse_additional_land_plays_clause, parse_cast_or_play_tagged_clause,
@@ -20,7 +18,7 @@ use super::sentence_helpers::*;
 use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use crate::cards::builders::{
     COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, LineAst,
-    OwnedLexToken, PlayerAst, ReferenceImports, RetargetModeAst, SubjectAst, SubjectVerbActionAst,
+    OwnedLexToken, PlayerAst, RetargetModeAst, SubjectAst, SubjectVerbActionAst,
     SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
@@ -876,28 +874,24 @@ pub(crate) fn parse_until_duration_triggered_clause(
             }
         };
 
-    let trigger_text = trigger_words.join(" ");
-    let granted = GrantedAbilityAst::ParsedObjectAbility {
-        ability: parsed_triggered_ability(
-            trigger,
-            effects,
-            vec![Zone::Battlefield],
-            Some(trigger_text.clone()),
-            trigger_surface::parse_trigger_frequency_condition_tokens(
-                &trigger_tokens,
-                max_triggers_per_turn,
-            ),
-            None,
-            ReferenceImports::default(),
-        ),
-        display: trigger_text,
-    };
+    if max_triggers_per_turn.is_some() {
+        return Err(CardTextError::ParseError(format!(
+            "duration-scoped delayed triggers with a per-turn frequency limit are not supported (clause: '{}')",
+            clause.text()
+        )));
+    }
 
-    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
-        TargetAst::Source(span_from_tokens(tokens)),
-        vec![granted],
+    let either_of_watched_objects = trigger_words
+        .windows(3)
+        .any(|words| words == ["either", "of", "those"]);
+
+    Ok(Some(EffectAst::DelayedTriggerForDuration {
+        trigger,
+        effects,
+        one_shot: false,
         duration,
-    )))
+        either_of_watched_objects,
+    }))
 }
 
 pub(crate) fn is_damage_source_target(target: &TargetAst) -> bool {

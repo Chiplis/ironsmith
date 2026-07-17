@@ -7,6 +7,55 @@ fn compiled_card(name: &str) -> String {
 }
 
 #[test]
+pub(super) fn dynamic_card_aggregates_keep_their_bound_player_scopes() {
+    assert_eq!(
+        compiled_card("Adamaro, First to Desire"),
+        "Adamaro's power and toughness are each equal to the number of cards in the hand of the opponent with the most cards in hand."
+    );
+
+    assert_eq!(
+        compiled_card("Consuming Aberration"),
+        [
+            "This creature's power and toughness are each equal to the number of cards in your opponents' graveyards.",
+            "Whenever you cast a spell, each opponent reveals cards from the top of their library until they reveal a land card, then puts those cards into their graveyard.",
+        ]
+        .join("\n")
+    );
+}
+
+#[test]
+pub(super) fn source_only_unblockable_cards_do_not_leak_the_internal_source_noun() {
+    for (name, expected) in [
+        (
+            "Dream Prowler",
+            "This creature can't be blocked as long as it's attacking alone.",
+        ),
+        (
+            "Metathran Elite",
+            "This creature can't be blocked as long as it's enchanted.",
+        ),
+    ] {
+        let compiled = compiled_card(name);
+        assert!(compiled.contains(expected), "{name}: {compiled}");
+        assert!(!compiled.contains("creature source"), "{name}: {compiled}");
+    }
+}
+
+#[test]
+pub(super) fn hideous_taskmaster_preserves_executable_annihilator_as_keyword_surface() {
+    let compiled = compiled_card("Hideous Taskmaster");
+    assert_eq!(
+        compiled,
+        [
+            "Devoid",
+            "When you cast this spell, for each opponent, gain control of up to one target creature that player controls until end of turn. Untap those creatures. They gain trample, haste, and annihilator 1 until end of turn.",
+            "Trample, haste, annihilator 1.",
+        ]
+        .join("\n")
+    );
+}
+
+#[test]
 pub(super) fn nonbattlefield_untyped_filters_render_as_cards() {
     let night_dealings = compiled_card("Night Dealings");
     assert!(

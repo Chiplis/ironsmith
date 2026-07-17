@@ -19,6 +19,7 @@ pub enum StaticAbilityId {
     Lifelink,
     Menace,
     Banding,
+    BandsWithOther,
     Protection,
     Reach,
     Shroud,
@@ -48,9 +49,11 @@ pub enum StaticAbilityId {
     Infect,
     Changeling,
     LivingMetal,
+    Companion,
     Partner,
     PartnerWith,
     StartYourEngines,
+    SpaceSculptor,
     DoctorsCompanion,
     Assist,
     Ascend,
@@ -88,6 +91,7 @@ pub enum StaticAbilityId {
     AllCreaturesAttackAttachedControllerEachCombatIfAble,
     AttachedGoadedBySourceController,
     ExertAttack,
+    EnlistAttack,
     MustBlock,
     CantAttack,
     CantAttackItsOwner,
@@ -96,6 +100,7 @@ pub enum StaticAbilityId {
     CantAttackUnlessCondition,
     CantAttackYouUnlessControllerPaysPerAttacker,
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
+    BlockCost,
     CantBlock,
     MayAssignDamageAsUnblocked,
     YouAssignCombatDamageOfCreaturesAttackingYou,
@@ -121,6 +126,7 @@ pub enum StaticAbilityId {
     SetCreatureSubtypes,
     AddColors,
     CopyActivatedAbilities,
+    CopyStaticAbilityVariants,
     CopyTriggeredAbilities,
     SoulbondSharedBonus,
     AttachedAbilityGrant,
@@ -146,6 +152,7 @@ pub enum StaticAbilityId {
     Affinity,
     AffinityForArtifacts,
     Delve,
+    Dredge,
     Convoke,
     Improvise,
     PlayersCantGainLife,
@@ -158,6 +165,7 @@ pub enum StaticAbilityId {
     OpponentsCantCastSpells,
     OpponentsCantDrawExtraCards,
     CantHaveCountersPlaced,
+    CounterLimit,
     CantBeCountered,
     PlayersCantCycle,
     PlayersSkipUpkeep,
@@ -226,6 +234,7 @@ pub enum StaticAbilityId {
     EnterTappedForFilter,
     EnterUntappedForFilter,
     EnterAsCopyAsEnters,
+    AsEntersEffectProgram,
     EnterWithCountersForFilter,
     EnterWithCharacteristicsForFilter,
     CanBeCommander,
@@ -252,6 +261,7 @@ pub enum StaticAbilityId {
     DrawReplacementDouble,
     DrawReplacementSkipEmptyLibrary,
     ConditionalDrawReplacement,
+    LoseGameReplacement,
     KeywordActionReplacement,
     ExileToCounteredExileInsteadOfGraveyard,
     ExileToExileInsteadOfGraveyard,
@@ -279,6 +289,8 @@ pub enum StaticAbilityId {
     PregameAction,
     DeckConstructionRuleText,
     DraftRuleText,
+    HiddenAgenda,
+    DoubleAgenda,
     KeywordText,
     KeywordMarker,
     KeywordFallbackText,
@@ -305,6 +317,7 @@ impl StaticAbilityId {
             | Lifelink
             | Menace
             | Banding
+            | BandsWithOther
             | Protection
             | Reach
             | Shroud
@@ -334,9 +347,11 @@ impl StaticAbilityId {
             | Infect
             | Changeling
             | LivingMetal
+            | Companion
             | Partner
             | PartnerWith
             | StartYourEngines
+            | SpaceSculptor
             | DoctorsCompanion
             | Assist
             | Ascend
@@ -374,6 +389,7 @@ impl StaticAbilityId {
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
             | ExertAttack
+            | EnlistAttack
             | MustBlock
             | CantAttack
             | CantAttackItsOwner
@@ -382,6 +398,7 @@ impl StaticAbilityId {
             | CantAttackUnlessCondition
             | CantAttackYouUnlessControllerPaysPerAttacker
             | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
+            | BlockCost
             | CantBlock
             | MayAssignDamageAsUnblocked
             | YouAssignCombatDamageOfCreaturesAttackingYou
@@ -407,6 +424,7 @@ impl StaticAbilityId {
             | SetCreatureSubtypes
             | AddColors
             | CopyActivatedAbilities
+            | CopyStaticAbilityVariants
             | CopyTriggeredAbilities
             | SoulbondSharedBonus
             | AttachedAbilityGrant
@@ -432,6 +450,7 @@ impl StaticAbilityId {
             | Affinity
             | AffinityForArtifacts
             | Delve
+            | Dredge
             | Convoke
             | Improvise
             | PlayersCantGainLife
@@ -444,6 +463,7 @@ impl StaticAbilityId {
             | OpponentsCantCastSpells
             | OpponentsCantDrawExtraCards
             | CantHaveCountersPlaced
+            | CounterLimit
             | CantBeCountered
             | PlayersCantCycle
             | PlayersSkipUpkeep
@@ -512,6 +532,7 @@ impl StaticAbilityId {
             | EnterTappedForFilter
             | EnterUntappedForFilter
             | EnterAsCopyAsEnters
+            | AsEntersEffectProgram
             | EnterWithCountersForFilter
             | EnterWithCharacteristicsForFilter
             | CanBeCommander
@@ -538,6 +559,7 @@ impl StaticAbilityId {
             | DrawReplacementDouble
             | DrawReplacementSkipEmptyLibrary
             | ConditionalDrawReplacement
+            | LoseGameReplacement
             | KeywordActionReplacement
             | ExileToCounteredExileInsteadOfGraveyard
             | ExileToExileInsteadOfGraveyard
@@ -565,6 +587,8 @@ impl StaticAbilityId {
             | PregameAction
             | DeckConstructionRuleText
             | DraftRuleText
+            | HiddenAgenda
+            | DoubleAgenda
             | KeywordText
             | KeywordMarker
             | KeywordFallbackText
@@ -593,6 +617,7 @@ impl StaticAbilityId {
                 | Lifelink
                 | Menace
                 | Banding
+                | BandsWithOther
                 | Protection
                 | Reach
                 | Shroud
@@ -616,8 +641,10 @@ impl StaticAbilityId {
                 | Infect
                 | Changeling
                 | LivingMetal
+                | Companion
                 | Partner
                 | PartnerWith
+                | SpaceSculptor
                 | DoctorsCompanion
                 | Assist
                 | SplitSecond
@@ -625,6 +652,8 @@ impl StaticAbilityId {
                 | Cascade
                 | Splice
                 | Escalate
+                | Dredge
+                | EnlistAttack
                 | ReadAhead
                 | Unleash
                 | KeywordText
@@ -670,6 +699,7 @@ impl StaticAbilityId {
                 | Lifelink
                 | Menace
                 | Banding
+                | BandsWithOther
                 | Reach
                 | Trample
                 | Vigilance
@@ -704,6 +734,7 @@ impl StaticAbilityId {
                 | CantAttackUnlessCondition
                 | CantAttackYouUnlessControllerPaysPerAttacker
                 | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
+                | BlockCost
                 | CantBlock
                 | MayAssignDamageAsUnblocked
                 | YouAssignCombatDamageOfCreaturesAttackingYou

@@ -38,6 +38,53 @@ const CHOSEN_COLOR_REFERENCES: &[&[&str]] = &[
     &["chosen", "color"],
 ];
 
+/// Parse a filter tail such as "of each of the sacrificed creature's colors."
+/// Apostrophe normalization presents the possessive noun as `creatures`.
+/// The returned value is presentation metadata; the caller supplies the
+/// tagged color-sharing relation that carries runtime semantics.
+pub(crate) fn parse_additional_cost_object_colors_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::AdditionalCostObjectSurface> {
+    let words = parser_token_word_refs(tokens);
+    let mut rest = words.as_slice();
+    if let Some(after_prefix) = rest.strip_prefix(&["of", "each", "of"]) {
+        rest = after_prefix;
+    } else if let Some(after_prefix) = rest.strip_prefix(&["of"]) {
+        rest = after_prefix;
+    } else {
+        return None;
+    }
+    if let Some(after_article) = rest
+        .strip_prefix(&["the"])
+        .or_else(|| rest.strip_prefix(&["a"]))
+        .or_else(|| rest.strip_prefix(&["an"]))
+    {
+        rest = after_article;
+    }
+    let (action_word, noun_word, colors_word) = match rest {
+        [action, noun, colors] => (*action, *noun, *colors),
+        _ => return None,
+    };
+    if !matches!(colors_word, "color" | "colors") {
+        return None;
+    }
+    let action = match action_word {
+        "sacrificed" => ironsmith_core::AdditionalCostObjectAction::Sacrificed,
+        "exiled" => ironsmith_core::AdditionalCostObjectAction::Exiled,
+        _ => return None,
+    };
+    let kind = match noun_word {
+        "creature" | "creatures" => ironsmith_core::SacrificedObjectKind::Creature,
+        "artifact" | "artifacts" => ironsmith_core::SacrificedObjectKind::Artifact,
+        "enchantment" | "enchantments" => ironsmith_core::SacrificedObjectKind::Enchantment,
+        "permanent" | "permanents" => ironsmith_core::SacrificedObjectKind::Permanent,
+        _ => return None,
+    };
+    Some(ironsmith_core::AdditionalCostObjectSurface::new(
+        action, kind,
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DiscardShapeError {
     MissingCount,
@@ -419,5 +466,17 @@ mod tests {
             panic!("expected discard unless predicate");
         };
         assert_eq!(render_token_slice(predicate_tokens), "they pay {2}");
+    }
+
+    #[test]
+    fn additional_cost_color_tail_preserves_action_and_noun() {
+        let tokens = lex_line("of each of the sacrificed creature's colors", 0).unwrap();
+        assert_eq!(
+            parse_additional_cost_object_colors_surface(&tokens),
+            Some(ironsmith_core::AdditionalCostObjectSurface::new(
+                ironsmith_core::AdditionalCostObjectAction::Sacrificed,
+                ironsmith_core::SacrificedObjectKind::Creature,
+            ))
+        );
     }
 }

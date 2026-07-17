@@ -595,7 +595,8 @@ fn add_static_ability_ast_condition(
     Ok(match ability {
         StaticAbilityAst::Static(_)
         | StaticAbilityAst::KeywordAction(_)
-        | StaticAbilityAst::PregameRevealFromOpeningHand { .. } => {
+        | StaticAbilityAst::PregameRevealFromOpeningHand { .. }
+        | StaticAbilityAst::LoseGameReplacement { .. } => {
             StaticAbilityAst::ConditionalStaticAbility {
                 ability: Box::new(ability),
                 condition,
@@ -2438,10 +2439,15 @@ pub(crate) fn parse_has_base_power_toughness_static_line(
     };
 
     let base = StaticAbility::set_base_power_toughness(filter, shape.power, shape.toughness);
-    let Some(condition_tokens) = shape.condition_tokens else {
-        return Ok(Some(base));
+    let condition = match shape.condition {
+        anthem_grant_grammar::BasePowerToughnessConditionShape::None => return Ok(Some(base)),
+        anthem_grant_grammar::BasePowerToughnessConditionShape::Tokens(condition_tokens) => {
+            parse_static_condition_clause(condition_tokens)?
+        }
+        anthem_grant_grammar::BasePowerToughnessConditionShape::YourTurn => {
+            crate::ConditionExpr::YourTurn
+        }
     };
-    let condition = parse_static_condition_clause(condition_tokens)?;
     #[cfg(not(feature = "serialization"))]
     {
         Ok(Some(base.with_condition(condition)))
@@ -2455,8 +2461,7 @@ pub(crate) fn parse_has_base_power_toughness_static_line(
 pub(crate) fn parse_has_base_power_toughness_and_type_color_addition_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let Some(shape) =
-        anthem_grant_grammar::parse_base_power_toughness_type_addition_shape(tokens)
+    let Some(shape) = anthem_grant_grammar::parse_base_power_toughness_type_addition_shape(tokens)
     else {
         return Ok(None);
     };
@@ -2936,10 +2941,9 @@ fn generic_leading_as_long_as_conditions_every_thunderfoot_sibling() {
     )
     .expect("lex lieutenant static line");
 
-    let baseline =
-        parse_static_ability_ast_line_lexed_single_without_leading_condition(&tokens)
-            .expect("parse existing lieutenant shape")
-            .expect("existing lieutenant shape should parse");
+    let baseline = parse_static_ability_ast_line_lexed_single_without_leading_condition(&tokens)
+        .expect("parse existing lieutenant shape")
+        .expect("existing lieutenant shape should parse");
     assert_eq!(baseline.len(), 3, "{baseline:#?}");
     assert_eq!(
         baseline
@@ -2955,13 +2959,15 @@ fn generic_leading_as_long_as_conditions_every_thunderfoot_sibling() {
         .expect("lieutenant static line should parse");
     assert_eq!(routed.len(), 3, "{routed:#?}");
     assert!(
-        routed
-            .iter()
-            .all(static_ability_ast_has_explicit_condition),
+        routed.iter().all(static_ability_ast_has_explicit_condition),
         "every sibling must retain the commander condition: {routed:#?}"
     );
     let debug = format!("{routed:#?}");
-    assert_eq!(debug.matches("you control your commander").count(), 3, "{debug}");
+    assert_eq!(
+        debug.matches("you control your commander").count(),
+        3,
+        "{debug}"
+    );
 }
 
 #[test]
@@ -2990,10 +2996,7 @@ fn generic_leading_as_long_as_wraps_explicit_subject_static_families() {
             .unwrap_or_else(|err| panic!("route explicit-subject condition '{text}': {err}"))
             .unwrap_or_else(|| panic!("explicit-subject condition should parse: {text}"));
         assert!(
-            !routed.is_empty()
-                && routed
-                    .iter()
-                    .all(static_ability_ast_has_explicit_condition),
+            !routed.is_empty() && routed.iter().all(static_ability_ast_has_explicit_condition),
             "every emitted static sibling must be conditioned for '{text}': {routed:#?}"
         );
         let debug = format!("{routed:#?}");

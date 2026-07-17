@@ -133,6 +133,7 @@ pub(crate) fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value>
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
+        AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
         AggregateValueMetric::Counters => Some(
             Value::CountersOn(Box::new(ChooseSpec::All(filter)), None)

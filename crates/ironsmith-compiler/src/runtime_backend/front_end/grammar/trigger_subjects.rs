@@ -331,6 +331,7 @@ pub(crate) fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilt
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
     let mut checked_from = false;
+    let mut saw_spell_noun = false;
     loop {
         let end = initial_len.saturating_sub(input.len());
         let next: WResult<&OwnedLexToken> = any.parse_next(&mut input);
@@ -338,12 +339,17 @@ pub(crate) fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilt
             Ok(token) => token,
             Err(_) => return SpellFilterEnvelope { end },
         };
-        if token.is_comma() || token.is_period() {
+        // A comma before the shared `spell` noun belongs to a serial type or
+        // subtype list (`instant, sorcery, or Wizard spell`). Once that noun
+        // has been consumed, a comma again marks the end of the trigger's
+        // object filter.
+        if token.is_period() || (token.is_comma() && saw_spell_noun) {
             return SpellFilterEnvelope { end };
         }
         let Some(word) = token.as_word() else {
             continue;
         };
+        saw_spell_noun |= matches!(word, "spell" | "spells");
         if matches!(word, "during" | "other") {
             return SpellFilterEnvelope { end };
         }

@@ -10,6 +10,9 @@ pub struct CardDefinition<A, E, C, AC, OC> {
     pub has_fuse: bool,
     pub optional_costs: Vec<OC>,
     pub additional_cost: TotalCost<C>,
+    /// True when the card's rules text refers to ante. CR 407.3 makes such a
+    /// card illegal outside a game played for ante.
+    pub refers_to_ante: bool,
 }
 
 impl<A, E, C, AC, OC> CardDefinition<A, E, C, AC, OC>
@@ -26,6 +29,7 @@ where
             has_fuse: false,
             optional_costs: Vec::new(),
             additional_cost: TotalCost::free(),
+            refers_to_ante: false,
         }
     }
 
@@ -39,6 +43,7 @@ where
             has_fuse: false,
             optional_costs: Vec::new(),
             additional_cost: TotalCost::free(),
+            refers_to_ante: false,
         }
     }
 
@@ -55,6 +60,7 @@ where
             has_fuse: false,
             optional_costs: Vec::new(),
             additional_cost: TotalCost::free(),
+            refers_to_ante: false,
         }
     }
 
@@ -71,6 +77,7 @@ where
             has_fuse: false,
             optional_costs: Vec::new(),
             additional_cost: TotalCost::free(),
+            refers_to_ante: false,
         }
     }
 
@@ -132,6 +139,7 @@ where
             has_fuse: self.has_fuse,
             optional_costs,
             additional_cost: self.additional_cost.try_map(map_cost)?,
+            refers_to_ante: self.refers_to_ante,
         })
     }
 }

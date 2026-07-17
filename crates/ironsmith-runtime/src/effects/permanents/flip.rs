@@ -19,24 +19,7 @@ impl EffectExecutor for FlipEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
-        if game.is_flipped(target_id) {
-            return Ok(EffectOutcome::resolved());
-        }
-
-        let Some(other_face) = game.object(target_id).and_then(|obj| obj.other_face) else {
-            return Ok(EffectOutcome::resolved());
-        };
-
-        let Some(other_def) = game.linked_face_definition_by_name_or_id(None, Some(other_face))
-        else {
-            return Ok(EffectOutcome::resolved());
-        };
-
-        if let Some(obj) = game.object_mut(target_id) {
-            obj.apply_definition_face(&other_def);
-        }
-
-        game.flip(target_id);
+        game.flip_permanent(target_id);
 
         Ok(EffectOutcome::resolved())
     }

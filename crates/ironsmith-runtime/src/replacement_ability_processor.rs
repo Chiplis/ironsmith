@@ -171,8 +171,10 @@ mod tests {
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::object::CounterType;
     use crate::replacement::ReplacementAction;
     use crate::static_abilities::StaticAbility;
+    use crate::types::CardType;
     use crate::zone::Zone;
 
     #[test]
@@ -199,6 +201,55 @@ mod tests {
             ability.generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0));
 
         assert!(effect.is_none());
+    }
+
+    #[test]
+    fn counter_removal_prevention_activates_only_while_source_has_counter() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::prevent_damage_to_self_remove_counter(
+                CounterType::PlusOnePlusOne,
+                crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+            )
+            .with_condition(crate::effect::Condition::SourceHasCounterAtLeast {
+                counter_type: CounterType::PlusOnePlusOne,
+                count: 1,
+                surface: ironsmith_core::SourceCounterThresholdSurface::SourceHas,
+            });
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Conditional Counter Shield")
+            .card_types(vec![CardType::Creature])
+            .with_ability(crate::ability::Ability::static_ability(
+                StaticAbility::from_model(model),
+            ))
+            .build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+        assert!(
+            generate_replacement_effects_from_abilities(&game)
+                .iter()
+                .all(|effect| effect.source != source),
+            "the prevention replacement must be inactive without the required counter"
+        );
+
+        game.add_counters(source, CounterType::PlusOnePlusOne, 1);
+        let replacements = generate_replacement_effects_from_abilities(&game);
+        let replacement = replacements
+            .iter()
+            .find(|effect| effect.source == source)
+            .expect("the prevention replacement should activate once the source has a counter");
+        assert!(matches!(
+            replacement.replacement,
+            ReplacementAction::Instead(_)
+        ));
+
+        game.remove_counters(source, CounterType::PlusOnePlusOne, 1, None, None);
+        assert!(
+            generate_replacement_effects_from_abilities(&game)
+                .iter()
+                .all(|effect| effect.source != source),
+            "the prevention replacement must deactivate after the last counter is removed"
+        );
     }
 
     #[test]

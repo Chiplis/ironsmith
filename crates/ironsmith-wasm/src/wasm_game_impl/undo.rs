@@ -184,7 +184,11 @@ impl WasmGame {
                     matches!(
                         pending.stage,
                         CastStage::ChoosingOptionalCosts
+                            | CastStage::ChoosingAssistPlayer
+                            | CastStage::ActivatingAssistManaAbilities
+                            | CastStage::ChoosingAssistContribution
                             | CastStage::ChoosingNextCost
+                            | CastStage::PayingAssistMana
                             | CastStage::PayingMana
                     )
                 })
@@ -195,7 +199,9 @@ impl WasmGame {
                 .is_some_and(|pending| {
                     matches!(
                         pending.stage,
-                        ActivationStage::ChoosingNextCost | ActivationStage::PayingMana
+                        ActivationStage::ChoosingAlternativeCost
+                            | ActivationStage::ChoosingNextCost
+                            | ActivationStage::PayingMana
                     )
                 })
     }
@@ -519,11 +525,12 @@ impl WasmGame {
         &mut self,
         deck_size: usize,
         land_count: usize,
-    ) -> Result<Vec<String>, JsValue> {
+    ) -> Result<Vec<String>, String> {
         if deck_size == 0 || land_count >= deck_size {
-            return Err(JsValue::from_str(
-                "invalid deck sizing (deck_size must be > 0 and land_count < deck_size)",
-            ));
+            return Err(
+                "invalid deck sizing (deck_size must be > 0 and land_count < deck_size)"
+                    .to_string(),
+            );
         }
 
         const DEMO_BASIC_LANDS: &[&str] = &["Plains", "Island", "Swamp", "Mountain", "Forest"];
@@ -585,26 +592,33 @@ impl WasmGame {
         };
 
         if spell_pool.is_empty() {
-            return Err(JsValue::from_str(
-                "registry has no nonland cards eligible for random deck generation",
-            ));
+            return Err(
+                "registry has no nonland cards eligible for random deck generation".to_string(),
+            );
         }
 
         spell_pool.shuffle(&mut rng);
 
         let mut spells: Vec<String> = Vec::with_capacity(spells_needed);
-        if spell_pool.len() >= spells_needed {
-            spells.extend(spell_pool.iter().take(spells_needed).cloned());
-        } else {
-            // If pool is smaller than requested spells, wrap and keep shuffling for variety.
-            while spells.len() < spells_needed {
-                spell_pool.shuffle(&mut rng);
-                for card_name in &spell_pool {
-                    spells.push(card_name.clone());
-                    if spells.len() >= spells_needed {
-                        break;
-                    }
+        while spells.len() < spells_needed {
+            spell_pool.shuffle(&mut rng);
+            let before = spells.len();
+            for card_name in &spell_pool {
+                spells.push(card_name.clone());
+                if self
+                    .validate_normal_constructed_card_names(&spells, &[])
+                    .is_err()
+                {
+                    spells.pop();
                 }
+                if spells.len() >= spells_needed {
+                    break;
+                }
+            }
+            if spells.len() == before {
+                return Err(format!(
+                    "eligible demo spell pool has insufficient copy-limit capacity for {spells_needed} cards"
+                ));
             }
         }
 
@@ -674,15 +688,14 @@ impl WasmGame {
             fallback_land = DEMO_BASIC_LANDS
                 .into_iter()
                 .find(|name| self.registry.get(name).is_some())
-                .ok_or_else(|| {
-                    JsValue::from_str("registry has no basic lands for demo manabase")
-                })?;
+                .ok_or_else(|| "registry has no basic lands for demo manabase".to_string())?;
         }
         while assigned_lands < land_count {
             deck.push(fallback_land.to_string());
             assigned_lands += 1;
         }
 
+        self.validate_normal_constructed_card_names(&deck, &[])?;
         deck.shuffle(&mut rng);
         Ok(deck)
     }
@@ -1377,6 +1390,9 @@ impl WasmGame {
         if player_count == 0 {
             return Err(JsValue::from_str("player_names cannot be empty"));
         }
+        config
+            .validate_multiplayer_profile()
+            .map_err(|error| JsValue::from_str(&error))?;
 
         let decks = config.decks.as_ref();
         let sideboards = config.sideboards.as_ref();
@@ -1410,43 +1426,92 @@ impl WasmGame {
             ));
         }
 
-        if let MatchFormatInput::Commander = config.format {
+        if config.format.uses_commander_setup() {
             let Some(decks) = decks else {
                 return Err(JsValue::from_str(
-                    "commander matches require explicit decklists",
+                    "commander-variant matches require explicit decklists",
                 ));
             };
             let Some(commanders) = commanders else {
                 return Err(JsValue::from_str(
-                    "commander matches require commander lists",
+                    "commander-variant matches require commander lists",
                 ));
             };
 
             for (player_index, (deck, commander_list)) in
                 decks.iter().zip(commanders.iter()).enumerate()
             {
-                if !(commander_list.len() == 1 || commander_list.len() == 2) {
-                    return Err(JsValue::from_str(
-                        "commander matches require exactly 1 or 2 commanders per player",
-                    ));
+                if config.format == MatchFormatInput::CommanderDraft {
+                    if !(commander_list.len() == 1 || commander_list.len() == 2) {
+                        return Err(JsValue::from_str(
+                            "Commander Draft requires exactly 1 or 2 commanders per player",
+                        ));
+                    }
+                    if hidden_manifest_for_player(player_index).is_some() {
+                        return Err(JsValue::from_str(
+                            "Commander Draft setup requires explicit completed card pools",
+                        ));
+                    }
+                    if deck.len() + commander_list.len() < 60 {
+                        return Err(JsValue::from_str(
+                            "Commander Draft decks must contain at least 60 cards including commanders",
+                        ));
+                    }
+                    continue;
                 }
-
-                let expected_deck_size = if commander_list.len() == 2 { 98 } else { 99 };
+                let (expected_deck_size, expected_commander_count) = match config.format {
+                    MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => {
+                        if !(commander_list.len() == 1 || commander_list.len() == 2) {
+                            return Err(JsValue::from_str(
+                                "commander matches require exactly 1 or 2 commanders per player",
+                            ));
+                        }
+                        (if commander_list.len() == 2 { 98 } else { 99 }, None)
+                    }
+                    MatchFormatInput::Brawl => {
+                        if commander_list.len() != 1 {
+                            return Err(JsValue::from_str(
+                                "Brawl matches require exactly one commander per player",
+                            ));
+                        }
+                        (59, Some(1))
+                    }
+                    MatchFormatInput::Normal
+                    | MatchFormatInput::FreeForAll
+                    | MatchFormatInput::GrandMelee
+                    | MatchFormatInput::TeamVsTeam
+                    | MatchFormatInput::Emperor
+                    | MatchFormatInput::TwoHeadedGiant
+                    | MatchFormatInput::AlternatingTeams
+                    | MatchFormatInput::Ante
+                    | MatchFormatInput::Planechase
+                    | MatchFormatInput::Vanguard
+                    | MatchFormatInput::Archenemy
+                    | MatchFormatInput::SupervillainRumble
+                    | MatchFormatInput::ConspiracyDraft
+                    | MatchFormatInput::CommanderDraft => unreachable!(),
+                };
                 if let Some(manifest) = hidden_manifest_for_player(player_index)
                     && deck.is_empty()
                 {
                     if manifest.deck_count != expected_deck_size {
                         return Err(JsValue::from_str(&format!(
-                            "commander committed main decks must contain {expected_deck_size} cards for {count} commander(s)",
-                            count = commander_list.len()
+                            "commander-variant committed main decks must contain {expected_deck_size} cards"
+                        )));
+                    }
+                    if expected_commander_count
+                        .is_some_and(|expected| manifest.commander_count != expected)
+                    {
+                        let expected_commander_count = expected_commander_count.unwrap_or_default();
+                        return Err(JsValue::from_str(&format!(
+                            "commander-variant committed setup must contain {expected_commander_count} commander(s)"
                         )));
                     }
                     continue;
                 }
                 if deck.len() != expected_deck_size {
                     return Err(JsValue::from_str(&format!(
-                        "commander main decks must contain {expected_deck_size} cards for {count} commander(s)",
-                        count = commander_list.len()
+                        "commander-variant main decks must contain {expected_deck_size} cards"
                     )));
                 }
             }
@@ -1494,6 +1559,254 @@ impl WasmGame {
                     &mut cache,
                     &mut issues,
                 );
+            }
+        }
+        if let Some(setup) = config.commander_draft.as_ref() {
+            for (player_index, pool) in setup.card_pools.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    player_index.min(config.player_names.len().saturating_sub(1)),
+                    config
+                        .player_names
+                        .get(player_index)
+                        .or_else(|| config.player_names.first())
+                        .map(String::as_str)
+                        .unwrap_or("Player"),
+                    "Commander Draft pool",
+                    pool,
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+
+        if let Some(planar_decks) = config.planar_decks.as_ref() {
+            for (deck_index, planar_deck) in planar_decks.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    deck_index.min(config.player_names.len().saturating_sub(1)),
+                    config
+                        .player_names
+                        .get(deck_index)
+                        .or_else(|| config.player_names.first())
+                        .map(String::as_str)
+                        .unwrap_or("Player"),
+                    "planar deck",
+                    &planar_deck
+                        .iter()
+                        .map(|card| card.name.clone())
+                        .collect::<Vec<_>>(),
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+
+        if let Some(vanguards) = config.vanguards.as_ref() {
+            for (player_index, card) in vanguards.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    player_index.min(config.player_names.len().saturating_sub(1)),
+                    config
+                        .player_names
+                        .get(player_index)
+                        .or_else(|| config.player_names.first())
+                        .map(String::as_str)
+                        .unwrap_or("Player"),
+                    "vanguard",
+                    std::slice::from_ref(&card.name),
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+        if let Some(scheme_decks) = config.scheme_decks.as_ref() {
+            for (player_index, deck) in scheme_decks.iter().enumerate() {
+                self.collect_match_validation_issues(
+                    player_index.min(config.player_names.len().saturating_sub(1)),
+                    config
+                        .player_names
+                        .get(player_index)
+                        .or_else(|| config.player_names.first())
+                        .map(String::as_str)
+                        .unwrap_or("Player"),
+                    "scheme deck",
+                    deck,
+                    &mut cache,
+                    &mut issues,
+                );
+            }
+        }
+
+        if issues.is_empty() {
+            match config.format {
+                MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => {
+                    self.validate_commander_setup(
+                        player_count,
+                        decks.expect("Commander decks checked above"),
+                        commanders.expect("Commander commanders checked above"),
+                        sideboards.map(Vec::as_slice),
+                        hidden_manifests,
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?;
+                    if config.format == MatchFormatInput::ArchenemyCommander {
+                        self.load_scheme_decks_for_setup(
+                            config.scheme_decks.as_deref().ok_or_else(|| {
+                                JsValue::from_str(
+                                    "Archenemy Commander matches require scheme decks",
+                                )
+                            })?,
+                            player_count,
+                            ironsmith::game_state::ArchenemyVariant::Commander,
+                        )
+                        .map_err(|error| JsValue::from_str(&error))?;
+                    }
+                }
+                MatchFormatInput::Brawl if hidden_manifests.is_empty() => self
+                    .validate_brawl_setup(
+                        decks.expect("Brawl decks checked above"),
+                        commanders.expect("Brawl commanders checked above"),
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?,
+                MatchFormatInput::ConspiracyDraft => {
+                    self.validate_conspiracy_limited_setup(
+                        player_count,
+                        decks.map(Vec::as_slice),
+                        sideboards.map(Vec::as_slice),
+                        hidden_manifests,
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?;
+                    self.load_conspiracies_for_setup(
+                        config.conspiracies.as_deref().ok_or_else(|| {
+                            JsValue::from_str(
+                                "Conspiracy Draft games require conspiracy selections",
+                            )
+                        })?,
+                        sideboards.map(Vec::as_slice).ok_or_else(|| {
+                            JsValue::from_str("Conspiracy Draft games require drafted sideboards")
+                        })?,
+                        player_count,
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?;
+                }
+                MatchFormatInput::CommanderDraft => self
+                    .validate_commander_draft_setup(
+                        player_count,
+                        decks.expect("Commander Draft decks checked above"),
+                        commanders.expect("Commander Draft commanders checked above"),
+                        sideboards.map(Vec::as_slice),
+                        hidden_manifests,
+                        config
+                            .commander_draft
+                            .as_ref()
+                            .expect("validated Commander Draft metadata"),
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?,
+                MatchFormatInput::Normal
+                | MatchFormatInput::FreeForAll
+                | MatchFormatInput::GrandMelee
+                | MatchFormatInput::TeamVsTeam
+                | MatchFormatInput::Emperor
+                | MatchFormatInput::TwoHeadedGiant
+                | MatchFormatInput::AlternatingTeams
+                | MatchFormatInput::Ante
+                | MatchFormatInput::Planechase
+                | MatchFormatInput::Vanguard
+                | MatchFormatInput::Archenemy
+                | MatchFormatInput::SupervillainRumble => {
+                    if commanders
+                        .is_some_and(|commanders| commanders.iter().any(|list| !list.is_empty()))
+                    {
+                        return Err(JsValue::from_str(
+                            "normal constructed matches cannot designate commanders",
+                        ));
+                    }
+                    self.validate_normal_constructed_setup(
+                        player_count,
+                        decks.map(Vec::as_slice),
+                        sideboards.map(Vec::as_slice),
+                        hidden_manifests,
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?;
+                    Self::validate_ante_manifest_visibility(config.format, hidden_manifests)
+                        .map_err(|error| JsValue::from_str(&error))?;
+                    self.validate_ante_card_legality_for_setup(
+                        decks.map(Vec::as_slice),
+                        sideboards.map(Vec::as_slice),
+                        config.format == MatchFormatInput::Ante,
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?;
+                    if config.format == MatchFormatInput::Planechase {
+                        self.load_planar_decks_for_setup(
+                            config.planar_decks.as_deref().ok_or_else(|| {
+                                JsValue::from_str("Planechase matches require planar decks")
+                            })?,
+                            player_count,
+                        )
+                        .map_err(|error| JsValue::from_str(&error))?;
+                    } else if config.format == MatchFormatInput::GrandMelee
+                        && config
+                            .planar_decks
+                            .as_ref()
+                            .is_some_and(|decks| !decks.is_empty())
+                    {
+                        self.load_planar_decks_for_setup(
+                            config.planar_decks.as_deref().expect("checked nonempty"),
+                            player_count,
+                        )
+                        .map_err(|error| JsValue::from_str(&error))?;
+                    } else if config
+                        .planar_decks
+                        .as_ref()
+                        .is_some_and(|decks| !decks.is_empty())
+                    {
+                        return Err(JsValue::from_str(
+                            "planar decks may be supplied only for a Planechase match",
+                        ));
+                    }
+                    if config.format == MatchFormatInput::Vanguard {
+                        self.load_vanguards_for_setup(
+                            config.vanguards.as_deref().ok_or_else(|| {
+                                JsValue::from_str("Vanguard matches require vanguard cards")
+                            })?,
+                            player_count,
+                        )
+                        .map_err(|error| JsValue::from_str(&error))?;
+                    } else if config
+                        .vanguards
+                        .as_ref()
+                        .is_some_and(|cards| !cards.is_empty())
+                    {
+                        return Err(JsValue::from_str(
+                            "vanguard cards may be supplied only for a Vanguard match",
+                        ));
+                    }
+                    let archenemy_variant = match config.format {
+                        MatchFormatInput::Archenemy => {
+                            Some(ironsmith::game_state::ArchenemyVariant::Default)
+                        }
+                        MatchFormatInput::SupervillainRumble => {
+                            Some(ironsmith::game_state::ArchenemyVariant::SupervillainRumble)
+                        }
+                        _ => None,
+                    };
+                    if let Some(variant) = archenemy_variant {
+                        self.load_scheme_decks_for_setup(
+                            config.scheme_decks.as_deref().ok_or_else(|| {
+                                JsValue::from_str("Archenemy matches require scheme decks")
+                            })?,
+                            player_count,
+                            variant,
+                        )
+                        .map_err(|error| JsValue::from_str(&error))?;
+                    } else if config
+                        .scheme_decks
+                        .as_ref()
+                        .is_some_and(|decks| decks.iter().any(|deck| !deck.is_empty()))
+                    {
+                        return Err(JsValue::from_str(
+                            "scheme decks may be supplied only for an Archenemy match",
+                        ));
+                    }
+                }
+                MatchFormatInput::Brawl => {}
             }
         }
 
@@ -1566,11 +1879,19 @@ impl WasmGame {
         &mut self,
         query: &str,
     ) -> Result<ironsmith::cards::CardDefinition, JsValue> {
+        self.load_compilable_card_definition_result(query)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    fn load_compilable_card_definition_result(
+        &mut self,
+        query: &str,
+    ) -> Result<ironsmith::cards::CardDefinition, String> {
         if let Some(definition) = self.find_card_definition(query).cloned() {
             if let Some(error) =
                 ironsmith::cards::unsupported_generated_definition_error(&definition)
             {
-                return Err(JsValue::from_str(&error));
+                return Err(error);
             }
             return Ok(definition);
         }
@@ -1582,14 +1903,12 @@ impl WasmGame {
         }
 
         if let Some(error) = self.external_compile_error_for_name(query) {
-            return Err(JsValue::from_str(&error));
+            return Err(error);
         }
 
         match ironsmith::cards::CardRegistry::try_compile_card(query) {
-            Ok(_) => Err(JsValue::from_str(&format!("unknown card name: {query}"))),
-            Err(err) => Err(JsValue::from_str(&Self::card_lookup_error_for_query(
-                query, err,
-            ))),
+            Ok(_) => Err(format!("unknown card name: {query}")),
+            Err(err) => Err(Self::card_lookup_error_for_query(query, err)),
         }
     }
 }

@@ -113,6 +113,11 @@ pub(crate) struct PossessiveAbilityTail {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NamedAbilityTail {
+    pub(crate) marker: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AbilityOfObjectTail {
     pub(crate) filter: Range<usize>,
     pub(crate) non_mana_only: bool,
@@ -152,6 +157,7 @@ pub(crate) enum RollResultShape {
     HighestNatural,
     Fixed(u32),
     UnspecifiedDie,
+    OneOrMoreDice,
 }
 
 pub(crate) fn parse_not_during_turn_draw_suffix_words(words: &[&str]) -> Option<PlayerFilter> {
@@ -424,6 +430,16 @@ fn parse_roll_result_word_slice(
             primitives::word_slice_exact("result"),
         )
             .value(RollResultShape::HighestNatural),
+        (
+            primitives::word_slice_exact("one"),
+            primitives::word_slice_exact("or"),
+            primitives::word_slice_exact("more"),
+            alt((
+                primitives::word_slice_exact("die"),
+                primitives::word_slice_exact("dice"),
+            )),
+        )
+            .value(RollResultShape::OneOrMoreDice),
         parse_fixed_number_word_slice.map(RollResultShape::Fixed),
         alt((
             primitives::word_slice_exact("die"),
@@ -599,6 +615,32 @@ pub(crate) fn parse_loyalty_ability_tail(tokens: &[OwnedLexToken]) -> Option<Loy
     let owner_first = view.token_index_after_words(of + 1)?;
     let owner = trim_comma_range(tokens, owner_first..tokens.len());
     (owner.start < owner.end).then_some(LoyaltyAbilityTail { owner })
+}
+
+pub(crate) fn parse_named_ability_tail(tokens: &[OwnedLexToken]) -> Option<NamedAbilityTail> {
+    let words = primitives::TokenWordView::new(tokens).word_refs();
+    let ability = parse_trigger_clause_atom_word(&words, TriggerClauseAtom::Ability)?;
+    if ability + 1 != words.len() {
+        return None;
+    }
+    if parse_last_possessive_word(&words[..ability]).is_some() {
+        return None;
+    }
+
+    let marker_start = usize::from(matches!(words.first().copied(), Some("a" | "an")));
+    let marker_words = words.get(marker_start..ability)?;
+    if marker_words.is_empty()
+        || matches!(
+            marker_words,
+            ["activated"] | ["loyalty"] | ["mana"] | ["triggered"]
+        )
+    {
+        return None;
+    }
+
+    Some(NamedAbilityTail {
+        marker: marker_words.join(" "),
+    })
 }
 
 pub(crate) fn parse_possessive_ability_tail(

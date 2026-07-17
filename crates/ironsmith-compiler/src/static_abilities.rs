@@ -1,7 +1,8 @@
 pub use ironsmith_core::{
     ActivatedAbilityCostCondition, Anthem, AnthemCountExpression, AnthemReplacementSurface,
     AnthemValue, AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
-    CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
+    CantAttackUnlessConditionSpec, CompanionDeckCardFacts, CompanionDeckCondition,
+    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
     CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost,
     CostReduction, CostReductionManaCost, CounterRemovalFollowUp, DefendingPlayerAttackCondition,
     EnterAsCopyLinkedExilePairSpec, GraveyardCountMetric, LandwalkKind, ManaSpendPermission,

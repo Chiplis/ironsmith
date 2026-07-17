@@ -34,6 +34,69 @@ fn assert_compiled_fragment(card: &str, expected: &str) {
 }
 
 #[test]
+pub(super) fn counter_removal_prevention_family_strict_parser_and_compiled_text_regression() {
+    let cases: [(&str, &[&str]); 5] = [
+        (
+            "Bloatfly Swarm",
+            &[
+                "Flying",
+                "This creature enters with five +1/+1 counters on it.",
+                "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage, remove that many +1/+1 counters from it, then give each player a rad counter for each +1/+1 counter removed this way.",
+            ],
+        ),
+        (
+            "Magma Pummeler",
+            &[
+                "This creature enters with X +1/+1 counters on it.",
+                "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove that many +1/+1 counters from it.",
+                "When one or more counters are removed from this creature this way, it deals that much damage to any target.",
+            ],
+        ),
+        (
+            "Oathsworn Knight",
+            &[
+                "This creature enters with four +1/+1 counters on it.",
+                "This creature attacks each combat if able.",
+                "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove a +1/+1 counter from it.",
+            ],
+        ),
+        (
+            "Ugin's Conjurant",
+            &[
+                "This creature enters with X +1/+1 counters on it.",
+                "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove that many +1/+1 counters from it.",
+            ],
+        ),
+        (
+            "Undergrowth Champion",
+            &[
+                "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove a +1/+1 counter from it.",
+                "Landfall — Whenever a land you control enters, put a +1/+1 counter on this creature.",
+            ],
+        ),
+    ];
+
+    for (card, expected) in cases {
+        assert_oracle_card_parses_strict(card);
+        let definition = parse_oracle_card_definition(card);
+        let compiled = compiled_text_lines(&definition);
+        assert_eq!(
+            compiled,
+            expected
+                .iter()
+                .map(|line| (*line).to_string())
+                .collect::<Vec<_>>(),
+            "{card} must preserve the exact counter-removal prevention surface"
+        );
+        let rendered = compiled.join("\n");
+        assert!(
+            !rendered.contains("has \"If damage would be dealt"),
+            "{card} must not fall back to a quoted conditional ability grant: {rendered}"
+        );
+    }
+}
+
+#[test]
 pub(super) fn linked_same_name_continuous_effects_render_as_one_set() {
     for (card, expected) in [
         (
@@ -190,6 +253,50 @@ pub(super) fn coin_flip_outcomes_stay_bound_to_the_flip_that_produced_them() {
     ] {
         assert_compiled_line(card, expected);
     }
+}
+
+#[test]
+pub(super) fn linked_alternative_outcomes_keep_their_explicit_inverse_clause() {
+    for (card, expected) in [
+        ("Breaching Dragonstorm", "If you don't"),
+        ("Chaotic Goo", "If you lose the flip"),
+        ("Fishing Gear", "If you don't"),
+        ("Goblin Bomb", "If you lose the flip"),
+        ("Invert Polarity", "If you lose the flip"),
+        ("Mogg Assassin", "If you lose the flip"),
+        ("Nightsnare", "If you don't"),
+        ("Preferred Selection", "If you don't"),
+        ("Slicer, Hired Muscle", "If you don't"),
+        ("Traumatic Revelation", "If you don't"),
+    ] {
+        assert_oracle_card_parses_strict(card);
+        let definition = parse_oracle_card_definition(card);
+        let rendered = compiled_text_lines(&definition).join("\n");
+        assert!(
+            rendered.contains(expected),
+            "{card} must preserve {expected:?}: {rendered}"
+        );
+        assert!(
+            !rendered.contains("Otherwise"),
+            "{card} must not collapse its explicit inverse condition: {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn mogg_assassin_preserves_both_target_choosers_and_identity_references() {
+    assert_compiled_line(
+        "Mogg Assassin",
+        "{T}: You choose target creature an opponent controls, and that opponent chooses target creature. Flip a coin. If you win the flip, destroy the creature you chose. If you lose the flip, destroy the creature your opponent chose.",
+    );
+}
+
+#[test]
+pub(super) fn preferred_selection_preserves_looked_collection_references_after_payment() {
+    assert_compiled_line(
+        "Preferred Selection",
+        "At the beginning of your upkeep, look at the top two cards of your library. You may sacrifice this enchantment and pay {2}{G}{G}. If you do, put one of those cards into your hand. If you don't, put one of those cards on the bottom of your library.",
+    );
 }
 
 #[test]

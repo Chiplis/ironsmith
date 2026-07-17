@@ -6,8 +6,72 @@ use crate::cards::builders::CardDefinitionBuilder;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter};
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+
+#[test]
+fn i006_available_mana_sources_require_a_snow_source_for_snow_pips() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let nonsnow = CardDefinitionBuilder::new(CardId::new(), "Ordinary Mana Land")
+        .card_types(vec![CardType::Land])
+        .taps_for(ManaSymbol::Green)
+        .build();
+    game.create_object_from_definition(&nonsnow, alice, Zone::Battlefield);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Snow-Cost Spell")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    let cost = ManaCost::from_symbols(vec![ManaSymbol::Snow]);
+    let policy = game.mana_spend_policy(alice, Some(spell_id));
+    let view = DerivedGameView::new(&game);
+
+    assert!(!can_pay_mana_cost_with_available_sources(
+        &game,
+        alice,
+        Some(spell_id),
+        &cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+        &policy,
+        false,
+        &view,
+    ));
+    assert!(!view.can_potentially_pay_with_reason(
+        alice,
+        Some(spell_id),
+        &cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+    ));
+
+    drop(view);
+    let snow = CardDefinitionBuilder::new(CardId::new(), "Snow Mana Land")
+        .supertypes(vec![Supertype::Snow])
+        .card_types(vec![CardType::Land])
+        .taps_for(ManaSymbol::Green)
+        .build();
+    game.create_object_from_definition(&snow, alice, Zone::Battlefield);
+    let view = DerivedGameView::new(&game);
+    assert!(can_pay_mana_cost_with_available_sources(
+        &game,
+        alice,
+        Some(spell_id),
+        &cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+        &policy,
+        false,
+        &view,
+    ));
+    assert!(view.can_potentially_pay_with_reason(
+        alice,
+        Some(spell_id),
+        &cost,
+        0,
+        crate::costs::PaymentReason::CastSpell,
+    ));
+}
 
 #[test]
 fn black_life_permission_scan_is_needed_only_for_costs_with_a_black_symbol() {
@@ -164,6 +228,7 @@ fn mana_search_uses_snapshotted_life_capacity_in_both_source_count_paths() {
             &pips,
             0,
             pool.clone(),
+            crate::player::ManaPool::default(),
             &sources,
             0,
             0,
@@ -180,6 +245,7 @@ fn mana_search_uses_snapshotted_life_capacity_in_both_source_count_paths() {
             &pips,
             0,
             pool.clone(),
+            crate::player::ManaPool::default(),
             &sources,
             &mut [],
             0,

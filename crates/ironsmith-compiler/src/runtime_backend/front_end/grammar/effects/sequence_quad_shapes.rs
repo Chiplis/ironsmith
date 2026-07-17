@@ -48,6 +48,23 @@ pub(crate) struct LookExileSplitShape<'a> {
     pub(crate) exile_tokens: &'a [OwnedLexToken],
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LookedCardAndOrChoiceShape<'a> {
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) uses_and_or: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChosenCardsDispositionShape {
+    pub(crate) order: LibraryBottomOrderAst,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ChosenCardsDestinationReplacementShape<'a> {
+    pub(crate) predicate_tokens: &'a [OwnedLexToken],
+    pub(crate) order: LibraryBottomOrderAst,
+}
+
 fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     LexedClause::new(tokens).trimmed().tokens()
 }
@@ -298,6 +315,138 @@ fn from_among_them<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
+fn choose<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::kw("choose").void().parse_next(input)
+}
+
+/// Captures a mandatory selection from the collection established by the
+/// preceding top-of-library instruction. Cardinality and the independent
+/// `and/or` branches are lowered by the sequence composer; this grammar only
+/// proves that the filter is scoped by the exact "from among them" suffix.
+pub(crate) fn parse_choose_looked_card_and_or_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LookedCardAndOrChoiceShape<'_>> {
+    let clause = trimmed(tokens);
+    let ((), selection) = primitives::parse_prefix(clause, choose)?;
+    let selection = trimmed(selection);
+    let (among_idx, (), after_among) = primitives::find_prefix(selection, || from_among_them)?;
+    if !trimmed(after_among).is_empty() {
+        return None;
+    }
+    let filter_tokens = trimmed(&selection[..among_idx]);
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    Some(LookedCardAndOrChoiceShape {
+        filter_tokens,
+        uses_and_or: filter_tokens.iter().any(|token| token.is_word("and/or")),
+    })
+}
+
+fn put_chosen_cards_into_hand<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        primitives::phrase(&["put", "those", "cards", "into", "your", "hand"]),
+        primitives::phrase(&["put", "the", "chosen", "cards", "into", "your", "hand"]),
+    ))
+    .void()
+    .parse_next(input)
+}
+
+fn and_the_rest<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    opt(primitives::comma()).parse_next(&mut *input)?;
+    primitives::phrase(&["and", "the", "rest"])
+        .void()
+        .parse_next(input)
+}
+
+fn on_bottom_of_your_library<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["on", "the", "bottom", "of", "your", "library"])
+        .void()
+        .parse_next(input)
+}
+
+fn parse_chosen_cards_disposition_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<ChosenCardsDispositionShape> {
+    let ((), remainder) = primitives::parse_prefix(trimmed(tokens), and_the_rest)?;
+    let remainder = trimmed(remainder);
+    let ((), _) = primitives::parse_prefix(remainder, on_bottom_of_your_library)?;
+    let order = super::triple_sequence_shapes::parse_consult_remainder_order_tokens(remainder)?;
+    Some(ChosenCardsDispositionShape { order })
+}
+
+pub(crate) fn parse_chosen_cards_hand_remainder_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ChosenCardsDispositionShape> {
+    let ((), remainder) = primitives::parse_prefix(trimmed(tokens), put_chosen_cards_into_hand)?;
+    parse_chosen_cards_disposition_tail(remainder)
+}
+
+fn put_chosen_cards_battlefield_or_hand<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        primitives::phrase(&[
+            "put",
+            "the",
+            "chosen",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "or",
+            "into",
+            "your",
+            "hand",
+        ]),
+        primitives::phrase(&[
+            "put",
+            "those",
+            "cards",
+            "onto",
+            "the",
+            "battlefield",
+            "or",
+            "into",
+            "your",
+            "hand",
+        ]),
+    ))
+    .void()
+    .parse_next(input)
+}
+
+/// Captures a leading-if self-replacement whose replacement changes only the
+/// destination of the already chosen collection. Keeping the predicate tokens
+/// separate lets the ordinary typed predicate parser retain the threshold.
+pub(crate) fn parse_chosen_cards_destination_replacement_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ChosenCardsDestinationReplacementShape<'_>> {
+    let clause = trimmed(tokens);
+    let ((), after_if) = primitives::parse_prefix(clause, |input: &mut LexStream<'_>| {
+        primitives::kw("if").void().parse_next(input)
+    })?;
+    let (comma_idx, (), after_comma) =
+        primitives::find_prefix(after_if, || primitives::comma().void())?;
+    let predicate_tokens = trimmed(&after_if[..comma_idx]);
+    if predicate_tokens.is_empty() {
+        return None;
+    }
+    let mut replacement = trimmed(after_comma);
+    if let Some(((), after_instead)) =
+        primitives::parse_prefix(replacement, |input: &mut LexStream<'_>| {
+            primitives::kw("instead").void().parse_next(input)
+        })
+    {
+        replacement = trimmed(after_instead);
+    }
+    let ((), remainder) =
+        primitives::parse_prefix(replacement, put_chosen_cards_battlefield_or_hand)?;
+    let disposition = parse_chosen_cards_disposition_tail(remainder)?;
+    Some(ChosenCardsDestinationReplacementShape {
+        predicate_tokens,
+        order: disposition.order,
+    })
+}
+
 fn where_x_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     opt(primitives::comma()).parse_next(&mut *input)?;
     primitives::phrase(&["where", "x", "is"])
@@ -522,5 +671,18 @@ mod tests {
         assert!(parse_exiled_card_hand_followup_shape(&lex(
             "If you don't, put that card into your hand"
         )));
+    }
+
+    #[test]
+    fn preserves_authored_and_or_in_looked_card_choice_shape() {
+        let and_or_tokens = lex("Choose a creature card and/or a land card from among them");
+        let and_or = parse_choose_looked_card_and_or_shape(&and_or_tokens)
+            .expect("typed looked-card choice should parse");
+        assert!(and_or.uses_and_or);
+
+        let or_tokens = lex("Choose a creature card or a land card from among them");
+        let or = parse_choose_looked_card_and_or_shape(&or_tokens)
+            .expect("ordinary-or looked-card choice should still parse its surface");
+        assert!(!or.uses_and_or);
     }
 }

@@ -467,6 +467,7 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
         Zone::Stack => "the stack",
         Zone::Exile => "exile",
         Zone::Command => "the command zone",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
     }
 }
@@ -479,7 +480,9 @@ pub struct Daybound;
 pub struct DieRollResultAdjustment {
     player: PlayerFilter,
     life_cost: u32,
+    mana_cost: Option<crate::mana::ManaCost>,
     amount: u32,
+    reroll: bool,
     once_each_turn: bool,
     display: String,
 }
@@ -495,7 +498,26 @@ impl DieRollResultAdjustment {
         Self {
             player,
             life_cost,
+            mana_cost: None,
             amount,
+            reroll: false,
+            once_each_turn,
+            display: display.into(),
+        }
+    }
+
+    pub fn reroll(
+        player: PlayerFilter,
+        mana_cost: crate::mana::ManaCost,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            player,
+            life_cost: 0,
+            mana_cost: Some(mana_cost),
+            amount: 0,
+            reroll: true,
             once_each_turn,
             display: display.into(),
         }
@@ -515,7 +537,9 @@ impl StaticAbilityKind for DieRollResultAdjustment {
         Some(DieRollResultAdjustmentSpec {
             player: self.player.clone(),
             life_cost: self.life_cost,
+            mana_cost: self.mana_cost.clone(),
             amount: self.amount,
+            reroll: self.reroll,
             once_each_turn: self.once_each_turn,
         })
     }
@@ -2407,7 +2431,7 @@ impl StaticAbilityKind for PreventAllDamageDealtToAndByThisPermanent {
             source,
             controller,
             crate::events::DamageToOrFromSelfMatcher::new(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2434,7 +2458,7 @@ impl StaticAbilityKind for PreventAllDamageDealtByThisPermanent {
             source,
             controller,
             DamageFromSelfMatcher::new(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2461,7 +2485,7 @@ impl StaticAbilityKind for PreventAllCombatDamageDealtByThisPermanent {
             source,
             controller,
             DamageFromSelfCombatMatcher::new(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2488,7 +2512,7 @@ impl StaticAbilityKind for PreventAllDamageDealtToCreatures {
             source,
             controller,
             DamageToObjectMatcher::to_creature(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2515,7 +2539,7 @@ impl StaticAbilityKind for PreventAllCombatDamageToSelf {
             source,
             controller,
             DamageToSelfCombatMatcher::new(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2553,7 +2577,7 @@ impl StaticAbilityKind for PreventAllCombatDamageToPermanentsMatching {
             source,
             controller,
             PreventableCombatDamageToObjectMatcher::new(self.filter.clone()),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2591,7 +2615,7 @@ impl StaticAbilityKind for PreventAllNoncombatDamageToPermanentsMatching {
             source,
             controller,
             PreventableNoncombatDamageToObjectMatcher::new(self.filter.clone()),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2618,7 +2642,7 @@ impl StaticAbilityKind for PreventAllDamageToSelf {
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2645,7 +2669,7 @@ impl StaticAbilityKind for PreventAllDamageToSelfByCreatures {
             source,
             controller,
             DamageToSelfFromSourceFilterMatcher::from_creature(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2685,7 +2709,7 @@ impl StaticAbilityKind for PreventAllDamageToSelfFromSourcesMatching {
                 self.spec.combat_only,
                 self.spec.source_relation,
             ),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }
@@ -2726,7 +2750,7 @@ impl StaticAbilityKind for PreventDamageToYouFromSourceFilter {
             source,
             controller,
             DamageFromSourceToPlayerMatcher::to_you(self.source_filter.clone()),
-            ReplacementAction::Modify(EventModification::Subtract(self.amount)),
+            ReplacementAction::PreventDamageAmount(self.amount),
         ))
     }
 }
@@ -2880,7 +2904,7 @@ impl StaticAbilityKind for PreventDamageToSelfPutCountersInstead {
             source,
             controller,
             crate::events::DamageToSelfMatcher::new(),
-            ReplacementAction::Instead(vec![Effect::put_counters_on_source(
+            ReplacementAction::PreventDamageThen(vec![Effect::put_counters_on_source(
                 self.counter_type,
                 Value::EventValue(EventValueSpec::Amount),
             )]),
@@ -2939,7 +2963,7 @@ impl StaticAbilityKind for PreventConstrainedDamageToSelfPutCountersInstead {
             source,
             controller,
             matcher,
-            ReplacementAction::Instead(vec![Effect::put_counters_on_source(
+            ReplacementAction::PreventDamageThen(vec![Effect::put_counters_on_source(
                 self.counter_type,
                 Value::EventValue(EventValueSpec::Amount),
             )]),
@@ -3040,7 +3064,7 @@ impl StaticAbilityKind for PreventDamageToOtherCreatureYouControlPutCountersInst
             source,
             controller,
             DamageToOtherCreatureYouControlMatcher::new(),
-            ReplacementAction::Instead(vec![Effect::put_counters(
+            ReplacementAction::PreventDamageThen(vec![Effect::put_counters(
                 self.counter_type,
                 Value::EventValue(EventValueSpec::Amount),
                 ChooseSpec::AnyTarget,
@@ -3072,7 +3096,7 @@ impl StaticAbilityKind for PreventAllNoncombatDamageToOtherCreaturesYouControl {
             source,
             controller,
             DamageToOtherCreatureYouControlMatcher::noncombat_only(),
-            ReplacementAction::Prevent,
+            ReplacementAction::PreventDamage,
         ))
     }
 }

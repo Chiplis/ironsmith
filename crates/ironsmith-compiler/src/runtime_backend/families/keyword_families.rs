@@ -99,6 +99,11 @@ mod activated_keywords {
             hints: &[KeywordDispatchHint::Transmute],
             parse: registry::parse_transmute,
         },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Transfigure,
+            hints: &[KeywordDispatchHint::Transfigure],
+            parse: registry::parse_transfigure,
+        },
     ];
 }
 

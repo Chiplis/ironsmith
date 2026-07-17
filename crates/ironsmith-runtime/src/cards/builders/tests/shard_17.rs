@@ -420,6 +420,156 @@ pub(super) fn sulfuric_vortex_upkeep_trigger_damages_that_player() {
     );
 }
 
+fn each_player_upkeep_ability(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:?}", triggered.trigger).contains("BeginningOfUpkeep") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("card should have a beginning-of-upkeep triggered ability")
+}
+
+#[test]
+pub(super) fn each_player_upkeep_cluster_keeps_exact_event_player_surfaces() {
+    for (card, expected) in [
+        (
+            "Blood Clock",
+            "At the beginning of each player's upkeep, that player returns a permanent they control to its owner's hand unless they pay 2 life.",
+        ),
+        (
+            "Sunken Hope",
+            "At the beginning of each player's upkeep, that player returns a creature they control to its owner's hand.",
+        ),
+        (
+            "Dreamborn Muse",
+            "At the beginning of each player's upkeep, that player mills X cards, where X is the number of cards in their hand.",
+        ),
+        (
+            "Roiling Vortex",
+            "At the beginning of each player's upkeep, this enchantment deals 1 damage to them.",
+        ),
+        (
+            "Hokori, Dust Drinker",
+            "At the beginning of each player's upkeep, that player untaps a land they control.",
+        ),
+        (
+            "Rising Waters",
+            "At the beginning of each player's upkeep, that player untaps a land they control.",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(card);
+        let def = parse_oracle_card_definition(card);
+        let compiled = compiled_text_lines(&def);
+        assert!(
+            compiled.iter().any(|line| line == expected),
+            "{card} must retain the authored event-player surface: {compiled:#?}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn each_player_upkeep_cluster_lowers_bodies_to_typed_event_players() {
+    for card in [
+        "Blood Clock",
+        "Sunken Hope",
+        "Hokori, Dust Drinker",
+        "Rising Waters",
+    ] {
+        let def = parse_oracle_card_definition(card);
+        let triggered = each_player_upkeep_ability(&def);
+        let body = format!("{:#?}", triggered.effects);
+        assert!(
+            body.contains("IteratedPlayer"),
+            "{card} must bind its relative chooser/controller from the upkeep event: {body}"
+        );
+        assert!(
+            !body.contains("Active"),
+            "{card} must not substitute the game's active-player field for the event participant: {body}"
+        );
+    }
+
+    let dreamborn = parse_oracle_card_definition("Dreamborn Muse");
+    let dreamborn_trigger = each_player_upkeep_ability(&dreamborn);
+    let mill = dreamborn_trigger
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::MillEffect>())
+        .expect("Dreamborn Muse should lower to a typed mill effect");
+    assert_eq!(mill.player, PlayerFilter::IteratedPlayer);
+    let count_binds_upkeep_player = match mill.count.unhinted() {
+        crate::effect::Value::CardsInHand(player) => player == &PlayerFilter::IteratedPlayer,
+        crate::effect::Value::Count(filter) => {
+            filter.zone == Some(Zone::Hand)
+                && filter.owner.as_ref() == Some(&PlayerFilter::IteratedPlayer)
+        }
+        _ => false,
+    };
+    assert!(
+        count_binds_upkeep_player,
+        "Dreamborn Muse's hand count must be owned by the upkeep event player: {mill:#?}"
+    );
+
+    let roiling = parse_oracle_card_definition("Roiling Vortex");
+    let roiling_trigger = each_player_upkeep_ability(&roiling);
+    let damage = roiling_trigger
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+        .expect("Roiling Vortex should lower to a typed damage effect");
+    assert_eq!(
+        damage.target,
+        ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+    );
+}
+
+#[test]
+pub(super) fn roiling_vortex_uses_upkeep_event_player_even_when_active_player_differs() {
+    let def = parse_oracle_card_definition("Roiling Vortex");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let vortex = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    // Deliberately make the game field disagree with the concrete event. The
+    // trigger context must carry Bob through resolution instead of consulting
+    // `turn.active_player` again.
+    game.turn.active_player = alice;
+    let bob_upkeep = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, vortex, &bob_upkeep),
+        1
+    );
+    assert_eq!(game.life_total(alice), 20);
+    assert_eq!(game.life_total(bob), 19);
+}
+
+#[test]
+pub(super) fn oath_of_lieges_relative_target_and_search_remains_an_explicit_residual() {
+    // This is intentionally separate from the event-player binding regression:
+    // Oath also needs a reusable relative-player target + library-search shape.
+    // Keep the exact assertion live so that gap cannot disappear from the
+    // cluster merely because the common upkeep participant is now correct.
+    assert_oracle_card_parses_strict("Oath of Lieges");
+    let def = parse_oracle_card_definition("Oath of Lieges");
+    let compiled = compiled_text_lines(&def);
+    let expected = "At the beginning of each player's upkeep, that player chooses target player who controls more lands than they do and is their opponent. The first player may search their library for a basic land card, put that card onto the battlefield, then shuffle.";
+    assert!(
+        compiled.iter().any(|line| line == expected),
+        "Oath of Lieges remains a separately routed relative-target/search residual: {compiled:#?}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn mistmeadow_skulk_strict_parser_text_structure_and_runtime_regression() {

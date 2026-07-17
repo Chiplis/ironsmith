@@ -85,6 +85,7 @@ function objectExistsInState(state, objectId) {
       player?.graveyard_cards || [],
       player?.exile_cards || [],
       player?.command_cards || [],
+      player?.ante_cards || [],
       player?.sideboard_cards || [],
     ];
     for (const cards of zones) {
@@ -100,6 +101,10 @@ function objectExistsInState(state, objectId) {
   for (const entry of getVisibleStackObjects(state)) {
     if (String(entry?.id) === needle) return true;
     if (String(entry?.inspect_object_id) === needle) return true;
+  }
+
+  for (const card of state?.planechase?.face_up || []) {
+    if (String(card?.id) === needle) return true;
   }
 
   if (viewedCardIds(state).has(needle)) {
@@ -127,6 +132,7 @@ function locateObjectInState(state, objectId) {
     ["graveyard", (player) => player?.graveyard_cards || []],
     ["exile", (player) => player?.exile_cards || []],
     ["command", (player) => player?.command_cards || []],
+    ["ante", (player) => player?.ante_cards || []],
     ["sideboard", (player) => player?.sideboard_cards || []],
   ];
 
@@ -147,6 +153,12 @@ function locateObjectInState(state, objectId) {
   for (const entry of getVisibleStackObjects(state)) {
     if (String(entry?.id) === needle || String(entry?.inspect_object_id) === needle) {
       return { side: "stack", zone: "stack" };
+    }
+  }
+
+  for (const card of state?.planechase?.face_up || []) {
+    if (String(card?.id) === needle) {
+      return { side: "public", zone: "command" };
     }
   }
 
@@ -183,6 +195,7 @@ function linkedInspectorLocationPriority(location) {
     location.zone === "graveyard"
     || location.zone === "exile"
     || location.zone === "command"
+    || location.zone === "ante"
     || location.zone === "sideboard"
   ) return 2;
   if (location.zone === "stack") return 0;

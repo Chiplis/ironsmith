@@ -185,34 +185,46 @@ pub(crate) fn parse_choose_then_choose_objects_sentence(
     else {
         return Ok(None);
     };
+
+    preserve_choose_clause_it_reference(shape.head_references_prior_choice, &mut first_filter);
+
+    let first = EffectAst::ChooseObjects {
+        filter: first_filter,
+        count: first_count,
+        count_value: None,
+        player: first_player.clone(),
+        tag: TagKey::from(IT_TAG),
+    };
+
     let Some((mut second_player, mut second_filter, second_count)) =
         parse_choose_objects_clause_for_chain(SubjectVerbPrimitiveClause::new(shape.tail_tokens))?
     else {
-        return Ok(None);
+        // A direct choice can be followed by a quantified participant choice,
+        // e.g. `then each other player chooses ...`. Keep that participant
+        // loop typed so the chosen-set normalization pass can union both
+        // producers before a later complement consumer.
+        let Some(participant_choice) =
+            super::super::for_each_helpers::parse_for_each_player_clause(shape.tail_tokens)?
+        else {
+            return Ok(None);
+        };
+        return Ok(Some(vec![first, participant_choice]));
     };
 
-    preserve_choose_clause_it_reference(shape.head_references_prior_choice, &mut first_filter);
     preserve_choose_clause_it_reference(shape.tail_references_prior_choice, &mut second_filter);
 
     if second_player == PlayerAst::Implicit {
         second_player = first_player.clone();
     }
 
-    let tag = TagKey::from(IT_TAG);
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
-            filter: first_filter,
-            count: first_count,
-            count_value: None,
-            player: first_player,
-            tag: tag.clone(),
-        },
+        first,
         EffectAst::ChooseObjects {
             filter: second_filter,
             count: second_count,
             count_value: None,
             player: second_player,
-            tag,
+            tag: TagKey::from(IT_TAG),
         },
     ]))
 }

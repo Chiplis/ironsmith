@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::cards::builders::CardTextError;
-use crate::mana::{ManaCost, ManaSymbol};
+use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 
 #[cfg(test)]
@@ -19,16 +19,14 @@ use super::super::activated_lines::{
 };
 use super::super::keyword_action_costs::parse_payment_alternative_split_tokens;
 use super::super::primitives;
-use super::super::values::parse_mana_cost_tokens;
 use super::{
     ActivationCostCst, ActivationCostSegmentCst, ActivationCostSegmentKind,
-    is_tap_activation_symbol_token, parse_activation_cost_segment_kind_tokens,
-    parse_bare_symbol_segment_tokens, parse_behold_segment_tokens, parse_blight_segment_tokens,
-    parse_discard_segment_tokens, parse_exert_segment_tokens,
-    parse_exile_segment_tokens as parse_typed_exile_segment_tokens, parse_mill_segment_tokens,
-    parse_pay_segment_tokens, parse_put_counter_segment_tokens,
-    parse_move_to_library_top_cost_tokens,
-    parse_remove_counter_segment_tokens, parse_return_segment_tokens, parse_reveal_segment_tokens,
+    parse_activation_cost_segment_kind_tokens, parse_bare_symbol_segment_tokens,
+    parse_behold_segment_tokens, parse_blight_segment_tokens, parse_discard_segment_tokens,
+    parse_exert_segment_tokens, parse_exile_segment_tokens as parse_typed_exile_segment_tokens,
+    parse_mill_segment_tokens, parse_move_to_library_top_cost_tokens, parse_pay_segment_tokens,
+    parse_put_counter_segment_tokens, parse_remove_counter_segment_tokens,
+    parse_return_segment_tokens, parse_reveal_segment_tokens,
     parse_sacrifice_segment_tokens as parse_typed_sacrifice_segment_tokens,
     parse_tap_chosen_segment_tokens, parse_unattach_segment_tokens,
 };
@@ -151,38 +149,6 @@ fn named_source_reference_surface_for_words(
     }
 }
 
-fn parse_shard_style_branch_tokens(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
-    let tokens = trim_activation_cost_segment_tokens(tokens);
-    let comma_idx = locate_token_index(tokens, OwnedLexToken::is_comma)?;
-    let mana_tokens = trim_activation_cost_segment_tokens(&tokens[..comma_idx]);
-    let tap_tokens = trim_activation_cost_segment_tokens(&tokens[comma_idx + 1..]);
-    if tap_tokens.len() != 1 || tap_tokens[0].kind != TokenKind::ManaGroup {
-        return None;
-    }
-    if !is_tap_activation_symbol_token(&tap_tokens[0]) {
-        return None;
-    }
-
-    let mana_cost = parse_mana_cost_tokens(mana_tokens).ok()?;
-    let [pip] = mana_cost.pips() else {
-        return None;
-    };
-    let [symbol] = pip.as_slice() else {
-        return None;
-    };
-    Some(*symbol)
-}
-
-fn parse_shard_style_mana_or_tap_cost_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<(ManaSymbol, ManaSymbol)> {
-    let tokens = trim_activation_cost_segment_tokens(activation_cost_prefix_tokens(tokens));
-    let or_idx = locate_token_index(tokens, |token| token.is_word("or"))?;
-    let left = parse_shard_style_branch_tokens(&tokens[..or_idx])?;
-    let right = parse_shard_style_branch_tokens(&tokens[or_idx + 1..])?;
-    Some((left, right))
-}
-
 fn starts_new_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
     let mut input = LexStream::new(tokens);
     parse_activation_cost_segment_head_lexed
@@ -300,18 +266,7 @@ fn parse_activation_cost_cst_tokens(
             segments,
             alternative_branches: Vec::new(),
             is_loyalty_shorthand: true,
-        });
-    }
-
-    if let Some((left, right)) = parse_shard_style_mana_or_tap_cost_tokens(tokens) {
-        return Ok(ActivationCostCst {
-            raw: trimmed_raw.to_string(),
-            segments: vec![
-                ActivationCostSegmentCst::Mana(ManaCost::from_pips(vec![vec![left, right]])),
-                ActivationCostSegmentCst::Tap,
-            ],
-            alternative_branches: Vec::new(),
-            is_loyalty_shorthand: false,
+            waterbend_generic: None,
         });
     }
 
@@ -330,6 +285,7 @@ fn parse_activation_cost_cst_tokens(
                     segments: Vec::new(),
                     alternative_branches: vec![left, right],
                     is_loyalty_shorthand: false,
+                    waterbend_generic: None,
                 });
             }
         }
@@ -364,11 +320,25 @@ fn parse_activation_cost_cst_tokens(
         ));
     }
 
+    let waterbend_generic = first_non_comma_token_index(tokens)
+        .filter(|start| token_slice_at_is(tokens, *start, "waterbend"))
+        .and_then(|_| match segments.as_slice() {
+            [ActivationCostSegmentCst::Mana(cost)] => match cost.pips() {
+                [pip] => match pip.as_slice() {
+                    [ManaSymbol::Generic(amount)] => Some(u32::from(*amount)),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        });
+
     Ok(ActivationCostCst {
         raw: trimmed_raw.to_string(),
         segments,
         alternative_branches: Vec::new(),
         is_loyalty_shorthand: false,
+        waterbend_generic,
     })
 }
 
@@ -402,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn program_owns_loyalty_shorthand_and_shard_style_costs() {
+    fn program_owns_loyalty_shorthand_and_preserves_full_cost_alternatives() {
         let loyalty = parse("[-X]");
         assert!(loyalty.is_loyalty_shorthand);
         assert!(matches!(
@@ -415,13 +385,29 @@ mod tests {
         ));
 
         let shard = parse("{W}, {T} or {U}, {T}");
+        assert!(shard.segments.is_empty());
+        assert_eq!(shard.alternative_branches.len(), 2);
+        for branch in &shard.alternative_branches {
+            assert!(matches!(
+                branch.segments.as_slice(),
+                [
+                    ActivationCostSegmentCst::Mana(_),
+                    ActivationCostSegmentCst::Tap
+                ]
+            ));
+        }
+    }
+
+    #[test]
+    fn program_preserves_waterbend_generic_as_typed_cost_metadata() {
+        let waterbend = parse("Waterbend {5}");
+        assert_eq!(waterbend.waterbend_generic, Some(5));
         assert!(matches!(
-            shard.segments.as_slice(),
-            [
-                ActivationCostSegmentCst::Mana(_),
-                ActivationCostSegmentCst::Tap
-            ]
+            waterbend.segments.as_slice(),
+            [ActivationCostSegmentCst::Mana(_)]
         ));
+
+        assert_eq!(parse("{5}").waterbend_generic, None);
     }
 
     #[test]

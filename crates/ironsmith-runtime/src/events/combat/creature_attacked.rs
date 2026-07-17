@@ -15,7 +15,7 @@ use crate::triggers::event::AttackEventTarget;
 pub struct CreatureAttackedEvent {
     /// The attacking creature
     pub attacker: ObjectId,
-    /// What the creature is attacking (player or planeswalker)
+    /// What the creature is attacking (player, planeswalker, or battle)
     pub target: AttackEventTarget,
     /// Total number of attackers declared in this combat.
     ///
@@ -67,6 +67,7 @@ impl GameEventType for CreatureAttackedEvent {
         match self.target {
             AttackEventTarget::Player(_) => "Creature attacks player".to_string(),
             AttackEventTarget::Planeswalker(_) => "Creature attacks planeswalker".to_string(),
+            AttackEventTarget::Battle(_) => "Creature attacks battle".to_string(),
         }
     }
 
@@ -82,6 +83,7 @@ impl GameEventType for CreatureAttackedEvent {
         match self.target {
             AttackEventTarget::Player(p) => Some(p),
             AttackEventTarget::Planeswalker(_) => None,
+            AttackEventTarget::Battle(_) => None,
         }
     }
 

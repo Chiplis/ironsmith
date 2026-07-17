@@ -1,7 +1,9 @@
 use super::*;
 use crate::cards::builders::{
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
+    ChooseOneModeAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
+    SubjectVerbSubjectAst,
 };
+use crate::runtime_backend::grammar::effects::for_each_shapes::parse_fixed_pt_alternative_shape;
 use crate::runtime_backend::grammar::effects::misc_action_shapes::{
     self, BecomePlayerSurface, EndActionShape, FlipTargetSurface, SkipActionKind,
     SwitchTargetSurface, UntapActionShape, parse_conjoined_untap_all_tokens,
@@ -48,11 +50,7 @@ fn exact_pay_component(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Ef
         && token_slice_at_is(&tokens, used, "life")
         && trim_commas(&tokens[used + 1..]).is_empty()
     {
-        return Some(subject_verb_player_effect(
-            SubjectVerbRoleAst::AffectedPlayer,
-            player,
-            SubjectVerbActionAst::LoseLife { amount },
-        ));
+        return Some(EffectAst::subject_verb_pay_life(player, amount));
     }
 
     if let Some((amount, used)) = parse_value(&tokens)
@@ -200,6 +198,7 @@ pub(crate) fn parse_end(
 
     match misc_action_shapes::parse_end_action_tokens(tokens) {
         Some(EndActionShape::Turn) => Ok(EffectAst::subject_verb_end_turn(player)),
+        Some(EndActionShape::CombatPhase) => Ok(EffectAst::subject_verb_end_combat_phase(player)),
         Some(EndActionShape::EndStepLoseGame) => {
             Ok(EffectAst::subject_verb_lose_game(PlayerAst::You))
         }
@@ -350,6 +349,29 @@ pub(crate) fn parse_get(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(alternative) = parse_fixed_pt_alternative_shape(tokens) {
+        let branch_tokens = |modifier: &OwnedLexToken| {
+            let mut tokens = Vec::with_capacity(1 + alternative.trailing_tokens.len());
+            tokens.push(modifier.clone());
+            tokens.extend_from_slice(alternative.trailing_tokens);
+            tokens
+        };
+        let first = parse_get(&branch_tokens(&alternative.first_modifier), subject)?;
+        let second = parse_get(&branch_tokens(&alternative.second_modifier), subject)?;
+        return Ok(EffectAst::ChooseOneOf {
+            modes: vec![
+                ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![first],
+                },
+                ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![second],
+                },
+            ],
+        });
+    }
+
     if grammar::contains_word(tokens, "poison")
         && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
     {
@@ -516,6 +538,14 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             "untap clause missing target".to_string(),
         ));
     }
+    if let Some(filter_tokens) = misc_action_shapes::parse_chosen_object_set_filter_tokens(tokens) {
+        let mut filter = parse_object_filter(filter_tokens, false)?;
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        return Ok(EffectAst::subject_verb_untap_all(filter));
+    }
     if let Some(shape) = parse_conjoined_untap_all_tokens(tokens) {
         let left = parse_object_filter(shape.left_filter_tokens, false)?;
         let right = parse_object_filter(shape.right_filter_tokens, false)?;
@@ -675,11 +705,7 @@ pub(crate) fn parse_pay(
     if let Some((amount, used)) = parse_value(tokens)
         && token_slice_at_is(tokens, used, "life")
     {
-        return Ok(subject_verb_player_effect(
-            SubjectVerbRoleAst::AffectedPlayer,
-            player,
-            SubjectVerbActionAst::LoseLife { amount },
-        ));
+        return Ok(EffectAst::subject_verb_pay_life(player, amount));
     }
     if let Some((amount, used)) = parse_value(tokens)
         && tokens

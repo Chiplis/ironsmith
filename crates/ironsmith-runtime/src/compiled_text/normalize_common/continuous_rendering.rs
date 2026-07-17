@@ -148,6 +148,16 @@ pub(crate) fn describe_toughness_delta_with_power_context(
     }
 }
 
+fn describe_power_delta_with_toughness_context(power: &Value, toughness: &Value) -> String {
+    if matches!(power.unhinted(), Value::Fixed(0))
+        && matches!(toughness.unhinted(), Value::Fixed(n) if *n < 0)
+    {
+        "-0".to_string()
+    } else {
+        describe_signed_value(power)
+    }
+}
+
 fn is_exactly_one_choice(count: &ChoiceCount) -> bool {
     count.min == 1 && count.max == Some(1) && !count.dynamic_x
 }
@@ -324,6 +334,12 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
         return None;
     }
 
+    if let Some(text) =
+        describe_unhinted_matching_count_pt_for_each(target, plural_target, power, toughness, until)
+    {
+        return Some(text);
+    }
+
     if matches!(toughness.unhinted(), Value::Fixed(0))
         && let Some(multiplier) = counters_removed_this_way_multiplier(power)
         && multiplier > 0
@@ -451,6 +467,88 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
     None
 }
 
+fn describe_unhinted_matching_count_pt_for_each(
+    target: &str,
+    plural_target: bool,
+    power: &Value,
+    toughness: &Value,
+    until: &Until,
+) -> Option<String> {
+    let (Value::Count(power_filter), Value::Count(toughness_filter)) = (power, toughness) else {
+        return None;
+    };
+    if power_filter != toughness_filter || !matches!(until, Until::EndOfTurn) {
+        return None;
+    }
+    let each_text = describe_create_for_each_count(power)?;
+    let gets = if plural_target { "get" } else { "gets" };
+    Some(format!(
+        "Until end of turn, {target} {gets} +1/+1 for each {each_text}"
+    ))
+}
+
+#[cfg(test)]
+mod unhinted_count_pt_for_each_tests {
+    use super::*;
+
+    fn graveyard_permanent_count() -> Value {
+        Value::Count(
+            ObjectFilter::permanent_card()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You),
+        )
+    }
+
+    #[test]
+    fn renders_matching_unhinted_counts_as_plus_one_for_each() {
+        let count = graveyard_permanent_count();
+
+        assert_eq!(
+            describe_unhinted_matching_count_pt_for_each(
+                "this creature",
+                false,
+                &count,
+                &count,
+                &Until::EndOfTurn,
+            )
+            .as_deref(),
+            Some(
+                "Until end of turn, this creature gets +1/+1 for each permanent card in your graveyard"
+            )
+        );
+    }
+
+    #[test]
+    fn rejects_hinted_scaled_mismatched_and_non_end_of_turn_shapes() {
+        let count = graveyard_permanent_count();
+        let hinted = count.clone().with_surface_hint(ValueSurfaceHint::WhereXIs);
+        let scaled = Value::Scaled(Box::new(count.clone()), 2);
+        let hand_count = Value::Count(ObjectFilter {
+            zone: Some(Zone::Hand),
+            owner: Some(PlayerFilter::You),
+            ..Default::default()
+        });
+
+        for (power, toughness, until) in [
+            (&hinted, &hinted, Until::EndOfTurn),
+            (&scaled, &scaled, Until::EndOfTurn),
+            (&count, &hand_count, Until::EndOfTurn),
+            (&count, &count, Until::YourNextTurn),
+        ] {
+            assert!(
+                describe_unhinted_matching_count_pt_for_each(
+                    "this creature",
+                    false,
+                    power,
+                    toughness,
+                    &until,
+                )
+                .is_none()
+            );
+        }
+    }
+}
+
 pub(crate) fn describe_source_reference_surface_text(
     surface: &crate::target::SourceReferenceSurface,
 ) -> String {
@@ -571,6 +669,17 @@ pub(crate) fn owner_library_phrase_for_spec(spec: &ChooseSpec) -> &'static str {
 
 pub(crate) fn describe_put_counter_phrase(count: &Value, counter_type: CounterType) -> String {
     let counter_name = counter_type.description().into_owned();
+    if let Some(multiplier) = counters_removed_this_way_multiplier(count)
+        && multiplier > 0
+    {
+        let counter_phrase = if multiplier == 1 {
+            with_indefinite_article(&format!("{counter_name} counter"))
+        } else {
+            let amount = number_word(multiplier).unwrap_or_else(|| multiplier.to_string());
+            format!("{amount} {counter_name} counters")
+        };
+        return format!("{counter_phrase} for each counter removed this way");
+    }
     if let Value::SurfaceHinted { value, hints } = count
         && hints.contains(&ValueSurfaceHint::UpTo)
     {
@@ -819,28 +928,192 @@ pub(crate) fn granted_ability_self_subject_for_apply_continuous(
     }
 }
 
+fn is_sunburst_counter_grant(
+    ability: &crate::static_abilities::StaticAbility,
+    counter: CounterType,
+    creature_arm: bool,
+) -> bool {
+    let Some(model) = ability.compiled_model() else {
+        return false;
+    };
+    let ironsmith_core::StaticAbilityPayload::Conditional {
+        ability: inner,
+        condition,
+    } = &model.payload
+    else {
+        return false;
+    };
+    let ironsmith_core::StaticAbilityPayload::EntersWithCountersValue {
+        counter: found_counter,
+        count,
+    } = &inner.payload
+    else {
+        return false;
+    };
+    if *found_counter != counter || *count != Value::ColorsOfManaSpentToCastThisSpell {
+        return false;
+    }
+
+    let creature_filter = ObjectFilter::creature();
+    if creature_arm {
+        matches!(condition, Condition::SourceMatches(filter) if filter == &creature_filter)
+    } else {
+        matches!(
+            condition,
+            Condition::Not(inner)
+                if matches!(inner.as_ref(), Condition::SourceMatches(filter) if filter == &creature_filter)
+        )
+    }
+}
+
+fn is_structural_sunburst_grant(effect: &crate::effects::ApplyContinuousEffect) -> bool {
+    if effect.until != Until::Forever
+        || effect.condition.is_some()
+        || !effect.runtime_modifications.is_empty()
+    {
+        return false;
+    }
+    let Some(crate::continuous::Modification::AddAbility(marker)) = &effect.modification else {
+        return false;
+    };
+    if marker.id() != crate::static_abilities::StaticAbilityId::KeywordMarker
+        || !marker.display().trim().eq_ignore_ascii_case("sunburst")
+    {
+        return false;
+    }
+    let [first, second] = effect.additional_modifications.as_slice() else {
+        return false;
+    };
+    let (
+        crate::continuous::Modification::AddAbility(first),
+        crate::continuous::Modification::AddAbility(second),
+    ) = (first, second)
+    else {
+        return false;
+    };
+
+    (is_sunburst_counter_grant(first, CounterType::PlusOnePlusOne, true)
+        && is_sunburst_counter_grant(second, CounterType::Charge, false))
+        || (is_sunburst_counter_grant(second, CounterType::PlusOnePlusOne, true)
+            && is_sunburst_counter_grant(first, CounterType::Charge, false))
+}
+
+fn is_vanishing_upkeep_ability(ability: &Ability) -> bool {
+    if ability.functional_zones != [Zone::Battlefield] {
+        return false;
+    }
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            .is_none_or(|trigger| trigger.player != PlayerFilter::You)
+    {
+        return false;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::RemoveCountersEffect>()
+        .is_some_and(|remove| {
+            remove.counter_type == CounterType::Time
+                && remove.count == Value::Fixed(1)
+                && matches!(remove.target, ChooseSpec::Source)
+        })
+}
+
+fn is_vanishing_last_counter_ability(ability: &Ability) -> bool {
+    if ability.functional_zones != [Zone::Battlefield] {
+        return false;
+    }
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
+        return false;
+    }
+    let Some(trigger) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::CustomTrigger>()
+    else {
+        return false;
+    };
+    if trigger.id != "vanishing-last-time-counter-removed"
+        && !trigger
+            .description
+            .eq_ignore_ascii_case("when the last time counter is removed")
+    {
+        return false;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .is_some_and(|sacrifice| matches!(sacrifice.target, ChooseSpec::Source))
+}
+
+fn is_structural_vanishing_grant(effect: &crate::effects::ApplyContinuousEffect) -> bool {
+    if effect.until != Until::Forever
+        || effect.condition.is_some()
+        || !effect.runtime_modifications.is_empty()
+    {
+        return false;
+    }
+    let Some(crate::continuous::Modification::AddAbilityGeneric(upkeep)) = &effect.modification
+    else {
+        return false;
+    };
+    let [crate::continuous::Modification::AddAbilityGeneric(last_counter)] =
+        effect.additional_modifications.as_slice()
+    else {
+        return false;
+    };
+    is_vanishing_upkeep_ability(upkeep) && is_vanishing_last_counter_ability(last_counter)
+}
+
 pub(crate) fn describe_apply_continuous_clauses(
     effect: &crate::effects::ApplyContinuousEffect,
     plural_target: bool,
+) -> Vec<String> {
+    let self_subject = granted_ability_self_subject_for_apply_continuous(effect);
+    describe_apply_continuous_clauses_with_self_subject(effect, plural_target, self_subject)
+}
+
+pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
+    effect: &crate::effects::ApplyContinuousEffect,
+    plural_target: bool,
+    self_subject: &str,
 ) -> Vec<String> {
     let gets = if plural_target { "get" } else { "gets" };
     let has = if plural_target { "have" } else { "has" };
     let gains = if plural_target { "gain" } else { "gains" };
     let loses = if plural_target { "lose" } else { "loses" };
-    let add_ability_verb = if effect.condition == Some(Condition::SourceIsTapped)
-        && matches!(effect.until, Until::SourceUntaps)
+    let add_ability_verb = if (effect.condition == Some(Condition::SourceIsTapped)
+        && matches!(effect.until, Until::SourceUntaps))
+        || matches!(effect.until, Until::ForAsLongAs(_))
     {
         has
     } else {
         gains
     };
-    let self_subject = granted_ability_self_subject_for_apply_continuous(effect);
     let has_copy_runtime = effect.runtime_modifications.iter().any(|runtime| {
         matches!(
             runtime,
             crate::effects::continuous::RuntimeModification::CopyOf { .. }
         )
     });
+
+    if is_structural_sunburst_grant(effect) {
+        return vec![format!("{gains} sunburst")];
+    }
+    if is_structural_vanishing_grant(effect) {
+        return vec![format!("{gains} vanishing")];
+    }
 
     let mut clauses = Vec::new();
 
@@ -852,16 +1125,17 @@ pub(crate) fn describe_apply_continuous_clauses(
     let mut push_modification = |modification: &crate::continuous::Modification| match modification
     {
         crate::continuous::Modification::ModifyPowerToughness { power, toughness } => {
+            let power_text = if *power == 0 && *toughness < 0 {
+                "-0".to_string()
+            } else {
+                describe_signed_i32(*power)
+            };
             let toughness_text = if *power < 0 && *toughness == 0 {
                 "-0".to_string()
             } else {
                 describe_signed_i32(*toughness)
             };
-            clauses.push(format!(
-                "{gets} {}/{}",
-                describe_signed_i32(*power),
-                toughness_text
-            ));
+            clauses.push(format!("{gets} {}/{}", power_text, toughness_text));
         }
         crate::continuous::Modification::ModifyPower(value) => {
             clauses.push(format!("{gets} {} power", describe_signed_i32(*value)));
@@ -1045,11 +1319,61 @@ pub(crate) fn describe_apply_continuous_clauses(
                 clauses.push(format!("{loses} {}", lowercase_first(&ability.display())));
             }
         }
+        crate::continuous::Modification::RemoveAbilityGeneric { ability, mode } => {
+            let prohibition_suffix = |ability_text: &str| match mode {
+                ironsmith_core::AbilityLossMode::Lose => String::new(),
+                ironsmith_core::AbilityLossMode::LoseAndCantGain => {
+                    format!(" and can't gain {ability_text}")
+                }
+                ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain => {
+                    format!(" and can't have or gain {ability_text}")
+                }
+            };
+            if matches!(
+                ability.kind,
+                crate::ability::AbilityKind::Triggered(_)
+                    | crate::ability::AbilityKind::Activated(_)
+            ) {
+                let self_subject = if self_subject == "this spell" {
+                    "this creature"
+                } else {
+                    self_subject
+                };
+                let mut ability_text = capitalize_first(
+                    &describe_inline_ability_with_self_subject(ability, self_subject),
+                )
+                .replace(". otherwise,", ". Otherwise,");
+                if self_subject != "this spell" {
+                    ability_text = replace_this_spell_self_reference(ability_text, self_subject);
+                }
+                ability_text = normalize_granted_triggered_ability_surface(ability_text);
+                if matches!(effect.until, Until::EndOfTurn) {
+                    ability_text =
+                        normalize_temporary_granted_trigger_surface(ability_text, ability);
+                }
+                let ability_text = format!("\"{ability_text}\"");
+                clauses.push(format!(
+                    "{loses} {ability_text}{}",
+                    prohibition_suffix(&ability_text)
+                ));
+            } else {
+                let ability_text = describe_inline_ability_with_self_subject(ability, self_subject);
+                clauses.push(format!(
+                    "{loses} {ability_text}{}",
+                    prohibition_suffix(&ability_text)
+                ));
+            }
+        }
         crate::continuous::Modification::RemoveAllAbilities => {
             clauses.push(format!("{loses} all abilities"));
         }
         crate::continuous::Modification::AddAbilityGeneric(ability) => {
-            if matches!(
+            if let Some(keyword) = describe_keyword_ability(ability) {
+                clauses.push(format!(
+                    "{add_ability_verb} {}",
+                    lowercase_first(keyword.trim_end_matches('.'))
+                ));
+            } else if matches!(
                 ability.kind,
                 crate::ability::AbilityKind::Triggered(_)
                     | crate::ability::AbilityKind::Activated(_)
@@ -1158,7 +1482,7 @@ pub(crate) fn describe_apply_continuous_clauses(
                 } else {
                     clauses.push(format!(
                         "{gets} {}/{}",
-                        describe_signed_value(power),
+                        describe_power_delta_with_toughness_context(power, toughness),
                         describe_toughness_delta_with_power_context(power, toughness)
                     ));
                 }
@@ -1511,6 +1835,53 @@ pub(crate) fn describe_apply_continuous_animation_effect(
     target: &str,
     plural_target: bool,
 ) -> Option<String> {
+    describe_apply_continuous_animation_effect_with_returned_subject(
+        effect,
+        target,
+        plural_target,
+        None,
+    )
+}
+
+fn fixed_pt_indefinite_article(power: &Value) -> Option<&'static str> {
+    let Value::Fixed(power) = power.unhinted() else {
+        return None;
+    };
+    let number_word = number_word(*power)?;
+    // `one` begins with a vowel letter but a consonant sound. The rendered
+    // P/T remains numeric, so preserve the spoken article distinction between
+    // `a 1/1` and `an 8/8`.
+    let starts_with_vowel_sound = !number_word.starts_with("one")
+        && number_word
+            .chars()
+            .next()
+            .is_some_and(|first| matches!(first, 'a' | 'e' | 'i' | 'o' | 'u'));
+    Some(if starts_with_vowel_sound { "an" } else { "a" })
+}
+
+pub(crate) fn describe_returned_object_animation_effect(
+    effect: &crate::effects::ApplyContinuousEffect,
+    returned_collection_is_plural: bool,
+) -> Option<String> {
+    let target = if returned_collection_is_plural {
+        "each of them"
+    } else {
+        "it"
+    };
+    describe_apply_continuous_animation_effect_with_returned_subject(
+        effect,
+        target,
+        false,
+        Some((target, false)),
+    )
+}
+
+fn describe_apply_continuous_animation_effect_with_returned_subject(
+    effect: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+    plural_target: bool,
+    returned_subject: Option<(&str, bool)>,
+) -> Option<String> {
     let (card_types, replaces_other_types) = match &effect.modification {
         Some(crate::continuous::Modification::AddCardTypes(card_types)) => (card_types, false),
         Some(crate::continuous::Modification::SetCardTypes(card_types)) => (card_types, true),
@@ -1550,6 +1921,22 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             ) => {
                 ability_text.push("all creature types".to_string());
             }
+            crate::continuous::Modification::AddAbility(ability)
+                if ability.id()
+                    == crate::static_abilities::StaticAbilityId::GrantObjectAbilityForFilter
+                    && !ability.source_granted_inline_abilities().is_empty() =>
+            {
+                has_quoted_generic_ability = true;
+                let mut rendered = capitalize_first(&describe_static_ability_with_subject(
+                    ability,
+                    "this creature",
+                ));
+                if !rendered.ends_with('.') && !rendered.ends_with('!') && !rendered.ends_with('?')
+                {
+                    rendered.push('.');
+                }
+                ability_text.push(format!("\"{rendered}\""));
+            }
             crate::continuous::Modification::AddAbility(ability) => {
                 ability_text.push(lowercase_first(&ability.display()));
             }
@@ -1576,11 +1963,12 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         }
     }
 
-    let returned_permanent_animation = effect.until == Until::Forever
-        && matches!(
-            effect.target_spec.as_ref(),
-            Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
-        );
+    let returned_permanent_animation = returned_subject.is_some()
+        || (effect.until == Until::Forever
+            && matches!(
+                effect.target_spec.as_ref(),
+                Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
+            ));
     let returned_artifact_creature_animation = returned_permanent_animation
         && !replaces_other_types
         && effect.type_retention_surface.is_none()
@@ -1591,7 +1979,14 @@ pub(crate) fn describe_apply_continuous_animation_effect(
     );
     let explicitly_in_addition = matches!(
         effect.type_retention_surface,
-        Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes)
+        Some(
+            ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes
+                | ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypesImplicitCreature
+        )
+    );
+    let omit_creature_type_noun = matches!(
+        effect.type_retention_surface,
+        Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypesImplicitCreature)
     );
     let mut preserves_land_types = !replaces_other_types
         && (explicitly_still_a_land
@@ -1601,16 +1996,18 @@ pub(crate) fn describe_apply_continuous_animation_effect(
                 .and_then(choose_spec_land_filter)
                 .is_some()
             || target.eq_ignore_ascii_case("this land"));
-    let (target_text, plural_target) =
-        if let Some(target_text) = plural_non_target_land_animation_target(effect) {
-            (target_text, true)
-        } else if returned_artifact_creature_animation {
-            ("they".to_string(), true)
-        } else if returned_permanent_animation {
-            ("those permanents".to_string(), true)
-        } else {
-            (target.to_string(), plural_target)
-        };
+    let (target_text, plural_target) = if let Some((target_text, plural_target)) = returned_subject
+    {
+        (target_text.to_string(), plural_target)
+    } else if let Some(target_text) = plural_non_target_land_animation_target(effect) {
+        (target_text, true)
+    } else if returned_artifact_creature_animation {
+        ("they".to_string(), true)
+    } else if returned_permanent_animation {
+        ("those permanents".to_string(), true)
+    } else {
+        (target.to_string(), plural_target)
+    };
     preserves_land_types = preserves_land_types || target_text.eq_ignore_ascii_case("this land");
 
     let mut descriptor = Vec::new();
@@ -1623,7 +2020,7 @@ pub(crate) fn describe_apply_continuous_animation_effect(
                 .iter()
                 .map(|subtype| {
                     let subtype = subtype.to_string();
-                    if returned_artifact_creature_animation {
+                    if returned_permanent_animation {
                         subtype
                     } else {
                         subtype.to_ascii_lowercase()
@@ -1644,11 +2041,13 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         descriptor.push(extra_card_types.join(" "));
     }
     let adds_named_types = adds_named_types || !extra_card_types.is_empty();
-    descriptor.push(if plural_target {
-        "creatures".to_string()
-    } else {
-        "creature".to_string()
-    });
+    if !omit_creature_type_noun {
+        descriptor.push(if plural_target {
+            "creatures".to_string()
+        } else {
+            "creature".to_string()
+        });
+    }
 
     let noun_phrase = descriptor
         .into_iter()
@@ -1668,21 +2067,67 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         } else {
             false
         };
+    let dynamic_equal_pt_uses_explicit_value =
+        if let (Some(power), Some(toughness)) = (power, toughness) {
+            power == toughness
+                && !matches!(power, Value::Fixed(_))
+                && !matches!(power.unhinted(), Value::X | Value::ManaValueOf(_))
+                && !power.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        } else {
+            false
+        };
     let pt_where_clause = if let (Some(power), _) = (power, toughness) {
-        (dynamic_equal_pt && !dynamic_equal_pt_uses_mana_value && !matches!(power, Value::X))
-            .then(|| describe_value(power))
+        (dynamic_equal_pt
+            && !dynamic_equal_pt_uses_mana_value
+            && power.has_surface_hint(ValueSurfaceHint::WhereXIs))
+        .then(|| describe_value(power))
     } else {
         None
     };
+    let returned_copula = if plural_target && target_text != "each of them" {
+        "are"
+    } else {
+        "is"
+    };
+    let leading_pt_surface = matches!(
+        effect.animation_pt_surface,
+        Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness)
+    );
+    let explicit_base_pt_surface = matches!(
+        effect.animation_pt_surface,
+        Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness)
+    );
 
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
         if dynamic_equal_pt_uses_mana_value {
+            let pt_noun_phrase = if explicit_base_pt_surface {
+                format!(
+                    "{noun_phrase} with base power and toughness each equal to {}",
+                    describe_value(power)
+                )
+            } else {
+                format!(
+                    "{noun_phrase} with power and toughness each equal to {}",
+                    describe_value(power)
+                )
+            };
+            if returned_permanent_animation {
+                format!("{target_text} {returned_copula} {pt_noun_phrase}")
+            } else if plural_target {
+                format!("{target_text} become {pt_noun_phrase}")
+            } else {
+                format!(
+                    "{target_text} becomes {}",
+                    with_indefinite_article(&pt_noun_phrase)
+                )
+            }
+        } else if dynamic_equal_pt_uses_explicit_value {
             let pt_noun_phrase = format!(
-                "{noun_phrase} with power and toughness each equal to {}",
+                "{noun_phrase} with base power and toughness each equal to {}",
                 describe_value(power)
             );
             if returned_permanent_animation {
-                format!("{target_text} are {pt_noun_phrase}")
+                format!("{target_text} {returned_copula} {pt_noun_phrase}")
             } else if plural_target {
                 format!("{target_text} become {pt_noun_phrase}")
             } else {
@@ -1697,22 +2142,27 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             } else {
                 format!("{}/{}", describe_value(power), describe_value(toughness))
             };
-            let pt_noun_phrase = if dynamic_equal_pt {
-                format!("{pt} {noun_phrase}")
-            } else if returned_artifact_creature_animation {
+            let pt_noun_phrase = if returned_permanent_animation
+                || leading_pt_surface
+                || (dynamic_equal_pt && !explicit_base_pt_surface)
+            {
                 format!("{pt} {noun_phrase}")
             } else {
                 format!("{noun_phrase} with base power and toughness {pt}")
             };
             if returned_permanent_animation {
-                format!("{target_text} are {pt_noun_phrase}")
+                format!("{target_text} {returned_copula} {pt_noun_phrase}")
             } else if plural_target {
                 format!("{target_text} become {pt_noun_phrase}")
             } else {
-                format!(
-                    "{target_text} becomes {}",
+                let singular_noun_phrase = if leading_pt_surface {
+                    fixed_pt_indefinite_article(power)
+                        .map(|article| format!("{article} {pt_noun_phrase}"))
+                        .unwrap_or_else(|| with_indefinite_article(&pt_noun_phrase))
+                } else {
                     with_indefinite_article(&pt_noun_phrase)
-                )
+                };
+                format!("{target_text} becomes {singular_noun_phrase}")
             }
         }
     } else if power.is_none() && toughness.is_none() {
@@ -1759,18 +2209,32 @@ pub(crate) fn describe_apply_continuous_animation_effect(
             || returned_permanent_animation
             || (!preserves_land_types && !ability_text.is_empty() && !has_quoted_generic_ability)
             || land_addition_surface);
-    if render_as_addition_to_other_types && !artifact_type_is_redundant {
+    if render_as_addition_to_other_types && (explicitly_in_addition || !artifact_type_is_redundant)
+    {
         if plural_target {
             text.push_str(" in addition to their other types");
         } else {
             text.push_str(" in addition to its other types");
         }
     }
-    text = apply_continuous_text_with_tail(
-        text,
-        describe_apply_continuous_tail(effect),
-        has_quoted_generic_ability,
-    );
+    let tail = describe_apply_continuous_tail(effect);
+    let leading_duration = matches!(
+        effect.animation_duration_surface,
+        Some(ironsmith_core::AnimationDurationSurface::Leading)
+    )
+    .then(|| describe_until(&effect.until));
+    text = if leading_duration
+        .as_ref()
+        .is_some_and(|duration| tail.as_deref() == Some(duration.as_str()))
+    {
+        format!(
+            "{}, {}",
+            capitalize_first(leading_duration.as_deref().unwrap_or_default()),
+            lowercase_first(&text)
+        )
+    } else {
+        apply_continuous_text_with_tail(text, tail, has_quoted_generic_ability)
+    };
     if let Some(where_clause) = pt_where_clause {
         text.push_str(", where X is ");
         text.push_str(&where_clause);
@@ -1783,7 +2247,9 @@ pub(crate) fn describe_apply_continuous_animation_effect(
         }
     }
     let text = capitalize_first(&text);
-    Some(if returned_artifact_creature_animation {
+    Some(if returned_permanent_animation && !plural_target {
+        text.replacen("It is ", "It's ", 1)
+    } else if returned_artifact_creature_animation {
         text.replacen("They are ", "They're ", 1)
     } else {
         text
@@ -1797,10 +2263,31 @@ pub(crate) fn describe_apply_continuous_effect(
     if let Some(surface) = source_generic_ability_grant_target_surface(effect) {
         target = surface;
     }
+    if effect.condition.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && matches!(effect.until, Until::EndOfTurn)
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && let Some(model) = ability.compiled_model()
+        && let ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(
+            additional,
+        ) = &model.payload
+        && *additional > 0
+    {
+        let blocker_count = if *additional == 1 {
+            "an additional creature".to_string()
+        } else {
+            format!("{additional} additional creatures")
+        };
+        return Some(format!("{target} can block {blocker_count} this turn"));
+    }
     if let Some(text) = describe_dies_return_counter_grant(effect, &target) {
         return Some(text);
     }
     if let Some(text) = describe_attack_block_if_able_apply_continuous(effect, &target) {
+        return Some(text);
+    }
+    if let Some(text) = describe_turn_long_per_blocker_tax(effect) {
         return Some(text);
     }
     if let Some(text) = describe_apply_continuous_animation_effect(effect, &target, plural_target) {
@@ -2009,6 +2496,47 @@ pub(crate) fn describe_apply_continuous_effect(
         ));
     }
     Some(text)
+}
+
+/// Render the structural shape produced by a turn-long global cost to block.
+///
+/// Each affected creature receives one source-relative `BlockCost`, so the
+/// payment is made once for each creature declared as a blocker. Keep this
+/// structural: the display label is deliberately not consulted.
+fn describe_turn_long_per_blocker_tax(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if !matches!(effect.until, Until::EndOfTurn)
+        || effect.target_spec.is_some()
+        || !effect.additional_modifications.is_empty()
+        || !effect.runtime_modifications.is_empty()
+        || effect.condition.is_some()
+        || effect.target != crate::continuous::EffectTarget::Filter(ObjectFilter::creature())
+    {
+        return None;
+    }
+    let crate::continuous::Modification::AddAbility(ability) = effect.modification.as_ref()? else {
+        return None;
+    };
+    let block_cost = ability.block_cost_model()?;
+    if block_cost.is_attached_to_source()
+        || block_cost.blockers() != &ObjectFilter::source()
+        || block_cost.attackers() != &ObjectFilter::creature()
+    {
+        return None;
+    }
+    let dynamic = block_cost.cost().dynamic_mana_cost()?;
+    if !dynamic.base.has_x()
+        || dynamic.x_value.is_some()
+        || dynamic.additional_generic.is_some()
+        || dynamic.multiplier.is_some()
+    {
+        return None;
+    }
+    let cost = describe_total_cost(block_cost.cost());
+    Some(format!(
+        "This turn, creatures can't block unless their controller pays {cost} for each blocking creature they control"
+    ))
 }
 
 pub(crate) fn apply_continuous_text_with_tail(
@@ -2680,8 +3208,88 @@ pub(crate) fn describe_until(until: &Until) -> String {
         }
         Until::SourceUntaps => "for as long as this source remains tapped".to_string(),
         Until::YouStopControllingThis => "for as long as you control this source".to_string(),
+        Until::ForAsLongAs(predicate) => describe_continuous_duration_predicate(predicate),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),
     }
+}
+
+fn describe_duration_object(reference: &ironsmith_core::ContinuousDurationObject) -> &'static str {
+    match reference {
+        ironsmith_core::ContinuousDurationObject::Source => "this source",
+        ironsmith_core::ContinuousDurationObject::AffectedObject => "it",
+        ironsmith_core::ContinuousDurationObject::Tagged(_) => "that object",
+        ironsmith_core::ContinuousDurationObject::Specific(_) => "that object",
+    }
+}
+
+fn describe_continuous_duration_predicate(
+    predicate: &ironsmith_core::ContinuousDurationPredicate,
+) -> String {
+    use ironsmith_core::ContinuousDurationPredicate as Predicate;
+
+    let clause = match predicate {
+        Predicate::All(predicates) => predicates
+            .iter()
+            .map(|predicate| {
+                describe_continuous_duration_predicate(predicate)
+                    .strip_prefix("for as long as ")
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(" and "),
+        Predicate::ObjectOnBattlefield(object) => {
+            format!(
+                "{} remains on the battlefield",
+                describe_duration_object(object)
+            )
+        }
+        Predicate::ObjectTapped(object) => {
+            format!("{} remains tapped", describe_duration_object(object))
+        }
+        Predicate::ObjectHasCounter {
+            object,
+            counter_type,
+            minimum,
+        } => {
+            let counter = if *minimum == 1 {
+                with_indefinite_article(&format!("{} counter", counter_type.description()))
+            } else {
+                format!("{minimum} {} counters", counter_type.description())
+            };
+            format!("{} has {counter} on it", describe_duration_object(object))
+        }
+        Predicate::ObjectAttachedTo {
+            attachment,
+            attached_to,
+        } => format!(
+            "{} is attached to {}",
+            describe_duration_object(attachment),
+            describe_duration_object(attached_to)
+        ),
+        Predicate::ObjectIsEnchanted(object) => {
+            format!("{} is enchanted", describe_duration_object(object))
+        }
+        Predicate::PlayerIsMonarch(player) => match player {
+            ironsmith_core::ContinuousDurationPlayer::EffectController => {
+                "you're the monarch".to_string()
+            }
+            ironsmith_core::ContinuousDurationPlayer::ControllerOf(object) => format!(
+                "{}'s controller is the monarch",
+                describe_duration_object(object)
+            ),
+            ironsmith_core::ContinuousDurationPlayer::Tagged(_)
+            | ironsmith_core::ContinuousDurationPlayer::Specific(_) => {
+                "that player is the monarch".to_string()
+            }
+        },
+        Predicate::ObjectPowerAtMostObject { lesser, greater } => format!(
+            "{}'s power remains less than or equal to {}'s power",
+            describe_duration_object(lesser),
+            describe_duration_object(greater)
+        ),
+    };
+    format!("for as long as {clause}")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3379,6 +3987,69 @@ pub(crate) fn describe_sacrifice_cost_object_condition(
     tag: &crate::tag::TagKey,
     filter: &ObjectFilter,
 ) -> Option<String> {
+    if let Some(surface) = filter.additional_cost_object_surface() {
+        let mut quality = filter.clone();
+        quality.set_additional_cost_object_surface(None);
+        quality.zone = None;
+        let baseline_type = match surface.kind {
+            crate::target::SacrificedObjectKind::Creature => Some(CardType::Creature),
+            crate::target::SacrificedObjectKind::Artifact => Some(CardType::Artifact),
+            crate::target::SacrificedObjectKind::Enchantment => Some(CardType::Enchantment),
+            crate::target::SacrificedObjectKind::Permanent => None,
+        };
+        if let Some(baseline_type) = baseline_type {
+            quality
+                .card_types
+                .retain(|card_type| *card_type != baseline_type);
+        }
+        let simple_subtype = (quality.subtypes.len() == 1).then(|| {
+            let mut rest = quality.clone();
+            rest.card_types.clear();
+            rest.subtypes.clear();
+            (rest == ObjectFilter::default()).then(|| quality.subtypes[0].to_string())
+        });
+        let simple_supertype = (quality.supertypes.len() == 1).then(|| {
+            let mut rest = quality.clone();
+            rest.supertypes.clear();
+            (rest == ObjectFilter::default())
+                .then(|| quality.supertypes[0].name().to_ascii_lowercase())
+        });
+        let simple_subtype = simple_subtype.flatten();
+        let simple_supertype = simple_supertype.flatten();
+        let simple_color = quality.colors.and_then(|colors| {
+            let mut rest = quality.clone();
+            rest.colors = None;
+            (rest == ObjectFilter::default()).then(|| describe_token_color_words(colors, false))
+        });
+        let (mut description, needs_article) = if let Some(description) = simple_subtype {
+            (description, true)
+        } else if let Some(description) = simple_supertype.or(simple_color) {
+            // Supertypes and colors are adjective predicates in Oracle:
+            // "was legendary" / "was black", not "was a legendary".
+            (description, false)
+        } else {
+            (
+                strip_indefinite_article(&quality.description()).to_string(),
+                true,
+            )
+        };
+        for suffix in [" permanent", " card", " object"] {
+            if let Some(stripped) = description.strip_suffix(suffix) {
+                description = stripped.to_string();
+                break;
+            }
+        }
+        if description.is_empty() || description == "object" {
+            return None;
+        }
+        let description = if needs_article {
+            with_indefinite_article(&description)
+        } else {
+            description
+        };
+        return Some(format!("{} was {description}", surface.description()));
+    }
+
     if !tag.as_str().starts_with("sacrifice_cost_") {
         return None;
     }
@@ -3856,6 +4527,11 @@ pub(crate) fn spell_cast_this_turn_condition_filter(
 
 pub(crate) fn describe_spell_cast_condition_object(filter: &ObjectFilter) -> String {
     let described = describe_for_each_filter(filter);
+    if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        && matches!(described.as_str(), "object" | "permanent" | "card")
+    {
+        return "a spell".to_string();
+    }
     if described == "card in your hand" || described == "spell in your hand" {
         return "a spell from your hand".to_string();
     }
@@ -4038,7 +4714,18 @@ pub(crate) fn describe_happily_ever_after_condition(condition: &Condition) -> Op
 }
 
 pub(crate) fn pluralize_relative_object_phrase(phrase: &str) -> String {
-    let mut plural = pluralize_noun_phrase(phrase);
+    let mut plural = if let Some((head, tail)) = phrase.split_once(" created ") {
+        // `created ...` is a postpositive provenance qualifier. The selected
+        // object's noun is on its left; pluralizing the terminal word would
+        // produce the synthetic verb "createds".
+        format!(
+            "{} created {}",
+            pluralize_noun_phrase(head.trim()),
+            tail.trim()
+        )
+    } else {
+        pluralize_noun_phrase(phrase)
+    };
     for (singular, plural_noun) in [
         ("artifact", "artifacts"),
         ("battle", "battles"),

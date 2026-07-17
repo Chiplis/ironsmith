@@ -85,3 +85,138 @@ pub(super) fn modal_distinct_player_rule_requires_a_distinct_legal_assignment() 
     assert_eq!(autofilled.len(), 2);
     assert_ne!(autofilled[0], autofilled[1]);
 }
+
+#[test]
+pub(super) fn alternative_activation_cost_locks_and_pays_the_selected_complete_branch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let generic_branch = crate::cost::TotalCost::from_costs(vec![
+        crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]])),
+        crate::costs::Cost::tap(),
+    ]);
+    let white_branch = crate::cost::TotalCost::from_costs(vec![
+        crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White]])),
+        crate::costs::Cost::tap(),
+    ]);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Alternative Cost Shard")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::activated(
+            crate::cost::TotalCost::one_of(vec![generic_branch, white_branch]),
+            vec![Effect::draw(1)],
+        ))
+        .build();
+    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+
+    let action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility {
+                    source: action_source,
+                    ability_index: 0,
+                } if *action_source == source
+            )
+        })
+        .expect("the payable white branch should make the ability legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut decision_maker = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut decision_maker,
+    )
+    .expect("activating should prompt for a complete alternative cost");
+
+    let branch_context = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(context),
+        ) => context,
+        other => panic!("expected an alternative-cost prompt, got {other:?}"),
+    };
+    assert_eq!(branch_context.options.len(), 2);
+    assert!(branch_context.options[0].description.contains("{3}"));
+    assert!(!branch_context.options[0].legal);
+    assert!(branch_context.options[1].description.contains("{W}"));
+    assert!(branch_context.options[1].legal);
+
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(1),
+        &mut decision_maker,
+    )
+    .expect("the selected white-and-tap branch should lock and begin payment");
+
+    for _ in 0..8 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(context),
+            ) => {
+                let option = context
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .expect("the locked white branch should have a legal payment option");
+                let response = match state
+                    .pending_activation
+                    .as_ref()
+                    .map(|pending| &pending.stage)
+                {
+                    Some(ActivationStage::ActivatingManaAbilities) => {
+                        PriorityResponse::ManaPayment(context.options.len() - 1)
+                    }
+                    Some(ActivationStage::ChoosingNextCost) => {
+                        PriorityResponse::NextCostChoice(option.index)
+                    }
+                    Some(ActivationStage::PayingMana) => {
+                        PriorityResponse::ManaPipPayment(option.index)
+                    }
+                    stage => panic!("unexpected payment stage {stage:?}"),
+                };
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &response,
+                    &mut decision_maker,
+                )
+                .expect("the locked white branch should remain payable")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            )
+            | crate::decision::GameProgress::Continue => break,
+            other => panic!("unexpected activation payment progress: {other:?}"),
+        };
+    }
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the paid ability should be on the stack"
+    );
+    assert!(
+        game.is_tapped(source),
+        "the selected branch must pay its tap cost"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.white,
+        0,
+        "the selected branch must pay one white mana, not three generic mana"
+    );
+}

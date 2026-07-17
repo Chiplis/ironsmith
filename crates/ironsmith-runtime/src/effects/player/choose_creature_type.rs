@@ -2,7 +2,6 @@
 
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{
     BecomeCreatureTypeChoiceEffect, CostExecutableEffect, CostValidationError, EffectExecutor,
 };
@@ -45,7 +44,8 @@ impl EffectExecutor for ChooseCreatureTypeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let subtype_options = self.creature_type_options();
         if subtype_options.is_empty() {
             return Ok(EffectOutcome::resolved());

@@ -106,6 +106,9 @@ pub(crate) struct CumulativeUpkeepSurface;
 pub(crate) struct SourceLeavesBattlefieldSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StaticEffectContinuesUntilEndOfTurnSurface;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ThisPermanentSurface;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -421,6 +424,38 @@ pub(crate) fn parse_source_leaves_battlefield_surface(
 ) -> Option<SourceLeavesBattlefieldSurface> {
     permission_shapes::contains_tokens(tokens, &["leaves", "the", "battlefield"])
         .then_some(SourceLeavesBattlefieldSurface)
+}
+
+pub(crate) fn parse_static_effect_continues_until_end_of_turn_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticEffectContinuesUntilEndOfTurnSurface> {
+    let words = TokenWordView::new(tokens).word_refs();
+    if words.len() != 13
+        || words[0] != "if"
+        || words[1] != "this"
+        || !matches!(
+            words[2],
+            "artifact" | "creature" | "enchantment" | "land" | "permanent"
+        )
+        || !permission_shapes::exact_words(
+            &words[3..],
+            &[
+                "leaves",
+                "the",
+                "battlefield",
+                "this",
+                "effect",
+                "continues",
+                "until",
+                "end",
+                "of",
+                "turn",
+            ],
+        )
+    {
+        return None;
+    }
+    Some(StaticEffectContinuesUntilEndOfTurnSurface)
 }
 
 pub(crate) fn parse_this_permanent_surface(

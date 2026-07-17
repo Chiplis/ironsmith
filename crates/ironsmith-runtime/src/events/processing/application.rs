@@ -17,6 +17,72 @@ pub(super) fn apply_trait_replacement(
     match &effect.replacement {
         ReplacementAction::Prevent => TraitApplyResult::Prevented,
 
+        ReplacementAction::PreventDamage => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            if damage.is_unpreventable || damage.amount == 0 {
+                TraitApplyResult::Unchanged(event)
+            } else {
+                queue_damage_prevented_event(game, &event, effect, &damage, damage.amount);
+                TraitApplyResult::Prevented
+            }
+        }
+
+        ReplacementAction::PreventDamageAmount(amount) => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let prevented = if damage.is_unpreventable {
+                0
+            } else {
+                damage.amount.min(*amount)
+            };
+            if prevented == 0 {
+                TraitApplyResult::Unchanged(event)
+            } else {
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+                TraitApplyResult::Modified(event.rewrap(damage.reduced(prevented)))
+            }
+        }
+
+        ReplacementAction::PreventDamageThen(effects) => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner()).cloned()
+            else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let prevented = if damage.is_unpreventable {
+                0
+            } else {
+                damage.amount
+            };
+            if prevented > 0 {
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+            }
+            game.effect_store.prevention_effects.queue_follow_up(
+                crate::prevention::PreventionFollowUp {
+                    source: effect.source,
+                    controller: effect.controller,
+                    prevented,
+                    effects: effects.clone(),
+                    targets: Vec::new(),
+                    target_assignments: Vec::new(),
+                },
+                damage.with_amount(prevented),
+                event.provenance(),
+            );
+            if prevented > 0 {
+                TraitApplyResult::Prevented
+            } else {
+                TraitApplyResult::Unchanged(event)
+            }
+        }
+
         ReplacementAction::PreventWithShield {
             shield_id,
             max_amount,
@@ -40,7 +106,11 @@ pub(super) fn apply_trait_replacement(
                     event.provenance(),
                 );
             }
-            if result.remaining == damage.amount {
+            let prevented = damage.amount.saturating_sub(result.remaining);
+            if prevented > 0 {
+                queue_damage_prevented_event(game, &event, effect, &damage, prevented);
+            }
+            if prevented == 0 {
                 TraitApplyResult::Unchanged(event)
             } else {
                 TraitApplyResult::Modified(event.rewrap(damage.with_amount(result.remaining)))
@@ -256,6 +326,8 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::Additionally(_effects) => TraitApplyResult::Modified(event),
 
+        ReplacementAction::DeclineOptional(_) => TraitApplyResult::Modified(event),
+
         ReplacementAction::AddTokens { token, count } => {
             let modified = apply_trait_add_tokens(&event, *token, *count);
             match modified {
@@ -433,6 +505,7 @@ pub(super) fn apply_trait_replacement(
                         Zone::Battlefield => "Battlefield",
                         Zone::Stack => "Stack",
                         Zone::Command => "Command zone",
+                        Zone::Ante => "Ante",
                         Zone::OutsideGame => "Outside the game",
                     };
                     crate::decisions::context::SelectableOption::new(idx, zone_name.to_string())
@@ -463,6 +536,39 @@ pub(super) fn apply_trait_replacement(
             }
         }
     }
+}
+
+fn queue_damage_prevented_event(
+    game: &mut GameState,
+    original_event: &Event,
+    effect: &ReplacementEffect,
+    damage: &crate::events::DamageEvent,
+    amount: u32,
+) {
+    if amount == 0 {
+        return;
+    }
+    let mut prevented = crate::events::DamagePreventedEvent::new(
+        damage.source,
+        damage.target,
+        amount,
+        effect.source,
+        effect.controller,
+        damage.is_combat,
+    );
+    if let Some(snapshot) = damage.target_snapshot.clone() {
+        prevented = prevented.with_target_snapshot(snapshot);
+    }
+    if let ReplacementAction::PreventWithShield { shield_id, .. } = &effect.replacement {
+        prevented = prevented.with_prevention_shield(*shield_id);
+    }
+    game.queue_trigger_event(
+        original_event.provenance(),
+        crate::triggers::TriggerEvent::new_with_provenance(
+            prevented,
+            crate::provenance::ProvNodeId::default(),
+        ),
+    );
 }
 
 fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Option<Event> {
@@ -535,6 +641,7 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
         Zone::Stack => "the stack",
         Zone::Exile => "exile",
         Zone::Command => "the command zone",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
     }
 }

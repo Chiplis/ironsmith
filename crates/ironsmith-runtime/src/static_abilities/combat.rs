@@ -9,7 +9,7 @@ use crate::effect::RestrictionExt as _;
 use crate::effects::EffectExecutor;
 use crate::events::permanents::SacrificeEvent;
 use crate::events::processing::{EventOutcome, process_zone_change};
-use crate::events::{EventKind, KeywordActionEvent};
+use crate::events::{EventKind, KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
 use crate::ids::{ObjectId, PlayerId};
@@ -19,6 +19,147 @@ use crate::target::ObjectFilter;
 use crate::triggers::{TriggerEvent, TriggeredAbilityEntry};
 use crate::types::Subtype;
 use crate::zone::Zone;
+
+/// A reusable CR 509.1d cost imposed on matching blocker-attacker pairs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockCost {
+    blockers: ObjectFilter,
+    blocker_is_attached_to_source: bool,
+    attackers: ObjectFilter,
+    cost: crate::cost::TotalCost,
+    display_text: String,
+}
+
+impl BlockCost {
+    pub fn new(
+        blockers: ObjectFilter,
+        attackers: ObjectFilter,
+        cost: crate::cost::TotalCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            blockers,
+            blocker_is_attached_to_source: false,
+            attackers,
+            cost,
+            display_text: display.into(),
+        }
+    }
+
+    pub fn attached(
+        blockers: ObjectFilter,
+        attackers: ObjectFilter,
+        cost: crate::cost::TotalCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            blockers,
+            blocker_is_attached_to_source: true,
+            attackers,
+            cost,
+            display_text: display.into(),
+        }
+    }
+
+    pub(crate) fn blockers(&self) -> &ObjectFilter {
+        &self.blockers
+    }
+
+    pub(crate) fn attackers(&self) -> &ObjectFilter {
+        &self.attackers
+    }
+
+    pub(crate) fn cost(&self) -> &crate::cost::TotalCost {
+        &self.cost
+    }
+
+    pub(crate) fn is_attached_to_source(&self) -> bool {
+        self.blocker_is_attached_to_source
+    }
+}
+
+impl StaticAbilityKind for BlockCost {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::BlockCost
+    }
+
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+
+    fn block_cost_model(&self) -> Option<&BlockCost> {
+        Some(self)
+    }
+
+    fn block_cost_for_declaration(
+        &self,
+        game: &GameState,
+        ability_source: ObjectId,
+        ability_controller: PlayerId,
+        blocker: ObjectId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        let opponents = game
+            .players
+            .iter()
+            .filter(|player| player.id != ability_controller && player.is_in_game())
+            .map(|player| player.id)
+            .collect();
+        let filter_ctx = crate::filter::FilterContext::new(ability_controller)
+            .with_source(ability_source)
+            .with_active_player(game.turn.active_player)
+            .with_opponents(opponents);
+        let blocker = game.object(blocker)?;
+        let attacker = game.object(attacker)?;
+        let blocker_relation_matches = if self.blocker_is_attached_to_source {
+            game.object(ability_source)
+                .and_then(|source| source.attached_to)
+                .and_then(crate::object::AttachmentTarget::object_id)
+                == Some(blocker.id)
+                && self.blockers.matches(blocker, &filter_ctx, game)
+        } else {
+            self.blockers.matches(blocker, &filter_ctx, game)
+        };
+        (blocker_relation_matches && self.attackers.matches(attacker, &filter_ctx, game))
+            .then(|| self.cost.clone())
+    }
+
+    fn materialize_resolution_values(
+        &self,
+        game: &GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        let cost = self
+            .cost
+            .clone()
+            .try_map(|component| {
+                let Some(dynamic) = component.dynamic_mana_cost_ref() else {
+                    return Ok(component);
+                };
+                crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, ctx)
+                    .map(crate::costs::Cost::mana)
+            })
+            .map_err(|error| {
+                crate::effects::ExecutionError::UnresolvableValue(error.to_string())
+            })?;
+        let materialized = if self.blocker_is_attached_to_source {
+            BlockCost::attached(
+                self.blockers.clone(),
+                self.attackers.clone(),
+                cost,
+                self.display_text.clone(),
+            )
+        } else {
+            BlockCost::new(
+                self.blockers.clone(),
+                self.attackers.clone(),
+                cost,
+                self.display_text.clone(),
+            )
+        };
+        Ok(Some(super::StaticAbility::new(materialized)))
+    }
+}
 
 /// Macro to define simple combat abilities.
 macro_rules! define_combat_ability {
@@ -210,12 +351,13 @@ impl StaticAbilityKind for ExertAttack {
         game: &GameState,
         source: ObjectId,
         controller: PlayerId,
-    ) -> Option<crate::decisions::context::BooleanContext> {
+        _attacking_creatures: &[ObjectId],
+    ) -> Option<crate::decisions::context::DecisionContext> {
         if !self.is_available(game, source) {
             return None;
         }
         let source_name = game.object(source).map(|object| object.name.to_string())?;
-        Some(
+        Some(crate::decisions::context::DecisionContext::Boolean(
             crate::decisions::context::BooleanContext::new(
                 controller,
                 Some(source),
@@ -223,7 +365,7 @@ impl StaticAbilityKind for ExertAttack {
             )
             .with_source_name(source_name)
             .with_consequence_text("It won't untap during your next untap step."),
-        )
+        ))
     }
 
     fn pay_optional_attack_cost(
@@ -231,9 +373,21 @@ impl StaticAbilityKind for ExertAttack {
         game: &mut GameState,
         source: ObjectId,
         controller: PlayerId,
+        _attacking_creatures: &[ObjectId],
         trigger_queue: &mut crate::triggers::TriggerQueue,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<Result<(), String>> {
         if !self.is_available(game, source) {
+            return Some(Ok(()));
+        }
+        let crate::decisions::context::DecisionContext::Boolean(prompt) =
+            self.optional_attack_cost_prompt(game, source, controller, &[])?
+        else {
+            return Some(Err(
+                "Exert cost produced the wrong decision type".to_string()
+            ));
+        };
+        if !decision_maker.decide_boolean(game, &prompt) {
             return Some(Ok(()));
         }
 
@@ -283,6 +437,176 @@ impl StaticAbilityKind for ExertAttack {
 
             Ok(())
         }))
+    }
+}
+
+/// Enlist's optional tap cost and its linked power-boost trigger (CR 702.154).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnlistAttack {
+    pub linked_trigger: crate::ability::TriggeredAbility,
+    pub display_text: String,
+}
+
+impl EnlistAttack {
+    pub fn new(
+        linked_trigger: crate::ability::TriggeredAbility,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            linked_trigger,
+            display_text: display.into(),
+        }
+    }
+
+    fn eligible_creatures(
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacking_creatures: &[ObjectId],
+    ) -> Vec<ObjectId> {
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter(|candidate| {
+                *candidate != source
+                    && !attacking_creatures.contains(candidate)
+                    && game.object(*candidate).is_some_and(|object| {
+                        game.controller_of(object) == controller
+                            && game.current_is_creature(*candidate)
+                            && !game.is_tapped(*candidate)
+                            && (!game.is_summoning_sick(*candidate)
+                                || game.current_has_static_ability_id(
+                                    *candidate,
+                                    StaticAbilityId::Haste,
+                                ))
+                    })
+            })
+            .collect()
+    }
+
+    fn selection_context(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacking_creatures: &[ObjectId],
+    ) -> crate::decisions::context::SelectObjectsContext {
+        let candidates = Self::eligible_creatures(game, source, controller, attacking_creatures)
+            .into_iter()
+            .filter_map(|id| {
+                game.object(id).map(|object| {
+                    crate::decisions::context::SelectableObject::new(id, object.name.to_string())
+                })
+            })
+            .collect();
+        crate::decisions::context::SelectObjectsContext::new(
+            controller,
+            Some(source),
+            "Choose up to one creature to tap for enlist",
+            candidates,
+            0,
+            Some(1),
+        )
+    }
+}
+
+impl StaticAbilityKind for EnlistAttack {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnlistAttack
+    }
+
+    fn display(&self) -> String {
+        self.display_text.clone()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn optional_attack_cost_prompt(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacking_creatures: &[ObjectId],
+    ) -> Option<crate::decisions::context::DecisionContext> {
+        let context = self.selection_context(game, source, controller, attacking_creatures);
+        (!context.candidates.is_empty()).then_some(
+            crate::decisions::context::DecisionContext::SelectObjects(context),
+        )
+    }
+
+    fn pay_optional_attack_cost(
+        &self,
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        attacking_creatures: &[ObjectId],
+        trigger_queue: &mut crate::triggers::TriggerQueue,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<Result<(), String>> {
+        let prompt = self.selection_context(game, source, controller, attacking_creatures);
+        let selected = decision_maker.decide_objects(game, &prompt);
+        if selected.is_empty() {
+            return Some(Ok(()));
+        }
+        if selected.len() != 1 || !prompt.candidates.iter().any(|item| item.id == selected[0]) {
+            return Some(Err("Invalid creature selected for enlist".to_string()));
+        }
+
+        let enlisted = selected[0];
+        let enlisted_snapshot = game.object(enlisted).map(|object| {
+            ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+        });
+        let source_object = game.object(source).cloned();
+        let (Some(enlisted_snapshot), Some(source_object)) = (enlisted_snapshot, source_object)
+        else {
+            return Some(Err(
+                "Enlist source or chosen creature left the battlefield".to_string()
+            ));
+        };
+
+        game.tap(enlisted);
+        let provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(EventKind::PermanentTapped);
+        let tap_event = TriggerEvent::new_with_provenance(
+            crate::events::PermanentTappedEvent::new(enlisted),
+            provenance,
+        );
+        game.queue_trigger_event(provenance, tap_event.clone());
+
+        let tagged_objects = std::collections::HashMap::from([(
+            crate::tag::TagKey::from("enlisted_creature"),
+            vec![enlisted_snapshot],
+        )]);
+        let source_snapshot =
+            ObjectSnapshot::from_object_with_calculated_characteristics(&source_object, game);
+        let enlist_provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(EventKind::KeywordAction);
+        let enlist_event = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Enlist, controller, source, 1)
+                .with_snapshot(Some(source_snapshot.clone()))
+                .with_object_tags(tagged_objects.clone())
+                .with_combat_phase(game.turn_store.combat_phases_started_this_turn),
+            enlist_provenance,
+        );
+        game.queue_trigger_event(enlist_provenance, enlist_event.clone());
+        trigger_queue.add(TriggeredAbilityEntry {
+            source,
+            controller,
+            x_value: source_object.x_value,
+            event_value_amount: None,
+            ability: self.linked_trigger.clone(),
+            triggering_event: enlist_event,
+            source_stable_id: source_object.stable_id,
+            source_name: source_object.name.to_string(),
+            source_snapshot: Some(source_snapshot),
+            tagged_objects,
+            source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+            trigger_identity: crate::triggers::compute_trigger_identity(&self.linked_trigger),
+        });
+        Some(Ok(()))
     }
 }
 

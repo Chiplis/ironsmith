@@ -25,6 +25,8 @@ pub enum PaymentReason {
     UnlockDoor,
     /// Turning a face-down permanent face up.
     TurnFaceUp,
+    /// Paying one iteration of a cumulative upkeep cost.
+    CumulativeUpkeep,
     /// Paying a cost during effect or triggered-ability resolution.
     Effect,
     /// Paying another special-action or generic engine cost.
@@ -38,6 +40,19 @@ impl PaymentReason {
             self,
             Self::CastSpell | Self::ActivateAbility | Self::ActivateManaAbility
         )
+    }
+
+    pub fn mana_payment_purpose(self) -> crate::ability::ManaPaymentPurpose {
+        match self {
+            Self::CastSpell => crate::ability::ManaPaymentPurpose::CastSpell,
+            Self::ActivateAbility => crate::ability::ManaPaymentPurpose::ActivateAbility,
+            Self::ActivateManaAbility => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
+            Self::UnlockDoor => crate::ability::ManaPaymentPurpose::UnlockDoor,
+            Self::TurnFaceUp => crate::ability::ManaPaymentPurpose::TurnFaceUp,
+            Self::CumulativeUpkeep => crate::ability::ManaPaymentPurpose::CumulativeUpkeep,
+            Self::Effect => crate::ability::ManaPaymentPurpose::Effect,
+            Self::Other => crate::ability::ManaPaymentPurpose::Other,
+        }
     }
 }
 

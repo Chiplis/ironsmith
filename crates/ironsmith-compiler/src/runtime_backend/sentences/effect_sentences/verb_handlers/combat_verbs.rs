@@ -128,8 +128,7 @@ pub(crate) fn parse_attach_object_phrase(
             };
             Ok(TargetAst::WithCount(Box::new(target), count))
         }
-        combat_grammar::CombatAttachObjectShape::TargetBeforeAttachedTo { target_tokens }
-        | combat_grammar::CombatAttachObjectShape::Target { target_tokens }
+        combat_grammar::CombatAttachObjectShape::Target { target_tokens }
         | combat_grammar::CombatAttachObjectShape::GeneralTarget { target_tokens } => {
             parse_target_phrase(target_tokens)
         }
@@ -398,17 +397,11 @@ fn parse_divided_damage_equal_to_amount(
     ))
 }
 
-fn preserve_tapped_prior_effect_count_equal_to_surface(value: Value) -> Value {
-    let is_tapped_prior_effect_count = matches!(
-        value.unhinted(),
-        Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
-            if query.action == Some(ironsmith_core::PriorEffectAction::Tapped)
-                && query.metric == ironsmith_core::EffectMetric::Count
-    );
-    if is_tapped_prior_effect_count {
-        value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
-    } else {
+fn preserve_equal_to_surface(value: Value) -> Value {
+    if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo) {
         value
+    } else {
+        value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
     }
 }
 
@@ -436,7 +429,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
                 clause_words.join(" ")
             ))
         })?;
-    let amount = preserve_tapped_prior_effect_count_equal_to_surface(amount);
+    let amount = preserve_equal_to_surface(amount);
     if let Some(target) = parse_combat_player_damage_target(shape.target_tokens, false) {
         return Ok(Some(combat_player_damage_target_effect(
             amount.clone(),
@@ -462,9 +455,16 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
         return Ok(None);
     };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let complete_value = parse_value(shape.amount_tokens)
-        .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value))
-        .map(preserve_tapped_prior_effect_count_equal_to_surface);
+    let authored_difference = crate::runtime_backend::token_word_refs(shape.amount_tokens)
+        .windows(2)
+        .any(|window| window == ["difference", "between"])
+        .then(|| parse_add_mana_equal_amount_value(shape.amount_tokens))
+        .flatten();
+    let complete_value = authored_difference.or_else(|| {
+        parse_value(shape.amount_tokens)
+            .and_then(|(value, used)| (used == shape.amount_tokens.len()).then_some(value))
+            .map(preserve_equal_to_surface)
+    });
     let amount = complete_value
         .or(parse_add_mana_equal_amount_value(shape.amount_tokens))
         .or(parse_equal_to_aggregate_filter_value(shape.amount_tokens))
@@ -486,6 +486,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
                 clause_words.join(" ")
             ))
         })?;
+    let amount = preserve_equal_to_surface(amount);
     if let Some(target) = parse_combat_player_damage_target(shape.target_tokens, true) {
         return Ok(Some(combat_player_damage_target_effect(
             amount.clone(),
@@ -625,10 +626,9 @@ pub(crate) fn parse_deal_damage_with_amount(
             } else {
                 parse_target_phrase(target_tokens)?
             };
-            Ok(EffectAst::Conditional {
+            Ok(EffectAst::TrailingIf {
                 predicate,
-                if_true: vec![EffectAst::subject_verb_damage(amount, target)],
-                if_false: Vec::new(),
+                effects: vec![EffectAst::subject_verb_damage(amount, target)],
             })
         }
         combat_grammar::CombatDamageTargetShape::TrailingIf {
@@ -653,13 +653,12 @@ pub(crate) fn parse_deal_damage_with_amount(
             })
         }
         combat_grammar::CombatDamageTargetShape::OmittedTargetIf { predicate } => {
-            Ok(EffectAst::Conditional {
+            Ok(EffectAst::TrailingIf {
                 predicate,
-                if_true: vec![EffectAst::subject_verb_damage(
+                effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
                 )],
-                if_false: Vec::new(),
             })
         }
         combat_grammar::CombatDamageTargetShape::Simple {
@@ -811,5 +810,33 @@ pub(crate) fn parse_instead_if_control_predicate(
             player: PlayerAst::You,
             filter,
         }))
+    }
+}
+
+#[cfg(test)]
+mod equal_to_damage_surface_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn fixed_plus_count_damage_keeps_equal_to_surface() {
+        let tokens = lex_line(
+            "damage equal to 2 plus the number of Lesson cards in your graveyard to target creature",
+            0,
+        )
+        .expect("equal-to damage should lex");
+        let effect = parse_deal_damage_equal_to_clause(&tokens)
+            .expect("equal-to damage should parse")
+            .expect("equal-to damage should match");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamage { amount, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed damage effect");
+        };
+
+        assert!(amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo));
+        assert!(matches!(amount.unhinted(), Value::Add(_, _)));
     }
 }

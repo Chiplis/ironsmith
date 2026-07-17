@@ -155,6 +155,18 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     let token_surface = CreationTokens::new(tokens);
     let words = token_surface.words();
     let surface = CreationWords::new(&words);
+    // Creation parsing has already removed the authored `for each` marker.
+    // Restore that marker only for the shared colored-mana-symbol parser so
+    // Chroma counts are recognized before the generic object-filter fallback.
+    let mut for_each_words = Vec::with_capacity(words.len() + 2);
+    for_each_words.extend(["for", "each"]);
+    for_each_words.extend(words.iter().copied());
+    if let Some((value, used)) =
+        super::super::super::shared_util::value_expr::colored_mana_symbols_in_costs(&for_each_words)
+        && used == for_each_words.len()
+    {
+        return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
+    }
     if let Some(player) = crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_party_size_player(&words)
     {
         return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::ForEach));
@@ -358,5 +370,26 @@ mod tests {
             .expect("party creation count should parse");
         assert!(party.has_surface_hint(ValueSurfaceHint::ForEach));
         assert_eq!(party.into_unhinted(), Value::PartySize(PlayerFilter::You));
+    }
+
+    #[test]
+    fn parses_colored_mana_symbols_as_dynamic_creation_count() {
+        let tokens = lex_line(
+            "white mana symbol in the mana costs of permanents you control",
+            0,
+        )
+        .unwrap();
+        let value = parse_creation_for_each_dynamic_count_tokens(&tokens)
+            .expect("colored mana-symbol creation count should parse");
+        assert!(value.has_surface_hint(ValueSurfaceHint::ForEach));
+        let Value::ManaSymbolsInManaCostOf { spec, color } = value.into_unhinted() else {
+            panic!("expected structured mana-symbol creation count");
+        };
+        assert_eq!(color, crate::color::Color::White);
+        let ChooseSpec::All(filter) = spec.unhinted() else {
+            panic!("expected aggregate permanent scope");
+        };
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
     }
 }

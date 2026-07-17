@@ -17,6 +17,8 @@ pub(crate) enum StaticSpecialLineShape {
     AdditionalVote,
     DoesntUntap,
     DraftRule,
+    HiddenAgenda,
+    DoubleAgenda,
     AnyNumberNamedDeckConstruction,
     FirstEquipCostAlternative,
 }
@@ -109,6 +111,14 @@ fn is_draft_rule(words: &[&str]) -> bool {
             && phrase_is_present(words, &["booster", "pack"]))
 }
 
+fn is_hidden_agenda(words: &[&str]) -> bool {
+    phrase_is_exact(words, &["hidden", "agenda"])
+}
+
+fn is_double_agenda(words: &[&str]) -> bool {
+    phrase_is_exact(words, &["double", "agenda"])
+}
+
 fn is_named_deck_construction(words: &[&str]) -> bool {
     let prefix = &[
         "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
@@ -146,6 +156,10 @@ pub(crate) fn parse_static_special_line_tokens(
         })
     } else if is_doesnt_untap(&words) {
         Some(StaticSpecialLineShape::DoesntUntap)
+    } else if is_hidden_agenda(&words) {
+        Some(StaticSpecialLineShape::HiddenAgenda)
+    } else if is_double_agenda(&words) {
+        Some(StaticSpecialLineShape::DoubleAgenda)
     } else if is_draft_rule(&words) {
         Some(StaticSpecialLineShape::DraftRule)
     } else if is_named_deck_construction(&words) {

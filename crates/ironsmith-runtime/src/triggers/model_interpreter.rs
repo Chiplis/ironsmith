@@ -58,6 +58,9 @@ fn convert_zone_change_trigger(
     if let Some(during_turn) = trigger.during_turn {
         out = out.during_turn(during_turn);
     }
+    if let Some(graveyard_surface) = trigger.graveyard_surface {
+        out = out.graveyard_surface(graveyard_surface);
+    }
     crate::triggers::Trigger::new(out)
 }
 
@@ -89,7 +92,14 @@ fn convert_player_gets_counters_trigger(
 fn convert_counter_removed_from_trigger(
     trigger: ironsmith_core::trigger_model::CounterRemovedFromTrigger,
 ) -> crate::triggers::Trigger {
-    crate::triggers::Trigger::counter_removed_from(trigger.filter)
+    let mut out = crate::triggers::CounterRemovedFromTrigger::new(trigger.filter);
+    if trigger.one_or_more {
+        out = out.one_or_more();
+    }
+    if trigger.caused_by_source {
+        out = out.caused_by_source();
+    }
+    crate::triggers::Trigger::new(out)
 }
 
 pub(crate) fn interpret_trigger_model(
@@ -224,7 +234,10 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisDealsCombatDamageToPlayer { player } => {
             crate::triggers::Trigger::this_deals_combat_damage_to_player(player)
         }
-        TriggerKind::DealsDamage { filter } => crate::triggers::Trigger::deals_damage(filter),
+        TriggerKind::DealsDamage {
+            filter,
+            source_surface,
+        } => crate::triggers::Trigger::deals_damage_with_source_surface(filter, source_surface),
         TriggerKind::DealsDamageTo {
             source,
             target,
@@ -234,11 +247,15 @@ pub(crate) fn interpret_trigger_model(
             target,
             source_surface,
         ),
-        TriggerKind::DealsDamageToPlayer { source, player } => {
-            let mut trigger = crate::triggers::combat::DealsDamageTrigger::new(source);
-            trigger.damaged_player = Some(player);
-            crate::triggers::Trigger::new(trigger)
-        }
+        TriggerKind::DealsDamageToPlayer {
+            source,
+            player,
+            source_surface,
+        } => crate::triggers::Trigger::deals_damage_to_player_with_source_surface(
+            source,
+            player,
+            source_surface,
+        ),
         TriggerKind::DealsNoncombatDamageToPlayer {
             source,
             player,
@@ -292,8 +309,12 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerRollsHighestNaturalResult { player } => {
             crate::triggers::Trigger::player_rolls_highest_natural_result(player)
         }
-        TriggerKind::PlayerRollsDie { player } => {
-            crate::triggers::Trigger::player_rolls_die(player)
+        TriggerKind::PlayerRollsDie {
+            player,
+            one_or_more,
+        } => crate::triggers::Trigger::player_rolls_die_with_surface(player, one_or_more),
+        TriggerKind::PlayerCoinFlipResult { player, won } => {
+            crate::triggers::Trigger::player_coin_flip_result(player, won)
         }
         TriggerKind::AbilityActivatedQualified {
             activator,
@@ -308,6 +329,13 @@ pub(crate) fn interpret_trigger_model(
             loyalty_only,
             activation_cost_has_tap,
         ),
+        TriggerKind::AbilityTriggered { another } => {
+            if another {
+                crate::triggers::Trigger::another_ability_triggers()
+            } else {
+                crate::triggers::Trigger::ability_triggers()
+            }
+        }
         TriggerKind::IsDealtDamage {
             target,
             combat_only,
@@ -434,6 +462,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::SpellCastQualified {
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -441,6 +470,7 @@ pub(crate) fn interpret_trigger_model(
         } => crate::triggers::Trigger::spell_cast_qualified(
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -615,6 +645,19 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
                 source_description,
             } => Self::source_controller_loses_control(source_description),
+            ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefield => {
+                Self::this_enters_battlefield()
+            }
+            ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefieldWithSurface {
+                surface,
+                subject_number,
+            } => Self::new(
+                super::zone_changes::ZoneChangeTrigger::new()
+                    .to(crate::zone::Zone::Battlefield)
+                    .this()
+                    .this_surface(surface)
+                    .this_subject_number(subject_number),
+            ),
             ironsmith_core::DelayedTriggerSpec::ThisDies => Self::this_dies(),
             ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield => {
                 Self::this_leaves_battlefield()
@@ -640,6 +683,15 @@ impl super::Trigger {
                 Self::leaves_battlefield(filter)
             }
             ironsmith_core::DelayedTriggerSpec::Dies(filter) => Self::dies(filter),
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(filter) => {
+                Self::permanent_becomes_tapped(filter)
+            }
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(filter) => {
+                Self::deals_combat_damage(filter)
+            }
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo { source, target } => {
+                Self::deals_combat_damage_to(source, target)
+            }
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer { source, player } => {
                 Self::deals_combat_damage_to_player(source, player)
             }
@@ -667,6 +719,7 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::SpellCast {
                 filter,
                 caster,
+                timing,
                 during_turn,
                 min_spells_this_turn,
                 exact_spells_this_turn,
@@ -676,6 +729,7 @@ impl super::Trigger {
                 super::SpellCastTrigger::qualified(
                     filter,
                     caster,
+                    timing,
                     during_turn,
                     min_spells_this_turn,
                     exact_spells_this_turn,

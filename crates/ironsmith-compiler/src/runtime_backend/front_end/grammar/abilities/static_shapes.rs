@@ -16,6 +16,10 @@ const DRAW_REPLACEMENT_SKIP_EMPTY_LIBRARY: &[&str] = &[
     "if", "you", "would", "draw", "a", "card", "while", "your", "library", "has", "no", "cards",
     "in", "it", "skip", "that", "draw", "instead",
 ];
+const DRAW_REPLACEMENT_WIN_EMPTY_LIBRARY: &[&str] = &[
+    "if", "you", "would", "draw", "a", "card", "while", "your", "library", "has", "no", "cards",
+    "in", "it", "you", "win", "the", "game", "instead",
+];
 const OPPONENT_DISCARD_THIS_TO_BATTLEFIELD_REPLACEMENT: &[&str] = &[
     "if",
     "a",
@@ -59,6 +63,10 @@ pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) ->
 
 pub(crate) fn is_draw_replacement_skip_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_tokens(tokens, DRAW_REPLACEMENT_SKIP_EMPTY_LIBRARY)
+}
+
+pub(crate) fn is_draw_replacement_win_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches_exact_tokens(tokens, DRAW_REPLACEMENT_WIN_EMPTY_LIBRARY)
 }
 
 pub(crate) fn is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(

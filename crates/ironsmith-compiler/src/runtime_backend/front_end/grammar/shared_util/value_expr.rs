@@ -211,16 +211,28 @@ fn with_sacrificed_object_surface(value: Value, words: &[&str]) -> Value {
     }
 }
 
-fn colored_mana_symbols_in_sacrificed_cost(words: &[&str]) -> Option<(Value, usize)> {
-    let mut idx = usize::from(words.first() == Some(&"the"));
-    if !permission_shapes::starts_at_words(words, idx, &["number", "of"]) {
-        return None;
-    }
-    idx += 2;
+pub(crate) fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
+    let mut idx = if permission_shapes::prefix_words(words, &["for", "each"]) {
+        2
+    } else if permission_shapes::prefix_words(words, &["each"]) {
+        1
+    } else {
+        let mut number_idx = usize::from(words.first() == Some(&"the"));
+        if !permission_shapes::starts_at_words(words, number_idx, &["number", "of"]) {
+            return None;
+        }
+        number_idx += 2;
+        number_idx
+    };
 
     let color = Color::from_name(words.get(idx).copied()?)?;
     idx += 1;
-    if !permission_shapes::starts_at_words(words, idx, &["mana", "symbols", "in"]) {
+    if words.get(idx) != Some(&"mana")
+        || !words
+            .get(idx + 1)
+            .is_some_and(|word| matches!(*word, "symbol" | "symbols"))
+        || words.get(idx + 2) != Some(&"in")
+    {
         return None;
     }
     idx += 3;
@@ -229,6 +241,24 @@ fn colored_mana_symbols_in_sacrificed_cost(words: &[&str]) -> Option<(Value, usi
         .is_some_and(|word| matches!(*word, "the" | "a" | "an"))
     {
         idx += 1;
+    }
+
+    if words.get(idx) == Some(&"mana")
+        && words
+            .get(idx + 1)
+            .is_some_and(|word| matches!(*word, "cost" | "costs"))
+        && words.get(idx + 2) == Some(&"of")
+    {
+        let filter_start = idx + 3;
+        let filter_end = filter_start + value_boundary(&words[filter_start..]);
+        let filter = parse_object_filter_words(&words[filter_start..filter_end], false).ok()?;
+        return Some((
+            Value::ManaSymbolsInManaCostOf {
+                spec: Box::new(ChooseSpec::All(filter)),
+                color,
+            },
+            filter_end,
+        ));
     }
 
     let kind = sacrificed_object_kind(words.get(idx..idx + 2)?)?;
@@ -352,7 +382,34 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if words.is_empty() {
         return None;
     }
-    if let Some(value) = colored_mana_symbols_in_sacrificed_cost(words) {
+    for (phrase, player) in [
+        (
+            &[
+                "the", "number", "of", "cards", "in", "the", "hand", "of", "the", "opponent",
+                "with", "the", "most", "cards", "in", "hand",
+            ][..],
+            PlayerFilter::Opponent,
+        ),
+        (
+            &[
+                "the", "number", "of", "cards", "in", "the", "hand", "of", "an", "opponent",
+                "with", "the", "most", "cards", "in", "hand",
+            ][..],
+            PlayerFilter::Opponent,
+        ),
+        (
+            &[
+                "the", "number", "of", "cards", "in", "the", "hand", "of", "the", "player", "with",
+                "the", "most", "cards", "in", "hand",
+            ][..],
+            PlayerFilter::Any,
+        ),
+    ] {
+        if permission_shapes::prefix_words(words, phrase) {
+            return Some((Value::MaxCardsInHand(player), phrase.len()));
+        }
+    }
+    if let Some(value) = colored_mana_symbols_in_costs(words) {
         return Some(value);
     }
     if permission_shapes::prefix_words(words, &["half"]) {
@@ -932,6 +989,7 @@ fn is_tagged_counter_reference(words: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::object::CounterType;
     use crate::runtime_backend::lexer::lex_line;
 
     #[test]
@@ -954,6 +1012,17 @@ mod tests {
                 )))),
                 4,
             ))
+        );
+    }
+
+    #[test]
+    fn parses_maximum_hand_size_as_a_bound_player_aggregate() {
+        assert_eq!(
+            parse_value_expr_words(&[
+                "the", "number", "of", "cards", "in", "the", "hand", "of", "the", "opponent",
+                "with", "the", "most", "cards", "in", "hand",
+            ]),
+            Some((Value::MaxCardsInHand(PlayerFilter::Opponent), 16)),
         );
     }
 
@@ -1110,6 +1179,68 @@ mod tests {
             ]),
             Some((red_symbols, 12))
         );
+    }
+
+    #[test]
+    fn parses_colored_mana_symbols_across_filtered_scopes() {
+        let battlefield_words = [
+            "the",
+            "number",
+            "of",
+            "green",
+            "mana",
+            "symbols",
+            "in",
+            "the",
+            "mana",
+            "costs",
+            "of",
+            "permanents",
+            "you",
+            "control",
+        ];
+        let (value, used) = parse_value_expr_words(&battlefield_words)
+            .expect("battlefield mana-symbol aggregate should parse");
+        assert_eq!(used, battlefield_words.len());
+        let Value::ManaSymbolsInManaCostOf { spec, color } = value else {
+            panic!("expected structured mana-symbol value");
+        };
+        assert_eq!(color, Color::Green);
+        let ChooseSpec::All(filter) = spec.unhinted() else {
+            panic!("expected aggregate object scope");
+        };
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Battlefield));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+
+        let graveyard_words = [
+            "the",
+            "number",
+            "of",
+            "black",
+            "mana",
+            "symbols",
+            "in",
+            "the",
+            "mana",
+            "costs",
+            "of",
+            "cards",
+            "in",
+            "your",
+            "graveyard",
+        ];
+        let (value, used) = parse_value_expr_words(&graveyard_words)
+            .expect("graveyard mana-symbol aggregate should parse");
+        assert_eq!(used, graveyard_words.len());
+        let Value::ManaSymbolsInManaCostOf { spec, color } = value else {
+            panic!("expected structured mana-symbol value");
+        };
+        assert_eq!(color, Color::Black);
+        let ChooseSpec::All(filter) = spec.unhinted() else {
+            panic!("expected aggregate object scope");
+        };
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
     }
 
     #[test]

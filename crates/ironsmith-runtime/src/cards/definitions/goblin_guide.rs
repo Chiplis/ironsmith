@@ -280,6 +280,9 @@ mod tests {
                 AttackEventTarget::Planeswalker(_) => {
                     panic!("Expected player target, got planeswalker");
                 }
+                AttackEventTarget::Battle(_) => {
+                    panic!("Expected player target, got battle");
+                }
             }
         } else {
             panic!("Expected CreatureAttacked event");

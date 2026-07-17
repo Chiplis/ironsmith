@@ -300,10 +300,9 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
 
     let wrap_conditional = |effect: EffectAst| {
         if let Some(predicate) = trailing_predicate.clone() {
-            EffectAst::Conditional {
+            EffectAst::TrailingIf {
                 predicate,
-                if_true: vec![effect],
-                if_false: Vec::new(),
+                effects: vec![effect],
             }
         } else {
             effect

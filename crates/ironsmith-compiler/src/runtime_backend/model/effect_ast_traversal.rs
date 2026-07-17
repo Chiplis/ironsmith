@@ -5,6 +5,9 @@ use crate::cards::builders::EffectAst;
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::Sequence { effects: $effects }
+            | EffectAst::PlaySubgame {
+                nonwinner_effects: $effects,
+            }
             | EffectAst::SourceSentence { effects: $effects }
             | EffectAst::Coordinated {
                 effects: $effects,
@@ -15,6 +18,10 @@ macro_rules! nested_effects_variants {
                 ..
             }
             | EffectAst::TrailingUnless {
+                effects: $effects,
+                ..
+            }
+            | EffectAst::TrailingIf {
                 effects: $effects,
                 ..
             }
@@ -115,6 +122,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::DelayedTriggerForDuration {
+                effects: $effects,
+                ..
+            }
             | EffectAst::DelayedWhenLastObjectDiesThisTurn {
                 effects: $effects,
                 ..
@@ -139,6 +150,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SubjectVerb(_) => {}
         EffectAst::SolveCase => {}
         EffectAst::RestartGame { .. } => {}
+        EffectAst::PlaySubgame { .. } => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::SourceSentence { .. } => {}
         EffectAst::Coordinated { .. } => {}
@@ -151,9 +163,11 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::DelayedUntilEndStepOfExtraTurn { .. } => {}
         EffectAst::DelayedUntilEndOfCombat { .. } => {}
         EffectAst::DelayedTriggerThisTurn { .. } => {}
+        EffectAst::DelayedTriggerForDuration { .. } => {}
         EffectAst::DelayedWhenLastObjectDiesThisTurn { .. } => {}
         EffectAst::DelayedWhenLastObjectLeavesBattlefield { .. } => {}
         EffectAst::Conditional { .. } => {}
+        EffectAst::TrailingIf { .. } => {}
         EffectAst::TrailingUnless { .. } => {}
         EffectAst::ManaRestricted { .. } => {}
         EffectAst::SelfReplacement { .. } => {}

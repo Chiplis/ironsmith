@@ -3556,3 +3556,148 @@ pub(super) fn test_parse_explore_trigger_subject_without_fallback_marker() {
         "expected explore keyword-action trigger in parsed definition, got {debug}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn green_suns_twilight_keeps_revealed_pool_and_typed_destination_replacement() {
+    let def = parse_oracle_card_definition("Green Sun's Twilight");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Green Sun's Twilight should have a spell resolution program");
+    let [segment] = program.segments.as_slice() else {
+        panic!("expected one linked resolution segment, got {program:#?}");
+    };
+    let [replacement] = segment.self_replacements.as_slice() else {
+        panic!("expected one X-threshold self-replacement, got {segment:#?}");
+    };
+    assert!(matches!(
+        &replacement.condition,
+        crate::ConditionExpr::XValueAtLeast(5)
+    ));
+
+    let [
+        default_look,
+        default_creature,
+        default_land,
+        default_move,
+        default_rest,
+    ] = segment.default_effects.as_slice()
+    else {
+        panic!("expected linked default reveal/choice/disposition pipeline: {segment:#?}");
+    };
+    let [
+        replacement_look,
+        replacement_creature,
+        replacement_land,
+        destination_choice,
+        replacement_rest,
+    ] = replacement.replacement_effects.as_slice()
+    else {
+        panic!("expected linked replacement reveal/choice/disposition pipeline: {replacement:#?}");
+    };
+
+    let look = default_look
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .expect("default branch should reveal the top cards");
+    let replacement_look = replacement_look
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .expect("replacement branch should retain the same reveal");
+    assert!(look.reveal);
+    assert_eq!(look, replacement_look);
+    assert_eq!(
+        look.count,
+        crate::effect::Value::Add(
+            Box::new(crate::effect::Value::X),
+            Box::new(crate::effect::Value::Fixed(1)),
+        )
+    );
+
+    let default_choices = [default_creature, default_land].map(|effect| {
+        effect
+            .downcast_ref::<ChooseObjectsEffect>()
+            .expect("default branch should keep independent typed choices")
+    });
+    let replacement_choices = [replacement_creature, replacement_land].map(|effect| {
+        effect
+            .downcast_ref::<ChooseObjectsEffect>()
+            .expect("replacement branch should keep independent typed choices")
+    });
+    assert_eq!(default_choices, replacement_choices);
+    assert_eq!(default_choices[0].tag, default_choices[1].tag);
+    assert_eq!(default_choices[0].filter.card_types, [CardType::Creature]);
+    assert_eq!(default_choices[1].filter.card_types, [CardType::Land]);
+    for choose in default_choices {
+        assert_eq!(choose.count.min, 0);
+        assert_eq!(choose.count.max, Some(1));
+        assert_eq!(choose.filter.zone, Some(Zone::Library));
+        assert!(choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == look.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == choose.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+        }));
+    }
+
+    let default_move = default_move
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        .expect("default selected set should move as one tagged group");
+    assert_eq!(default_move.tag, default_choices[0].tag);
+    let [default_move_one] = default_move.effects.as_slice() else {
+        panic!("expected one iterated default move, got {default_move:#?}");
+    };
+    let default_move_one = default_move_one
+        .downcast_ref::<MoveToZoneEffect>()
+        .expect("default group move should be typed");
+    assert_eq!(default_move_one.zone, Zone::Hand);
+    assert!(matches!(
+        default_move_one.target.base(),
+        ChooseSpec::Iterated
+    ));
+
+    let destination_choice = destination_choice
+        .downcast_ref::<ChooseModeEffect>()
+        .expect("X-threshold branch should choose one shared destination");
+    assert_eq!(destination_choice.modes.len(), 2);
+    let destinations = destination_choice
+        .modes
+        .iter()
+        .map(|mode| {
+            let [move_group] = mode.effects.as_slice() else {
+                panic!("destination mode should contain one group move: {mode:#?}");
+            };
+            let move_group = move_group
+                .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                .expect("destination should move the selected tagged group");
+            assert_eq!(move_group.tag, default_choices[0].tag);
+            let [move_one] = move_group.effects.as_slice() else {
+                panic!("destination group should contain one iterated move: {move_group:#?}");
+            };
+            move_one
+                .downcast_ref::<MoveToZoneEffect>()
+                .expect("destination move should be typed")
+                .zone
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(destinations, [Zone::Battlefield, Zone::Hand]);
+
+    let default_rest = default_rest
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+        .expect("default branch should preserve the exact revealed complement");
+    let replacement_rest = replacement_rest
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+        .expect("replacement branch should preserve the exact revealed complement");
+    assert_eq!(default_rest, replacement_rest);
+    assert_eq!(default_rest.tag, look.tag);
+    assert_eq!(
+        default_rest.keep_tagged.as_ref(),
+        Some(&default_choices[0].tag)
+    );
+
+    assert_eq!(
+        compiled_text_lines(&def).join("\n"),
+        "Reveal the top X plus one cards of your library. Choose a creature card and/or a land card from among them. Put those cards into your hand and the rest on the bottom of your library in a random order. If X is 5 or more, instead put the chosen cards onto the battlefield or into your hand and the rest on the bottom of your library in a random order."
+    );
+}

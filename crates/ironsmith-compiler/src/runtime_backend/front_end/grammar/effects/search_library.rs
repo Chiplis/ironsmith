@@ -443,6 +443,7 @@ pub(crate) struct SearchLibrarySameNameSplit {
     pub(crate) filter_tokens: Vec<OwnedLexToken>,
     pub(crate) same_name_reference: Option<SearchLibrarySameNameReference>,
     pub(crate) same_name_relation: TaggedOpbjectRelation,
+    pub(crate) same_name_antecedent_surface: Option<ironsmith_core::SameNameAntecedentSurface>,
 }
 
 #[derive(Debug, Clone)]
@@ -1161,13 +1162,14 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         THAT_PLAYER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
-        forced_library_owner = Some(PlayerFilter::IteratedPlayer);
+        // Keep this as a discourse-level player reference. Lowering binds the
+        // library filter to the resolved `That` subject: a preceding target in
+        // ordinary spell text, or IteratedPlayer only inside a real loop.
     } else if search_word_stream_starts_with_any(
         search_body_words,
         THAT_PLAYER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
-        forced_library_owner = Some(PlayerFilter::IteratedPlayer);
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
     } else if search_word_stream_starts_with_any(
         search_body_words,
@@ -1305,6 +1307,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
 ) -> Result<SearchLibrarySameNameSplit, CardTextError> {
     let mut same_name_reference: Option<SearchLibrarySameNameReference> = None;
     let mut same_name_relation = TaggedOpbjectRelation::SameNameAsTagged;
+    let mut same_name_antecedent_surface = None;
     if let Some(base_tokens) =
         strip_search_library_suffix_lexed(raw_filter_tokens, search_library_with_that_name_suffix)
     {
@@ -1357,6 +1360,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
         filter_tokens = base_filter_tokens;
         same_name_relation = relation;
         let reference_words = token_word_refs(&reference_tokens);
+        same_name_antecedent_surface = same_name_antecedent_surface_words(&reference_words);
         let source_exiled_reference = primitives::parse_all(
             &reference_tokens,
             (
@@ -1409,6 +1413,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
         filter_tokens,
         same_name_reference,
         same_name_relation,
+        same_name_antecedent_surface,
     })
 }
 
@@ -1802,5 +1807,17 @@ mod tests {
                 Some(Value::EventValue(crate::effect::EventValueSpec::Amount))
             );
         }
+    }
+
+    #[test]
+    fn that_players_library_remains_a_contextual_player_reference() {
+        let tokens = lex_line("search that player's library for a card", 0)
+            .expect("search surface should lex");
+        let routing = derive_search_library_subject_routing_lexed(&tokens, PlayerAst::Implicit)
+            .expect("that-player search should route");
+
+        assert_eq!(routing.player, PlayerAst::That);
+        assert_eq!(routing.forced_library_owner, None);
+        assert_eq!(routing.search_player_target, None);
     }
 }

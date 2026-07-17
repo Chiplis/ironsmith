@@ -44,19 +44,35 @@ pub(crate) fn parse_become_clause(
     let rest_tokens = rest_shape.rest_tokens;
     let copy_exception = rest_shape.copy_exception;
     let become_clause_tokens = rest_shape.body_tokens;
-    let (duration, subject_tokens_vec, become_tokens) = if let Some((duration, remainder)) =
-        parse_restriction_duration(&subject_tokens)?
-    {
-        (duration, remainder, become_clause_tokens)
-    } else if let Some((duration, remainder)) = parse_restriction_duration(&become_clause_tokens)? {
-        if trailing_duration_belongs_to_quoted_ability(&become_clause_tokens, &remainder) {
-            (Until::Forever, subject_tokens.clone(), become_clause_tokens)
+    let (duration, subject_tokens_vec, become_tokens, animation_duration_surface) =
+        if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
+            (
+                duration,
+                remainder,
+                become_clause_tokens,
+                Some(ironsmith_core::AnimationDurationSurface::Leading),
+            )
+        } else if let Some((duration, remainder)) =
+            parse_restriction_duration(&become_clause_tokens)?
+        {
+            if trailing_duration_belongs_to_quoted_ability(&become_clause_tokens, &remainder) {
+                (
+                    Until::Forever,
+                    subject_tokens.clone(),
+                    become_clause_tokens,
+                    None,
+                )
+            } else {
+                (duration, subject_tokens.clone(), remainder, None)
+            }
         } else {
-            (duration, subject_tokens.clone(), remainder)
-        }
-    } else {
-        (Until::Forever, subject_tokens.clone(), become_clause_tokens)
-    };
+            (
+                Until::Forever,
+                subject_tokens.clone(),
+                become_clause_tokens,
+                None,
+            )
+        };
     let subject_tokens = subject_tokens_vec.as_slice();
     let base_pt_subject = become_grammar::parse_base_power_toughness_subject_tokens(subject_tokens);
     let subject_targets_base_pt = base_pt_subject.is_some();
@@ -354,6 +370,8 @@ pub(crate) fn parse_become_clause(
                     Vec::new(),
                     preserve_other_types,
                     type_retention_surface,
+                    Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
+                    animation_duration_surface,
                     duration,
                 ));
             }
@@ -369,6 +387,32 @@ pub(crate) fn parse_become_clause(
                 granted_abilities,
                 preserve_other_types,
                 type_retention_surface,
+                Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
+                animation_duration_surface,
+                duration,
+            ));
+        }
+        let (descriptor_words, preserve_other_types) =
+            become_grammar::strip_become_addition_tail_words(&become_words[value_word_count..]);
+        if preserve_other_types
+            && let Some(descriptor) =
+                become_grammar::parse_become_creature_descriptor_words(descriptor_words)
+            && !descriptor.subtypes.is_empty()
+        {
+            return Ok(EffectAst::subject_verb_become_base_pt_creature(
+                power,
+                toughness,
+                target,
+                descriptor.card_types,
+                descriptor.subtypes,
+                Vec::new(),
+                descriptor.colors,
+                Vec::new(),
+                Vec::new(),
+                true,
+                Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypesImplicitCreature),
+                Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
+                animation_duration_surface,
                 duration,
             ));
         }
@@ -390,6 +434,8 @@ pub(crate) fn parse_become_clause(
             Vec::new(),
             false,
             None,
+            Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness),
+            animation_duration_surface,
             duration,
         ));
     }
@@ -410,6 +456,8 @@ pub(crate) fn parse_become_clause(
             Vec::new(),
             false,
             None,
+            Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness),
+            animation_duration_surface,
             duration,
         ));
     }
@@ -475,6 +523,86 @@ pub(crate) fn parse_become_clause(
 #[cfg(test)]
 mod quoted_duration_tests {
     use super::*;
+
+    fn animation_pt_surface(text: &str) -> ironsmith_core::AnimationPtSurface {
+        let subject = crate::runtime_backend::lexer::lex_line("target artifact", 0)
+            .expect("animation subject should lex");
+        let animation = crate::runtime_backend::lexer::lex_line(text, 0)
+            .expect("animation predicate should lex");
+        let effect = parse_become_clause(&subject, &animation)
+            .expect("animation should parse through the generic become clause");
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                    animation_pt_surface: Some(surface),
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected typed animation surface, got {effect:#?}");
+        };
+        surface
+    }
+
+    #[test]
+    fn leading_and_explicit_base_pt_animation_surfaces_remain_distinct() {
+        assert_eq!(
+            animation_pt_surface("a 4/4 Angel artifact creature"),
+            ironsmith_core::AnimationPtSurface::LeadingPowerToughness
+        );
+        assert_eq!(
+            animation_pt_surface("an Angel artifact creature with base power and toughness 4/4"),
+            ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness
+        );
+    }
+
+    #[test]
+    fn leading_and_trailing_animation_durations_remain_distinct() {
+        let leading_subject =
+            crate::runtime_backend::lexer::lex_line("until end of turn target land you control", 0)
+                .expect("leading-duration animation subject should lex");
+        let trailing_subject =
+            crate::runtime_backend::lexer::lex_line("target land you control", 0)
+                .expect("trailing-duration animation subject should lex");
+        let leading_body = crate::runtime_backend::lexer::lex_line(
+            "a 4/4 Dinosaur creature with reach and haste",
+            0,
+        )
+        .expect("leading-duration animation body should lex");
+        let trailing_body = crate::runtime_backend::lexer::lex_line(
+            "a 4/4 Dinosaur creature with reach and haste until end of turn",
+            0,
+        )
+        .expect("trailing-duration animation body should lex");
+
+        let leading = parse_become_clause(&leading_subject, &leading_body)
+            .expect("leading-duration animation should parse");
+        let trailing = parse_become_clause(&trailing_subject, &trailing_body)
+            .expect("trailing-duration animation should parse");
+        let duration_surface = |effect: EffectAst| {
+            let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                        animation_duration_surface,
+                        duration,
+                        ..
+                    },
+                ..
+            }) = effect
+            else {
+                panic!("expected typed animation duration surface, got {effect:#?}");
+            };
+            assert_eq!(duration, Until::EndOfTurn);
+            animation_duration_surface
+        };
+
+        assert_eq!(
+            duration_surface(leading),
+            Some(ironsmith_core::AnimationDurationSurface::Leading)
+        );
+        assert_eq!(duration_surface(trailing), None);
+    }
 
     #[test]
     fn duration_inside_unclosed_sentence_quote_is_not_taken_as_outer_duration() {

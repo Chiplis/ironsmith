@@ -1421,6 +1421,206 @@ fn filter_with_keyword_ability_sees_layer_six_grants() {
 }
 
 #[test]
+fn ability_gain_prohibition_overrides_layer_six_timestamp_order() {
+    fn calculated_has_flying(
+        game: &GameState,
+        target: crate::ids::ObjectId,
+        effects: &[ContinuousEffect],
+    ) -> bool {
+        crate::continuous::calculate_characteristics_with_effects(
+            target,
+            game.objects_map(),
+            effects,
+            &game.battlefield,
+            game.commander_objects(),
+            game,
+        )
+        .expect("target should have calculated characteristics")
+        .static_abilities
+        .iter()
+        .any(|ability| ability.id() == StaticAbilityId::Flying)
+    }
+
+    fn removal_effect(
+        source: crate::ids::ObjectId,
+        controller: PlayerId,
+        target: crate::ids::ObjectId,
+        mode: ironsmith_core::AbilityLossMode,
+        timestamp: u64,
+    ) -> ContinuousEffect {
+        let mut effect = ContinuousEffect::new(
+            source,
+            controller,
+            EffectTarget::Specific(target),
+            Modification::RemoveAbilityGeneric {
+                ability: Ability::static_ability(StaticAbility::flying()),
+                mode,
+            },
+        );
+        effect.timestamp = timestamp;
+        effect
+    }
+
+    fn grant_effect(
+        source: crate::ids::ObjectId,
+        controller: PlayerId,
+        target: crate::ids::ObjectId,
+        timestamp: u64,
+    ) -> ContinuousEffect {
+        let mut effect = ContinuousEffect::new(
+            source,
+            controller,
+            EffectTarget::Specific(target),
+            Modification::AddAbility(StaticAbility::flying()),
+        );
+        effect.timestamp = timestamp;
+        effect
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::from_raw(6130), "Layer Six Groundling")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let source = game.new_object_id();
+
+    let ordinary_loss_then_grant = vec![
+        removal_effect(
+            source,
+            alice,
+            target,
+            ironsmith_core::AbilityLossMode::Lose,
+            1,
+        ),
+        grant_effect(source, alice, target, 2),
+    ];
+    assert!(
+        calculated_has_flying(&game, target, &ordinary_loss_then_grant),
+        "ordinary ability loss should remain timestamp-ordered"
+    );
+
+    let prohibition_then_grant = vec![
+        removal_effect(
+            source,
+            alice,
+            target,
+            ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain,
+            1,
+        ),
+        grant_effect(source, alice, target, 2),
+    ];
+    assert!(
+        !calculated_has_flying(&game, target, &prohibition_then_grant),
+        "a can't-have-or-gain prohibition should suppress a later grant"
+    );
+
+    let grant_then_prohibition = vec![
+        grant_effect(source, alice, target, 1),
+        removal_effect(
+            source,
+            alice,
+            target,
+            ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain,
+            2,
+        ),
+    ];
+    assert!(
+        !calculated_has_flying(&game, target, &grant_then_prohibition),
+        "a can't-have-or-gain prohibition should also remove an earlier grant"
+    );
+}
+
+#[test]
+fn ability_gain_prohibition_blocks_later_ability_counters() {
+    fn calculated_has_flying(
+        game: &GameState,
+        target: crate::ids::ObjectId,
+        effect: ContinuousEffect,
+    ) -> bool {
+        crate::continuous::calculate_characteristics_with_effects(
+            target,
+            game.objects_map(),
+            &[effect],
+            &game.battlefield,
+            game.commander_objects(),
+            game,
+        )
+        .expect("target should have calculated characteristics")
+        .static_abilities
+        .iter()
+        .any(|ability| ability.id() == StaticAbilityId::Flying)
+    }
+
+    fn removal_effect(
+        source: crate::ids::ObjectId,
+        controller: PlayerId,
+        target: crate::ids::ObjectId,
+        mode: ironsmith_core::AbilityLossMode,
+        timestamp: u64,
+    ) -> ContinuousEffect {
+        let mut effect = ContinuousEffect::new(
+            source,
+            controller,
+            EffectTarget::Specific(target),
+            Modification::RemoveAbilityGeneric {
+                ability: Ability::static_ability(StaticAbility::flying()),
+                mode,
+            },
+        );
+        effect.timestamp = timestamp;
+        effect
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::from_raw(6131), "Countered Groundling")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let source = game.new_object_id();
+    game.add_counters(target, CounterType::Flying, 1)
+        .expect("the flying counter should be added");
+    let counter_timestamp = game
+        .effect_store
+        .continuous_effects
+        .get_counter_timestamp(target, CounterType::Flying)
+        .expect("the counter should have a timestamp");
+    let earlier_timestamp = counter_timestamp.saturating_sub(1);
+
+    assert!(
+        calculated_has_flying(
+            &game,
+            target,
+            removal_effect(
+                source,
+                alice,
+                target,
+                ironsmith_core::AbilityLossMode::Lose,
+                earlier_timestamp,
+            ),
+        ),
+        "a later flying counter should survive ordinary timestamp-ordered loss"
+    );
+    assert!(
+        !calculated_has_flying(
+            &game,
+            target,
+            removal_effect(
+                source,
+                alice,
+                target,
+                ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain,
+                earlier_timestamp,
+            ),
+        ),
+        "a can't-have-or-gain prohibition should suppress a later flying counter"
+    );
+}
+
+#[test]
 fn test_multilayer_effect_continues_after_source_ability_removed() {
     fn run_scenario(
         effect_timestamp: u64,
@@ -1785,6 +1985,192 @@ fn test_clone_copies_base_not_modifications() {
         subtypes.contains(&Subtype::Bear),
         "Clone should copy Bear subtype"
     );
+}
+
+fn i050_planeswalker(id: u32, name: &str, generic_mana: u8, loyalty: u32) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(generic_mana)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(loyalty)
+        .build()
+}
+
+fn i050_add_copy_effect(
+    game: &mut GameState,
+    target: crate::ids::ObjectId,
+    source: crate::ids::ObjectId,
+    controller: PlayerId,
+) {
+    let source_values = crate::continuous::copiable_values_with_effects(
+        source,
+        game.objects_map(),
+        &game.all_continuous_effects(),
+        &game.battlefield,
+        game.commander_objects(),
+        game,
+    )
+    .expect("copy source should have copiable values");
+    game.effect_store
+        .continuous_effects
+        .add_effect(ContinuousEffect::new(
+            target,
+            controller,
+            EffectTarget::Specific(target),
+            Modification::CopyOf {
+                target_id: source,
+                copiable_values: Box::new(source_values),
+                preserve_source_abilities: false,
+                name_override: None,
+                name_override_surface: None,
+                add_supertypes: Vec::new(),
+            },
+        ));
+}
+
+fn i050_snapshot_token(
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    id: u64,
+    owner: PlayerId,
+) -> crate::object::Object {
+    let object = game.object(source).expect("copy source should exist");
+    let snapshot =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+    crate::object::Object::token_copy_from_snapshot(
+        &snapshot,
+        crate::ids::ObjectId::from_raw(id),
+        owner,
+    )
+}
+
+#[test]
+fn i050_ordinary_token_copy_keeps_mana_cost_and_loyalty() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = i050_planeswalker(9300, "Ordinary Source", 3, 5);
+    let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+
+    let token = i050_snapshot_token(&game, source_id, 9301, alice);
+    assert_eq!(
+        token
+            .mana_cost_owned()
+            .as_ref()
+            .map(|cost| cost.mana_value()),
+        Some(4)
+    );
+    assert_eq!(token.base_loyalty, Some(5));
+    assert_eq!(token.counters.get(&CounterType::Loyalty), Some(&5));
+}
+
+#[test]
+fn i050_copy_of_copy_uses_layer_one_mana_cost_and_loyalty() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = i050_planeswalker(9302, "Copied Source", 4, 6);
+    let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+    let intermediary = i050_planeswalker(9303, "Raw Intermediary", 1, 2);
+    let intermediary_id = game.create_object_from_card(&intermediary, alice, Zone::Battlefield);
+    i050_add_copy_effect(&mut game, intermediary_id, source_id, alice);
+
+    let token = i050_snapshot_token(&game, intermediary_id, 9304, alice);
+    assert_eq!(token.name.as_ref(), "Copied Source");
+    assert_eq!(
+        token
+            .mana_cost_owned()
+            .as_ref()
+            .map(|cost| cost.mana_value()),
+        Some(5),
+        "a copy of a copy must use the source's layer-1 mana cost"
+    );
+    assert_eq!(
+        token.base_loyalty,
+        Some(6),
+        "a copy of a copy must use the source's layer-1 loyalty"
+    );
+    assert_eq!(token.counters.get(&CounterType::Loyalty), Some(&6));
+}
+
+fn assert_i050_default_face_down_copy(token: &crate::object::Object) {
+    assert_eq!(token.mana_cost_owned(), None);
+    assert_eq!(token.base_loyalty, None);
+    assert_eq!(
+        token.base_power.as_ref().map(|power| power.base_value()),
+        Some(2)
+    );
+    assert_eq!(
+        token
+            .base_toughness
+            .as_ref()
+            .map(|toughness| toughness.base_value()),
+        Some(2)
+    );
+    assert_eq!(token.card_types.as_slice(), &[CardType::Creature]);
+    assert!(token.subtypes.is_empty());
+    assert!(token.abilities.is_empty());
+    assert!(token.colors().is_empty());
+}
+
+#[test]
+fn i050_face_down_source_and_target_expose_face_down_copiable_values() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let hidden_source = i050_planeswalker(9305, "Hidden Source", 5, 7);
+    let hidden_source_id = game.create_object_from_card(&hidden_source, alice, Zone::Battlefield);
+    assert!(game.set_face_down(hidden_source_id));
+    let source_copy = i050_snapshot_token(&game, hidden_source_id, 9306, alice);
+    assert_i050_default_face_down_copy(&source_copy);
+
+    let visible_source = i050_planeswalker(9307, "Visible Source", 2, 4);
+    let visible_source_id = game.create_object_from_card(&visible_source, alice, Zone::Battlefield);
+    let target = CardBuilder::new(CardId::from_raw(9308), "Hidden Copy Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let target_id = game.create_object_from_card(&target, alice, Zone::Battlefield);
+    i050_add_copy_effect(&mut game, target_id, visible_source_id, alice);
+    assert!(game.set_face_down(target_id));
+
+    let hidden_target_copy = i050_snapshot_token(&game, target_id, 9309, alice);
+    assert_i050_default_face_down_copy(&hidden_target_copy);
+
+    assert!(game.set_face_up(target_id));
+    let revealed_target_copy = i050_snapshot_token(&game, target_id, 9310, alice);
+    assert_eq!(revealed_target_copy.name.as_ref(), "Visible Source");
+    assert_eq!(
+        revealed_target_copy
+            .mana_cost_owned()
+            .as_ref()
+            .map(|cost| cost.mana_value()),
+        Some(3)
+    );
+    assert_eq!(revealed_target_copy.base_loyalty, Some(4));
+}
+
+#[test]
+fn i050_face_down_exile_keeps_underlying_values_for_zone_permissions() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let foretold = i050_planeswalker(9311, "Hidden Exile Card", 3, 5);
+    let foretold_id = game.create_object_from_card(&foretold, alice, Zone::Exile);
+
+    assert!(game.set_face_down(foretold_id));
+    let object = game
+        .object(foretold_id)
+        .expect("face-down exiled card should remain available internally");
+    assert_eq!(object.name.as_ref(), "Hidden Exile Card");
+    assert_eq!(
+        object
+            .mana_cost_owned()
+            .as_ref()
+            .map(|cost| cost.mana_value()),
+        Some(4)
+    );
+    assert_eq!(object.base_loyalty, Some(5));
+    assert!(object.face_down_cast_state.is_none());
 }
 
 // =============================================================================

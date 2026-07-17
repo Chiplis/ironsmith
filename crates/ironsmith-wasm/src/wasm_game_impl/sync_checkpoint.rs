@@ -1,4 +1,7 @@
-use ironsmith::game_state::{HiddenCardInfo, Phase, Step, TurnState};
+use ironsmith::game_state::{
+    ArchenemyState, ArchenemyVariant, ConspiracyState, HiddenCardInfo, Phase, PlanarCardKind,
+    PlanechaseState, Step, TurnState, VanguardState,
+};
 use ironsmith::ids::{IdCountersSnapshot, StableId};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
@@ -146,6 +149,10 @@ struct SyncObject {
     toughness: Option<i32>,
     loyalty: Option<u32>,
     defense: Option<u32>,
+    #[serde(default)]
+    hand_modifier: i32,
+    #[serde(default)]
+    life_modifier: i32,
     oracle_text: String,
     counters: Vec<SyncCounter>,
     attached_to: Option<SyncAttachmentTarget>,
@@ -277,8 +284,58 @@ pub(crate) struct PublicAuditCheckpoint {
     battlefield: Vec<u64>,
     public_exile: Vec<u64>,
     command: Vec<u64>,
+    ante: Vec<u64>,
+    #[serde(default)]
+    planechase: Option<PublicAuditPlanechase>,
+    #[serde(default)]
+    vanguard: Option<SyncVanguard>,
+    #[serde(default)]
+    archenemy: Option<PublicAuditArchenemy>,
+    #[serde(default)]
+    conspiracy: Option<PublicAuditConspiracy>,
+    #[serde(default)]
+    free_for_all: Option<SyncFreeForAll>,
+    #[serde(default)]
+    team_vs_team: Option<SyncTeamVsTeam>,
+    #[serde(default)]
+    emperor: Option<SyncEmperor>,
+    #[serde(default)]
+    two_headed_giant: Option<SyncTwoHeadedGiant>,
+    #[serde(default)]
+    alternating_teams: Option<SyncAlternatingTeams>,
+    #[serde(default)]
+    grand_melee: Option<SyncGrandMelee>,
     stack: Vec<SyncStackEntry>,
     hidden_zones: Vec<PublicAuditHiddenZone>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditPlanechase {
+    decks: Vec<(u8, usize)>,
+    communal_deck_size: Option<usize>,
+    face_up: Vec<u64>,
+    planar_controller: u8,
+    planar_controllers: Vec<u8>,
+    face_up_controllers: Vec<(u64, u8)>,
+    voluntary_rolls_this_turn: Vec<(u8, u32)>,
+    planeswalk_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditArchenemy {
+    variant: String,
+    archenemies: Vec<u8>,
+    decks: Vec<(u8, usize)>,
+    face_up: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicAuditConspiracy {
+    cards: Vec<(u8, Vec<u64>)>,
+    face_down: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -319,12 +376,208 @@ pub(crate) struct SyncCheckpoint {
     battlefield: Vec<u64>,
     exile: Vec<u64>,
     command: Vec<u64>,
+    #[serde(default)]
+    ante: Vec<u64>,
+    #[serde(default)]
+    planechase: Option<SyncPlanechase>,
+    #[serde(default)]
+    vanguard: Option<SyncVanguard>,
+    #[serde(default)]
+    archenemy: Option<SyncArchenemy>,
+    #[serde(default)]
+    conspiracy: Option<SyncConspiracy>,
+    #[serde(default)]
+    free_for_all: Option<SyncFreeForAll>,
+    #[serde(default)]
+    team_vs_team: Option<SyncTeamVsTeam>,
+    #[serde(default)]
+    emperor: Option<SyncEmperor>,
+    #[serde(default)]
+    two_headed_giant: Option<SyncTwoHeadedGiant>,
+    #[serde(default)]
+    alternating_teams: Option<SyncAlternatingTeams>,
+    #[serde(default)]
+    grand_melee: Option<SyncGrandMelee>,
+    #[serde(default)]
+    limited_range_of_influence: Option<SyncLimitedRangeOfInfluence>,
+    #[serde(default)]
+    attack_direction: Option<SyncAttackDirection>,
+    #[serde(default)]
+    teams: Option<Vec<Vec<u8>>>,
+    #[serde(default)]
+    deploy_creatures: bool,
+    #[serde(default)]
+    shared_team_turns: bool,
+    #[serde(default)]
+    shared_team_member_orders: Vec<Vec<u8>>,
     stack: Vec<SyncStackEntry>,
     #[serde(default)]
     exiled_with_source: Vec<(u64, Vec<u64>)>,
     #[serde(default)]
     return_exiled_when_source_leaves: Vec<u64>,
     id_counters: SyncIdCounters,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncLimitedRangeOfInfluence {
+    seats: Vec<u8>,
+    ranges: Vec<u8>,
+    turn_snapshot: Vec<(u8, Vec<u8>)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncFreeForAll {
+    seats: Vec<u8>,
+    attack: FreeForAllAttackInput,
+    range_of_influence: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncTeamVsTeam {
+    teams: Vec<Vec<u8>>,
+    seats: Vec<u8>,
+    starting_team: usize,
+    starting_player: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncEmperor {
+    teams: Vec<Vec<u8>>,
+    seats: Vec<u8>,
+    ranges: Vec<u8>,
+    starting_team: usize,
+    starting_emperor: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncTwoHeadedGiant {
+    teams: Vec<Vec<u8>>,
+    seats: Vec<u8>,
+    starting_team: usize,
+    starting_player: u8,
+    starting_life: i32,
+    poison_threshold: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncAlternatingTeams {
+    teams: Vec<Vec<u8>>,
+    seats: Vec<u8>,
+    starting_player: u8,
+    attack: FreeForAllAttackInput,
+    range_of_influence: Option<u8>,
+    deploy_creatures: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncGrandMelee {
+    seats: Vec<u8>,
+    starting_player_count: usize,
+    focused_marker: u32,
+    markers: Vec<SyncGrandMeleeMarker>,
+    deferred_extra_turns: Vec<(u8, usize)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncGrandMeleeMarker {
+    number: u32,
+    holder: u8,
+    status: String,
+    removal_designations: usize,
+    normal_turn_pending: bool,
+    #[serde(default)]
+    retained_extra_turn_waiting: bool,
+    turn: SyncTurn,
+    #[serde(default)]
+    extra_turns: Vec<u8>,
+    stack: Vec<SyncStackEntry>,
+    #[serde(default)]
+    combat: Option<SyncGrandMeleeCombat>,
+    #[serde(default)]
+    range_turn_snapshot: Vec<(u8, Vec<u8>)>,
+    #[serde(default)]
+    runner_state: Option<String>,
+    #[serde(default)]
+    runner_awaiting_priority: bool,
+    #[serde(default)]
+    consecutive_priority_passes: usize,
+    #[serde(default)]
+    priority_players_in_game: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncGrandMeleeCombat {
+    attackers: Vec<(u64, SyncGrandMeleeAttackTarget)>,
+    blockers: Vec<(u64, Vec<u64>)>,
+    damage_assignment_order: Vec<(u64, Vec<u64>)>,
+    attacking_bands: Vec<Vec<u64>>,
+    had_to_attack_this_combat: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+enum SyncGrandMeleeAttackTarget {
+    Player { player: u8 },
+    Planeswalker { object: u64 },
+    Battle { object: u64 },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SyncAttackDirection {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncPlanechase {
+    decks: Vec<(u8, Vec<u64>)>,
+    communal_deck: Option<Vec<u64>>,
+    deck_owners: Vec<(u64, u8)>,
+    card_kinds: Vec<(u64, String)>,
+    face_up: Vec<u64>,
+    planar_controller: u8,
+    #[serde(default)]
+    planar_controllers: Vec<u8>,
+    #[serde(default)]
+    face_up_controllers: Vec<(u64, u8)>,
+    voluntary_rolls_this_turn: Vec<(u8, u32)>,
+    planeswalk_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncVanguard {
+    cards: Vec<(u8, u64)>,
+    hand_modifiers: Vec<(u8, i32)>,
+    life_modifiers: Vec<(u8, i32)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncArchenemy {
+    variant: String,
+    archenemies: Vec<u8>,
+    decks: Vec<(u8, Vec<u64>)>,
+    face_up: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncConspiracy {
+    cards: Vec<(u8, Vec<u64>)>,
+    face_down: Vec<u64>,
+    agenda_names: Vec<(u64, Vec<String>)>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -355,6 +608,7 @@ fn sync_zone_name(zone: Zone) -> &'static str {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside_game",
     }
 }
@@ -368,10 +622,11 @@ fn sync_zone_from_name(raw: &str) -> Result<Zone, JsValue> {
         "exile" => Ok(Zone::Exile),
         "stack" => Ok(Zone::Stack),
         "command" => Ok(Zone::Command),
-        "sideboard" | "outside_game" | "outside game" | "outside the game" => {
-            Ok(Zone::OutsideGame)
-        }
-        other => Err(JsValue::from_str(&format!("unknown checkpoint zone: {other}"))),
+        "ante" => Ok(Zone::Ante),
+        "sideboard" | "outside_game" | "outside game" | "outside the game" => Ok(Zone::OutsideGame),
+        other => Err(JsValue::from_str(&format!(
+            "unknown checkpoint zone: {other}"
+        ))),
     }
 }
 
@@ -392,7 +647,9 @@ fn sync_phase_from_name(raw: &str) -> Result<Phase, JsValue> {
         "combat" | "combat_phase" => Ok(Phase::Combat),
         "next_main" | "second_main" | "postcombat_main" => Ok(Phase::NextMain),
         "ending" | "ending_phase" => Ok(Phase::Ending),
-        other => Err(JsValue::from_str(&format!("unknown checkpoint phase: {other}"))),
+        other => Err(JsValue::from_str(&format!(
+            "unknown checkpoint phase: {other}"
+        ))),
     }
 }
 
@@ -423,7 +680,9 @@ fn sync_step_from_name(raw: &str) -> Result<Step, JsValue> {
         "end_combat" | "end_of_combat" => Ok(Step::EndCombat),
         "end" | "end_step" => Ok(Step::End),
         "cleanup" | "cleanup_step" => Ok(Step::Cleanup),
-        other => Err(JsValue::from_str(&format!("unknown checkpoint step: {other}"))),
+        other => Err(JsValue::from_str(&format!(
+            "unknown checkpoint step: {other}"
+        ))),
     }
 }
 
@@ -437,6 +696,11 @@ fn sync_card_type_from_name(raw: &str) -> Option<CardType> {
         "instant" => Some(CardType::Instant),
         "sorcery" => Some(CardType::Sorcery),
         "battle" => Some(CardType::Battle),
+        "plane" => Some(CardType::Plane),
+        "phenomenon" => Some(CardType::Phenomenon),
+        "vanguard" => Some(CardType::Vanguard),
+        "scheme" => Some(CardType::Scheme),
+        "conspiracy" => Some(CardType::Conspiracy),
         "kindred" | "tribal" => Some(CardType::Kindred),
         _ => None,
     }
@@ -650,12 +914,687 @@ fn target_from_sync_input(input: SyncTarget) -> Target {
     }
 }
 
+fn sync_stack_entry(entry: &StackEntry) -> SyncStackEntry {
+    SyncStackEntry {
+        object_id: entry.object_id.0,
+        controller: entry.controller.0,
+        targets: entry
+            .targets
+            .iter()
+            .copied()
+            .map(sync_target_input)
+            .collect(),
+        is_ability: entry.is_ability,
+        x_value: entry.x_value,
+        source_stable_id: entry.source_stable_id.map(|id| id.0.0),
+        source_name: entry.source_name.clone(),
+    }
+}
+
+fn stack_entry_from_sync(entry: &SyncStackEntry) -> StackEntry {
+    let mut restored = StackEntry::new(
+        ObjectId::from_raw(entry.object_id),
+        PlayerId::from_index(entry.controller),
+    );
+    restored.targets = entry
+        .targets
+        .iter()
+        .cloned()
+        .map(target_from_sync_input)
+        .collect();
+    restored.is_ability = entry.is_ability;
+    restored.x_value = entry.x_value;
+    restored.source_stable_id = entry.source_stable_id.map(StableId::from_raw);
+    restored.source_name = entry.source_name.clone();
+    restored
+}
+
+fn sync_turn_state(turn: &TurnState) -> SyncTurn {
+    SyncTurn {
+        active_player: turn.active_player.0,
+        priority_player: turn.priority_player.map(|player| player.0),
+        turn_number: turn.turn_number,
+        phase: sync_phase_name(turn.phase).to_string(),
+        step: turn.step.map(sync_step_name).map(str::to_string),
+    }
+}
+
+fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> SyncGrandMeleeCombat {
+    let mut blockers = combat
+        .blockers
+        .iter()
+        .map(|(attacker, blockers)| (attacker.0, raw_ids(blockers)))
+        .collect::<Vec<_>>();
+    blockers.sort_by_key(|(attacker, _)| *attacker);
+    let mut damage_assignment_order = combat
+        .damage_assignment_order
+        .iter()
+        .map(|(attacker, blockers)| (attacker.0, raw_ids(blockers)))
+        .collect::<Vec<_>>();
+    damage_assignment_order.sort_by_key(|(attacker, _)| *attacker);
+    let mut had_to_attack_this_combat = combat
+        .had_to_attack_this_combat
+        .iter()
+        .map(|object| object.0)
+        .collect::<Vec<_>>();
+    had_to_attack_this_combat.sort_unstable();
+    SyncGrandMeleeCombat {
+        attackers: combat
+            .attackers
+            .iter()
+            .map(|attacker| {
+                let target = match attacker.target {
+                    AttackTarget::Player(player) => {
+                        SyncGrandMeleeAttackTarget::Player { player: player.0 }
+                    }
+                    AttackTarget::Planeswalker(object) => {
+                        SyncGrandMeleeAttackTarget::Planeswalker { object: object.0 }
+                    }
+                    AttackTarget::Battle(object) => {
+                        SyncGrandMeleeAttackTarget::Battle { object: object.0 }
+                    }
+                };
+                (attacker.creature.0, target)
+            })
+            .collect(),
+        blockers,
+        damage_assignment_order,
+        attacking_bands: combat
+            .attacking_bands
+            .iter()
+            .map(|band| raw_ids(band))
+            .collect(),
+        had_to_attack_this_combat,
+    }
+}
+
+fn grand_melee_combat_from_sync(
+    combat: &SyncGrandMeleeCombat,
+) -> ironsmith::combat_state::CombatState {
+    ironsmith::combat_state::CombatState {
+        attackers: combat
+            .attackers
+            .iter()
+            .map(|(creature, target)| ironsmith::combat_state::AttackerInfo {
+                creature: ObjectId::from_raw(*creature),
+                target: match target {
+                    SyncGrandMeleeAttackTarget::Player { player } => {
+                        AttackTarget::Player(PlayerId::from_index(*player))
+                    }
+                    SyncGrandMeleeAttackTarget::Planeswalker { object } => {
+                        AttackTarget::Planeswalker(ObjectId::from_raw(*object))
+                    }
+                    SyncGrandMeleeAttackTarget::Battle { object } => {
+                        AttackTarget::Battle(ObjectId::from_raw(*object))
+                    }
+                },
+            })
+            .collect(),
+        blockers: combat
+            .blockers
+            .iter()
+            .map(|(attacker, blockers)| {
+                (ObjectId::from_raw(*attacker), object_ids(blockers.clone()))
+            })
+            .collect(),
+        damage_assignment_order: combat
+            .damage_assignment_order
+            .iter()
+            .map(|(attacker, blockers)| {
+                (ObjectId::from_raw(*attacker), object_ids(blockers.clone()))
+            })
+            .collect(),
+        attacking_bands: combat
+            .attacking_bands
+            .iter()
+            .cloned()
+            .map(object_ids)
+            .collect(),
+        had_to_attack_this_combat: combat
+            .had_to_attack_this_combat
+            .iter()
+            .copied()
+            .map(ObjectId::from_raw)
+            .collect(),
+    }
+}
+
+fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
+    let snapshot = host.game.grand_melee_restore_snapshot()?;
+    Some(SyncGrandMelee {
+        seats: snapshot.seats.iter().map(|player| player.0).collect(),
+        starting_player_count: snapshot.starting_player_count,
+        focused_marker: snapshot.focused_marker,
+        markers: snapshot
+            .markers
+            .iter()
+            .map(|marker| {
+                let focused = marker.number == snapshot.focused_marker;
+                let lane = host.grand_melee_host_lanes.get(&marker.number);
+                let runner = if focused {
+                    host.runner.as_ref()
+                } else {
+                    lane.and_then(|lane| lane.runner.as_ref())
+                };
+                let (consecutive_priority_passes, priority_players_in_game) = if focused {
+                    host.priority_state.priority_tracker_snapshot()
+                } else {
+                    lane.map(|lane| lane.priority_state.priority_tracker_snapshot())
+                        .unwrap_or_default()
+                };
+                SyncGrandMeleeMarker {
+                    number: marker.number,
+                    holder: marker.holder.0,
+                    status: match marker.status {
+                        ironsmith::GrandMeleeMarkerStatus::Active => "active",
+                        ironsmith::GrandMeleeMarkerStatus::Waiting => "waiting",
+                    }
+                    .to_string(),
+                    removal_designations: marker.removal_designations,
+                    normal_turn_pending: marker.normal_turn_pending,
+                    retained_extra_turn_waiting: marker.retained_extra_turn_waiting,
+                    turn: sync_turn_state(&marker.turn),
+                    extra_turns: marker
+                        .turn_store
+                        .extra_turns
+                        .iter()
+                        .map(|player| player.0)
+                        .collect(),
+                    stack: marker.stack.iter().map(sync_stack_entry).collect(),
+                    combat: marker.combat.as_ref().map(sync_grand_melee_combat),
+                    range_turn_snapshot: marker
+                        .range_of_influence
+                        .as_ref()
+                        .map(|range| {
+                            range
+                                .seats()
+                                .iter()
+                                .copied()
+                                .map(|observer| {
+                                    (
+                                        observer.0,
+                                        range
+                                            .players_in_turn_snapshot(observer)
+                                            .iter()
+                                            .map(|player| player.0)
+                                            .collect(),
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    runner_state: runner.map(|runner| runner.state().sync_name().to_string()),
+                    runner_awaiting_priority: if focused {
+                        host.runner_awaiting_priority
+                    } else {
+                        lane.is_some_and(|lane| lane.runner_awaiting_priority)
+                    },
+                    consecutive_priority_passes,
+                    priority_players_in_game,
+                }
+            })
+            .collect(),
+        deferred_extra_turns: snapshot
+            .deferred_extra_turns
+            .iter()
+            .map(|(player, count)| (player.0, *count))
+            .collect(),
+    })
+}
+
+fn grand_melee_restore_from_sync(
+    sync: &SyncGrandMelee,
+) -> Result<ironsmith::GrandMeleeRestore, JsValue> {
+    Ok(ironsmith::GrandMeleeRestore {
+        seats: sync
+            .seats
+            .iter()
+            .copied()
+            .map(PlayerId::from_index)
+            .collect(),
+        starting_player_count: sync.starting_player_count,
+        focused_marker: sync.focused_marker,
+        markers: sync
+            .markers
+            .iter()
+            .map(|marker| {
+                let status = match marker.status.as_str() {
+                    "active" => ironsmith::GrandMeleeMarkerStatus::Active,
+                    "waiting" => ironsmith::GrandMeleeMarkerStatus::Waiting,
+                    other => {
+                        return Err(JsValue::from_str(&format!(
+                            "unknown Grand Melee marker status: {other}"
+                        )));
+                    }
+                };
+                let mut turn_store = ironsmith::game_state::TurnStore::default();
+                turn_store.turn_order = sync
+                    .seats
+                    .iter()
+                    .copied()
+                    .map(PlayerId::from_index)
+                    .collect();
+                turn_store.extra_turns = marker
+                    .extra_turns
+                    .iter()
+                    .copied()
+                    .map(PlayerId::from_index)
+                    .collect();
+                Ok(ironsmith::GrandMeleeMarkerRestore {
+                    number: marker.number,
+                    holder: PlayerId::from_index(marker.holder),
+                    status,
+                    removal_designations: marker.removal_designations,
+                    normal_turn_pending: marker.normal_turn_pending,
+                    retained_extra_turn_waiting: marker.retained_extra_turn_waiting,
+                    turn: TurnState {
+                        active_player: PlayerId::from_index(marker.turn.active_player),
+                        priority_player: marker
+                            .turn
+                            .priority_player
+                            .map(PlayerId::from_index),
+                        turn_number: marker.turn.turn_number,
+                        phase: sync_phase_from_name(&marker.turn.phase)?,
+                        step: marker
+                            .turn
+                            .step
+                            .as_deref()
+                            .map(sync_step_from_name)
+                            .transpose()?,
+                    },
+                    turn_store,
+                    stack: marker.stack.iter().map(stack_entry_from_sync).collect(),
+                    combat: marker.combat.as_ref().map(grand_melee_combat_from_sync),
+                    range_of_influence: if marker.range_turn_snapshot.is_empty() {
+                        None
+                    } else {
+                        Some(ironsmith::game_state::LimitedRangeOfInfluenceState::from_restore_snapshot(
+                            sync.seats
+                                .iter()
+                                .copied()
+                                .map(PlayerId::from_index)
+                                .collect(),
+                            vec![1; sync.seats.len()],
+                            marker
+                                .range_turn_snapshot
+                                .iter()
+                                .map(|(observer, players)| {
+                                    (
+                                        PlayerId::from_index(*observer),
+                                        players
+                                            .iter()
+                                            .copied()
+                                            .map(PlayerId::from_index)
+                                            .collect(),
+                                    )
+                                })
+                                .collect(),
+                        )
+                        .map_err(|error| JsValue::from_str(&error))?)
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>, JsValue>>()?,
+        deferred_extra_turns: sync
+            .deferred_extra_turns
+            .iter()
+            .map(|(player, count)| (PlayerId::from_index(*player), *count))
+            .collect(),
+    })
+}
+
 fn raw_ids(ids: &[ObjectId]) -> Vec<u64> {
     ids.iter().map(|id| id.0).collect()
 }
 
 fn object_ids(ids: Vec<u64>) -> Vec<ObjectId> {
     ids.into_iter().map(ObjectId::from_raw).collect()
+}
+
+fn sync_planechase_state(game: &GameState) -> Option<SyncPlanechase> {
+    let state = game.planechase.as_ref()?;
+    let mut decks = state
+        .decks
+        .iter()
+        .map(|(owner, deck)| (owner.0, raw_ids(deck)))
+        .collect::<Vec<_>>();
+    decks.sort_by_key(|(owner, _)| *owner);
+    let mut deck_owners = state
+        .deck_owners
+        .iter()
+        .map(|(object, owner)| (object.0, owner.0))
+        .collect::<Vec<_>>();
+    deck_owners.sort_unstable();
+    let mut card_kinds = state
+        .card_kinds
+        .iter()
+        .map(|(object, kind)| {
+            (
+                object.0,
+                match kind {
+                    PlanarCardKind::Plane => "plane",
+                    PlanarCardKind::Phenomenon => "phenomenon",
+                }
+                .to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+    card_kinds.sort_by_key(|(object, _)| *object);
+    let mut voluntary_rolls_this_turn = state
+        .voluntary_rolls_this_turn
+        .iter()
+        .map(|(player, count)| (player.0, *count))
+        .collect::<Vec<_>>();
+    voluntary_rolls_this_turn.sort_unstable();
+    let mut planar_controllers = state
+        .planar_controllers
+        .iter()
+        .map(|player| player.0)
+        .collect::<Vec<_>>();
+    planar_controllers.sort_unstable();
+    let mut face_up_controllers = state
+        .face_up_controllers
+        .iter()
+        .map(|(object, player)| (object.0, player.0))
+        .collect::<Vec<_>>();
+    face_up_controllers.sort_unstable();
+    Some(SyncPlanechase {
+        decks,
+        communal_deck: state.communal_deck.as_deref().map(raw_ids),
+        deck_owners,
+        card_kinds,
+        face_up: raw_ids(&state.face_up),
+        planar_controller: state.planar_controller.0,
+        planar_controllers,
+        face_up_controllers,
+        voluntary_rolls_this_turn,
+        planeswalk_count: state.planeswalk_count,
+    })
+}
+
+fn public_audit_planechase_state(game: &GameState) -> Option<PublicAuditPlanechase> {
+    let state = game.planechase.as_ref()?;
+    let mut decks = state
+        .decks
+        .iter()
+        .map(|(owner, deck)| (owner.0, deck.len()))
+        .collect::<Vec<_>>();
+    decks.sort_unstable();
+    let mut voluntary_rolls_this_turn = state
+        .voluntary_rolls_this_turn
+        .iter()
+        .map(|(player, count)| (player.0, *count))
+        .collect::<Vec<_>>();
+    voluntary_rolls_this_turn.sort_unstable();
+    let mut planar_controllers = state
+        .planar_controllers
+        .iter()
+        .map(|player| player.0)
+        .collect::<Vec<_>>();
+    planar_controllers.sort_unstable();
+    let mut face_up_controllers = state
+        .face_up_controllers
+        .iter()
+        .map(|(object, player)| (object.0, player.0))
+        .collect::<Vec<_>>();
+    face_up_controllers.sort_unstable();
+    Some(PublicAuditPlanechase {
+        decks,
+        communal_deck_size: state.communal_deck.as_ref().map(Vec::len),
+        face_up: raw_ids(&state.face_up),
+        planar_controller: state.planar_controller.0,
+        planar_controllers,
+        face_up_controllers,
+        voluntary_rolls_this_turn,
+        planeswalk_count: state.planeswalk_count,
+    })
+}
+
+fn sync_vanguard_state(game: &GameState) -> Option<SyncVanguard> {
+    let state = game.vanguard.as_ref()?;
+    let mut cards = state
+        .cards
+        .iter()
+        .map(|(owner, object)| (owner.0, object.0))
+        .collect::<Vec<_>>();
+    let mut hand_modifiers = state
+        .hand_modifiers
+        .iter()
+        .map(|(owner, modifier)| (owner.0, *modifier))
+        .collect::<Vec<_>>();
+    let mut life_modifiers = state
+        .life_modifiers
+        .iter()
+        .map(|(owner, modifier)| (owner.0, *modifier))
+        .collect::<Vec<_>>();
+    cards.sort_unstable();
+    hand_modifiers.sort_unstable();
+    life_modifiers.sort_unstable();
+    Some(SyncVanguard {
+        cards,
+        hand_modifiers,
+        life_modifiers,
+    })
+}
+
+fn archenemy_variant_name(variant: ArchenemyVariant) -> &'static str {
+    match variant {
+        ArchenemyVariant::Default => "default",
+        ArchenemyVariant::SupervillainRumble => "supervillain_rumble",
+        ArchenemyVariant::Commander => "commander",
+    }
+}
+
+fn sync_archenemy_state(game: &GameState) -> Option<SyncArchenemy> {
+    let state = game.archenemy.as_ref()?;
+    let mut archenemies = state
+        .archenemies
+        .iter()
+        .map(|player| player.0)
+        .collect::<Vec<_>>();
+    archenemies.sort_unstable();
+    let mut decks = state
+        .scheme_decks
+        .iter()
+        .map(|(owner, deck)| (owner.0, raw_ids(deck)))
+        .collect::<Vec<_>>();
+    decks.sort_by_key(|(owner, _)| *owner);
+    Some(SyncArchenemy {
+        variant: archenemy_variant_name(state.variant).to_string(),
+        archenemies,
+        decks,
+        face_up: raw_ids(&state.face_up),
+    })
+}
+
+fn public_audit_archenemy_state(game: &GameState) -> Option<PublicAuditArchenemy> {
+    let state = game.archenemy.as_ref()?;
+    let mut archenemies = state
+        .archenemies
+        .iter()
+        .map(|player| player.0)
+        .collect::<Vec<_>>();
+    archenemies.sort_unstable();
+    let mut decks = state
+        .scheme_decks
+        .iter()
+        .map(|(owner, deck)| (owner.0, deck.len()))
+        .collect::<Vec<_>>();
+    decks.sort_unstable();
+    Some(PublicAuditArchenemy {
+        variant: archenemy_variant_name(state.variant).to_string(),
+        archenemies,
+        decks,
+        face_up: raw_ids(&state.face_up),
+    })
+}
+
+fn sync_conspiracy_state(game: &GameState) -> Option<SyncConspiracy> {
+    let state = game.conspiracy.as_ref()?;
+    let mut cards = state
+        .cards
+        .iter()
+        .map(|(owner, cards)| (owner.0, raw_ids(cards)))
+        .collect::<Vec<_>>();
+    cards.sort_by_key(|(owner, _)| *owner);
+    let mut face_down = raw_ids(&state.face_down.iter().copied().collect::<Vec<_>>());
+    face_down.sort_unstable();
+    let mut agenda_names = state
+        .agenda_names
+        .iter()
+        .map(|(object, names)| (object.0, names.clone()))
+        .collect::<Vec<_>>();
+    agenda_names.sort_by_key(|(object, _)| *object);
+    Some(SyncConspiracy {
+        cards,
+        face_down,
+        agenda_names,
+    })
+}
+
+fn public_audit_conspiracy_state(game: &GameState) -> Option<PublicAuditConspiracy> {
+    let state = game.conspiracy.as_ref()?;
+    let mut cards = state
+        .cards
+        .iter()
+        .map(|(owner, cards)| (owner.0, raw_ids(cards)))
+        .collect::<Vec<_>>();
+    cards.sort_by_key(|(owner, _)| *owner);
+    let mut face_down = state
+        .face_down
+        .iter()
+        .map(|object| object.0)
+        .collect::<Vec<_>>();
+    face_down.sort_unstable();
+    Some(PublicAuditConspiracy { cards, face_down })
+}
+
+fn vanguard_state_from_sync(sync: &SyncVanguard) -> VanguardState {
+    VanguardState {
+        cards: sync
+            .cards
+            .iter()
+            .map(|(owner, object)| (PlayerId::from_index(*owner), ObjectId::from_raw(*object)))
+            .collect(),
+        hand_modifiers: sync
+            .hand_modifiers
+            .iter()
+            .map(|(owner, modifier)| (PlayerId::from_index(*owner), *modifier))
+            .collect(),
+        life_modifiers: sync
+            .life_modifiers
+            .iter()
+            .map(|(owner, modifier)| (PlayerId::from_index(*owner), *modifier))
+            .collect(),
+    }
+}
+
+fn archenemy_state_from_sync(sync: &SyncArchenemy) -> Result<ArchenemyState, JsValue> {
+    let variant = match sync.variant.as_str() {
+        "default" => ArchenemyVariant::Default,
+        "supervillain_rumble" => ArchenemyVariant::SupervillainRumble,
+        "commander" => ArchenemyVariant::Commander,
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "unknown Archenemy variant in checkpoint: {other}"
+            )));
+        }
+    };
+    Ok(ArchenemyState {
+        variant,
+        archenemies: sync
+            .archenemies
+            .iter()
+            .map(|player| PlayerId::from_index(*player))
+            .collect(),
+        scheme_decks: sync
+            .decks
+            .iter()
+            .map(|(owner, deck)| (PlayerId::from_index(*owner), object_ids(deck.clone())))
+            .collect(),
+        face_up: object_ids(sync.face_up.clone()),
+    })
+}
+
+fn conspiracy_state_from_sync(sync: &SyncConspiracy) -> ConspiracyState {
+    ConspiracyState {
+        cards: sync
+            .cards
+            .iter()
+            .map(|(owner, cards)| (PlayerId::from_index(*owner), object_ids(cards.clone())))
+            .collect(),
+        face_down: sync
+            .face_down
+            .iter()
+            .map(|object| ObjectId::from_raw(*object))
+            .collect(),
+        agenda_names: sync
+            .agenda_names
+            .iter()
+            .map(|(object, names)| (ObjectId::from_raw(*object), names.clone()))
+            .collect(),
+    }
+}
+
+fn planechase_state_from_sync(sync: &SyncPlanechase) -> Result<PlanechaseState, JsValue> {
+    let mut card_kinds = HashMap::new();
+    for (object, kind) in &sync.card_kinds {
+        let kind = match kind.as_str() {
+            "plane" => PlanarCardKind::Plane,
+            "phenomenon" => PlanarCardKind::Phenomenon,
+            other => {
+                return Err(JsValue::from_str(&format!(
+                    "unknown planar card kind in checkpoint: {other}"
+                )));
+            }
+        };
+        card_kinds.insert(ObjectId::from_raw(*object), kind);
+    }
+    let planar_controller = PlayerId::from_index(sync.planar_controller);
+    let face_up = object_ids(sync.face_up.clone());
+    Ok(PlanechaseState {
+        decks: sync
+            .decks
+            .iter()
+            .map(|(owner, deck)| (PlayerId::from_index(*owner), object_ids(deck.clone())))
+            .collect(),
+        communal_deck: sync.communal_deck.clone().map(object_ids),
+        deck_owners: sync
+            .deck_owners
+            .iter()
+            .map(|(object, owner)| (ObjectId::from_raw(*object), PlayerId::from_index(*owner)))
+            .collect(),
+        card_kinds,
+        face_up: face_up.clone(),
+        planar_controller,
+        planar_controllers: if sync.planar_controllers.is_empty() {
+            HashSet::from([planar_controller])
+        } else {
+            sync.planar_controllers
+                .iter()
+                .map(|player| PlayerId::from_index(*player))
+                .collect()
+        },
+        face_up_controllers: if sync.face_up_controllers.is_empty() {
+            face_up
+                .into_iter()
+                .map(|object| (object, planar_controller))
+                .collect()
+        } else {
+            sync.face_up_controllers
+                .iter()
+                .map(|(object, player)| {
+                    (ObjectId::from_raw(*object), PlayerId::from_index(*player))
+                })
+                .collect()
+        },
+        voluntary_rolls_this_turn: sync
+            .voluntary_rolls_this_turn
+            .iter()
+            .map(|(player, count)| (PlayerId::from_index(*player), *count))
+            .collect(),
+        planeswalk_count: sync.planeswalk_count,
+    })
 }
 
 fn public_audit_protocol_name() -> String {
@@ -681,11 +1620,7 @@ impl WasmGame {
         }
     }
 
-    fn public_audit_hidden_zone_entry(
-        &self,
-        position: usize,
-        id: ObjectId,
-    ) -> serde_json::Value {
+    fn public_audit_hidden_zone_entry(&self, position: usize, id: ObjectId) -> serde_json::Value {
         if let Some(info) = self.game.hidden_card_info(id) {
             let public_slot = info.public_slot.unwrap_or(info.slot);
             let public_commitment = info
@@ -779,6 +1714,7 @@ impl WasmGame {
         ids.extend(self.game.battlefield.iter().copied());
         ids.extend(self.game.exile.iter().copied());
         ids.extend(self.game.command_zone.iter().copied());
+        ids.extend(self.game.ante.iter().copied());
         ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
         ids.sort_unstable();
         ids.dedup();
@@ -841,6 +1777,8 @@ impl WasmGame {
                     toughness: object.toughness(),
                     loyalty: object.loyalty(),
                     defense: object.defense(),
+                    hand_modifier: object.hand_modifier,
+                    life_modifier: object.life_modifier,
                     oracle_text: object.compiled_card_text.to_string(),
                     counters: object
                         .counters
@@ -868,16 +1806,13 @@ impl WasmGame {
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_on(id),
                     commander: self.game.is_commander_object(id),
-                    hidden_card: self
-                        .game
-                        .hidden_card_info(id)
-                        .map(|info| SyncHiddenCard {
-                            owner: info.owner.0,
-                            slot: info.slot,
-                            commitment: info.commitment.clone(),
-                            public_slot: info.public_slot,
-                            public_commitment: info.public_commitment.clone(),
-                        }),
+                    hidden_card: self.game.hidden_card_info(id).map(|info| SyncHiddenCard {
+                        owner: info.owner.0,
+                        slot: info.slot,
+                        commitment: info.commitment.clone(),
+                        public_slot: info.public_slot,
+                        public_commitment: info.public_commitment.clone(),
+                    }),
                 })
             })
             .collect();
@@ -915,6 +1850,131 @@ impl WasmGame {
             battlefield: raw_ids(&self.game.battlefield),
             exile: raw_ids(&self.game.exile),
             command: raw_ids(&self.game.command_zone),
+            ante: raw_ids(&self.game.ante),
+            planechase: sync_planechase_state(&self.game),
+            vanguard: sync_vanguard_state(&self.game),
+            archenemy: sync_archenemy_state(&self.game),
+            conspiracy: sync_conspiracy_state(&self.game),
+            free_for_all: self.game.free_for_all().map(|state| SyncFreeForAll {
+                seats: state.seats().iter().map(|player| player.0).collect(),
+                attack: match state.attack_option() {
+                    ironsmith::FreeForAllAttackOption::Left => FreeForAllAttackInput::Left,
+                    ironsmith::FreeForAllAttackOption::Right => FreeForAllAttackInput::Right,
+                    ironsmith::FreeForAllAttackOption::MultiplePlayers => {
+                        FreeForAllAttackInput::MultiplePlayers
+                    }
+                },
+                range_of_influence: state.range_of_influence(),
+            }),
+            team_vs_team: self.game.team_vs_team().map(|state| SyncTeamVsTeam {
+                teams: state
+                    .teams()
+                    .iter()
+                    .map(|team| team.iter().map(|player| player.0).collect())
+                    .collect(),
+                seats: state.seats().iter().map(|player| player.0).collect(),
+                starting_team: state.starting_team(),
+                starting_player: state.starting_player().0,
+            }),
+            emperor: self.game.emperor().map(|state| SyncEmperor {
+                teams: state
+                    .teams()
+                    .iter()
+                    .map(|team| team.iter().map(|player| player.0).collect())
+                    .collect(),
+                seats: state.seats().iter().map(|player| player.0).collect(),
+                ranges: state.ranges().to_vec(),
+                starting_team: state.starting_team(),
+                starting_emperor: state.starting_emperor().0,
+            }),
+            two_headed_giant: self
+                .game
+                .two_headed_giant()
+                .map(|state| SyncTwoHeadedGiant {
+                    teams: state
+                        .teams()
+                        .iter()
+                        .map(|team| team.iter().map(|player| player.0).collect())
+                        .collect(),
+                    seats: state.seats().iter().map(|player| player.0).collect(),
+                    starting_team: state.starting_team(),
+                    starting_player: state.starting_player().0,
+                    starting_life: state.starting_life(),
+                    poison_threshold: state.poison_threshold(),
+                }),
+            alternating_teams: self
+                .game
+                .alternating_teams()
+                .map(|state| SyncAlternatingTeams {
+                    teams: state
+                        .teams()
+                        .iter()
+                        .map(|team| team.iter().map(|player| player.0).collect())
+                        .collect(),
+                    seats: state.seats().iter().map(|player| player.0).collect(),
+                    starting_player: state.starting_player().0,
+                    attack: match state.attack_option() {
+                        ironsmith::FreeForAllAttackOption::Left => FreeForAllAttackInput::Left,
+                        ironsmith::FreeForAllAttackOption::Right => FreeForAllAttackInput::Right,
+                        ironsmith::FreeForAllAttackOption::MultiplePlayers => {
+                            FreeForAllAttackInput::MultiplePlayers
+                        }
+                    },
+                    range_of_influence: state.range_of_influence(),
+                    deploy_creatures: state.deploy_creatures(),
+                }),
+            grand_melee: sync_grand_melee_state(self),
+            limited_range_of_influence: self.game.limited_range_of_influence().map(|state| {
+                SyncLimitedRangeOfInfluence {
+                    seats: state.seats().iter().map(|player| player.0).collect(),
+                    ranges: state
+                        .seats()
+                        .iter()
+                        .map(|player| state.configured_range(*player).unwrap_or(0))
+                        .collect(),
+                    turn_snapshot: state
+                        .seats()
+                        .iter()
+                        .map(|player| {
+                            (
+                                player.0,
+                                state
+                                    .players_in_turn_snapshot(*player)
+                                    .into_iter()
+                                    .map(|candidate| candidate.0)
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                }
+            }),
+            attack_direction: self
+                .game
+                .attack_direction()
+                .map(|direction| match direction {
+                    ironsmith::game_state::AttackDirection::Left => SyncAttackDirection::Left,
+                    ironsmith::game_state::AttackDirection::Right => SyncAttackDirection::Right,
+                }),
+            teams: self.game.team_state().map(|state| {
+                state
+                    .teams()
+                    .iter()
+                    .map(|team| team.iter().map(|player| player.0).collect())
+                    .collect()
+            }),
+            deploy_creatures: self.game.deploy_creatures_enabled(),
+            shared_team_turns: self.game.shared_team_turns_enabled(),
+            shared_team_member_orders: self
+                .game
+                .shared_team_turns()
+                .map(|state| {
+                    state
+                        .member_orders()
+                        .iter()
+                        .map(|order| order.iter().map(|player| player.0).collect())
+                        .collect()
+                })
+                .unwrap_or_default(),
             stack: self
                 .game
                 .stack
@@ -922,7 +1982,12 @@ impl WasmGame {
                 .map(|entry| SyncStackEntry {
                     object_id: entry.object_id.0,
                     controller: entry.controller.0,
-                    targets: entry.targets.iter().copied().map(sync_target_input).collect(),
+                    targets: entry
+                        .targets
+                        .iter()
+                        .copied()
+                        .map(sync_target_input)
+                        .collect(),
                     is_ability: entry.is_ability,
                     x_value: entry.x_value,
                     source_stable_id: entry.source_stable_id.map(|id| id.0.0),
@@ -952,6 +2017,16 @@ impl WasmGame {
             .collect()
     }
 
+    fn public_audit_command_ids(&self) -> Vec<ObjectId> {
+        self.game
+            .command_zone
+            .iter()
+            .copied()
+            .filter(|id| !self.game.is_planar_card(*id) || self.game.is_face_up_planar_object(*id))
+            .filter(|id| !self.game.is_scheme_card(*id) || self.game.is_face_up_scheme(*id))
+            .collect()
+    }
+
     fn public_audit_object_ids(&self) -> Vec<ObjectId> {
         let mut ids = Vec::new();
         for player in &self.game.players {
@@ -961,7 +2036,8 @@ impl WasmGame {
         }
         ids.extend(self.game.battlefield.iter().copied());
         ids.extend(self.public_audit_exile_ids());
-        ids.extend(self.game.command_zone.iter().copied());
+        ids.extend(self.public_audit_command_ids());
+        ids.extend(self.game.ante.iter().copied());
         ids.extend(self.game.stack.iter().map(|entry| entry.object_id));
         ids.sort_unstable();
         ids.dedup();
@@ -975,13 +2051,23 @@ impl WasmGame {
         if matches!(object.zone, Zone::Library | Zone::Hand | Zone::OutsideGame) {
             return false;
         }
-        if self.game.is_face_down(id) || self.game.is_foretold(id) {
+        if self.game.is_planar_card(id) && !self.game.is_face_up_planar_object(id) {
+            return false;
+        }
+        if self.game.is_face_down(id)
+            || self.game.is_face_down_conspiracy(id)
+            || self.game.is_foretold(id)
+        {
             return false;
         }
         true
     }
 
-    fn public_audit_object_identity(&self, id: ObjectId, object: &Object) -> Option<PublicAuditObjectIdentity> {
+    fn public_audit_object_identity(
+        &self,
+        id: ObjectId,
+        object: &Object,
+    ) -> Option<PublicAuditObjectIdentity> {
         self.public_audit_object_identity_is_public(id)
             .then(|| Self::public_audit_known_object_identity(object))
     }
@@ -1050,7 +2136,7 @@ impl WasmGame {
                     renowned: self.game.is_renowned(id),
                     saddled: self.game.is_saddled(id),
                     flipped: self.game.is_flipped(id),
-                    face_down: self.game.is_face_down(id),
+                    face_down: self.game.is_face_down(id) || self.game.is_face_down_conspiracy(id),
                     manifested: self.game.is_manifested(id),
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
@@ -1082,11 +2168,7 @@ impl WasmGame {
                 zone: "hand".to_string(),
                 count: player.hand.len(),
                 protocol: public_audit_protocol_name(),
-                commitment_root: self.public_audit_commitment_root(
-                    player.id,
-                    "hand",
-                    &player.hand,
-                ),
+                commitment_root: self.public_audit_commitment_root(player.id, "hand", &player.hand),
             });
             if !player.sideboard.is_empty() {
                 hidden_zones.push(PublicAuditHiddenZone {
@@ -1125,6 +2207,42 @@ impl WasmGame {
             }
         }
 
+        if let Some(planechase) = self.game.planechase.as_ref() {
+            for (owner, deck) in &planechase.decks {
+                hidden_zones.push(PublicAuditHiddenZone {
+                    owner: owner.0,
+                    zone: "planar_deck".to_string(),
+                    count: deck.len(),
+                    protocol: public_audit_protocol_name(),
+                    commitment_root: self.public_audit_commitment_root(*owner, "planar_deck", deck),
+                });
+            }
+            if let Some(deck) = planechase.communal_deck.as_ref() {
+                hidden_zones.push(PublicAuditHiddenZone {
+                    owner: planechase.planar_controller.0,
+                    zone: "communal_planar_deck".to_string(),
+                    count: deck.len(),
+                    protocol: public_audit_protocol_name(),
+                    commitment_root: self.public_audit_commitment_root(
+                        planechase.planar_controller,
+                        "communal_planar_deck",
+                        deck,
+                    ),
+                });
+            }
+        }
+        if let Some(archenemy) = self.game.archenemy.as_ref() {
+            for (owner, deck) in &archenemy.scheme_decks {
+                hidden_zones.push(PublicAuditHiddenZone {
+                    owner: owner.0,
+                    zone: "scheme_deck".to_string(),
+                    count: deck.len(),
+                    protocol: public_audit_protocol_name(),
+                    commitment_root: self.public_audit_commitment_root(*owner, "scheme_deck", deck),
+                });
+            }
+        }
+
         PublicAuditCheckpoint {
             version: SYNC_CHECKPOINT_VERSION,
             format: self.match_format,
@@ -1151,7 +2269,81 @@ impl WasmGame {
             objects,
             battlefield: raw_ids(&self.game.battlefield),
             public_exile: raw_ids(&self.public_audit_exile_ids()),
-            command: raw_ids(&self.game.command_zone),
+            command: raw_ids(&self.public_audit_command_ids()),
+            ante: raw_ids(&self.game.ante),
+            planechase: public_audit_planechase_state(&self.game),
+            vanguard: sync_vanguard_state(&self.game),
+            archenemy: public_audit_archenemy_state(&self.game),
+            conspiracy: public_audit_conspiracy_state(&self.game),
+            free_for_all: self.game.free_for_all().map(|state| SyncFreeForAll {
+                seats: state.seats().iter().map(|player| player.0).collect(),
+                attack: match state.attack_option() {
+                    ironsmith::FreeForAllAttackOption::Left => FreeForAllAttackInput::Left,
+                    ironsmith::FreeForAllAttackOption::Right => FreeForAllAttackInput::Right,
+                    ironsmith::FreeForAllAttackOption::MultiplePlayers => {
+                        FreeForAllAttackInput::MultiplePlayers
+                    }
+                },
+                range_of_influence: state.range_of_influence(),
+            }),
+            team_vs_team: self.game.team_vs_team().map(|state| SyncTeamVsTeam {
+                teams: state
+                    .teams()
+                    .iter()
+                    .map(|team| team.iter().map(|player| player.0).collect())
+                    .collect(),
+                seats: state.seats().iter().map(|player| player.0).collect(),
+                starting_team: state.starting_team(),
+                starting_player: state.starting_player().0,
+            }),
+            emperor: self.game.emperor().map(|state| SyncEmperor {
+                teams: state
+                    .teams()
+                    .iter()
+                    .map(|team| team.iter().map(|player| player.0).collect())
+                    .collect(),
+                seats: state.seats().iter().map(|player| player.0).collect(),
+                ranges: state.ranges().to_vec(),
+                starting_team: state.starting_team(),
+                starting_emperor: state.starting_emperor().0,
+            }),
+            two_headed_giant: self
+                .game
+                .two_headed_giant()
+                .map(|state| SyncTwoHeadedGiant {
+                    teams: state
+                        .teams()
+                        .iter()
+                        .map(|team| team.iter().map(|player| player.0).collect())
+                        .collect(),
+                    seats: state.seats().iter().map(|player| player.0).collect(),
+                    starting_team: state.starting_team(),
+                    starting_player: state.starting_player().0,
+                    starting_life: state.starting_life(),
+                    poison_threshold: state.poison_threshold(),
+                }),
+            alternating_teams: self
+                .game
+                .alternating_teams()
+                .map(|state| SyncAlternatingTeams {
+                    teams: state
+                        .teams()
+                        .iter()
+                        .map(|team| team.iter().map(|player| player.0).collect())
+                        .collect(),
+                    seats: state.seats().iter().map(|player| player.0).collect(),
+                    starting_player: state.starting_player().0,
+                    attack: match state.attack_option() {
+                        ironsmith::FreeForAllAttackOption::Left => FreeForAllAttackInput::Left,
+                        ironsmith::FreeForAllAttackOption::Right => FreeForAllAttackInput::Right,
+                        ironsmith::FreeForAllAttackOption::MultiplePlayers => {
+                            FreeForAllAttackInput::MultiplePlayers
+                        }
+                    },
+                    range_of_influence: state.range_of_influence(),
+                    deploy_creatures: state.deploy_creatures(),
+                }),
+            grand_melee: sync_grand_melee_state(self),
             stack: self
                 .game
                 .stack
@@ -1159,7 +2351,12 @@ impl WasmGame {
                 .map(|entry| SyncStackEntry {
                     object_id: entry.object_id.0,
                     controller: entry.controller.0,
-                    targets: entry.targets.iter().copied().map(sync_target_input).collect(),
+                    targets: entry
+                        .targets
+                        .iter()
+                        .copied()
+                        .map(sync_target_input)
+                        .collect(),
                     is_ability: entry.is_ability,
                     x_value: entry.x_value,
                     source_stable_id: entry.source_stable_id.map(|id| id.0.0),
@@ -1170,15 +2367,14 @@ impl WasmGame {
         }
     }
 
-    fn should_redact_for_perspective(
-        &self,
-        object: &SyncObject,
-        perspective: PlayerId,
-    ) -> bool {
+    fn should_redact_for_perspective(&self, object: &SyncObject, perspective: PlayerId) -> bool {
         let owner = PlayerId::from_index(object.owner);
         match object.zone.as_str() {
             "library" => true,
-            "hand" | "outside_game" => owner != perspective,
+            "hand" => {
+                owner != perspective && !self.game.can_review_teammate_hand(perspective, owner)
+            }
+            "outside_game" => owner != perspective,
             _ => object.face_down || object.foretold,
         }
     }
@@ -1242,13 +2438,16 @@ impl WasmGame {
         // available for visible objects and later hidden-card openings.
         self.trigger_queue = TriggerQueue::new();
         self.priority_state = PriorityLoopState::new(checkpoint.players.len());
-        self.priority_state.set_auto_choose_single_pip_payment(false);
+        self.priority_state
+            .set_auto_choose_single_pip_payment(false);
         self.priority_state.restore_priority_tracker_for_sync(
             checkpoint.priority_runtime.consecutive_priority_passes,
             checkpoint.priority_runtime.priority_players_in_game,
         );
         self.pregame = None;
         self.match_format = checkpoint.format;
+        self.game
+            .set_commander_damage_loss_enabled(checkpoint.format.commander_damage_loss_enabled());
         self.pending_decision = None;
         self.pending_replay_action = None;
         self.pending_action_checkpoint = None;
@@ -1261,6 +2460,7 @@ impl WasmGame {
             .as_deref()
             .and_then(RunnerTurnState::from_sync_name)
             .map(TurnRunner::from_state_for_sync);
+        self.grand_melee_host_lanes.clear();
         if self.runner.is_none()
             && (checkpoint.priority_runtime.runner_awaiting_priority
                 || checkpoint.priority_runtime.runner_pending_decision)
@@ -1270,8 +2470,9 @@ impl WasmGame {
         self.runner_awaiting_priority = checkpoint.priority_runtime.runner_awaiting_priority;
         self.runner_pending_decision = checkpoint.priority_runtime.runner_pending_decision;
         self.auto_cleanup_discard = checkpoint.auto_cleanup_discard;
-        self.game
-            .set_auto_choose_single_object_decisions(checkpoint.auto_choose_single_object_decisions);
+        self.game.set_auto_choose_single_object_decisions(
+            checkpoint.auto_choose_single_object_decisions,
+        );
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
@@ -1295,8 +2496,7 @@ impl WasmGame {
         let owner = PlayerId::from_index(object.owner);
         let zone = sync_zone_from_name(&object.zone)?;
 
-        let is_redacted_hidden_card =
-            object.hidden_card.is_some() && object.name == "Hidden Card";
+        let is_redacted_hidden_card = object.hidden_card.is_some() && object.name == "Hidden Card";
         let mut restored = if is_redacted_hidden_card {
             Object::new_hidden_card(id, owner, zone)
         } else if object.token {
@@ -1334,6 +2534,8 @@ impl WasmGame {
 
         restored.zone = zone;
         restored.stable_id = StableId::from_raw(object.stable_id);
+        restored.hand_modifier = object.hand_modifier;
+        restored.life_modifier = object.life_modifier;
         if object.token {
             restored.compiled_card_text = object.oracle_text.clone().into();
             restored.base_loyalty = object.loyalty;
@@ -1344,10 +2546,7 @@ impl WasmGame {
             .iter()
             .map(|counter| (sync_counter_from_name(&counter.kind), counter.amount))
             .collect();
-        restored.attached_to = object
-            .attached_to
-            .clone()
-            .map(attachment_target_from_sync);
+        restored.attached_to = object.attached_to.clone().map(attachment_target_from_sync);
         restored.attachments = object_ids(object.attachments.clone());
 
         Ok(restored)
@@ -1412,6 +2611,36 @@ impl WasmGame {
         self.game.battlefield = object_ids(checkpoint.battlefield.clone());
         self.game.exile = object_ids(checkpoint.exile.clone());
         self.game.command_zone = object_ids(checkpoint.command.clone());
+        self.game.ante = object_ids(checkpoint.ante.clone());
+        self.game.planechase = checkpoint
+            .planechase
+            .as_ref()
+            .map(planechase_state_from_sync)
+            .transpose()?;
+        self.game.synchronize_planar_ability_zones();
+        self.game.vanguard = checkpoint.vanguard.as_ref().map(vanguard_state_from_sync);
+        self.game.synchronize_vanguard_ability_zones();
+        self.game.archenemy = checkpoint
+            .archenemy
+            .as_ref()
+            .map(archenemy_state_from_sync)
+            .transpose()?;
+        self.game.synchronize_scheme_ability_zones();
+        self.game.conspiracy = checkpoint
+            .conspiracy
+            .as_ref()
+            .map(conspiracy_state_from_sync);
+        if let Some(state) = self.game.conspiracy.as_ref() {
+            let names = state
+                .agenda_names
+                .iter()
+                .map(|(object, names)| (*object, names.join("\n")))
+                .collect::<Vec<_>>();
+            for (object, names) in names {
+                self.game.set_chosen_named_option(object, names);
+            }
+        }
+        self.game.synchronize_conspiracy_ability_zones();
         self.game.stack = checkpoint
             .stack
             .iter()
@@ -1448,12 +2677,128 @@ impl WasmGame {
                 .collect(),
         );
 
+        if let Some(free_for_all) = checkpoint.free_for_all.as_ref() {
+            let attack = match free_for_all.attack {
+                FreeForAllAttackInput::Left => ironsmith::FreeForAllAttackOption::Left,
+                FreeForAllAttackInput::Right => ironsmith::FreeForAllAttackOption::Right,
+                FreeForAllAttackInput::MultiplePlayers => {
+                    ironsmith::FreeForAllAttackOption::MultiplePlayers
+                }
+            };
+            self.game
+                .restore_free_for_all(
+                    free_for_all
+                        .seats
+                        .iter()
+                        .copied()
+                        .map(PlayerId::from_index)
+                        .collect(),
+                    attack,
+                    free_for_all.range_of_influence,
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+        }
+        if let Some(team_vs_team) = checkpoint.team_vs_team.as_ref() {
+            self.game
+                .restore_team_vs_team(
+                    team_vs_team
+                        .teams
+                        .iter()
+                        .map(|team| team.iter().copied().map(PlayerId::from_index).collect())
+                        .collect(),
+                    team_vs_team
+                        .seats
+                        .iter()
+                        .copied()
+                        .map(PlayerId::from_index)
+                        .collect(),
+                    team_vs_team.starting_team,
+                    PlayerId::from_index(team_vs_team.starting_player),
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+        }
+        if let Some(emperor) = checkpoint.emperor.as_ref() {
+            self.game
+                .restore_emperor(
+                    emperor
+                        .teams
+                        .iter()
+                        .map(|team| team.iter().copied().map(PlayerId::from_index).collect())
+                        .collect(),
+                    emperor
+                        .seats
+                        .iter()
+                        .copied()
+                        .map(PlayerId::from_index)
+                        .collect(),
+                    emperor.starting_team,
+                    PlayerId::from_index(emperor.starting_emperor),
+                    emperor.ranges.clone(),
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+        }
+        if let Some(two_headed_giant) = checkpoint.two_headed_giant.as_ref() {
+            self.game
+                .restore_two_headed_giant(
+                    two_headed_giant
+                        .teams
+                        .iter()
+                        .map(|team| team.iter().copied().map(PlayerId::from_index).collect())
+                        .collect(),
+                    two_headed_giant.starting_team,
+                    PlayerId::from_index(two_headed_giant.starting_player),
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+            let profile = self
+                .game
+                .two_headed_giant()
+                .expect("restored Two-Headed Giant profile");
+            if profile
+                .seats()
+                .iter()
+                .map(|player| player.0)
+                .collect::<Vec<_>>()
+                != two_headed_giant.seats
+                || profile.starting_life() != two_headed_giant.starting_life
+                || profile.poison_threshold() != two_headed_giant.poison_threshold
+            {
+                return Err(JsValue::from_str(
+                    "Two-Headed Giant checkpoint profile does not match its team size",
+                ));
+            }
+        }
+        if let Some(alternating_teams) = checkpoint.alternating_teams.as_ref() {
+            let attack = match alternating_teams.attack {
+                FreeForAllAttackInput::Left => ironsmith::FreeForAllAttackOption::Left,
+                FreeForAllAttackInput::Right => ironsmith::FreeForAllAttackOption::Right,
+                FreeForAllAttackInput::MultiplePlayers => {
+                    ironsmith::FreeForAllAttackOption::MultiplePlayers
+                }
+            };
+            self.game
+                .restore_alternating_teams(
+                    alternating_teams
+                        .teams
+                        .iter()
+                        .map(|team| team.iter().copied().map(PlayerId::from_index).collect())
+                        .collect(),
+                    alternating_teams
+                        .seats
+                        .iter()
+                        .copied()
+                        .map(PlayerId::from_index)
+                        .collect(),
+                    PlayerId::from_index(alternating_teams.starting_player),
+                    attack,
+                    alternating_teams.range_of_influence,
+                    alternating_teams.deploy_creatures,
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+        }
+
         self.game.turn = TurnState {
             active_player: PlayerId::from_index(checkpoint.turn.active_player),
-            priority_player: checkpoint
-                .turn
-                .priority_player
-                .map(PlayerId::from_index),
+            priority_player: checkpoint.turn.priority_player.map(PlayerId::from_index),
             turn_number: checkpoint.turn.turn_number,
             phase: sync_phase_from_name(&checkpoint.turn.phase)?,
             step: checkpoint
@@ -1463,6 +2808,103 @@ impl WasmGame {
                 .map(sync_step_from_name)
                 .transpose()?,
         };
+        if let Some(range) = checkpoint.limited_range_of_influence.as_ref() {
+            self.game
+                .restore_limited_range_of_influence(
+                    range
+                        .seats
+                        .iter()
+                        .copied()
+                        .map(PlayerId::from_index)
+                        .collect(),
+                    range.ranges.clone(),
+                    range
+                        .turn_snapshot
+                        .iter()
+                        .map(|(observer, players)| {
+                            (
+                                PlayerId::from_index(*observer),
+                                players.iter().copied().map(PlayerId::from_index).collect(),
+                            )
+                        })
+                        .collect(),
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+        }
+        if let Some(grand_melee) = checkpoint.grand_melee.as_ref() {
+            self.game
+                .restore_grand_melee_snapshot(grand_melee_restore_from_sync(grand_melee)?)
+                .map_err(|error| JsValue::from_str(&error))?;
+            self.grand_melee_host_lanes.clear();
+            for marker in &grand_melee.markers {
+                if marker.number == grand_melee.focused_marker {
+                    continue;
+                }
+                let mut priority_state = PriorityLoopState::new(
+                    marker
+                        .priority_players_in_game
+                        .max(self.game.players_in_game()),
+                );
+                priority_state.set_auto_choose_single_pip_payment(false);
+                priority_state.restore_priority_tracker_for_sync(
+                    marker.consecutive_priority_passes,
+                    marker.priority_players_in_game,
+                );
+                self.grand_melee_host_lanes.insert(
+                    marker.number,
+                    GrandMeleeHostLane {
+                        runner: marker
+                            .runner_state
+                            .as_deref()
+                            .and_then(RunnerTurnState::from_sync_name)
+                            .map(TurnRunner::from_state_for_sync),
+                        runner_awaiting_priority: marker.runner_awaiting_priority,
+                        trigger_queue: TriggerQueue::new(),
+                        priority_state,
+                    },
+                );
+            }
+        }
+        self.game
+            .set_attack_direction(
+                checkpoint
+                    .attack_direction
+                    .map(|direction| match direction {
+                        SyncAttackDirection::Left => ironsmith::game_state::AttackDirection::Left,
+                        SyncAttackDirection::Right => ironsmith::game_state::AttackDirection::Right,
+                    }),
+            );
+        if checkpoint.team_vs_team.is_none()
+            && checkpoint.emperor.is_none()
+            && checkpoint.two_headed_giant.is_none()
+            && checkpoint.alternating_teams.is_none()
+            && let Some(teams) = checkpoint.teams.as_ref()
+        {
+            self.game
+                .set_teams(
+                    teams
+                        .iter()
+                        .map(|team| team.iter().copied().map(PlayerId::from_index).collect())
+                        .collect(),
+                )
+                .map_err(|error| JsValue::from_str(&error))?;
+        }
+        if checkpoint.shared_team_turns {
+            if checkpoint.two_headed_giant.is_none() {
+                self.game
+                    .enable_shared_team_turns()
+                    .map_err(|error| JsValue::from_str(&error))?;
+            }
+            for (team, order) in checkpoint.shared_team_member_orders.iter().enumerate() {
+                self.game
+                    .set_shared_team_member_order(
+                        team,
+                        order.iter().copied().map(PlayerId::from_index).collect(),
+                    )
+                    .map_err(|error| JsValue::from_str(&error))?;
+            }
+        }
+        self.game.set_deploy_creatures(checkpoint.deploy_creatures);
 
         for object in checkpoint.objects.iter() {
             let id = ObjectId::from_raw(object.id);
@@ -1546,7 +2988,8 @@ impl WasmGame {
         &self,
         perspective_index: u8,
     ) -> Result<JsValue, JsValue> {
-        let checkpoint = self.build_redacted_sync_checkpoint(PlayerId::from_index(perspective_index))?;
+        let checkpoint =
+            self.build_redacted_sync_checkpoint(PlayerId::from_index(perspective_index))?;
         serde_wasm_bindgen::to_value(&checkpoint)
             .map_err(|e| JsValue::from_str(&format!("redacted sync checkpoint encode failed: {e}")))
     }
@@ -1608,9 +3051,15 @@ mod sync_checkpoint_tests {
         before
             .stable_by_id
             .insert(stale_order[3], StableId::from_raw(4));
-        after.id_by_stable.insert(StableId::from_raw(1), live_order[0]);
-        after.id_by_stable.insert(StableId::from_raw(3), live_order[2]);
-        after.id_by_stable.insert(StableId::from_raw(4), live_order[3]);
+        after
+            .id_by_stable
+            .insert(StableId::from_raw(1), live_order[0]);
+        after
+            .id_by_stable
+            .insert(StableId::from_raw(3), live_order[2]);
+        after
+            .id_by_stable
+            .insert(StableId::from_raw(4), live_order[3]);
         after.libraries.insert(alice, live_order.clone());
 
         let normalized = normalized_after_shuffle_order(alice, &before, &after, &stale_order);
@@ -1628,8 +3077,13 @@ mod sync_checkpoint_tests {
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
         let object_id = ObjectId::from_raw(
-            host.add_card_to_zone(0, "Ornithopter".to_string(), "battlefield".to_string(), true)
-                .expect("host should add a battlefield card"),
+            host.add_card_to_zone(
+                0,
+                "Ornithopter".to_string(),
+                "battlefield".to_string(),
+                true,
+            )
+            .expect("host should add a battlefield card"),
         );
         host.game.tap(object_id);
         host.game
@@ -1702,7 +3156,10 @@ mod sync_checkpoint_tests {
             1
         );
         assert_eq!(
-            public_checkpoint.priority_runtime.turn_runner_state.as_deref(),
+            public_checkpoint
+                .priority_runtime
+                .turn_runner_state
+                .as_deref(),
             Some("first_main_priority")
         );
 
@@ -1750,8 +3207,13 @@ mod sync_checkpoint_tests {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut host = WasmGame::new();
         host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
-        host.add_card_to_zone(0, "Ornithopter".to_string(), "battlefield".to_string(), true)
-            .expect("host should add a public battlefield card");
+        host.add_card_to_zone(
+            0,
+            "Ornithopter".to_string(),
+            "battlefield".to_string(),
+            true,
+        )
+        .expect("host should add a public battlefield card");
         host.add_card_to_zone(0, "Forest".to_string(), "graveyard".to_string(), true)
             .expect("host should add a public graveyard card");
         host.add_card_to_zone(1, "Lightning Bolt".to_string(), "library".to_string(), true)
@@ -1771,21 +3233,30 @@ mod sync_checkpoint_tests {
         let public_names = checkpoint
             .objects
             .iter()
-            .filter_map(|object| object.identity.as_ref().map(|identity| identity.name.as_str()))
+            .filter_map(|object| {
+                object
+                    .identity
+                    .as_ref()
+                    .map(|identity| identity.name.as_str())
+            })
             .collect::<Vec<_>>();
         assert!(public_names.contains(&"Ornithopter"));
         assert!(public_names.contains(&"Forest"));
         assert!(!public_names.contains(&"Lightning Bolt"));
         assert!(!public_names.contains(&"Counterspell"));
 
-        assert!(checkpoint
-            .hidden_zones
-            .iter()
-            .any(|zone| zone.owner == 1 && zone.zone == "library" && zone.count == 1));
-        assert!(checkpoint
-            .hidden_zones
-            .iter()
-            .any(|zone| zone.owner == 1 && zone.zone == "hand" && zone.count == 1));
+        assert!(
+            checkpoint
+                .hidden_zones
+                .iter()
+                .any(|zone| zone.owner == 1 && zone.zone == "library" && zone.count == 1)
+        );
+        assert!(
+            checkpoint
+                .hidden_zones
+                .iter()
+                .any(|zone| zone.owner == 1 && zone.zone == "hand" && zone.count == 1)
+        );
     }
 
     #[test]
@@ -2123,10 +3594,7 @@ mod sync_checkpoint_tests {
         game.reseal_verified_hidden_library_shuffle(ApplyHiddenLibraryShuffleInput {
             owner: 1,
             deck_hash: "second-mulligan-deck".to_string(),
-            after_order: second_pre_draw_after_order
-                .iter()
-                .map(|id| id.0)
-                .collect(),
+            after_order: second_pre_draw_after_order.iter().map(|id| id.0).collect(),
         })
         .expect("verified shuffle should follow multi-zone-change id chains");
 
@@ -2400,6 +3868,984 @@ mod sync_checkpoint_tests {
     }
 
     #[test]
+    fn attack_direction_dispatch_and_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+            803,
+        );
+        host.set_attack_direction(Some("right".to_string()))
+            .expect("valid attack direction");
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert!(matches!(
+            checkpoint.attack_direction,
+            Some(SyncAttackDirection::Right)
+        ));
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve attack direction");
+        assert_eq!(
+            guest.game.attack_direction(),
+            Some(ironsmith::game_state::AttackDirection::Right)
+        );
+    }
+
+    #[test]
+    fn free_for_all_profile_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+            806,
+        );
+        let seats = vec![
+            PlayerId::from_index(2),
+            PlayerId::from_index(0),
+            PlayerId::from_index(3),
+            PlayerId::from_index(1),
+        ];
+        host.match_format = MatchFormatInput::FreeForAll;
+        host.game
+            .restore_free_for_all(
+                seats.clone(),
+                ironsmith::FreeForAllAttackOption::Right,
+                Some(1),
+            )
+            .expect("host profile");
+
+        let checkpoint = host.build_sync_checkpoint();
+        let serialized = checkpoint.free_for_all.as_ref().expect("profile encoded");
+        assert_eq!(serialized.seats, vec![2, 0, 3, 1]);
+        assert_eq!(serialized.attack, FreeForAllAttackInput::Right);
+        assert_eq!(serialized.range_of_influence, Some(1));
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve Free-for-All");
+        assert_eq!(guest.match_format, MatchFormatInput::FreeForAll);
+        let state = guest.game.free_for_all().expect("guest profile");
+        assert_eq!(state.seats(), seats);
+        assert_eq!(
+            state.attack_option(),
+            ironsmith::FreeForAllAttackOption::Right
+        );
+        assert_eq!(state.range_of_influence(), Some(1));
+        assert_eq!(guest.game.physical_seats(), seats);
+    }
+
+    #[test]
+    fn team_vs_team_profile_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+            808,
+        );
+        let teams = vec![
+            vec![PlayerId::from_index(0), PlayerId::from_index(1)],
+            vec![PlayerId::from_index(2), PlayerId::from_index(3)],
+        ];
+        let seats = teams.iter().flatten().copied().collect::<Vec<_>>();
+        host.match_format = MatchFormatInput::TeamVsTeam;
+        host.game
+            .restore_team_vs_team(teams.clone(), seats.clone(), 1, PlayerId::from_index(2))
+            .expect("host profile");
+
+        let checkpoint = host.build_sync_checkpoint();
+        let serialized = checkpoint.team_vs_team.as_ref().expect("profile encoded");
+        assert_eq!(serialized.teams, vec![vec![0, 1], vec![2, 3]]);
+        assert_eq!(serialized.seats, vec![0, 1, 2, 3]);
+        assert_eq!(serialized.starting_team, 1);
+        assert_eq!(serialized.starting_player, 2);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve Team vs. Team");
+        assert_eq!(guest.match_format, MatchFormatInput::TeamVsTeam);
+        let state = guest.game.team_vs_team().expect("guest profile");
+        assert_eq!(state.teams(), teams);
+        assert_eq!(state.seats(), seats);
+        assert_eq!(state.starting_team(), 1);
+        assert_eq!(state.starting_player(), PlayerId::from_index(2));
+        assert_eq!(
+            guest.game.turn_store.turn_order,
+            vec![
+                PlayerId::from_index(2),
+                PlayerId::from_index(3),
+                PlayerId::from_index(0),
+                PlayerId::from_index(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn team_vs_team_redacted_checkpoint_reveals_a_teammates_hand_only() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+            808,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        host.game
+            .restore_team_vs_team(
+                vec![vec![alice, bob], vec![charlie, PlayerId::from_index(3)]],
+                vec![alice, bob, charlie, PlayerId::from_index(3)],
+                0,
+                alice,
+            )
+            .expect("Team vs. Team profile");
+        let card = ironsmith::card::CardBuilder::new(
+            ironsmith::ids::CardId::from_raw(808_001),
+            "Teammate Secret",
+        )
+        .card_types(vec![CardType::Instant])
+        .build();
+        let object = host.game.create_object_from_card(&card, bob, Zone::Hand);
+        host.game.set_hidden_card_info(
+            object,
+            HiddenCardInfo {
+                owner: bob,
+                zone: Zone::Hand,
+                slot: 0,
+                commitment: "bob-hand-0".to_string(),
+                public_slot: None,
+                public_commitment: None,
+            },
+        );
+
+        let teammate = host
+            .build_redacted_sync_checkpoint(alice)
+            .expect("teammate checkpoint");
+        let teammate_card = teammate
+            .objects
+            .iter()
+            .find(|candidate| candidate.id == object.0)
+            .expect("teammate card");
+        assert_eq!(teammate_card.name, "Teammate Secret");
+
+        let opponent = host
+            .build_redacted_sync_checkpoint(charlie)
+            .expect("opponent checkpoint");
+        let opponent_card = opponent
+            .objects
+            .iter()
+            .find(|candidate| candidate.id == object.0)
+            .expect("opponent card");
+        assert_eq!(opponent_card.name, "Hidden Card");
+    }
+
+    #[test]
+    fn emperor_profile_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            (0..6).map(|index| format!("Player {index}")).collect(),
+            20,
+            809,
+        );
+        let seats = (0..6)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        let teams = vec![seats[0..3].to_vec(), seats[3..6].to_vec()];
+        host.match_format = MatchFormatInput::Emperor;
+        host.game
+            .restore_emperor(
+                teams.clone(),
+                seats.clone(),
+                1,
+                seats[4],
+                vec![1, 2, 1, 1, 2, 1],
+            )
+            .expect("host profile");
+        assert!(host.game.leave_game(seats[3]));
+        let frozen_range = host
+            .game
+            .limited_range_of_influence()
+            .unwrap()
+            .players_in_turn_snapshot(seats[2]);
+
+        let checkpoint = host.build_sync_checkpoint();
+        let encoded = checkpoint.emperor.as_ref().expect("profile encoded");
+        assert_eq!(encoded.teams, vec![vec![0, 1, 2], vec![3, 4, 5]]);
+        assert_eq!(encoded.ranges, vec![1, 2, 1, 1, 2, 1]);
+        assert_eq!(encoded.starting_emperor, 4);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve Emperor");
+        assert_eq!(guest.match_format, MatchFormatInput::Emperor);
+        let profile = guest.game.emperor().expect("guest profile");
+        assert_eq!(profile.teams(), teams);
+        assert_eq!(profile.seats(), seats);
+        assert_eq!(profile.ranges(), &[1, 2, 1, 1, 2, 1]);
+        assert_eq!(profile.starting_emperor(), PlayerId::from_index(4));
+        assert!(guest.game.deploy_creatures_enabled());
+        assert_eq!(
+            guest
+                .game
+                .limited_range_of_influence()
+                .unwrap()
+                .players_in_turn_snapshot(PlayerId::from_index(2)),
+            frozen_range
+        );
+    }
+
+    #[test]
+    fn two_headed_giant_profile_and_shared_pools_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            (0..4).map(|index| format!("Player {index}")).collect(),
+            20,
+            810,
+        );
+        let seats = (0..4)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        let teams = vec![seats[0..2].to_vec(), seats[2..4].to_vec()];
+        host.match_format = MatchFormatInput::TwoHeadedGiant;
+        host.game.set_random_seed(810);
+        host.game
+            .enable_two_headed_giant(teams.clone())
+            .expect("host profile");
+        host.game.lose_life(seats[0], 7);
+        host.game.add_player_counters_with_source(
+            seats[1],
+            ironsmith::CounterType::Poison,
+            4,
+            None,
+            None,
+        );
+        host.game
+            .set_shared_team_member_order(0, vec![seats[1], seats[0]])
+            .unwrap();
+
+        let checkpoint = host.build_sync_checkpoint();
+        let encoded = checkpoint
+            .two_headed_giant
+            .as_ref()
+            .expect("profile encoded");
+        assert_eq!(encoded.teams, vec![vec![0, 1], vec![2, 3]]);
+        assert_eq!(encoded.seats, vec![0, 1, 2, 3]);
+        assert_eq!(encoded.starting_life, 30);
+        assert_eq!(encoded.poison_threshold, 15);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve Two-Headed Giant");
+        assert_eq!(guest.match_format, MatchFormatInput::TwoHeadedGiant);
+        let profile = guest.game.two_headed_giant().expect("guest profile");
+        assert_eq!(profile.teams(), teams);
+        assert_eq!(profile.seats(), seats);
+        assert!(guest.game.shared_team_turns_enabled());
+        assert_eq!(
+            guest.game.shared_team_turns().unwrap().member_orders()[0],
+            vec![seats[1], seats[0]]
+        );
+        assert_eq!(guest.game.player(seats[0]).unwrap().life, 23);
+        assert_eq!(guest.game.player(seats[1]).unwrap().life, 23);
+        assert_eq!(guest.game.player(seats[0]).unwrap().poison_counters, 4);
+        assert_eq!(guest.game.player(seats[1]).unwrap().poison_counters, 4);
+    }
+
+    #[test]
+    fn alternating_teams_profile_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            (0..6).map(|index| format!("Player {index}")).collect(),
+            20,
+            811,
+        );
+        let players = (0..6)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        let teams = vec![
+            vec![players[0], players[1]],
+            vec![players[2], players[3]],
+            vec![players[4], players[5]],
+        ];
+        let seats = vec![
+            players[0], players[2], players[4], players[1], players[3], players[5],
+        ];
+        host.match_format = MatchFormatInput::AlternatingTeams;
+        host.game
+            .restore_alternating_teams(
+                teams.clone(),
+                seats.clone(),
+                players[4],
+                ironsmith::FreeForAllAttackOption::Right,
+                Some(2),
+                true,
+            )
+            .expect("host profile");
+        assert!(host.game.leave_game(players[2]));
+        let frozen_range = host
+            .game
+            .limited_range_of_influence()
+            .unwrap()
+            .players_in_turn_snapshot(players[0]);
+
+        let checkpoint = host.build_sync_checkpoint();
+        let encoded = checkpoint
+            .alternating_teams
+            .as_ref()
+            .expect("profile encoded");
+        assert_eq!(encoded.teams, vec![vec![0, 1], vec![2, 3], vec![4, 5]]);
+        assert_eq!(encoded.seats, vec![0, 2, 4, 1, 3, 5]);
+        assert_eq!(encoded.starting_player, 4);
+        assert_eq!(encoded.attack, FreeForAllAttackInput::Right);
+        assert_eq!(encoded.range_of_influence, Some(2));
+        assert!(encoded.deploy_creatures);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve Alternating Teams");
+        assert_eq!(guest.match_format, MatchFormatInput::AlternatingTeams);
+        let profile = guest.game.alternating_teams().expect("guest profile");
+        assert_eq!(profile.teams(), teams);
+        assert_eq!(profile.seats(), seats);
+        assert_eq!(profile.starting_player(), players[4]);
+        assert_eq!(
+            profile.attack_option(),
+            ironsmith::FreeForAllAttackOption::Right
+        );
+        assert_eq!(profile.range_of_influence(), Some(2));
+        assert!(profile.deploy_creatures());
+        assert_eq!(
+            guest
+                .game
+                .limited_range_of_influence()
+                .unwrap()
+                .players_in_turn_snapshot(players[0]),
+            frozen_range
+        );
+    }
+
+    #[test]
+    fn grand_melee_marker_lanes_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            (0..10).map(|index| format!("Player {index}")).collect(),
+            20,
+            807,
+        );
+        let seats = (0..10)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        host.match_format = MatchFormatInput::GrandMelee;
+        host.game.restore_grand_melee(seats.clone()).unwrap();
+        host.game.next_turn();
+        host.game.next_turn();
+        host.game
+            .turn_store
+            .extra_turns
+            .push(PlayerId::from_index(3));
+        host.game.combat = Some(ironsmith::combat_state::CombatState {
+            attacking_bands: vec![vec![ObjectId::from_raw(701), ObjectId::from_raw(702)]],
+            ..Default::default()
+        });
+        let expected_views = host.game.grand_melee_marker_views();
+        let expected_focus = host.game.grand_melee().unwrap().focused_marker();
+
+        let checkpoint = host.build_sync_checkpoint();
+        let encoded = checkpoint.grand_melee.as_ref().expect("profile encoded");
+        assert_eq!(encoded.markers.len(), 2);
+        assert_eq!(encoded.focused_marker, expected_focus);
+        let encoded_focus = encoded
+            .markers
+            .iter()
+            .find(|marker| marker.number == expected_focus)
+            .unwrap();
+        assert_eq!(encoded_focus.extra_turns, vec![3]);
+        assert!(encoded_focus.combat.is_some());
+        assert!(!encoded_focus.range_turn_snapshot.is_empty());
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve Grand Melee lanes");
+        assert_eq!(guest.match_format, MatchFormatInput::GrandMelee);
+        assert_eq!(guest.game.grand_melee().unwrap().seats(), seats);
+        assert_eq!(
+            guest.game.grand_melee().unwrap().focused_marker(),
+            expected_focus
+        );
+        assert_eq!(guest.game.grand_melee_marker_views(), expected_views);
+        let restored = guest.game.grand_melee_restore_snapshot().unwrap();
+        let restored_focus = restored
+            .markers
+            .iter()
+            .find(|marker| marker.number == expected_focus)
+            .unwrap();
+        assert_eq!(
+            restored_focus.turn_store.extra_turns,
+            vec![PlayerId::from_index(3)]
+        );
+        assert_eq!(
+            restored_focus.combat.as_ref().unwrap().attacking_bands,
+            vec![vec![ObjectId::from_raw(701), ObjectId::from_raw(702)]]
+        );
+    }
+
+    #[test]
+    fn team_and_deploy_creatures_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+            804,
+        );
+        host.game
+            .set_teams(vec![
+                vec![PlayerId::from_index(0), PlayerId::from_index(1)],
+                vec![PlayerId::from_index(2), PlayerId::from_index(3)],
+            ])
+            .expect("valid team assignment");
+        host.set_deploy_creatures(true);
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert_eq!(checkpoint.teams, Some(vec![vec![0, 1], vec![2, 3]]));
+        assert!(checkpoint.deploy_creatures);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve team deploy state");
+        assert!(
+            guest
+                .game
+                .are_teammates(PlayerId::from_index(0), PlayerId::from_index(1))
+        );
+        assert!(
+            guest
+                .game
+                .are_opponents(PlayerId::from_index(0), PlayerId::from_index(2))
+        );
+        assert!(guest.game.deploy_creatures_enabled());
+    }
+
+    #[test]
+    fn shared_team_turns_dispatch_and_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+            805,
+        );
+        host.game
+            .set_teams(vec![
+                vec![PlayerId::from_index(0), PlayerId::from_index(1)],
+                vec![PlayerId::from_index(2), PlayerId::from_index(3)],
+            ])
+            .expect("valid team assignment");
+        host.set_shared_team_turns(true)
+            .expect("adjacent teams can share turns");
+        host.game
+            .set_shared_team_member_order(0, vec![PlayerId::from_index(1), PlayerId::from_index(0)])
+            .expect("team order selected");
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert!(checkpoint.shared_team_turns);
+        assert_eq!(checkpoint.shared_team_member_orders[0], vec![1, 0]);
+        assert_eq!(checkpoint.turn.active_player, 1);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should preserve shared team turns");
+        assert!(guest.game.shared_team_turns_enabled());
+        assert_eq!(guest.game.turn.active_player, PlayerId::from_index(1));
+        assert_eq!(
+            guest.game.active_players(),
+            vec![PlayerId::from_index(1), PlayerId::from_index(0)]
+        );
+    }
+
+    #[test]
+    fn sync_checkpoint_preserves_public_ante_zone_and_ownership() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 4072);
+        let alice = PlayerId::from_index(0);
+        let library_id = ObjectId::from_raw(
+            host.add_card_to_zone(0, "Ornithopter".to_string(), "library".to_string(), true)
+                .expect("host should add a library card"),
+        );
+        let ante_id = host
+            .game
+            .ante_owned_object(alice, library_id)
+            .expect("owner should ante the card");
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert_eq!(checkpoint.ante, vec![ante_id.0]);
+        let public_audit = host.build_public_audit_checkpoint();
+        assert_eq!(public_audit.ante, vec![ante_id.0]);
+
+        let mut guest = WasmGame::new();
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("checkpoint should import ante");
+        assert_eq!(guest.game.ante, vec![ante_id]);
+        let restored = guest
+            .game
+            .object(ante_id)
+            .expect("ante card should restore");
+        assert_eq!(restored.zone, Zone::Ante);
+        assert_eq!(restored.owner, alice);
+    }
+
+    #[test]
+    fn planechase_snapshot_action_and_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 901);
+        host.match_format = MatchFormatInput::Planechase;
+        let alice = PlayerId::from_index(0);
+        let cards = (0..20)
+            .map(|index| {
+                let mut definition = CardDefinition::new(
+                    ironsmith::CardBuilder::new(CardId::new(), format!("Sync Plane {index}"))
+                        .card_types(vec![CardType::Plane])
+                        .build(),
+                );
+                definition.abilities.push(ironsmith::Ability::triggered(
+                    ironsmith::triggers::Trigger::player_rolls_die(ironsmith::PlayerFilter::You),
+                    vec![ironsmith::Effect::gain_life(1)],
+                ));
+                (definition, ironsmith::game_state::PlanarCardKind::Plane)
+            })
+            .collect::<Vec<_>>();
+        let definitions = cards
+            .iter()
+            .map(|(definition, _)| definition.clone())
+            .collect::<Vec<_>>();
+        for definition in &definitions {
+            host.registry.register(definition.clone());
+        }
+        host.game
+            .enable_planechase_communal(cards)
+            .expect("communal plane deck should enable");
+        let face_up = host.game.reveal_starting_plane().unwrap();
+        host.game.force_next_die_roll(6);
+        host.game.roll_planar_die(alice, true).unwrap();
+
+        assert_eq!(
+            special_action_ref(&ironsmith::special_actions::SpecialAction::RollPlanarDie),
+            SpecialActionRef::RollPlanarDie
+        );
+        let snapshot = GameSnapshot::from_game(
+            &host.game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            1,
+        );
+        let planar = snapshot
+            .planechase
+            .expect("snapshot should expose Planechase");
+        assert_eq!(planar.planar_controller, alice.0);
+        assert_eq!(planar.die_roll_cost, 1);
+        assert_eq!(planar.face_up[0].id, face_up.0);
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert!(checkpoint.planechase.is_some());
+        let public_audit = host.build_public_audit_checkpoint();
+        let public_planar = public_audit
+            .planechase
+            .as_ref()
+            .expect("public audit should expose planar public state");
+        assert_eq!(public_planar.communal_deck_size, Some(19));
+        assert_eq!(public_planar.face_up, vec![face_up.0]);
+        assert_eq!(public_audit.command, vec![face_up.0]);
+        assert_eq!(public_audit.objects.len(), 1);
+        assert!(public_audit.hidden_zones.iter().any(|zone| {
+            zone.zone == "communal_planar_deck"
+                && zone.count == 19
+                && zone.commitment_root.is_some()
+        }));
+        let mut guest = WasmGame::new();
+        for definition in definitions {
+            guest.registry.register(definition);
+        }
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("Planechase checkpoint should import");
+        assert_eq!(guest.match_format, MatchFormatInput::Planechase);
+        assert_eq!(guest.game.face_up_planar_objects(), &[face_up]);
+        assert!(
+            guest
+                .game
+                .object(face_up)
+                .unwrap()
+                .abilities
+                .iter()
+                .all(|ability| ability.functional_zones == vec![Zone::Command])
+        );
+        assert!(guest.game.planar_deck(alice).unwrap().iter().all(|object| {
+            guest
+                .game
+                .object(*object)
+                .unwrap()
+                .abilities
+                .iter()
+                .all(|ability| ability.functional_zones.is_empty())
+        }));
+        assert_eq!(guest.game.planar_die_roll_cost(alice), Some(1));
+        assert_eq!(
+            guest.game.planar_card_kind(face_up),
+            Some(ironsmith::game_state::PlanarCardKind::Plane)
+        );
+    }
+
+    #[test]
+    fn vanguard_snapshot_and_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 902);
+        host.match_format = MatchFormatInput::Vanguard;
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cards = [
+            (alice, "Patient Avatar", 2, -3),
+            (bob, "Fierce Avatar", -1, 4),
+        ]
+        .into_iter()
+        .map(|(owner, name, hand, life)| {
+            let mut definition = CardDefinition::new(
+                ironsmith::CardBuilder::new(CardId::new(), name)
+                    .card_types(vec![CardType::Vanguard])
+                    .vanguard_modifiers(hand, life)
+                    .build(),
+            );
+            definition.abilities.push(ironsmith::Ability::triggered(
+                ironsmith::triggers::Trigger::player_rolls_die(ironsmith::PlayerFilter::You),
+                vec![ironsmith::Effect::gain_life(1)],
+            ));
+            (owner, definition)
+        })
+        .collect::<Vec<_>>();
+        let definitions = cards
+            .iter()
+            .map(|(_, definition)| definition.clone())
+            .collect::<Vec<_>>();
+        for definition in &definitions {
+            host.registry.register(definition.clone());
+        }
+        host.game
+            .enable_vanguard(cards)
+            .expect("Vanguard should enable");
+
+        let alice_card = host.game.vanguard_card(alice).unwrap();
+        let snapshot = GameSnapshot::from_game(
+            &host.game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            1,
+        );
+        let vanguard = snapshot.vanguard.expect("snapshot should expose Vanguard");
+        assert_eq!(vanguard.cards.len(), 2);
+        assert_eq!(vanguard.cards[0].id, alice_card.0);
+        assert_eq!(vanguard.cards[0].hand_modifier, 2);
+        assert_eq!(vanguard.cards[0].life_modifier, -3);
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert!(checkpoint.vanguard.is_some());
+        let public_audit = host.build_public_audit_checkpoint();
+        assert!(public_audit.vanguard.is_some());
+        assert!(public_audit.command.contains(&alice_card.0));
+
+        let mut guest = WasmGame::new();
+        for definition in definitions {
+            guest.registry.register(definition);
+        }
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("Vanguard checkpoint should import");
+        assert_eq!(guest.match_format, MatchFormatInput::Vanguard);
+        assert_eq!(guest.game.vanguard_hand_modifier(alice), 2);
+        assert_eq!(guest.game.vanguard_life_modifier(bob), 4);
+        assert_eq!(guest.game.vanguard_card(alice), Some(alice_card));
+        assert_eq!(guest.game.player(alice).unwrap().life, 17);
+        assert_eq!(guest.game.player(alice).unwrap().max_hand_size, 9);
+        assert!(
+            guest
+                .game
+                .object(alice_card)
+                .unwrap()
+                .abilities
+                .iter()
+                .all(|ability| ability.functional_zones == vec![Zone::Command])
+        );
+    }
+
+    #[test]
+    fn archenemy_snapshot_public_audit_and_sync_checkpoint_round_trip() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 903);
+        host.match_format = MatchFormatInput::Archenemy;
+        let alice = PlayerId::from_index(0);
+        let definitions = (0..20)
+            .map(|index| {
+                CardDefinition::new(
+                    ironsmith::CardBuilder::new(CardId::new(), format!("Sync Scheme {index}"))
+                        .card_types(vec![CardType::Scheme])
+                        .build(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for definition in &definitions {
+            host.registry.register(definition.clone());
+        }
+        host.game
+            .enable_archenemy(
+                ironsmith::game_state::ArchenemyVariant::Default,
+                vec![(alice, definitions.clone())],
+            )
+            .unwrap();
+        let face_up = host.game.set_scheme_in_motion(alice).unwrap();
+
+        let snapshot = GameSnapshot::from_game(
+            &host.game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            1,
+        );
+        let archenemy = snapshot
+            .archenemy
+            .expect("snapshot should expose Archenemy");
+        assert_eq!(archenemy.archenemies, vec![alice.0]);
+        assert_eq!(archenemy.deck_sizes[0].size, 19);
+        assert_eq!(archenemy.face_up[0].id, face_up.0);
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert!(checkpoint.archenemy.is_some());
+        let public_audit = host.build_public_audit_checkpoint();
+        let public_archenemy = public_audit
+            .archenemy
+            .as_ref()
+            .expect("public audit should expose Archenemy public state");
+        assert_eq!(public_archenemy.decks, vec![(alice.0, 19)]);
+        assert_eq!(public_archenemy.face_up, vec![face_up.0]);
+        assert_eq!(public_audit.command, vec![face_up.0]);
+        assert!(public_audit.hidden_zones.iter().any(|zone| {
+            zone.zone == "scheme_deck" && zone.count == 19 && zone.commitment_root.is_some()
+        }));
+
+        let mut guest = WasmGame::new();
+        for definition in definitions {
+            guest.registry.register(definition);
+        }
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("Archenemy checkpoint should import");
+        assert_eq!(guest.match_format, MatchFormatInput::Archenemy);
+        assert!(guest.game.is_archenemy(alice));
+        assert_eq!(guest.game.face_up_schemes(), &[face_up]);
+        assert_eq!(guest.game.scheme_deck(alice).unwrap().len(), 19);
+    }
+
+    #[test]
+    fn conspiracy_snapshot_public_audit_and_sync_checkpoint_preserve_secrecy() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Checkpoint Secret",
+        )
+        .card_types(vec![CardType::Conspiracy])
+        .parse_text("Hidden agenda")
+        .expect("synthetic hidden-agenda conspiracy should compile");
+
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 905);
+        host.match_format = MatchFormatInput::ConspiracyDraft;
+        host.registry.register(definition.clone());
+        host.game
+            .enable_conspiracy(vec![(
+                alice,
+                vec![ironsmith::ConspiracySetupCard {
+                    definition: definition.clone(),
+                    agenda_names: vec!["Grizzly Bears".to_string()],
+                }],
+            )])
+            .unwrap();
+        let conspiracy_id = host.game.conspiracy_cards()[0];
+
+        let owner_snapshot = GameSnapshot::from_game(
+            &host.game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            1,
+        );
+        let owner_card = &owner_snapshot.conspiracy.unwrap().cards[0];
+        assert_eq!(owner_card.name.as_deref(), Some("Checkpoint Secret"));
+        assert_eq!(
+            owner_card.agenda_names.as_deref().unwrap(),
+            ["Grizzly Bears"]
+        );
+
+        let opponent_snapshot = GameSnapshot::from_game(
+            &host.game,
+            bob,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            2,
+        );
+        let opponent_card = &opponent_snapshot.conspiracy.unwrap().cards[0];
+        assert!(opponent_card.face_down);
+        assert!(opponent_card.name.is_none());
+        assert!(opponent_card.oracle_text.is_none());
+        assert!(opponent_card.agenda_names.is_none());
+
+        let public_audit = host.build_public_audit_checkpoint();
+        let public_conspiracy = public_audit
+            .conspiracy
+            .as_ref()
+            .expect("public audit should include redacted conspiracy topology");
+        assert_eq!(
+            public_conspiracy.cards,
+            vec![(alice.0, vec![conspiracy_id.0])]
+        );
+        assert_eq!(public_conspiracy.face_down, vec![conspiracy_id.0]);
+        let public_object = public_audit
+            .objects
+            .iter()
+            .find(|object| object.id == conspiracy_id.0)
+            .expect("face-down conspiracy should have a public card back");
+        assert!(public_object.face_down);
+        assert!(public_object.identity.is_none());
+        assert!(
+            !serde_json::to_string(&public_audit)
+                .unwrap()
+                .contains("Grizzly Bears")
+        );
+
+        let checkpoint = host.build_sync_checkpoint();
+        assert_eq!(
+            checkpoint.conspiracy.as_ref().unwrap().agenda_names,
+            vec![(conspiracy_id.0, vec!["Grizzly Bears".to_string()])]
+        );
+        let mut guest = WasmGame::new();
+        guest.registry.register(definition);
+        guest
+            .apply_sync_checkpoint(checkpoint)
+            .expect("Conspiracy checkpoint should import");
+        assert_eq!(guest.match_format, MatchFormatInput::ConspiracyDraft);
+        assert!(guest.game.is_face_down_conspiracy(conspiracy_id));
+        assert_eq!(
+            guest.game.agenda_names_for(alice, conspiracy_id).unwrap(),
+            ["Grizzly Bears"]
+        );
+        assert!(guest.game.agenda_names_for(bob, conspiracy_id).is_none());
+        assert!(
+            guest
+                .game
+                .object(conspiracy_id)
+                .unwrap()
+                .abilities
+                .iter()
+                .all(|ability| ability.functional_zones.is_empty())
+        );
+        guest
+            .game
+            .turn_conspiracy_face_up(alice, conspiracy_id)
+            .unwrap();
+        assert_eq!(
+            guest.game.agenda_names_for(bob, conspiracy_id).unwrap(),
+            ["Grizzly Bears"]
+        );
+    }
+
+    #[test]
     fn hidden_deck_manifest_populates_committed_library_placeholders() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
@@ -2432,7 +4878,11 @@ mod sync_checkpoint_tests {
             .player(PlayerId::from_index(1))
             .expect("Bob should exist");
         assert_eq!(bob.library.len(), 2);
-        assert!(bob.library.iter().all(|id| game.game.is_hidden_card_placeholder(*id)));
+        assert!(
+            bob.library
+                .iter()
+                .all(|id| game.game.is_hidden_card_placeholder(*id))
+        );
     }
 
     #[test]
@@ -2522,15 +4972,20 @@ mod sync_checkpoint_tests {
         let checkpoint = host
             .build_redacted_sync_checkpoint(PlayerId::from_index(0))
             .expect("redacted checkpoint should build");
-        assert!(checkpoint
-            .objects
-            .iter()
-            .filter(|object| object.owner == 1 && (object.zone == "hand" || object.zone == "library"))
-            .all(|object| object.name == "Hidden Card" && object.hidden_card.is_some()));
-        assert!(!checkpoint
-            .objects
-            .iter()
-            .any(|object| object.name == "Lightning Bolt" || object.name == "Counterspell"));
+        assert!(
+            checkpoint
+                .objects
+                .iter()
+                .filter(|object| object.owner == 1
+                    && (object.zone == "hand" || object.zone == "library"))
+                .all(|object| object.name == "Hidden Card" && object.hidden_card.is_some())
+        );
+        assert!(
+            !checkpoint
+                .objects
+                .iter()
+                .any(|object| object.name == "Lightning Bolt" || object.name == "Counterspell")
+        );
 
         let mut guest = WasmGame::new();
         guest

@@ -7,13 +7,16 @@ use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt as _;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{
+    TriggerContext, TriggerMatcher, current_turn_matches_player_filter,
+};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpellCastTrigger {
     pub filter: Option<ObjectFilter>,
     pub caster: PlayerFilter,
+    pub timing: Option<ironsmith_core::TriggerTimingRestriction>,
     pub during_turn: Option<PlayerFilter>,
     pub min_spells_this_turn: Option<u32>,
     pub exact_spells_this_turn: Option<u32>,
@@ -26,6 +29,7 @@ impl SpellCastTrigger {
         Self {
             filter,
             caster,
+            timing: None,
             during_turn: None,
             min_spells_this_turn: None,
             exact_spells_this_turn: None,
@@ -37,6 +41,7 @@ impl SpellCastTrigger {
     pub fn qualified(
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        timing: Option<ironsmith_core::TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
@@ -45,6 +50,7 @@ impl SpellCastTrigger {
         Self {
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -85,16 +91,16 @@ impl TriggerMatcher for SpellCastTrigger {
             return false;
         }
 
+        if matches!(
+            self.timing,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
+        ) && ctx.game.turn.phase != crate::game_state::Phase::Combat
+        {
+            return false;
+        }
+
         if let Some(turn_filter) = &self.during_turn {
-            let active_player = ctx.game.turn.active_player;
-            let turn_matches = match turn_filter {
-                PlayerFilter::You => active_player == ctx.controller,
-                PlayerFilter::Opponent => active_player != ctx.controller,
-                PlayerFilter::Any | PlayerFilter::Active => true,
-                PlayerFilter::Specific(id) => active_player == *id,
-                _ => true,
-            };
-            if !turn_matches {
+            if !current_turn_matches_player_filter(turn_filter, ctx, None) {
                 return false;
             }
         }
@@ -234,9 +240,11 @@ impl TriggerMatcher for SpellCastTrigger {
             PlayerFilter::Any => "a player casts",
             PlayerFilter::Opponent => "an opponent casts",
             PlayerFilter::Active => "the active player casts",
+            PlayerFilter::ChosenPlayer => "the chosen player casts",
             PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
                 "enchanted player casts"
             }
+            PlayerFilter::TaggedPlayer(_) => "that player casts",
             _ => "someone casts",
         };
         let mut spell_text = self
@@ -360,6 +368,12 @@ impl TriggerMatcher for SpellCastTrigger {
                 suffix.push_str(turn_text);
             }
         }
+        if matches!(
+            self.timing,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
+        ) {
+            suffix.push_str(" during combat");
+        }
         if self.from_not_hand {
             suffix.push_str(" from anywhere other than your hand");
         }
@@ -393,13 +407,77 @@ fn join_with_or(parts: &[String]) -> String {
     }
 }
 
+fn describe_simple_spell_characteristic_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.card_types.is_empty() || filter.subtypes.is_empty() {
+        return None;
+    }
+    if !matches!(
+        filter.stack_kind,
+        None | Some(crate::filter::StackObjectKind::Spell)
+    ) {
+        return None;
+    }
+
+    // Keep this compact surface limited to a plain spell-characteristic
+    // filter. More qualified filters still need the general description path
+    // so controller, color, mana-value, and other restrictions are retained.
+    let mut simple_filter = ObjectFilter::spell();
+    // Spell-cast matchers already establish that the event object is a spell,
+    // so parser-produced filters may validly omit the redundant stack kind.
+    simple_filter.stack_kind = filter.stack_kind;
+    simple_filter.card_types = filter.card_types.clone();
+    simple_filter.subtypes = filter.subtypes.clone();
+    simple_filter.type_or_subtype_union = filter.type_or_subtype_union;
+    simple_filter.has_mana_cost = filter.has_mana_cost;
+    simple_filter.union_surface = filter.union_surface;
+    if *filter != simple_filter {
+        return None;
+    }
+
+    if !filter.type_or_subtype_union
+        && filter.card_types.as_slice() == [crate::types::CardType::Creature]
+        && filter.subtypes.as_slice() == [crate::types::Subtype::Adventure]
+    {
+        return Some("a creature spell that has an Adventure".to_string());
+    }
+
+    let subtype_names = filter
+        .subtypes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let phrase = if filter.type_or_subtype_union {
+        let mut alternatives = filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string())
+            .collect::<Vec<_>>();
+        alternatives.extend(subtype_names);
+        format!("{} spell", join_with_or(&alternatives))
+    } else if filter.card_types.len() == 1 {
+        format!(
+            "{} {} spell",
+            join_with_or(&subtype_names),
+            filter.card_types[0].name()
+        )
+    } else {
+        return None;
+    };
+
+    Some(format!("{} {phrase}", indefinite_article_for(&phrase)))
+}
+
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter.has_x_in_cost {
         let mut base_filter = filter.clone();
         base_filter.has_x_in_cost = false;
         let mut base = describe_spell_filter(&base_filter);
         if !base.contains("{X}") {
-            base.push_str(" with a mana cost that contains {X}");
+            if matches!(base.as_str(), "spell" | "a spell") {
+                base.push_str(" with {X} in its mana cost");
+            } else {
+                base.push_str(" with a mana cost that contains {X}");
+            }
         }
         return base;
     }
@@ -439,6 +517,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 }
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
                 | PlayerFilter::HasMoreLifeThanYou { .. }
+                | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
                 | PlayerFilter::MaxSpeed { .. } => player_filter.description(),
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn",
@@ -521,6 +600,27 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         }
     }
 
+    // A cast trigger's zone is the spell's origin, while the event itself
+    // already proves that the object is a spell. Render the characteristics
+    // in stack context, then append the typed hand owner as an origin clause.
+    // This avoids malformed surfaces such as "legendary card in your hand
+    // spell" without discarding either the legendary restriction or origin.
+    if filter.zone == Some(Zone::Hand) {
+        let hand = match filter.owner.as_ref() {
+            Some(PlayerFilter::You) => "your hand".to_string(),
+            Some(PlayerFilter::Opponent) => "an opponent's hand".to_string(),
+            Some(PlayerFilter::Specific(_)) | Some(PlayerFilter::TaggedPlayer(_)) => {
+                "that player's hand".to_string()
+            }
+            Some(PlayerFilter::ChosenPlayer) => "the chosen player's hand".to_string(),
+            _ => "a hand".to_string(),
+        };
+        let mut spell_filter = filter.clone();
+        spell_filter.zone = Some(Zone::Stack);
+        spell_filter.owner = None;
+        return format!("{} from {hand}", describe_spell_filter(&spell_filter));
+    }
+
     if filter.zone == Some(Zone::Graveyard) {
         let owner_text = match filter.owner.as_ref().unwrap_or(&PlayerFilter::Any) {
             PlayerFilter::You => "your",
@@ -544,6 +644,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
             .contains(&crate::types::CardType::Land)
     {
         return "a noncreature spell".to_string();
+    }
+    if let Some(description) = describe_simple_spell_characteristic_union(filter) {
+        return description;
     }
     let mut subtype_only_spell_filter = ObjectFilter::default();
     subtype_only_spell_filter.zone = Some(Zone::Stack);
@@ -710,6 +813,73 @@ mod tests {
     }
 
     #[test]
+    fn hand_origin_spell_filter_keeps_characteristics_before_spell_noun() {
+        let mut filter = ObjectFilter::spell()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You);
+        filter.supertypes = vec![crate::types::Supertype::Legendary];
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast a legendary spell from your hand"
+        );
+    }
+
+    #[test]
+    fn chosen_player_display_preserves_the_bound_caster() {
+        let trigger = SpellCastTrigger::new(None, PlayerFilter::ChosenPlayer);
+        assert_eq!(
+            trigger.display(),
+            "Whenever the chosen player casts a spell"
+        );
+    }
+
+    #[test]
+    fn adventure_creature_spell_uses_rules_characteristic_surface() {
+        for stack_kind in [None, Some(crate::filter::StackObjectKind::Spell)] {
+            let filter = ObjectFilter {
+                zone: Some(Zone::Stack),
+                stack_kind,
+                card_types: vec![CardType::Creature],
+                subtypes: vec![Subtype::Adventure],
+                ..Default::default()
+            };
+            let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+
+            assert_eq!(
+                trigger.display(),
+                "Whenever you cast a creature spell that has an Adventure"
+            );
+        }
+    }
+
+    #[test]
+    fn adventure_creature_spell_special_surface_rejects_qualified_near_misses() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Stack),
+            card_types: vec![CardType::Creature],
+            subtypes: vec![Subtype::Adventure],
+            ..Default::default()
+        };
+
+        let mut owned = filter.clone();
+        owned.owner = Some(PlayerFilter::You);
+        assert!(describe_simple_spell_characteristic_union(&owned).is_none());
+
+        let mut ability = filter.clone();
+        ability.stack_kind = Some(crate::filter::StackObjectKind::Ability);
+        assert!(describe_simple_spell_characteristic_union(&ability).is_none());
+
+        let mut union = filter;
+        union.type_or_subtype_union = true;
+        assert_ne!(
+            describe_simple_spell_characteristic_union(&union).as_deref(),
+            Some("a creature spell that has an Adventure")
+        );
+    }
+
+    #[test]
     fn first_spell_of_game_is_tracked_per_player_across_turns() {
         let mut game = GameState::new(
             vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
@@ -763,6 +933,144 @@ mod tests {
         let trigger =
             SpellCastTrigger::new(Some(ObjectFilter::noncreature_spell()), PlayerFilter::You);
         assert_eq!(trigger.display(), "Whenever you cast a noncreature spell");
+    }
+
+    #[test]
+    fn mixed_card_type_and_subtype_spell_union_renders_and_matches_every_arm() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardBuilder::new(CardId::new(), "Trigger Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+
+        let instant = CardBuilder::new(CardId::new(), "Instant Arm")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let instant_id = game.create_object_from_card(&instant, alice, Zone::Stack);
+        let sorcery = CardBuilder::new(CardId::new(), "Sorcery Arm")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let sorcery_id = game.create_object_from_card(&sorcery, alice, Zone::Stack);
+        let wizard = CardBuilder::new(CardId::new(), "Subtype Arm")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .build();
+        let wizard_id = game.create_object_from_card(&wizard, alice, Zone::Stack);
+        let unrelated = CardBuilder::new(CardId::new(), "Unrelated Spell")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let unrelated_id = game.create_object_from_card(&unrelated, alice, Zone::Stack);
+
+        let mut filter = ObjectFilter::spell();
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        filter.subtypes = vec![Subtype::Wizard];
+        filter.type_or_subtype_union = true;
+        filter.has_mana_cost = true;
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast an instant, sorcery, or Wizard spell"
+        );
+
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        for (spell_id, expected) in [
+            (instant_id, true),
+            (sorcery_id, true),
+            (wizard_id, true),
+            (unrelated_id, false),
+        ] {
+            let event = TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(spell_id, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert_eq!(trigger.matches(&event, &ctx), expected);
+        }
+    }
+
+    #[test]
+    fn subtype_list_creature_spell_filter_renders_and_matches_every_subtype() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardBuilder::new(CardId::new(), "Trigger Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+
+        let mut spell_ids = Vec::new();
+        for (name, subtype) in [
+            ("Pegasus Arm", Subtype::Pegasus),
+            ("Unicorn Arm", Subtype::Unicorn),
+            ("Horse Arm", Subtype::Horse),
+        ] {
+            let card = CardBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![subtype])
+                .build();
+            spell_ids.push(game.create_object_from_card(&card, alice, Zone::Stack));
+        }
+        let unrelated = CardBuilder::new(CardId::new(), "Unrelated Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .build();
+        let unrelated_id = game.create_object_from_card(&unrelated, alice, Zone::Stack);
+
+        let mut filter = ObjectFilter::spell();
+        filter.card_types = vec![CardType::Creature];
+        filter.subtypes = vec![Subtype::Pegasus, Subtype::Unicorn, Subtype::Horse];
+        filter.has_mana_cost = true;
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast a Pegasus, Unicorn, or Horse creature spell"
+        );
+
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        for spell_id in spell_ids {
+            let event = TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(spell_id, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert!(trigger.matches(&event, &ctx));
+        }
+        let unrelated_event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(unrelated_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&unrelated_event, &ctx));
+    }
+
+    #[test]
+    fn simple_creature_spell_filter_remains_unchanged() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardBuilder::new(CardId::new(), "Trigger Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        let creature = CardBuilder::new(CardId::new(), "Creature Spell")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Stack);
+        let instant = CardBuilder::new(CardId::new(), "Instant Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let instant_id = game.create_object_from_card(&instant, alice, Zone::Stack);
+
+        let mut filter = ObjectFilter::spell();
+        filter.card_types = vec![CardType::Creature];
+        filter.has_mana_cost = true;
+        let trigger = SpellCastTrigger::new(Some(filter), PlayerFilter::You);
+        assert_eq!(trigger.display(), "Whenever you cast a creature spell");
+
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        for (spell_id, expected) in [(creature_id, true), (instant_id, false)] {
+            let event = TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(spell_id, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert_eq!(trigger.matches(&event, &ctx), expected);
+        }
     }
 
     #[test]
@@ -847,6 +1155,7 @@ mod tests {
         let trigger = SpellCastTrigger::qualified(
             None,
             PlayerFilter::You,
+            None,
             Some(PlayerFilter::You),
             Some(2),
             None,
@@ -859,10 +1168,41 @@ mod tests {
     }
 
     #[test]
+    fn combat_timing_restriction_is_rendered_and_matched() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source_id = ObjectId::from_raw(1);
+        let spell = CardBuilder::new(CardId::new(), "Combat Timing Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let trigger = SpellCastTrigger::qualified(
+            None,
+            PlayerFilter::You,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringCombat),
+            None,
+            None,
+            None,
+            false,
+        );
+        assert_eq!(trigger.display(), "Whenever you cast a spell during combat");
+
+        game.turn.phase = crate::game_state::Phase::FirstMain;
+        assert!(!trigger.matches(&event, &TriggerContext::for_source(source_id, alice, &game)));
+        game.turn.phase = crate::game_state::Phase::Combat;
+        assert!(trigger.matches(&event, &TriggerContext::for_source(source_id, alice, &game)));
+    }
+
+    #[test]
     fn test_qualified_second_spell_any_player_display() {
         let trigger = SpellCastTrigger::qualified(
             Some(ObjectFilter::spell().in_zone(Zone::Stack)),
             PlayerFilter::Any,
+            None,
             None,
             Some(2),
             None,
@@ -877,7 +1217,7 @@ mod tests {
     #[test]
     fn test_qualified_third_spell_you_display() {
         let trigger =
-            SpellCastTrigger::qualified(None, PlayerFilter::You, None, None, Some(3), false);
+            SpellCastTrigger::qualified(None, PlayerFilter::You, None, None, None, Some(3), false);
         assert_eq!(
             trigger.display(),
             "Whenever you cast your third spell each turn"
@@ -889,6 +1229,7 @@ mod tests {
         let trigger = SpellCastTrigger::qualified(
             Some(ObjectFilter::noncreature_spell()),
             PlayerFilter::Opponent,
+            None,
             None,
             None,
             Some(1),
@@ -909,6 +1250,7 @@ mod tests {
                     .owned_by(PlayerFilter::You),
             ),
             PlayerFilter::You,
+            None,
             None,
             None,
             Some(1),

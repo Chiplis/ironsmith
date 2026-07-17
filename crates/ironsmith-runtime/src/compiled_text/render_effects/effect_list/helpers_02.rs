@@ -314,7 +314,7 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_shuffle_effects(
     let reveal_verb = player_verb(&player, "reveal", "reveals");
     let pronoun = if player == "you" { "you" } else { "they" };
     let library_owner = if player == "you" { "your" } else { "their" };
-    let selection = describe_library_consult_selection_with_cards(&consult.filter);
+    let selection = describe_search_selection_with_cards(&consult.filter.description());
 
     Some(format!(
         "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} reveal {selection}, put that card onto the battlefield, then shuffle"
@@ -456,7 +456,7 @@ pub(crate) fn describe_destroy_for_each_destroyed_consult_exile_put_shuffle(
         .trim_end_matches('.')
         .to_string();
     destroy_text = destroy_text.replace("artifacts or creatures", "artifacts and/or creatures");
-    let selection = describe_search_selection_with_cards(&consult.filter.description());
+    let selection = describe_library_consult_selection_with_cards(&consult.filter);
     Some(format!(
         "{destroy_text}. For each {} destroyed this way, its controller reveals cards from the top of their library until {selection} is revealed and exiles that card. Those players put the exiled cards onto the battlefield, then shuffle",
         destroyed_subject(destroy)
@@ -617,15 +617,16 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
         return None;
     }
 
-    let consult = effects[0].downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let consult = structural_unwrap_render_wrappers(effects[0])
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal {
         return None;
     }
 
     consult_match_move_to_zone(effects[1], consult, Zone::Hand)?;
 
-    let remainder =
-        effects[2].downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(effects[2])
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
     if remainder.tag != consult.all_tag
         || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
     {
@@ -687,11 +688,11 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
 
     if player == "you" && matched_collection_is_singular {
         Some(format!(
-            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put {matched_reference} into your hand and the rest on the bottom of {library_owner} library{order_text}"
+            "Reveal cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put {matched_reference} into your hand and the rest on the bottom of {library_owner} library{order_text}"
         ))
     } else if player == "you" {
         Some(format!(
-            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put {matched_reference} into your hand, then put the rest of the revealed cards on the bottom of {library_owner} library{order_text}"
+            "Reveal cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put {matched_reference} into your hand, then put the rest of the revealed cards on the bottom of {library_owner} library{order_text}"
         ))
     } else {
         Some(format!(
@@ -900,7 +901,7 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
     } else {
         "reveals"
     };
-    let selection = describe_search_selection_with_cards(&consult.filter.description());
+    let selection = describe_library_consult_selection_with_cards(&consult.filter);
     let stop_text = match &consult.stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection.clone(),
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
@@ -950,7 +951,7 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
 
     if player == "you" {
         Some(format!(
-            "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}, put that card onto the battlefield{control_suffix}, and put all other cards revealed this way into your graveyard"
+            "Reveal cards from the top of {library_owner} library until {pronoun} {pronoun_reveal_verb} {stop_text}. Put that card onto the battlefield{control_suffix} and put all other cards revealed this way into your graveyard"
         ))
     } else if move_to_zone.battlefield_controller == crate::effects::BattlefieldController::You {
         Some(format!(
@@ -1247,7 +1248,8 @@ pub(crate) fn render_exile_top_then_cast_any_number_with_mana_value_cap(
     let exiled_tag = &exile_top.moved_tags[0];
 
     let outer_may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if outer_may.decider != Some(PlayerFilter::You) || outer_may.effects.len() != 1 {
+    if !matches!(outer_may.decider, None | Some(PlayerFilter::You)) || outer_may.effects.len() != 1
+    {
         return None;
     }
     let for_each = outer_may.effects[0].downcast_ref::<crate::effects::ForEachObject>()?;
@@ -1313,6 +1315,12 @@ pub(crate) fn render_shuffle_exile_top_then_cast_any_number_with_mana_value_cap(
     }
     let tail =
         render_exile_top_then_cast_any_number_with_mana_value_cap(&[exile_effect, may_effect])?;
+    // When the immediately preceding typed action already says "Shuffle your
+    // library", Oracle commonly elides the repeated source from "exile the
+    // top N cards". This compactor is gated to that exact same-player
+    // shuffle/exile/permission triple, so the shorter surface remains backed
+    // by structural library provenance.
+    let tail = tail.replacen(" of your library.", ".", 1);
     Some(format!(
         "Shuffle your library, then {}",
         lowercase_first(&tail)
@@ -1338,12 +1346,118 @@ fn exiled_collection_filter_text(
             && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject)
     });
     let mut text = strip_leading_article(&visible.description()).to_string();
+    if visible.excluded_card_types.len() > 1 {
+        let flat = visible
+            .excluded_card_types
+            .iter()
+            .map(|card_type| format!("non{}", describe_card_type_word_local(*card_type)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let punctuated = visible
+            .excluded_card_types
+            .iter()
+            .map(|card_type| format!("non{}", describe_card_type_word_local(*card_type)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        text = text.replacen(&flat, &punctuated, 1);
+    }
     if text.contains("permanent") {
         text = text.replacen("permanent", "card", 1);
     } else if !text.contains("card") {
         text.push_str(" card");
     }
     Some(text)
+}
+
+/// Renders a structurally linked hidden pile followed by one manifest/cloak
+/// operation. The shared accumulating tag proves that the targeted object and
+/// the top-library cards are exactly the cards shuffled and turned face down.
+pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Option<String> {
+    fn wrapper_chain_contains_tag(effect: &Effect, expected: &crate::TagKey) -> bool {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return wrapper_chain_contains_tag(&with_id.effect, expected);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return tag_all.tag == *expected
+                || wrapper_chain_contains_tag(&tag_all.effect, expected);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return tagged.tag == *expected || wrapper_chain_contains_tag(&tagged.effect, expected);
+        }
+        false
+    }
+
+    let (target_only_effect, target_only, body) = if let [target_only_effect, body @ ..] = effects
+        && let Some(target_only) = unwrap_basic_tag_wrappers(target_only_effect)
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+    {
+        (Some(target_only_effect), Some(target_only), body)
+    } else {
+        (None, None, effects)
+    };
+    let [target_exile_effect, library_exile_effect, manifest_effect] = body else {
+        return None;
+    };
+    let manifest = unwrap_basic_tag_wrappers(manifest_effect)
+        .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+    let ChooseSpec::Tagged(pile_tag) = manifest.target.base() else {
+        return None;
+    };
+    let target_exile = unwrap_basic_tag_wrappers(target_exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let library_exile = unwrap_basic_tag_wrappers(library_exile_effect)
+        .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let target_choice_matches = target_only.is_none_or(|target_only| {
+        target_specs_select_same_objects(&target_only.target, &target_exile.spec)
+            || matches!(
+                target_exile.spec.base(),
+                ChooseSpec::Tagged(target_tag)
+                    if target_only_effect.is_some_and(|effect| {
+                        wrapper_chain_contains_tag(effect, target_tag)
+                    })
+            )
+    });
+
+    if !target_exile.face_down
+        || !library_exile.face_down
+        || !library_exile.moved_tags.is_empty()
+        || library_exile.accumulated_tags.as_slice() != [pile_tag.clone()]
+        || !wrapper_chain_contains_tag(target_exile_effect, pile_tag)
+        || manifest.controller != PlayerFilter::You
+        || !target_choice_matches
+    {
+        return None;
+    }
+
+    let described_target;
+    let target = if let Some(target_only) = target_only {
+        described_target = describe_choose_spec(&target_only.target);
+        described_target.as_str()
+    } else {
+        // The typed exile already proves both the selection and its hidden
+        // movement. Describe the selection directly instead of round-tripping
+        // through effect prose, whose capitalization and wrapper surface are
+        // intentionally contextual.
+        described_target = describe_choose_spec(&target_exile.spec);
+        described_target.as_str()
+    };
+    let (library, _) = describe_exile_top_clause(library_exile, false)?;
+    let library = library.strip_prefix("Exile ")?;
+    let action = if manifest.cloak { "cloak" } else { "manifest" };
+    let transition = if manifest.shuffle {
+        format!("shuffle that pile, then {action} those cards")
+    } else {
+        format!("then {action} those cards")
+    };
+    let tapped = if manifest.tapped {
+        ". They enter tapped"
+    } else {
+        ""
+    };
+
+    Some(format!(
+        "Exile {target} and {library} in a face-down pile, {transition}{tapped}"
+    ))
 }
 
 fn for_each_puts_chosen_onto_battlefield(
@@ -1419,14 +1533,14 @@ pub(crate) fn render_exile_top_then_put_from_among_onto_battlefield(
     let exile_text = describe_exile_top_clause(exile_top, false)?.0;
     let transition = if exile_top.player != PlayerFilter::You {
         if optional {
-            format!(", then you may put {selection}")
+            format!(", then you may put {selection} from among them")
         } else {
-            format!(", then put {selection}")
+            format!(", then put {selection} from among them")
         }
     } else if optional {
-        format!(". You may put {selection}")
+        format!(". You may put {selection} from among them")
     } else {
-        format!(". Put {selection}")
+        format!(". Put {selection} from among them")
     };
     Some(format!(
         "{exile_text}{transition} onto the battlefield{tapped_suffix}{control_suffix}"
@@ -1439,10 +1553,23 @@ pub(crate) fn render_random_exile_choose_copy_then_cast_copy(
     let [exile_effect, choose_effect, may_effect] = effects else {
         return None;
     };
-    let tag_all = exile_effect.downcast_ref::<crate::effects::TagAllEffect>()?;
-    let exile = tag_all
-        .effect
-        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let (exiled_tag, exile) =
+        if let Some(tag_all) = exile_effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            (
+                &tag_all.tag,
+                tag_all
+                    .effect
+                    .downcast_ref::<crate::effects::ExileEffect>()?,
+            )
+        } else {
+            let tagged = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            (
+                &tagged.tag,
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::ExileEffect>()?,
+            )
+        };
     if exile.face_down {
         return None;
     }
@@ -1455,9 +1582,14 @@ pub(crate) fn render_random_exile_choose_copy_then_cast_copy(
     {
         return None;
     }
-    let selection = exiled_collection_filter_text(&choose.filter, &tag_all.tag)?;
+    let selection = exiled_collection_filter_text(&choose.filter, exiled_tag)?;
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if may.decider != Some(PlayerFilter::You) || may.effects.len() != 1 {
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| decider != &PlayerFilter::You)
+        || may.effects.len() != 1
+    {
         return None;
     }
     let cast = may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()?;
@@ -1853,11 +1985,8 @@ pub(crate) fn choose_excludes_chosen_tag(
 pub(crate) fn revealed_choice_label(
     choose: &crate::effects::ChooseObjectsEffect,
 ) -> Option<String> {
-    if choose.filter.card_types.len() == 1 && choose.filter.static_abilities.is_empty() {
-        return Some(format!(
-            "{} card",
-            describe_card_type_word_local(choose.filter.card_types[0])
-        ));
+    if let Some(label) = structural_revealed_choice_label(choose) {
+        return Some(label);
     }
     if choose.filter.card_types.is_empty()
         && choose.filter.all_card_types.is_empty()
@@ -1866,27 +1995,6 @@ pub(crate) fn revealed_choice_label(
         && choose.filter.any_of.is_empty()
     {
         return Some(format!("{} card", choose.filter.subtypes[0]));
-    }
-    if choose.filter.card_types.is_empty()
-        && choose.filter.static_abilities.is_empty()
-        && !choose.filter.any_of.is_empty()
-    {
-        let mut card_type_words = Vec::new();
-        for candidate in &choose.filter.any_of {
-            if candidate.card_types.len() != 1
-                || !candidate.all_card_types.is_empty()
-                || !candidate.subtypes.is_empty()
-                || !candidate.static_abilities.is_empty()
-                || !candidate.any_of.is_empty()
-            {
-                return None;
-            }
-            card_type_words
-                .push(describe_card_type_word_local(candidate.card_types[0]).to_string());
-        }
-        if !card_type_words.is_empty() {
-            return Some(format!("{} card", join_with_or(&card_type_words)));
-        }
     }
     if choose.filter.card_types.is_empty() && choose.filter.static_abilities.len() == 1 {
         return Some(format!(
@@ -2111,7 +2219,7 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
             && constraint.tag == look.tag)
     });
     let mut filter_text = filter.description();
-    let unfiltered_looked_cards = filter_text == "permanent";
+    let unfiltered_looked_cards = filter == ObjectFilter::default();
     if unfiltered_looked_cards {
         filter_text = if choose.count.max == Some(1) {
             "card".to_string()
@@ -2121,11 +2229,20 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
     }
     filter_text = normalize_looked_card_filter_description(&filter, &filter_text);
     if !filter_text.contains("card") {
-        filter_text.push_str(if choose.count.max == Some(1) {
-            " card"
+        if let Some((head, tail)) = filter_text.split_once(" with ") {
+            let noun = if choose.count.max == Some(1) {
+                "card"
+            } else {
+                "cards"
+            };
+            filter_text = format!("{head} {noun} with {tail}");
         } else {
-            " cards"
-        });
+            filter_text.push_str(if choose.count.max == Some(1) {
+                " card"
+            } else {
+                " cards"
+            });
+        }
     }
     let selection = if unfiltered_looked_cards {
         match (choose.count.min, choose.count.max) {
@@ -2544,12 +2661,17 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
         return None;
     }
 
-    let reveals_all_looked = effects
+    let explicitly_reveals_looked = effects
         .get(1)
         .and_then(|effect| effect.downcast_ref::<crate::effects::RevealTaggedEffect>())
         .is_some_and(|reveal| reveal.tag == look.tag);
+    let looked_pool_is_public = look.reveal || explicitly_reveals_looked;
 
-    let mut idx = if reveals_all_looked { 2usize } else { 1usize };
+    let mut idx = if explicitly_reveals_looked {
+        2usize
+    } else {
+        1usize
+    };
     let mut labels = Vec::new();
     let mut chosen_tag: Option<crate::TagKey> = None;
     let mut conditional_choices = false;
@@ -2613,9 +2735,10 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
         && for_each_returns_iterated_to_hand(effects[idx], &chosen_tag)
         && for_each_moves_any_remainder_to_zone(effects[idx + 1], &look.tag, Zone::Graveyard)
     {
+        let reveal_text = if look.reveal { "" } else { ". Reveal them" };
         return Some((
             format!(
-                "{look_text}. Reveal them. You may put {} from among them into your hand. Put the rest into your graveyard",
+                "{look_text}{reveal_text}. You may put {} from among them into your hand. Put the rest into your graveyard",
                 with_indefinite_article(&labels[0])
             ),
             idx + 2,
@@ -2634,7 +2757,7 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
         let order_text = match remainder.order {
             crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
             crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-                if !reveals_all_looked && reveals_selection =>
+                if !looked_pool_is_public && reveals_selection =>
             {
                 " in any order"
             }
@@ -2648,7 +2771,7 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
                 "For each card type, you may put a card of that type from among the revealed cards into your hand"
                     .to_string()
             }
-        } else if !reveals_all_looked && reveals_selection {
+        } else if !looked_pool_is_public && reveals_selection {
             let hand_reference = if labels.len() == 1 {
                 "that card"
             } else {
@@ -2664,7 +2787,7 @@ pub(crate) fn render_look_reveal_repeated_choices(effects: &[&Effect]) -> Option
                 join_with_and(&labels)
             )
         };
-        let reveal_text = if reveals_all_looked {
+        let reveal_text = if explicitly_reveals_looked {
             ". Reveal them"
         } else {
             ""

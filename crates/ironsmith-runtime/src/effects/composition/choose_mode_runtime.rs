@@ -3,7 +3,7 @@
 use crate::ability::AbilityKind;
 use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::{EffectMode, EffectOutcome, ExecutionFact};
-use crate::effects::helpers::{resolve_player_filter, resolve_value};
+use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
 use crate::game_state::GameState;
 use crate::game_state::TargetAssignment;
@@ -149,7 +149,7 @@ pub(crate) fn run_choose_mode(
     let chooser = effect
         .chooser
         .as_ref()
-        .map(|filter| resolve_player_filter(game, filter, ctx))
+        .map(|filter| crate::effects::helpers::resolve_player_filter_as_chooser(game, filter, ctx))
         .transpose()?
         .unwrap_or(ctx.controller);
     let mut max_modes = resolve_value(game, &effect.choose_count, ctx)?.max(0) as usize;

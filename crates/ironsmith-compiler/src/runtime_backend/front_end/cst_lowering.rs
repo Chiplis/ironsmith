@@ -1,4 +1,4 @@
-use crate::ability::ActivationTiming;
+use crate::ability::{ActivationTiming, PresentationLabel};
 use crate::cards::builders::{CardTextError, ParsedLineAst, ParsedRestrictions};
 
 use super::cst::{
@@ -96,6 +96,12 @@ fn lower_activated_line(
     activated: ActivatedLineCst,
     allow_unsupported: bool,
 ) -> Result<RewriteSemanticItem, CardTextError> {
+    let presentation = activated.presentation.clone().or_else(|| {
+        activated
+            .cost
+            .waterbend_generic
+            .map(|generic| PresentationLabel::AbilityWord(format!("Waterbend {{{generic}}}")))
+    });
     let cost = match lower_activation_cost_cst(&activated.cost) {
         Ok(cost) => cost,
         Err(err) => {
@@ -120,7 +126,7 @@ fn lower_activated_line(
         activated.effect_parse_tokens,
         ActivationTiming::AnyTime,
         activation_cost_cst_is_loyalty(&activated.cost),
-        activated.presentation,
+        presentation,
         activated.chosen_option,
     )?;
     Ok(parsed_line_item(
@@ -213,6 +219,7 @@ fn lower_modal_block(
                 info: mode.info,
                 text: mode.text,
                 point_cost: mode.point_cost,
+                additional_mana_cost: mode.additional_mana_cost,
                 effects_ast: mode.effects_ast,
             })
             .collect(),
@@ -240,6 +247,7 @@ fn lower_saga_chapter(saga: SagaChapterLineCst) -> Result<RewriteSemanticItem, C
     Ok(RewriteSemanticItem::SagaChapter(RewriteSagaChapterLine {
         info: saga.info,
         chapters: saga.chapters,
+        presentation_label: saga.presentation_label.map(PresentationLabel::AbilityWord),
         #[cfg(test)]
         text: saga.text,
         effects_ast: saga.effects_ast,

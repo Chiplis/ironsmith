@@ -10,6 +10,7 @@ pub(crate) fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => compile_delayed_trigger_spec(trigger),
         TriggerSpec::BeginningOfUpkeep(player) => Ok(
             ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(player.clone()),
         ),
@@ -31,6 +32,18 @@ pub(crate) fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfPostcombatMain(player) => {
             Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPostcombatMainPhase(player.clone()))
         }
+        TriggerSpec::ThisEntersBattlefield => {
+            Ok(ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefield)
+        }
+        TriggerSpec::ThisEntersBattlefieldWithSurface {
+            surface,
+            subject_number,
+        } => Ok(
+            ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefieldWithSurface {
+                surface: surface.clone(),
+                subject_number: *subject_number,
+            },
+        ),
         TriggerSpec::IsDealtDamage(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
         ),
@@ -84,6 +97,18 @@ pub(crate) fn compile_delayed_trigger_spec(
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
+        TriggerSpec::PermanentBecomesTapped(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(filter.clone()),
+        ),
+        TriggerSpec::DealsCombatDamage(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(filter.clone()),
+        ),
+        TriggerSpec::DealsCombatDamageTo { source, target } => {
+            Ok(ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
+                source: source.clone(),
+                target: target.clone(),
+            })
+        }
         TriggerSpec::DealsCombatDamageToPlayer { source, player }
         | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => Ok(
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
@@ -94,6 +119,7 @@ pub(crate) fn compile_delayed_trigger_spec(
         TriggerSpec::SpellCast {
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -101,6 +127,7 @@ pub(crate) fn compile_delayed_trigger_spec(
         } => Ok(ironsmith_core::DelayedTriggerSpec::SpellCast {
             filter: filter.clone(),
             caster: caster.clone(),
+            timing: *timing,
             during_turn: during_turn.clone(),
             min_spells_this_turn: *min_spells_this_turn,
             exact_spells_this_turn: *exact_spells_this_turn,
@@ -235,6 +262,123 @@ fn rewrite_effects_tag_relation(
         .collect()
 }
 
+fn trigger_without_intro(trigger: &TriggerSpec) -> &TriggerSpec {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_without_intro(trigger),
+        trigger => trigger,
+    }
+}
+
+fn apply_delayed_trigger_duration(
+    delayed: crate::effects::ScheduleDelayedTriggerEffect,
+    duration: &Until,
+) -> Result<crate::effects::ScheduleDelayedTriggerEffect, CardTextError> {
+    match duration {
+        Until::EndOfTurn => Ok(delayed.until_end_of_turn()),
+        Until::EndOfCombat => Ok(delayed.until_end_of_combat()),
+        Until::YourNextTurn => Ok(delayed.until_controller_next_turn()),
+        other => Err(CardTextError::ParseError(format!(
+            "unsupported delayed-trigger duration: {other:?}"
+        ))),
+    }
+}
+
+fn compile_duration_scoped_delayed_trigger(
+    trigger: &TriggerSpec,
+    effects: &[EffectAst],
+    one_shot: bool,
+    duration: &Until,
+    either_of_watched_objects: bool,
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let (delayed_effects, _delayed_choices) = compile_trigger_effects(Some(trigger), effects)?;
+    let refs = current_reference_env(ctx);
+    let mut watched_tag = None;
+    let mut watched_filter = None;
+    let mut watch_ability_source = false;
+    let mut watch_all_object_targets = false;
+
+    let delayed_trigger = match trigger_without_intro(trigger) {
+        TriggerSpec::PermanentBecomesTapped(filter) => {
+            let resolved = resolve_it_tag(filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(ObjectFilter::source())
+            } else {
+                ironsmith_core::DelayedTriggerSpec::PermanentBecomesTapped(resolved)
+            }
+        }
+        TriggerSpec::DealsCombatDamage(filter) => {
+            let resolved = resolve_it_tag(filter, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(ObjectFilter::source())
+            } else if either_of_watched_objects {
+                watch_all_object_targets = true;
+                watched_filter = Some(resolved);
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(ObjectFilter::source())
+            } else {
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamage(resolved)
+            }
+        }
+        TriggerSpec::DealsCombatDamageTo { source, target } => {
+            let resolved_source = resolve_it_tag(source, &refs)?;
+            let resolved_target = resolve_it_tag(target, &refs)?;
+            if let Some(tag) = watch_tag_from_filter(&resolved_source) {
+                watched_tag = Some(tag);
+                watched_filter = Some(resolved_source);
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
+                    source: ObjectFilter::source(),
+                    target: resolved_target,
+                }
+            } else {
+                watch_ability_source = resolved_source.source || resolved_target.source;
+                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
+                    source: resolved_source,
+                    target: resolved_target,
+                }
+            }
+        }
+        _ => compile_delayed_trigger_spec(trigger)?,
+    };
+
+    let mut delayed = if let Some(tag) = watched_tag {
+        crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+            tag,
+            delayed_trigger,
+            delayed_effects,
+            one_shot,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+    } else {
+        crate::effects::ScheduleDelayedTriggerEffect::new(
+            delayed_trigger,
+            delayed_effects,
+            one_shot,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+    };
+    if let Some(filter) = watched_filter {
+        delayed = delayed.with_target_filter(filter);
+    }
+    if watch_ability_source {
+        delayed = delayed.watch_ability_source();
+    }
+    if watch_all_object_targets {
+        delayed = delayed.watch_all_object_targets();
+    }
+    if either_of_watched_objects {
+        delayed = delayed.with_either_of_watched_objects_surface();
+    }
+    delayed = apply_delayed_trigger_duration(delayed, duration)?;
+
+    Ok((vec![Effect::new(delayed)], Vec::new()))
+}
+
 pub(super) fn try_compile_timing_and_control_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -332,6 +476,23 @@ pub(super) fn try_compile_timing_and_control_effect(
                 PlayerFilter::You,
             ));
             (vec![effect], choices)
+        }
+        EffectAst::DelayedTriggerForDuration {
+            trigger,
+            effects,
+            one_shot,
+            duration,
+            either_of_watched_objects,
+        } => {
+            return compile_duration_scoped_delayed_trigger(
+                trigger,
+                effects,
+                *one_shot,
+                duration,
+                *either_of_watched_objects,
+                ctx,
+            )
+            .map(Some);
         }
         EffectAst::DelayedTriggerThisTurn {
             trigger,
@@ -782,6 +943,41 @@ pub(super) fn try_compile_stack_and_condition_effect(
             let effect =
                 Effect::reflexive_trigger(*condition, predicate, inner_effects, inner_choices);
             (vec![effect], Vec::new())
+        }
+        EffectAst::TrailingIf { predicate, effects } => {
+            let conditional = EffectAst::Conditional {
+                predicate: predicate.clone(),
+                if_true: effects.clone(),
+                if_false: Vec::new(),
+            };
+            let Some((mut compiled, choices)) =
+                try_compile_stack_and_condition_effect(&conditional, ctx)?
+            else {
+                return Err(CardTextError::ParseError(
+                    "failed to lower trailing-if condition".to_string(),
+                ));
+            };
+            let Some(lowered_conditional_effect) = compiled.pop() else {
+                return Err(CardTextError::ParseError(
+                    "trailing-if condition lowered without an effect".to_string(),
+                ));
+            };
+            let Some(lowered_conditional) =
+                lowered_conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+            else {
+                return Err(CardTextError::ParseError(
+                    "trailing-if condition did not lower to a conditional".to_string(),
+                ));
+            };
+            compiled.push(Effect::new(
+                crate::effects::ConditionalEffect::new(
+                    lowered_conditional.condition.clone(),
+                    lowered_conditional.if_true.clone(),
+                    lowered_conditional.if_false.clone(),
+                )
+                .with_surface(ironsmith_core::ConditionalSurface::TrailingIf),
+            ));
+            (compiled, choices)
         }
         EffectAst::TrailingUnless { predicate, effects } => {
             let conditional = EffectAst::Conditional {

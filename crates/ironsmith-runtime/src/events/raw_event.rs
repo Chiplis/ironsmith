@@ -11,6 +11,12 @@ use super::{EventKind, GameEventType};
 pub struct RawEvent {
     inner: Arc<dyn GameEventType>,
     provenance: ProvNodeId,
+    /// Identity shared by events produced by one simultaneous game action.
+    ///
+    /// This is presentation-neutral rules metadata used by grouped triggers
+    /// such as "one or more creatures". It must survive until the pending
+    /// trigger queue is drained so those events can be checked as one batch.
+    simultaneous_batch: Option<ProvNodeId>,
     source_snapshot: Option<ObjectSnapshot>,
     lookback_source_snapshots: Vec<ObjectSnapshot>,
 }
@@ -20,6 +26,7 @@ impl RawEvent {
         Self {
             inner: Arc::new(event),
             provenance,
+            simultaneous_batch: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
         }
@@ -29,6 +36,7 @@ impl RawEvent {
         Self {
             inner: Arc::from(event),
             provenance,
+            simultaneous_batch: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
         }
@@ -122,9 +130,22 @@ impl RawEvent {
         self.provenance = provenance;
     }
 
+    /// Return the simultaneous-action identity attached to this event.
+    #[inline]
+    pub fn simultaneous_batch(&self) -> Option<ProvNodeId> {
+        self.simultaneous_batch
+    }
+
     #[must_use]
     pub fn with_provenance(mut self, provenance: ProvNodeId) -> Self {
         self.provenance = provenance;
+        self
+    }
+
+    /// Mark this event as part of one simultaneous game action.
+    #[must_use]
+    pub fn with_simultaneous_batch(mut self, batch: ProvNodeId) -> Self {
+        self.simultaneous_batch = Some(batch);
         self
     }
 
@@ -150,6 +171,7 @@ impl std::fmt::Debug for RawEvent {
         f.debug_struct("RawEvent")
             .field("kind", &self.kind())
             .field("provenance", &self.provenance)
+            .field("simultaneous_batch", &self.simultaneous_batch)
             .field("source_snapshot", &self.source_snapshot)
             .field("lookback_source_snapshots", &self.lookback_source_snapshots)
             .field("display", &self.inner().display())

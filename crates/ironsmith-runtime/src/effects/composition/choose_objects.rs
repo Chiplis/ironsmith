@@ -90,11 +90,14 @@ fn cost_candidate_count(
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     let ctx = ExecutionContext::new(source, controller, &mut dm);
     let filter_ctx = ctx.filter_context(game);
-    let chooser_id =
-        match crate::effects::helpers::resolve_player_filter(game, &effect.chooser, &ctx) {
-            Ok(player) => player,
-            Err(_) => controller,
-        };
+    let chooser_id = match crate::effects::helpers::resolve_player_filter_as_chooser(
+        game,
+        &effect.chooser,
+        &ctx,
+    ) {
+        Ok(player) => player,
+        Err(_) => controller,
+    };
     let search_zones =
         search_zones(effect).map_err(|err| CostValidationError::Other(format!("{err:?}")))?;
     let top_only_limit = top_only_selection_limit(effect, None);

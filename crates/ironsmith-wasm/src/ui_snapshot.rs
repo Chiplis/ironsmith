@@ -226,7 +226,13 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "perspective", &snapshot.perspective)?;
         self.set_serde(&object, "turn_number", &snapshot.turn_number)?;
         self.set_serde(&object, "active_player", &snapshot.active_player)?;
+        self.set_serde(&object, "active_players", &snapshot.active_players)?;
         self.set_serde(&object, "priority_player", &snapshot.priority_player)?;
+        self.set_serde(
+            &object,
+            "priority_team_players",
+            &snapshot.priority_team_players,
+        )?;
         self.set_serde(&object, "phase", &snapshot.phase)?;
         self.set_serde(&object, "step", &snapshot.step)?;
         self.set_serde(&object, "stack_size", &snapshot.stack_size)?;
@@ -293,6 +299,7 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "library_size", &player.library_size)?;
         self.set_serde(&object, "graveyard_size", &player.graveyard_size)?;
         self.set_serde(&object, "command_size", &player.command_size)?;
+        self.set_serde(&object, "ante_size", &player.ante_size)?;
         self.set_value(
             &object,
             "hand_cards",
@@ -312,6 +319,11 @@ impl SnapshotJsEncodingCache {
             &object,
             "command_cards",
             self.encode_zone_cards(&player.command_cards)?.as_ref(),
+        )?;
+        self.set_value(
+            &object,
+            "ante_cards",
+            self.encode_zone_cards(&player.ante_cards)?.as_ref(),
         )?;
         self.set_value(
             &object,
@@ -706,7 +718,9 @@ pub(super) fn protected_object_ids_for_decision(
             for option in &attackers.attacker_options {
                 ids.insert(option.creature);
                 for target in &option.valid_targets {
-                    if let AttackTarget::Planeswalker(object_id) = target {
+                    if let AttackTarget::Planeswalker(object_id) | AttackTarget::Battle(object_id) =
+                        target
+                    {
                         ids.insert(*object_id);
                     }
                 }
@@ -926,7 +940,9 @@ fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) ->
 }
 
 fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerId) -> bool {
-    if perspective == player && can_view_own_library_top(game, player) {
+    if (perspective == player || game.controlling_player_for(player) == perspective)
+        && can_view_own_library_top(game, player)
+    {
         return true;
     }
 
@@ -1161,16 +1177,25 @@ pub(super) struct GameSnapshot {
     pub(super) perspective: u8,
     pub(super) turn_number: u32,
     pub(super) active_player: u8,
+    pub(super) active_players: Vec<u8>,
     pub(super) priority_player: Option<u8>,
+    pub(super) priority_team_players: Vec<u8>,
     pub(super) phase: String,
     pub(super) step: Option<String>,
     pub(super) stack_size: usize,
+    pub(super) subgame_depth: usize,
+    pub(super) subgame_starting_procedure_pending: bool,
     pub(super) stack_preview: Vec<String>,
     pub(super) stack_objects: Vec<super::StackObjectSnapshot>,
     pub(super) resolving_stack_object: Option<super::StackObjectSnapshot>,
     pub(super) battlefield_size: usize,
     pub(super) exile_size: usize,
     pub(super) players: Vec<PlayerSnapshot>,
+    pub(super) planechase: Option<PlanechaseSnapshot>,
+    pub(super) vanguard: Option<VanguardSnapshot>,
+    pub(super) archenemy: Option<ArchenemySnapshot>,
+    pub(super) conspiracy: Option<ConspiracySnapshot>,
+    pub(super) grand_melee: Option<GrandMeleeSnapshot>,
     pub(super) battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
     pub(super) zone_transitions: Vec<ZoneTransitionSnapshot>,
     pub(super) effect_events: Vec<UiEffectEventSnapshot>,
@@ -1181,6 +1206,108 @@ pub(super) struct GameSnapshot {
     pub(super) game_over: Option<GameOverView>,
     pub(super) cancelable: bool,
     pub(super) undo_land_stable_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct PlanechaseSnapshot {
+    pub(super) planar_controller: u8,
+    pub(super) planar_controllers: Vec<u8>,
+    pub(super) die_roll_cost: u32,
+    pub(super) planeswalk_count: u64,
+    pub(super) communal_deck: bool,
+    pub(super) deck_sizes: Vec<PlanarDeckSizeSnapshot>,
+    pub(super) face_up: Vec<PlanarCardSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct GrandMeleeSnapshot {
+    pub(super) seats: Vec<u8>,
+    pub(super) starting_player_count: usize,
+    pub(super) focused_marker: u32,
+    pub(super) markers: Vec<GrandMeleeMarkerSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct GrandMeleeMarkerSnapshot {
+    pub(super) number: u32,
+    pub(super) holder: u8,
+    pub(super) status: String,
+    pub(super) stack_size: usize,
+    pub(super) removal_designations: usize,
+    pub(super) normal_turn_pending: bool,
+    pub(super) retained_extra_turn_waiting: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct VanguardSnapshot {
+    pub(super) cards: Vec<VanguardCardSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct ArchenemySnapshot {
+    pub(super) variant: String,
+    pub(super) archenemies: Vec<u8>,
+    pub(super) deck_sizes: Vec<ArchenemyDeckSizeSnapshot>,
+    pub(super) face_up: Vec<SchemeCardSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct ArchenemyDeckSizeSnapshot {
+    pub(super) owner: u8,
+    pub(super) size: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct SchemeCardSnapshot {
+    pub(super) id: u64,
+    pub(super) stable_id: u64,
+    pub(super) name: String,
+    pub(super) owner: u8,
+    pub(super) ongoing: bool,
+    pub(super) oracle_text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct ConspiracySnapshot {
+    pub(super) cards: Vec<ConspiracyCardSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct ConspiracyCardSnapshot {
+    pub(super) id: u64,
+    pub(super) stable_id: u64,
+    pub(super) owner: u8,
+    pub(super) face_down: bool,
+    pub(super) name: Option<String>,
+    pub(super) oracle_text: Option<String>,
+    pub(super) agenda_names: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct VanguardCardSnapshot {
+    pub(super) owner: u8,
+    pub(super) id: u64,
+    pub(super) stable_id: u64,
+    pub(super) name: String,
+    pub(super) hand_modifier: i32,
+    pub(super) life_modifier: i32,
+    pub(super) oracle_text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct PlanarDeckSizeSnapshot {
+    pub(super) owner: Option<u8>,
+    pub(super) size: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct PlanarCardSnapshot {
+    pub(super) id: u64,
+    pub(super) stable_id: u64,
+    pub(super) name: String,
+    pub(super) kind: String,
+    pub(super) controller: u8,
+    pub(super) oracle_text: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1198,6 +1325,7 @@ pub(super) struct PlayerSnapshot {
     pub(super) id: u8,
     pub(super) name: String,
     pub(super) life: i32,
+    pub(super) poison_counters: u32,
     pub(super) mana_pool: ManaPoolSnapshot,
     pub(super) can_view_hand: bool,
     pub(super) can_view_library_top: bool,
@@ -1205,10 +1333,12 @@ pub(super) struct PlayerSnapshot {
     pub(super) library_size: usize,
     pub(super) graveyard_size: usize,
     pub(super) command_size: usize,
+    pub(super) ante_size: usize,
     pub(super) hand_cards: Vec<HandCardSnapshot>,
     pub(super) graveyard_cards: Vec<ZoneCardSnapshot>,
     pub(super) exile_cards: Vec<ZoneCardSnapshot>,
     pub(super) command_cards: Vec<ZoneCardSnapshot>,
+    pub(super) ante_cards: Vec<ZoneCardSnapshot>,
     pub(super) sideboard_cards: Vec<ZoneCardSnapshot>,
     pub(super) library_top: Option<String>,
     pub(super) graveyard_top: Option<String>,
@@ -1376,14 +1506,20 @@ impl GameSnapshot {
                     object_view_cache,
                 );
                 let is_perspective_player = p.id == perspective;
+                let controls_player = game.controlling_player_for(p.id) == perspective;
                 let visible_hand_view = viewed_cards.filter(|view| {
                     view.zone == Zone::Hand
                         && view.subject == p.id
-                        && (view.public || view.viewer == perspective)
+                        && (view.public
+                            || view.viewer == perspective
+                            || game.controlling_player_for(view.viewer) == perspective)
                 });
                 let hand_revealed_by_static = hand_revealed_by_static_ability(game, p.id);
-                let can_view_hand =
-                    is_perspective_player || visible_hand_view.is_some() || hand_revealed_by_static;
+                let can_view_hand = is_perspective_player
+                    || controls_player
+                    || game.can_review_teammate_hand(perspective, p.id)
+                    || visible_hand_view.is_some()
+                    || hand_revealed_by_static;
                 let can_view_library_top = can_view_library_top(game, perspective, p.id);
                 PlayerSnapshot {
                     can_view_hand,
@@ -1394,6 +1530,8 @@ impl GameSnapshot {
                             .rev()
                             .filter(|id| {
                                 is_perspective_player
+                                    || controls_player
+                                    || game.can_review_teammate_hand(perspective, p.id)
                                     || hand_revealed_by_static
                                     || visible_hand_view
                                         .is_some_and(|view| view.contains_object(game, **id))
@@ -1472,6 +1610,15 @@ impl GameSnapshot {
                             )
                         })
                         .collect(),
+                    ante_cards: game
+                        .ante
+                        .iter()
+                        .filter_map(|id| game.object(*id))
+                        .filter(|o| o.owner == p.id)
+                        .map(|o| {
+                            build_zone_card_snapshot(game, perspective, viewed_cards, o, Zone::Ante)
+                        })
+                        .collect(),
                     sideboard_cards: if is_perspective_player {
                         p.sideboard
                             .iter()
@@ -1508,6 +1655,7 @@ impl GameSnapshot {
                     id: p.id.0,
                     name: p.name.clone(),
                     life: p.life,
+                    poison_counters: p.poison_counters,
                     mana_pool: ManaPoolSnapshot {
                         white: p.mana_pool.white,
                         blue: p.mana_pool.blue,
@@ -1525,11 +1673,192 @@ impl GameSnapshot {
                         .filter_map(|id| game.object(*id))
                         .filter(|o| o.owner == p.id)
                         .count(),
+                    ante_size: game
+                        .ante
+                        .iter()
+                        .filter_map(|id| game.object(*id))
+                        .filter(|o| o.owner == p.id)
+                        .count(),
                 }
             })
             .collect();
         let zone_transitions = zone_transition_snapshots(game, perspective, viewed_cards);
         let effect_events = effect_event_snapshots(game);
+        let planechase = game.planechase.as_ref().map(|state| {
+            let communal_deck = state.communal_deck.is_some();
+            let deck_sizes = if let Some(deck) = state.communal_deck.as_ref() {
+                vec![PlanarDeckSizeSnapshot {
+                    owner: None,
+                    size: deck.len(),
+                }]
+            } else {
+                game.turn_store
+                    .turn_order
+                    .iter()
+                    .map(|player| PlanarDeckSizeSnapshot {
+                        owner: Some(player.0),
+                        size: state.decks.get(player).map_or(0, Vec::len),
+                    })
+                    .collect()
+            };
+            let face_up = state
+                .face_up
+                .iter()
+                .filter_map(|id| {
+                    let object = game.object(*id)?;
+                    let kind = match state.card_kinds.get(id)? {
+                        ironsmith::game_state::PlanarCardKind::Plane => "plane",
+                        ironsmith::game_state::PlanarCardKind::Phenomenon => "phenomenon",
+                    };
+                    Some(PlanarCardSnapshot {
+                        id: id.0,
+                        stable_id: object.stable_id.0.0,
+                        name: object.name.to_string(),
+                        kind: kind.to_string(),
+                        controller: state
+                            .face_up_controllers
+                            .get(id)
+                            .copied()
+                            .unwrap_or(state.planar_controller)
+                            .0,
+                        oracle_text: object.compiled_card_text.to_string(),
+                    })
+                })
+                .collect();
+            PlanechaseSnapshot {
+                planar_controller: state.planar_controller.0,
+                planar_controllers: game
+                    .planar_controllers()
+                    .into_iter()
+                    .map(|player| player.0)
+                    .collect(),
+                die_roll_cost: state
+                    .voluntary_rolls_this_turn
+                    .get(&state.planar_controller)
+                    .copied()
+                    .unwrap_or(0),
+                planeswalk_count: state.planeswalk_count,
+                communal_deck,
+                deck_sizes,
+                face_up,
+            }
+        });
+        let vanguard = game.vanguard.as_ref().map(|state| {
+            let mut cards = state
+                .cards
+                .iter()
+                .filter_map(|(owner, id)| {
+                    let object = game.object(*id)?;
+                    Some(VanguardCardSnapshot {
+                        owner: owner.0,
+                        id: id.0,
+                        stable_id: object.stable_id.0.0,
+                        name: object.name.to_string(),
+                        hand_modifier: object.hand_modifier,
+                        life_modifier: object.life_modifier,
+                        oracle_text: object.compiled_card_text.to_string(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            cards.sort_by_key(|card| card.owner);
+            VanguardSnapshot { cards }
+        });
+        let archenemy = game.archenemy.as_ref().map(|state| {
+            let variant = match state.variant {
+                ironsmith::game_state::ArchenemyVariant::Default => "default",
+                ironsmith::game_state::ArchenemyVariant::SupervillainRumble => {
+                    "supervillain_rumble"
+                }
+                ironsmith::game_state::ArchenemyVariant::Commander => "commander",
+            }
+            .to_string();
+            let mut archenemies = state
+                .archenemies
+                .iter()
+                .map(|player| player.0)
+                .collect::<Vec<_>>();
+            archenemies.sort_unstable();
+            let mut deck_sizes = state
+                .scheme_decks
+                .iter()
+                .map(|(owner, deck)| ArchenemyDeckSizeSnapshot {
+                    owner: owner.0,
+                    size: deck.len(),
+                })
+                .collect::<Vec<_>>();
+            deck_sizes.sort_by_key(|deck| deck.owner);
+            let face_up = state
+                .face_up
+                .iter()
+                .filter_map(|id| {
+                    let object = game.object(*id)?;
+                    Some(SchemeCardSnapshot {
+                        id: id.0,
+                        stable_id: object.stable_id.0.0,
+                        name: object.name.to_string(),
+                        owner: object.owner.0,
+                        ongoing: object
+                            .supertypes
+                            .contains(&ironsmith::types::Supertype::Ongoing),
+                        oracle_text: object.compiled_card_text.to_string(),
+                    })
+                })
+                .collect();
+            ArchenemySnapshot {
+                variant,
+                archenemies,
+                deck_sizes,
+                face_up,
+            }
+        });
+        let conspiracy = game.conspiracy.as_ref().map(|state| {
+            let mut cards = state
+                .cards
+                .iter()
+                .flat_map(|(owner, objects)| {
+                    objects.iter().filter_map(|object_id| {
+                        let object = game.object(*object_id)?;
+                        let face_down = state.face_down.contains(object_id);
+                        let visible = !face_down || *owner == perspective;
+                        Some(ConspiracyCardSnapshot {
+                            id: object_id.0,
+                            stable_id: object.stable_id.0.0,
+                            owner: owner.0,
+                            face_down,
+                            name: visible.then(|| object.name.to_string()),
+                            oracle_text: visible.then(|| object.compiled_card_text.to_string()),
+                            agenda_names: visible
+                                .then(|| state.agenda_names.get(object_id).cloned())
+                                .flatten(),
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            cards.sort_by_key(|card| (card.owner, card.id));
+            ConspiracySnapshot { cards }
+        });
+        let grand_melee = game.grand_melee().map(|state| GrandMeleeSnapshot {
+            seats: state.seats().iter().map(|player| player.0).collect(),
+            starting_player_count: state.starting_player_count(),
+            focused_marker: state.focused_marker(),
+            markers: game
+                .grand_melee_marker_views()
+                .into_iter()
+                .map(|marker| GrandMeleeMarkerSnapshot {
+                    number: marker.number,
+                    holder: marker.holder.0,
+                    status: match marker.status {
+                        ironsmith::GrandMeleeMarkerStatus::Active => "active",
+                        ironsmith::GrandMeleeMarkerStatus::Waiting => "waiting",
+                    }
+                    .to_string(),
+                    stack_size: marker.stack_size,
+                    removal_designations: marker.removal_designations,
+                    normal_turn_pending: marker.normal_turn_pending,
+                    retained_extra_turn_waiting: marker.retained_extra_turn_waiting,
+                })
+                .collect(),
+        });
 
         let mut stack_preview: Vec<String> = game
             .stack
@@ -1590,22 +1919,44 @@ impl GameSnapshot {
             perspective: perspective.0,
             turn_number: game.turn.turn_number,
             active_player: game.turn.active_player.0,
+            active_players: game
+                .active_players()
+                .into_iter()
+                .map(|player| player.0)
+                .collect(),
             priority_player: game.turn.priority_player.map(|p| p.0),
+            priority_team_players: game
+                .priority_team_players()
+                .into_iter()
+                .map(|player| player.0)
+                .collect(),
             phase: game.turn.phase.to_string(),
             step: game.turn.step.map(|step| step.to_string()),
             stack_size,
+            subgame_depth: game.subgame_depth(),
+            subgame_starting_procedure_pending: game.subgame_starting_procedure_pending(),
             stack_preview,
             stack_objects,
             resolving_stack_object,
             battlefield_size: game.battlefield.len(),
             exile_size: game.exile.len(),
             players,
+            planechase,
+            vanguard,
+            archenemy,
+            conspiracy,
+            grand_melee,
             battlefield_transitions,
             zone_transitions,
             effect_events,
             crypto_requirements: Vec::new(),
             viewed_cards: viewed_cards
-                .filter(|view| view.public || view.viewer == perspective)
+                .filter(|view| {
+                    view.public
+                        || view.viewer == perspective
+                        || (view.zone != Zone::OutsideGame
+                            && game.controlling_player_for(view.viewer) == perspective)
+                })
                 .map(|view| ViewedCardsSnapshot {
                     viewer: view.viewer.0,
                     subject: view.subject.0,
@@ -1824,6 +2175,7 @@ fn zone_label(zone: Zone) -> String {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside_game",
     }
     .to_string()
@@ -1865,6 +2217,65 @@ mod tests {
                     ironsmith::costs::Cost::exile_from_graveyard(2, None),
                 ),
             });
+    }
+
+    #[test]
+    fn snapshot_with_two_conditionally_animated_artifacts_terminates() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let animate_artifact =
+            CardDefinitionBuilder::new(CardId::from_raw(90_030), "Animate Artifact")
+                .mana_cost(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(1)],
+                    vec![ManaSymbol::Blue],
+                ]))
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(vec![Subtype::Aura])
+                .parse_text(
+                    "Enchant artifact\nAs long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value.",
+                )
+                .expect("Animate Artifact should parse");
+        let mine = CardBuilder::new(CardId::from_raw(90_031), "Howling Mine")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Artifact])
+            .build();
+
+        let mine_one = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+        let mine_two = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+        let aura_one =
+            game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+        let aura_two =
+            game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+        for (aura, host) in [(aura_one, mine_one), (aura_two, mine_two)] {
+            game.object_mut(aura).unwrap().attached_to = Some(AttachmentTarget::Object(host));
+            game.object_mut(host).unwrap().attachments.push(aura);
+        }
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let alice_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("Alice snapshot should exist");
+        assert!(
+            alice_snapshot.battlefield_total >= 2,
+            "animated mines should appear on the battlefield snapshot"
+        );
     }
 
     #[test]
@@ -1910,6 +2321,239 @@ mod tests {
     }
 
     #[test]
+    fn team_vs_team_snapshots_reveal_hands_to_teammates_only() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+                "Diana".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        game.restore_team_vs_team(
+            vec![vec![alice, bob], vec![charlie, PlayerId::from_index(3)]],
+            vec![alice, bob, charlie, PlayerId::from_index(3)],
+            0,
+            alice,
+        )
+        .expect("Team vs. Team profile");
+        let card = CardBuilder::new(CardId::from_raw(90_808), "Teammate Secret")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, bob, Zone::Hand);
+
+        let alice_snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let bob_for_alice = alice_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("Bob in teammate snapshot");
+        assert!(bob_for_alice.can_view_hand);
+        assert_eq!(bob_for_alice.hand_cards[0].name, "Teammate Secret");
+
+        let charlie_snapshot = GameSnapshot::from_game(
+            &game,
+            charlie,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let bob_for_charlie = charlie_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == bob.0)
+            .expect("Bob in opponent snapshot");
+        assert!(!bob_for_charlie.can_view_hand);
+        assert!(bob_for_charlie.hand_cards.is_empty());
+    }
+
+    #[test]
+    fn emperor_snapshots_reveal_hands_to_teammates_only() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new((0..6).map(|index| format!("Player {index}")).collect(), 20);
+        let seats = (0..6)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        game.restore_emperor(
+            vec![seats[0..3].to_vec(), seats[3..6].to_vec()],
+            seats.clone(),
+            0,
+            seats[1],
+            vec![1, 2, 1, 1, 2, 1],
+        )
+        .expect("Emperor profile");
+        let card = CardBuilder::new(CardId::from_raw(90_809), "General Secret")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, seats[2], Zone::Hand);
+
+        let snapshot_for = |perspective| {
+            GameSnapshot::from_game(
+                &game,
+                perspective,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Vec::new(),
+                None,
+                false,
+                None,
+                0,
+            )
+        };
+        let teammate = snapshot_for(seats[0]);
+        let hand = teammate
+            .players
+            .iter()
+            .find(|player| player.id == seats[2].0)
+            .expect("teammate hand");
+        assert!(hand.can_view_hand);
+        assert_eq!(hand.hand_cards[0].name, "General Secret");
+
+        let opponent = snapshot_for(seats[3]);
+        let hand = opponent
+            .players
+            .iter()
+            .find(|player| player.id == seats[2].0)
+            .expect("opponent hand");
+        assert!(!hand.can_view_hand);
+        assert!(hand.hand_cards.is_empty());
+    }
+
+    #[test]
+    fn two_headed_giant_snapshots_reveal_teammate_hands_and_shared_pools() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new((0..4).map(|index| format!("Player {index}")).collect(), 20);
+        let seats = (0..4)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        game.set_random_seed(810);
+        game.enable_two_headed_giant(vec![seats[0..2].to_vec(), seats[2..4].to_vec()])
+            .expect("Two-Headed Giant profile");
+        game.lose_life(seats[0], 6);
+        game.add_player_counters_with_source(
+            seats[1],
+            ironsmith::CounterType::Poison,
+            3,
+            None,
+            None,
+        );
+        let card = CardBuilder::new(CardId::from_raw(90_810), "Other Head Secret")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, seats[1], Zone::Hand);
+
+        let snapshot_for = |perspective| {
+            GameSnapshot::from_game(
+                &game,
+                perspective,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Vec::new(),
+                None,
+                false,
+                None,
+                0,
+            )
+        };
+        let teammate = snapshot_for(seats[0]);
+        let head = teammate
+            .players
+            .iter()
+            .find(|player| player.id == seats[1].0)
+            .expect("teammate snapshot");
+        assert!(head.can_view_hand);
+        assert_eq!(head.hand_cards[0].name, "Other Head Secret");
+        assert_eq!(head.life, 24);
+        assert_eq!(head.poison_counters, 3);
+
+        let opponent = snapshot_for(seats[2]);
+        let head = opponent
+            .players
+            .iter()
+            .find(|player| player.id == seats[1].0)
+            .expect("opponent snapshot");
+        assert!(!head.can_view_hand);
+        assert!(head.hand_cards.is_empty());
+        assert_eq!(head.life, 24);
+        assert_eq!(head.poison_counters, 3);
+    }
+
+    #[test]
+    fn alternating_teams_snapshots_keep_nonadjacent_teammate_hands_hidden() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new((0..4).map(|index| format!("Player {index}")).collect(), 20);
+        let seats = (0..4)
+            .map(|index| PlayerId::from_index(index as u8))
+            .collect::<Vec<_>>();
+        game.restore_alternating_teams(
+            vec![vec![seats[0], seats[1]], vec![seats[2], seats[3]]],
+            vec![seats[0], seats[2], seats[1], seats[3]],
+            seats[0],
+            ironsmith::FreeForAllAttackOption::MultiplePlayers,
+            Some(2),
+            false,
+        )
+        .expect("Alternating Teams profile");
+        let card = CardBuilder::new(CardId::from_raw(90_811), "Distant Teammate Secret")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, seats[1], Zone::Hand);
+
+        let snapshot = GameSnapshot::from_game(
+            &game,
+            seats[0],
+            None,
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let teammate = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == seats[1].0)
+            .expect("teammate snapshot");
+        assert!(!teammate.can_view_hand);
+        assert!(teammate.hand_cards.is_empty());
+    }
+
+    #[test]
     fn visible_zone_snapshots_include_oracle_text() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -1950,6 +2594,43 @@ mod tests {
             card.oracle_text.contains("Flying"),
             "zone snapshots should carry oracle text for inspector fallback"
         );
+    }
+
+    #[test]
+    fn ante_cards_are_in_every_perspectives_public_zone_snapshot() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let definition = CardDefinitionBuilder::new(CardId::from_raw(407_002), "Ante Snapshot")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let object_id = game.create_object_from_definition(&definition, alice, Zone::Ante);
+
+        for perspective in [alice, bob] {
+            let snapshot = GameSnapshot::from_game(
+                &game,
+                perspective,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Vec::new(),
+                None,
+                false,
+                None,
+                0,
+            );
+            let alice_snapshot = snapshot
+                .players
+                .iter()
+                .find(|player| player.id == alice.0)
+                .expect("Alice snapshot should exist");
+            assert_eq!(alice_snapshot.ante_size, 1);
+            assert_eq!(alice_snapshot.ante_cards.len(), 1);
+            assert_eq!(alice_snapshot.ante_cards[0].id, object_id.0);
+        }
     }
 
     #[test]
@@ -2060,6 +2741,17 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .build();
         let card_id = game.create_object_from_card(&card, alice, Zone::Hand);
+        let future_sight = CardDefinitionBuilder::new(CardId::from_raw(90_014), "Future Sight")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::look_at_top_card_of_library(),
+            ))
+            .build();
+        game.create_object_from_definition(&future_sight, alice, Zone::Battlefield);
+        let top_card = CardBuilder::new(CardId::from_raw(90_015), "Alice's Future")
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&top_card, alice, Zone::Library);
 
         game.add_player_control(
             bob,
@@ -2109,6 +2801,144 @@ mod tests {
             }
             other => panic!("expected select-object decision, got {other:?}"),
         }
+
+        let alice_in_bob_snapshot = snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("Alice snapshot should exist");
+        assert!(alice_in_bob_snapshot.can_view_hand);
+        assert_eq!(alice_in_bob_snapshot.hand_cards[0].name, "Primeval Titan");
+        assert!(alice_in_bob_snapshot.can_view_library_top);
+        assert_eq!(
+            alice_in_bob_snapshot.library_top.as_deref(),
+            Some("Alice's Future")
+        );
+
+        let alice_snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            Some(&decision),
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let alice_player = alice_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("Alice snapshot should exist");
+        assert!(alice_player.can_view_hand);
+        assert_eq!(alice_player.hand_cards[0].name, "Primeval Titan");
+        assert!(alice_player.can_view_library_top);
+        assert_eq!(alice_player.library_top.as_deref(), Some("Alice's Future"));
+    }
+
+    #[test]
+    fn controlled_player_keeps_outside_game_identity_private_from_controller() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let lesson = CardBuilder::new(CardId::from_raw(90_013), "Environmental Sciences")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let lesson_id = game.create_object_from_card(&lesson, alice, Zone::OutsideGame);
+
+        game.add_player_control(
+            bob,
+            alice,
+            PlayerControlStart::Immediate,
+            PlayerControlDuration::UntilEndOfTurn,
+            None,
+        );
+
+        let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+            alice,
+            None,
+            "Choose a Lesson you own from outside the game",
+            vec![SelectableObject::new(lesson_id, "Environmental Sciences")],
+            1,
+            Some(1),
+        ));
+        let bob_snapshot = GameSnapshot::from_game(
+            &game,
+            bob,
+            Some(&decision),
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+
+        let bob_candidate = match bob_snapshot.decision.as_ref().expect("decision") {
+            DecisionView::SelectObjects {
+                player, candidates, ..
+            } => {
+                assert_eq!(*player, bob.0);
+                &candidates[0]
+            }
+            other => panic!("expected select-object decision, got {other:?}"),
+        };
+        assert_eq!(bob_candidate.name, "Hidden card");
+        assert_ne!(bob_candidate.id, lesson_id.0);
+        assert_eq!(bob_candidate.selection_identity, "hidden_reference");
+        assert_eq!(
+            bob_candidate
+                .hidden_ref
+                .as_ref()
+                .and_then(|hidden_ref| hidden_ref.zone.as_deref()),
+            Some("outside_game")
+        );
+        assert!(
+            bob_snapshot
+                .players
+                .iter()
+                .find(|player| player.id == alice.0)
+                .expect("Alice snapshot should exist")
+                .sideboard_cards
+                .is_empty()
+        );
+
+        let alice_snapshot = GameSnapshot::from_game(
+            &game,
+            alice,
+            Some(&decision),
+            None,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            false,
+            None,
+            0,
+        );
+        let alice_sideboard = &alice_snapshot
+            .players
+            .iter()
+            .find(|player| player.id == alice.0)
+            .expect("Alice snapshot should exist")
+            .sideboard_cards;
+        assert_eq!(alice_sideboard.len(), 1);
+        assert_eq!(alice_sideboard[0].name, "Environmental Sciences");
+        let alice_candidate = match alice_snapshot.decision.as_ref().expect("decision") {
+            DecisionView::SelectObjects { candidates, .. } => &candidates[0],
+            other => panic!("expected select-object decision, got {other:?}"),
+        };
+        assert_eq!(alice_candidate.name, "Environmental Sciences");
+        assert_eq!(alice_candidate.id, lesson_id.0);
     }
 
     #[test]

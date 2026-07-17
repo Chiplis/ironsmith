@@ -299,6 +299,41 @@ fn describe_restart_game(restart: &crate::effects::RestartGameEffect) -> String 
     format!("Restart the game, leaving in exile {objects} exiled with {source}")
 }
 
+fn describe_play_subgame(subgame: &crate::effects::PlaySubgameEffect) -> String {
+    let opening = "Players play a Magic subgame, using their libraries as their decks";
+    let [continuation] = subgame.nonwinner_effects.as_slice() else {
+        if subgame.nonwinner_effects.is_empty() {
+            return opening.to_string();
+        }
+        let body = lowercase_first(
+            describe_effect_list(&subgame.nonwinner_effects)
+                .trim_end_matches('.')
+                .trim(),
+        );
+        return format!("{opening}. After the subgame, {body} for each player who didn't win it");
+    };
+    let canonical_half_life = continuation
+        .downcast_ref::<crate::effects::LoseLifeEffect>()
+        .is_some_and(|loss| {
+            loss.amount == Value::HalfLifeTotalRoundedUp(PlayerFilter::IteratedPlayer)
+                && matches!(
+                    loss.player.base(),
+                    ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+                )
+        });
+    if canonical_half_life {
+        return format!(
+            "{opening}. Each player who doesn't win the subgame loses half their life, rounded up"
+        );
+    }
+    let body = lowercase_first(
+        describe_effect_list(&subgame.nonwinner_effects)
+            .trim_end_matches('.')
+            .trim(),
+    );
+    format!("{opening}. After the subgame, {body} for each player who didn't win it")
+}
+
 pub(crate) fn describe_effect_impl(effect: &Effect) -> String {
     include!("effect_impl/early.rs");
     include!("effect_impl/late.rs")
@@ -631,6 +666,67 @@ pub(super) fn describe_mana_usage_restriction(
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
         }
+        crate::ability::ManaUsageRestriction::PaymentTransaction {
+            restriction,
+            on_spend,
+        } => {
+            if let Some(crate::ability::ManaPaymentPredicate::Purpose(
+                crate::ability::ManaPaymentPurpose::CumulativeUpkeep,
+            )) = restriction
+            {
+                return Some("Spend this mana only to pay cumulative upkeep costs".to_string());
+            }
+            if matches!(
+                restriction,
+                Some(crate::ability::ManaPaymentPredicate::CostContainsX)
+            ) {
+                return Some("Spend this mana only on costs that contain {X}".to_string());
+            }
+            let [payload] = on_spend.as_slice() else {
+                return None;
+            };
+            let crate::ability::ManaPaymentPredicate::All(predicates) = &payload.predicate else {
+                return None;
+            };
+            let filter = predicates.iter().find_map(|predicate| match predicate {
+                crate::ability::ManaPaymentPredicate::SourceMatches(filter) => Some(filter),
+                _ => None,
+            })?;
+            let mut spell_text =
+                describe_mana_usage_spell_filter_target_with_options(filter, false)?;
+            if predicates.iter().any(|predicate| {
+                matches!(
+                    predicate,
+                    crate::ability::ManaPaymentPredicate::SharesCreatureTypeWithPayersCommander
+                )
+            }) {
+                spell_text.push_str(" that shares a creature type with your commander");
+            }
+            let effects = payload.effects.all_effects();
+            let [effect] = effects.as_slice() else {
+                return None;
+            };
+            let tail = if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
+                match &scry.count {
+                    crate::effect::Value::Fixed(1) => "scry 1".to_string(),
+                    crate::effect::Value::CommanderCastCount(crate::target::PlayerFilter::You) => {
+                        "scry X, where X is the number of times it's been cast from the command zone this game"
+                            .to_string()
+                    }
+                    _ => return None,
+                }
+            } else if effect
+                .downcast_ref::<crate::effects::CopySpellEffect>()
+                .is_some()
+            {
+                "copy that spell and you may choose new targets for the copy".to_string()
+            } else {
+                return None;
+            };
+            Some(format!(
+                "When that mana is spent to cast {spell_text}, {tail}"
+            ))
+        }
     }
 }
 
@@ -831,6 +927,11 @@ pub(super) fn describe_mana_usage_spell_target(
         crate::types::CardType::Instant => "instant",
         crate::types::CardType::Kindred => "kindred",
         crate::types::CardType::Land => "land",
+        crate::types::CardType::Plane => "plane",
+        crate::types::CardType::Phenomenon => "phenomenon",
+        crate::types::CardType::Vanguard => "vanguard",
+        crate::types::CardType::Scheme => "scheme",
+        crate::types::CardType::Conspiracy => "conspiracy",
         crate::types::CardType::Planeswalker => "planeswalker",
         crate::types::CardType::Sorcery => "sorcery",
     };
@@ -1042,6 +1143,11 @@ pub(super) fn describe_structured_ward_cost(cost: &crate::cost::TotalCost) -> St
 
 pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(annihilator) = describe_annihilator_keyword(triggered)
+    {
+        return Some(annihilator);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(myriad) = describe_myriad_keyword(triggered)
     {
         return Some(myriad);
@@ -1050,6 +1156,13 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(hideaway) = describe_structural_hideaway_keyword(triggered)
     {
         return Some(hideaway);
+    }
+    // Equip has a structural Oracle surface for alternative costs. Other
+    // keyword recognizers below still operate only on one flat conjunction.
+    if let AbilityKind::Activated(activated) = &ability.kind
+        && activated.mana_cost.as_one_of().is_some()
+    {
+        return describe_structural_equip_keyword(activated);
     }
     if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(craft) = describe_structural_craft_keyword(ability, activated)
@@ -1065,6 +1178,11 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(transmute) = describe_structural_transmute_keyword(ability, activated)
     {
         return Some(transmute);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(transfigure) = describe_structural_transfigure_keyword(ability, activated)
+    {
+        return Some(transfigure);
     }
     if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(scavenge) = describe_structural_scavenge_keyword(ability, activated)
@@ -1147,6 +1265,11 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(bushido);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(frenzy) = describe_structural_frenzy_keyword(triggered)
+    {
+        return Some(frenzy);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(dethrone) = describe_structural_dethrone_keyword(triggered)
     {
         return Some(dethrone);
@@ -1202,6 +1325,11 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(storm);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(gravestorm) = describe_structural_gravestorm_keyword(triggered)
+    {
+        return Some(gravestorm);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(demonstrate) = describe_structural_demonstrate_keyword(triggered)
     {
         return Some(demonstrate);
@@ -1240,6 +1368,28 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         } else {
             format!("Ward {cost_text}")
         });
+    }
+    if let Some(model) = static_ability.compiled_model() {
+        let render_turn_face_up_keyword = |keyword: &str, cost: &crate::cost::TotalCost| {
+            let separator = if cost.has_non_mana_costs() {
+                "—"
+            } else {
+                " "
+            };
+            format!("{keyword}{separator}{}", describe_total_cost(cost))
+        };
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::Morph(cost) => {
+                return Some(render_turn_face_up_keyword("Morph", cost));
+            }
+            ironsmith_core::StaticAbilityPayload::Megamorph(cost) => {
+                return Some(render_turn_face_up_keyword("Megamorph", cost));
+            }
+            ironsmith_core::StaticAbilityPayload::Disguise(cost) => {
+                return Some(render_turn_face_up_keyword("Disguise", cost));
+            }
+            _ => {}
+        }
     }
     let raw_text = static_ability.display();
     let raw_text = raw_text.trim();
@@ -1298,6 +1448,9 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     }
     if text == "storm" {
         return Some("Storm".to_string());
+    }
+    if text == "gravestorm" {
+        return Some("Gravestorm".to_string());
     }
     if text == "training" {
         return Some("Training".to_string());
@@ -1410,6 +1563,9 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some("Undying".to_string());
     }
     if text.starts_with("bushido ") {
+        return Some(raw_text.to_string());
+    }
+    if text.starts_with("frenzy ") {
         return Some(raw_text.to_string());
     }
     if text.starts_with("rampage ") {
@@ -1710,6 +1866,45 @@ pub(super) fn describe_structural_transmute_keyword(
     Some(format!("Transmute {cost_text}"))
 }
 
+pub(super) fn describe_structural_transfigure_keyword(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !ability.functional_zones.contains(&Zone::Battlefield)
+        || !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !activated.choices.is_empty()
+        || !activated
+            .mana_cost
+            .costs()
+            .iter()
+            .any(crate::costs::Cost::is_sacrifice_self)
+    {
+        return None;
+    }
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let search = effect.downcast_ref::<crate::effects::SearchLibraryEffect>()?;
+    if search.destination != Zone::Battlefield
+        || search.player != PlayerFilter::You
+        || search.chooser != PlayerFilter::You
+        || search.reveal
+        || search.library_position_from_top.is_some()
+        || search.filter.card_types != vec![CardType::Creature]
+        || !matches!(
+            search.filter.mana_value.as_ref(),
+            Some(crate::filter::Comparison::EqualExpr(value))
+                if matches!(value.unhinted(), Value::ManaValueOf(spec)
+                    if matches!(spec.base(), ChooseSpec::Source))
+        )
+    {
+        return None;
+    }
+    let cost_text =
+        keyword_base_cost_text(activated.mana_cost.costs(), |cost| cost.is_sacrifice_self())?;
+    Some(format!("Transfigure {cost_text}"))
+}
+
 pub(super) fn cycling_keywords_for_search_filter(filter: &ObjectFilter) -> Vec<String> {
     if filter.supertypes.contains(&Supertype::Basic)
         && filter.card_types.contains(&CardType::Land)
@@ -1756,8 +1951,46 @@ pub(super) fn describe_structural_equip_keyword(
         return None;
     }
 
-    let cost = describe_cost_list(activated.mana_cost.costs());
     let qualifier = equip_target_qualifier_text(&attach.target);
+    if let Some(branches) = activated.mana_cost.as_one_of() {
+        let keyword = qualifier
+            .map(|qualifier| format!("Equip {qualifier}"))
+            .unwrap_or_else(|| "Equip".to_string());
+        let has_non_mana_branch = branches.iter().any(|branch| branch.has_non_mana_costs());
+        let branches = branches
+            .iter()
+            .map(|branch| {
+                let described = describe_total_cost(branch);
+                if has_non_mana_branch && !branch.has_non_mana_costs() {
+                    format!("pay {described}")
+                } else if has_non_mana_branch {
+                    lowercase_first(&described)
+                } else {
+                    described
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" or ");
+        let mut rendered = if has_non_mana_branch {
+            format!("{keyword}—{}", capitalize_first(&branches))
+        } else {
+            format!("{keyword} {branches}")
+        };
+
+        let mut restriction_clauses = collect_activation_restriction_clauses(
+            &activated.timing,
+            &activated.additional_restrictions,
+        );
+        restriction_clauses
+            .retain(|clause| !clause.eq_ignore_ascii_case("Activate only as a sorcery"));
+        if !restriction_clauses.is_empty() {
+            rendered.push_str(". ");
+            rendered.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+        }
+        return Some(rendered);
+    }
+
+    let cost = describe_cost_list(activated.mana_cost.costs());
     let mut rendered = if cost.trim().is_empty() || cost.eq_ignore_ascii_case("Free") {
         "Equip {0}".to_string()
     } else if let Some(qualifier) = qualifier {
@@ -1986,6 +2219,14 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
     for effect in payment {
         if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
             parts.push(pay_mana.cost.to_oracle());
+        } else if let Some(pay_life) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+            if matches!(
+                pay_life.player,
+                ChooseSpec::SourceController | ChooseSpec::SourceOwner
+            ) || matches!(pay_life.player, ChooseSpec::Player(PlayerFilter::You))
+            {
+                parts.push(format!("Pay {} life", describe_value(&pay_life.amount)));
+            }
         } else if let Some(lose_life) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
             if matches!(
                 lose_life.player,
@@ -2499,6 +2740,35 @@ pub(super) fn describe_structural_bushido_keyword(
         return None;
     }
     Some(format!("Bushido {power}"))
+}
+
+pub(super) fn describe_structural_frenzy_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::combat::ThisAttacksAndIsntBlockedTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let pump = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>()?;
+    let Value::Fixed(power) = pump.power else {
+        return None;
+    };
+    if power <= 0
+        || pump.toughness != Value::Fixed(0)
+        || !matches!(pump.target, ChooseSpec::Source)
+        || !matches!(pump.duration, Until::EndOfTurn)
+    {
+        return None;
+    }
+    Some(format!("Frenzy {power}"))
 }
 
 pub(super) fn describe_structural_dethrone_keyword(
@@ -3023,12 +3293,11 @@ pub(super) fn describe_structural_afterlife_keyword(
 pub(crate) fn describe_structural_toxic_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
-    if !matches!(
-        triggered.presentation_label.as_ref(),
-        Some(PresentationLabel::Keyword(PresentationKeyword::Toxic(_)))
-    ) {
-        return None;
-    }
+    let keyword = match triggered.presentation_label.as_ref() {
+        Some(PresentationLabel::Keyword(PresentationKeyword::Toxic(_))) => "Toxic",
+        Some(PresentationLabel::Keyword(PresentationKeyword::Poisonous(_))) => "Poisonous",
+        _ => return None,
+    };
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
         || triggered
@@ -3048,7 +3317,7 @@ pub(crate) fn describe_structural_toxic_keyword(
     let Value::Fixed(amount) = poison.count else {
         return None;
     };
-    (amount > 0).then(|| format!("Toxic {amount}"))
+    (amount > 0).then(|| format!("{keyword} {amount}"))
 }
 
 pub(super) fn describe_structural_storm_keyword(
@@ -3086,6 +3355,46 @@ pub(super) fn describe_structural_storm_keyword(
         return None;
     }
     Some("Storm".to_string())
+}
+
+pub(super) fn describe_structural_gravestorm_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::YouCastThisSpellTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+
+    let [copy, choose_targets] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let copy = copy.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let copy_spell = copy
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    if !matches!(copy_spell.target, ChooseSpec::Source)
+        || copy_spell.count
+            != Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(
+                crate::target::ObjectFilter::default(),
+            ))
+        || copy_spell.copier != PlayerFilter::You
+        || !copy_spell.removed_supertypes.is_empty()
+    {
+        return None;
+    }
+    let choose_targets = choose_targets.downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
+    if choose_targets.from_effect != copy.id
+        || !choose_targets.may
+        || choose_targets.chooser.is_some()
+    {
+        return None;
+    }
+    Some("Gravestorm".to_string())
 }
 
 pub(super) fn describe_structural_demonstrate_keyword(
@@ -3744,6 +4053,24 @@ mod next_turn_draw_surface_tests {
         assert_eq!(
             describe_effect(&next_turn_upkeep(Effect::gain_life(1))),
             "At the beginning of the next turn's upkeep, you gain 1 life"
+        );
+    }
+
+    #[test]
+    fn forecast_presentation_suppresses_its_implied_upkeep_clause() {
+        assert!(
+            collect_activation_restriction_clauses(
+                &ActivationTiming::DuringSourceOwnersUpkeep,
+                &["__ironsmith_activation_label:Forecast".to_string()],
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            collect_activation_restriction_clauses(
+                &ActivationTiming::DuringSourceOwnersUpkeep,
+                &[],
+            ),
+            vec!["Activate only during this card's owner's upkeep"]
         );
     }
 }

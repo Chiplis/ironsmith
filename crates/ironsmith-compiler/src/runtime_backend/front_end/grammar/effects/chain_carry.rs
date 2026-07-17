@@ -836,6 +836,16 @@ mod tests {
                 .is_some_and(|token| token.is_word("it"))
         );
 
+        let tokens = lex_line(
+            "Until your next turn, whenever either of those creatures deals combat damage, you draw a card.",
+            0,
+        )
+        .unwrap();
+        assert!(
+            parse_carry_duration_prefix_tokens(&tokens).is_none(),
+            "a delayed-trigger lifetime must remain attached to its trigger clause"
+        );
+
         let tokens = lex_line("And draw a card.", 0).unwrap();
         assert_eq!(
             parse_carry_clause_head_tokens(&tokens),

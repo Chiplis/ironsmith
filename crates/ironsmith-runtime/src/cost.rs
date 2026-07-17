@@ -224,6 +224,17 @@ pub fn can_pay_cost_with_reason(
 ) -> Result<(), CostPaymentError> {
     use crate::costs::{CostCheckContext, can_pay_with_check_context};
 
+    // CR 800.4f: if an effect requires a player who left the game to pay a
+    // cost, that cost is not paid.
+    if !game
+        .player(player)
+        .is_some_and(|candidate| candidate.is_in_game())
+    {
+        return Err(CostPaymentError::Other(
+            "a player who left the game cannot pay costs".to_string(),
+        ));
+    }
+
     let ctx = CostCheckContext::new(source_id, player).with_reason(reason);
 
     match cost.kind() {

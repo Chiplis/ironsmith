@@ -86,10 +86,21 @@ pub(super) fn try_parse_modal_bullet_block(
         return Ok(None);
     }
 
+    let spree_header = line
+        .info
+        .raw_line
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("spree");
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
-        if !is_bullet_line(next_line) {
+        let is_spree_mode = spree_header
+            && next_line
+                .tokens
+                .first()
+                .is_some_and(|token| token.kind == TokenKind::Plus);
+        if !is_bullet_line(next_line) && !is_spree_mode {
             break;
         }
         bullet_modes.push(parse_modal_mode_cst(next_line)?);

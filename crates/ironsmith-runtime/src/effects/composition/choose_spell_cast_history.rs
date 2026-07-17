@@ -1,7 +1,7 @@
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
+use crate::effects::helpers::resolve_player_filter_to_list;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -17,7 +17,8 @@ impl EffectExecutor for ChooseSpellCastHistoryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let caster_ids =
             resolve_player_filter_to_list(game, &self.cast_by, &ctx.filter_context(game), ctx)?;
         let filter_ctx = ctx.filter_context(game);

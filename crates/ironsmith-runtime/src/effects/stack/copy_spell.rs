@@ -245,6 +245,7 @@ impl EffectExecutor for CopySpellEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::effect::Value;
     use crate::events::EventKind;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -480,6 +481,60 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn gravestorm_count_copies_once_per_battlefield_to_graveyard_move() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let spell_id = create_instant_on_stack(&mut game, "Gravestorm Probe", alice);
+        game.stack.clear();
+
+        let permanent = CardBuilder::new(CardId::from_raw(2), "Returning Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let first_incarnation = game.create_object_from_card(&permanent, alice, Zone::Battlefield);
+        let graveyard_incarnation = game
+            .move_object_by_effect(first_incarnation, Zone::Graveyard)
+            .expect("permanent should enter the graveyard");
+        let second_incarnation = game
+            .move_object_by_effect(graveyard_incarnation, Zone::Battlefield)
+            .expect("permanent should return");
+        game.move_object_by_effect(second_incarnation, Zone::Graveyard)
+            .expect("the returned permanent should enter the graveyard again");
+
+        let exiled = CardBuilder::new(CardId::from_raw(3), "Exiled Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let exiled_id = game.create_object_from_card(&exiled, alice, Zone::Battlefield);
+        game.move_object_by_effect(exiled_id, Zone::Exile)
+            .expect("battlefield-to-exile must not count");
+
+        let discarded = CardBuilder::new(CardId::from_raw(4), "Discarded Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let discarded_id = game.create_object_from_card(&discarded, alice, Zone::Hand);
+        game.move_object_by_effect(discarded_id, Zone::Graveyard)
+            .expect("hand-to-graveyard must not count");
+
+        let mut ctx = ExecutionContext::new_default(spell_id, alice);
+        let effect = CopySpellEffect::new(
+            ChooseSpec::Source,
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(
+                crate::target::ObjectFilter::default(),
+            )),
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        let crate::effect::OutcomeValue::Objects(copies) = result.value else {
+            panic!("expected Gravestorm copies, got {result:#?}");
+        };
+        assert_eq!(
+            copies.len(),
+            2,
+            "each qualifying move is counted separately"
+        );
+        assert_eq!(game.stack.len(), 2);
     }
 
     #[test]

@@ -21,7 +21,15 @@ impl EffectExecutor for ExtraTurnAfterNextTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let selected_player = resolve_player_filter(game, &self.player, ctx)?;
+        if !ctx.claim_shared_team_structure_operation(
+            game,
+            selected_player,
+            "extra_turn_after_next_turn",
+        ) {
+            return Ok(EffectOutcome::resolved());
+        }
+        let player_id = game.team_turn_representative(selected_player);
         let delayed = DelayedTriggerTemplate::new(
             Trigger::beginning_of_end_step(PlayerFilter::Specific(player_id)),
             vec![Effect::new(ExtraTurnEffect::new(PlayerFilter::Specific(

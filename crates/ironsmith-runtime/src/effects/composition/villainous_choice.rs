@@ -2,7 +2,6 @@
 
 use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 
@@ -30,7 +29,8 @@ impl EffectExecutor for VillainousChoiceEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let chooser = resolve_player_filter(game, &self.player, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.player, ctx)?;
         let mode_options = self
             .modes
             .iter()

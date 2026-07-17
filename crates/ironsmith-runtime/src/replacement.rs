@@ -47,6 +47,11 @@ pub struct ReplacementEffect {
     /// Stable identity of the static ability that generated this effect.
     /// Resolution-created effects leave this unset.
     pub static_ability_instance: Option<StaticAbilityInstanceId>,
+
+    /// Whether the affected player may decline this replacement effect.
+    /// Optional effects are expanded into an explicit no-op CR 616 choice
+    /// carrying the declined effect's stable application key.
+    pub optional: bool,
 }
 
 /// Unique identifier for a replacement effect.
@@ -91,6 +96,19 @@ impl ReplacementEffect {
 pub enum ReplacementAction {
     /// Prevent the event entirely
     Prevent,
+
+    /// Prevent an entire damage event and emit the CR 615.13 application event.
+    PreventDamage,
+
+    /// Prevent up to the specified amount of damage and emit the CR 615.13 event.
+    PreventDamageAmount(u32),
+
+    /// Prevent the damage, then perform the prevention effect's additional part.
+    ///
+    /// The additional part still happens with an amount of zero when the damage
+    /// can't be prevented (CR 615.12), while CR 615.13 is emitted only when the
+    /// application actually prevents damage.
+    PreventDamageThen(Vec<Effect>),
 
     /// Apply one prevention shield to a matching damage event.
     ///
@@ -221,6 +239,9 @@ pub enum ReplacementAction {
 
     /// Add an additional effect
     Additionally(Vec<Effect>),
+
+    /// Explicitly decline one optional replacement for this event.
+    DeclineOptional(ReplacementEffectKey),
 
     /// Add separately defined tokens to a token-creation event.
     AddTokens {
@@ -692,6 +713,7 @@ impl ReplacementEffect {
             priority_override: None,
             matcher: Some(Box::new(matcher)),
             static_ability_instance: None,
+            optional: false,
         }
     }
 
@@ -710,6 +732,7 @@ impl ReplacementEffect {
             priority_override: None,
             matcher: Some(matcher),
             static_ability_instance: None,
+            optional: false,
         }
     }
 
@@ -725,13 +748,31 @@ impl ReplacementEffect {
         self
     }
 
+    pub fn optional(mut self) -> Self {
+        self.optional = true;
+        self
+    }
+
+    pub fn optional_decline_effect(&self) -> Option<Self> {
+        self.optional.then(|| Self {
+            id: ReplacementEffectId(0),
+            source: self.source,
+            controller: self.controller,
+            replacement: ReplacementAction::DeclineOptional(self.application_key()),
+            priority_override: self.priority_override,
+            matcher: self.matcher.as_ref().map(|matcher| matcher.clone_box()),
+            static_ability_instance: self.static_ability_instance,
+            optional: false,
+        })
+    }
+
     /// Create a damage prevention effect.
     pub fn prevent_damage(source: ObjectId, controller: PlayerId, amount: u32) -> Self {
         Self::with_matcher(
             source,
             controller,
             DamageToPlayerMatcher::to_you(),
-            ReplacementAction::Modify(EventModification::Subtract(amount)),
+            ReplacementAction::PreventDamageAmount(amount),
         )
     }
 
@@ -838,7 +879,7 @@ mod tests {
         );
         assert!(matches!(
             effect.replacement,
-            ReplacementAction::Modify(EventModification::Subtract(3))
+            ReplacementAction::PreventDamageAmount(3)
         ));
     }
 

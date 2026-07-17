@@ -64,6 +64,12 @@ impl EffectExecutor for GainControlEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if !game
+            .player(ctx.controller)
+            .is_some_and(|player| player.is_in_game())
+        {
+            return Ok(EffectOutcome::resolved());
+        }
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
         // Verify target is on the battlefield

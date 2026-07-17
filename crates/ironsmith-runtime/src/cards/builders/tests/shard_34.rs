@@ -1,6 +1,130 @@
 use super::shard_16::{assert_oracle_card_parses_strict, parse_oracle_card_definition};
 use super::*;
 
+fn unwrap_quantified_collection_wrapper(effect: &crate::effect::Effect) -> &crate::effect::Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_quantified_collection_wrapper(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return unwrap_quantified_collection_wrapper(&with_id.effect);
+    }
+    effect
+}
+
+fn assert_meteor_chosen_collection_stays_inside_conditional(
+    definition: &crate::cards::CardDefinition,
+) {
+    let spell = definition
+        .spell_effect
+        .as_ref()
+        .expect("Meteor must retain its spell resolution");
+    let effects = spell.flattened_default_effects();
+    let conditional = effects
+        .iter()
+        .find_map(|effect| {
+            unwrap_quantified_collection_wrapper(effect)
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+        })
+        .expect("Meteor must retain its cast-from-exile conditional");
+    assert!(
+        conditional.if_false.is_empty(),
+        "Meteor's chosen-set continuation must not invent a false branch"
+    );
+    let for_players = conditional
+        .if_true
+        .iter()
+        .find_map(|effect| {
+            unwrap_quantified_collection_wrapper(effect)
+                .downcast_ref::<crate::effects::ForPlayersEffect>()
+        })
+        .expect("Meteor's conditional must contain its per-opponent choices");
+    let [choose_effect] = for_players.effects.as_slice() else {
+        panic!("Meteor's player loop must contain exactly one choice: {for_players:#?}");
+    };
+    let choose = unwrap_quantified_collection_wrapper(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("Meteor's player loop must make an object choice");
+    let destroy = conditional
+        .if_true
+        .iter()
+        .find_map(|effect| {
+            unwrap_quantified_collection_wrapper(effect)
+                .downcast_ref::<crate::effects::DestroyEffect>()
+        })
+        .expect("Meteor's destroy must remain inside the conditional branch");
+    let destroy_filter = match destroy.spec.base() {
+        ChooseSpec::All(filter) | ChooseSpec::Object(filter) => filter,
+        other => panic!("Meteor must destroy the chosen object collection: {other:#?}"),
+    };
+    assert!(
+        destroy_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == choose.tag
+        }),
+        "Meteor's destroy must consume the exact aggregate choice tag: {conditional:#?}"
+    );
+    assert!(
+        effects.iter().all(|effect| {
+            unwrap_quantified_collection_wrapper(effect)
+                .downcast_ref::<crate::effects::DestroyEffect>()
+                .is_none()
+        }),
+        "Meteor must not leave its chosen-set destroy unconditional: {spell:#?}"
+    );
+}
+
+#[test]
+pub(super) fn quantified_chosen_collection_followups_keep_structured_set_surfaces() {
+    for (name, surface, structural_needles) in [
+        (
+            "Afterlife from the Loam",
+            "For each player, choose up to one target creature card in that player's graveyard. Put those cards onto the battlefield under your control. They're Zombies in addition to their other types",
+            &["ForPlayersEffect", "TargetOnlyEffect", "Tagged("][..],
+        ),
+        (
+            "Ultimate Magic: Meteor",
+            "for each opponent, you choose an artifact or land that player controls. Destroy the chosen permanents",
+            &["ForPlayersEffect", "ChooseObjectsEffect", "IsTaggedObject"][..],
+        ),
+        (
+            "Unstable Glyphbridge",
+            "for each player, you choose a creature with power 2 or less that player controls. Then destroy all creatures except creatures chosen this way",
+            &[
+                "ForPlayersEffect",
+                "ChooseObjectsEffect",
+                "IsNotTaggedObject",
+            ][..],
+        ),
+        (
+            "Winnowing",
+            "For each player, you choose a creature that player controls. Then each player sacrifices all other creatures they control that don't share a creature type with the chosen creature they control",
+            &[
+                "ForPlayersEffect",
+                "IsNotTaggedObject",
+                "no_shared_creature_types_with",
+            ][..],
+        ),
+    ] {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let compiled = canonical_compiled_lines(&definition).join("\n");
+        assert!(
+            compiled.contains(surface),
+            "{name} must preserve the aggregate chosen-set relationship:\n{compiled}"
+        );
+        let debug = format!("{definition:#?}");
+        for needle in structural_needles {
+            assert!(
+                debug.contains(needle),
+                "{name} must retain typed structure `{needle}`:\n{debug}"
+            );
+        }
+        if name == "Ultimate Magic: Meteor" {
+            assert_meteor_chosen_collection_stays_inside_conditional(&definition);
+        }
+    }
+}
+
 fn unwrap_conditional_fight_action(effect: &crate::effect::Effect) -> &crate::effect::Effect {
     if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
         return unwrap_conditional_fight_action(&tagged.effect);
@@ -54,11 +178,24 @@ pub(super) fn conditional_fight_cards_reuse_their_two_explicit_targets() {
     ] {
         assert_oracle_card_parses_strict(name);
         let definition = parse_oracle_card_definition(name);
-        let effects = definition
+        let spell = definition
             .spell_effect
             .as_ref()
-            .expect("conditional fight card should have a spell effect")
-            .flattened_default_effects();
+            .expect("conditional fight card should have a spell effect");
+        assert!(
+            spell.segments.iter().all(|segment| {
+                segment.default_effects.iter().all(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::SequenceEffect>()
+                        .is_none_or(|sequence| {
+                            sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+                                || sequence.effects.len() != 2
+                        })
+                })
+            }),
+            "{name}'s coordinated target pair must be exposed to ordered fight lowering: {spell:#?}"
+        );
+        let effects = spell.flattened_default_effects();
         let [
             first_effect,
             second_effect,
@@ -160,6 +297,45 @@ pub(super) fn conditional_fight_cards_render_one_target_pair_and_the_chosen_figh
             compiled.matches("Choose target creature").count(),
             1,
             "{name} should declare its target pair once:\n{compiled}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn conditional_fight_cards_compile_through_cross_segment_resolution_program() {
+    for (name, expected) in [
+        (
+            "Blizzard Brawl",
+            "Choose target creature you control and target creature you don't control. If you control three or more snow permanents, the creature you control gets +1/+0 and gains indestructible until end of turn. Then those creatures fight each other.",
+        ),
+        (
+            "Duel for Dominance",
+            "Coven — Choose target creature you control and target creature you don't control. If you control three or more creatures with different powers, put a +1/+1 counter on the chosen creature you control. Then the chosen creatures fight each other.",
+        ),
+        (
+            "Joust",
+            "Choose target creature you control and target creature you don't control. The creature you control gets +2/+1 until end of turn if it's a Knight. Then those creatures fight each other.",
+        ),
+        (
+            "Tail Swipe",
+            "Choose target creature you control and target creature you don't control. If you cast this spell during your main phase, the creature you control gets +1/+1 until end of turn. Then those creatures fight each other.",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let spell = definition
+            .spell_effect
+            .as_ref()
+            .expect("conditional fight card should have a spell effect");
+        assert!(
+            spell.segments.len() >= 2,
+            "{name} must retain the cross-segment program this regression exercises: {spell:#?}"
+        );
+
+        let compiled = compiled_text_lines(&definition);
+        assert!(
+            compiled.iter().any(|line| line == expected),
+            "{name} must compile its cross-segment conditional fight as one exact line: {compiled:#?}"
         );
     }
 }

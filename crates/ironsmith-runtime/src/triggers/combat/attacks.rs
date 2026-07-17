@@ -200,6 +200,13 @@ impl AttacksTrigger {
                         .map(|planeswalker| ctx.game.controller_of(planeswalker))
                 }
             }
+            crate::combat_state::AttackTarget::Battle(battle) => {
+                if attacked_target_must_be_player {
+                    None
+                } else {
+                    ctx.game.battle_protector(*battle)
+                }
+            }
         };
         attacked_player
             .is_some_and(|player| attacked_player_filter.matches_player(player, &ctx.filter_ctx))
@@ -233,6 +240,9 @@ impl TriggerMatcher for AttacksTrigger {
             }
             crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
                 crate::combat_state::AttackTarget::Planeswalker(planeswalker)
+            }
+            crate::events::combat::AttackEventTarget::Battle(battle) => {
+                crate::combat_state::AttackTarget::Battle(battle)
             }
         };
         if !self.matches_attacker_object_and_target(obj, &attack_target, ctx) {
@@ -399,6 +409,9 @@ impl TriggerMatcher for PlayersAttackedTrigger {
             crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
                 crate::combat_state::AttackTarget::Planeswalker(planeswalker)
             }
+            crate::events::combat::AttackEventTarget::Battle(battle) => {
+                crate::combat_state::AttackTarget::Battle(battle)
+            }
         };
         self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx)
     }
@@ -428,6 +441,7 @@ fn defending_player_for_attack_target(
         crate::combat_state::AttackTarget::Planeswalker(planeswalker) => game
             .object(*planeswalker)
             .map(|planeswalker| game.controller_of(planeswalker)),
+        crate::combat_state::AttackTarget::Battle(battle) => game.battle_protector(*battle),
     }
 }
 

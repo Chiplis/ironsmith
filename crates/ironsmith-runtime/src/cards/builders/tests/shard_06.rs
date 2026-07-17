@@ -2183,6 +2183,29 @@ pub(super) fn test_parse_trigger_when_this_creature_is_turned_face_up() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn morph_reveal_cost_cards_keep_reveal_as_the_cost() {
+    for (name, color) in [
+        ("Dragon's Eye Savants", "blue"),
+        ("Ruthless Ripper", "black"),
+        ("Temur Charger", "green"),
+        ("Watcher of the Roost", "white"),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let compiled = unprocessed_compiled_lines(&def).join(" ");
+        let expected = format!("Morph—Reveal a {color} card from your hand");
+        assert!(
+            compiled.contains(&expected),
+            "expected {name} to retain its reveal morph cost, got {compiled}"
+        );
+        assert!(
+            !compiled.contains("Morph Exile") && !compiled.contains("Morph—Exile"),
+            "{name} must not move the revealed card while paying morph: {compiled}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn test_kadenas_silencer_strict_parse_counter_all_opponent_abilities() {
     let def = parse_oracle_card_definition("Kadena's Silencer");
 

@@ -40,6 +40,7 @@ pub(crate) enum KeywordMarkerKind {
     TicketSticker,
     Compleated,
     Dredge,
+    SpaceSculptor,
 }
 
 fn conditional_followup_actor(input: &mut LexStream<'_>) -> WResult<ConditionalFollowupActor> {
@@ -124,6 +125,9 @@ pub(crate) fn parse_keyword_marker_text(text: &str) -> Option<KeywordMarkerKind>
     if input == "compleated" {
         return Some(KeywordMarkerKind::Compleated);
     }
+    if input == "space sculptor" {
+        return Some(KeywordMarkerKind::SpaceSculptor);
+    }
     for (mut prefix, kind) in [
         ("prototype ", KeywordMarkerKind::Prototype),
         (
@@ -153,6 +157,7 @@ pub(crate) fn recognizes_core_keyword_marker(text: &str) -> bool {
             KeywordMarkerKind::Prototype
                 | KeywordMarkerKind::MoreThanMeetsTheEye
                 | KeywordMarkerKind::TicketSticker
+                | KeywordMarkerKind::SpaceSculptor
         )
     )
 }
@@ -189,6 +194,10 @@ mod tests {
         assert_eq!(
             parse_keyword_marker_text("Compleated"),
             Some(KeywordMarkerKind::Compleated)
+        );
+        assert_eq!(
+            parse_keyword_marker_text("Space sculptor"),
+            Some(KeywordMarkerKind::SpaceSculptor)
         );
         assert!(!recognizes_core_keyword_marker("Dredge 4"));
     }

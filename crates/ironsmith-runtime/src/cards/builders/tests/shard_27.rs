@@ -85,3 +85,65 @@ pub(super) fn investigate_twice_cards_keep_keyword_action_surface() {
         assert!(!compiled.contains("2 times"), "{name}: {compiled}");
     }
 }
+
+#[test]
+pub(super) fn top_of_library_collection_cards_keep_counts_tags_and_followups() {
+    for name in [
+        "Hazoret's Undying Fury",
+        "Lord of the Void",
+        "Magmatic Channeler",
+        "Urza, Lord High Artificer",
+    ] {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let compiled = canonical_compiled_lines(&definition).join("\n");
+        let debug = format!("{definition:#?}");
+
+        assert!(
+            debug.contains("ExileTopOfLibraryEffect"),
+            "{name} must retain a typed top-library exile: {debug}"
+        );
+        match name {
+            "Hazoret's Undying Fury" => {
+                assert!(debug.contains("ForEachObject"), "{debug}");
+                assert!(
+                    compiled.contains(
+                        "Shuffle your library, then exile the top four cards. You may cast any number of spells with mana value 5 or less from among them without paying their mana costs"
+                    ),
+                    "{compiled}\n{debug}"
+                );
+            }
+            "Lord of the Void" => {
+                assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+                assert!(debug.contains("ForEachTaggedEffect"), "{debug}");
+                assert!(
+                    compiled.contains(
+                        "exile the top seven cards of that player's library, then put a creature card from among them onto the battlefield under your control"
+                    ),
+                    "{compiled}\n{debug}"
+                );
+            }
+            "Magmatic Channeler" => {
+                assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+                assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+                assert!(
+                    compiled.contains(
+                        "Exile the top two cards of your library. Choose one of them. Until end of turn, you may play that card"
+                    ),
+                    "{compiled}"
+                );
+            }
+            "Urza, Lord High Artificer" => {
+                assert!(debug.contains("ShuffleLibraryEffect"), "{debug}");
+                assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+                assert!(
+                    compiled.contains(
+                        "Shuffle your library, then exile the top card. Until end of turn, you may play that card without paying its mana cost"
+                    ),
+                    "{compiled}"
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+}

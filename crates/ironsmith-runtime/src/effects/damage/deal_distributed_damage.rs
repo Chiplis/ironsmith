@@ -6,8 +6,8 @@ use crate::effect::{ChoiceCount, EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::damage::deal_damage::apply_processed_damage_outcome;
 use crate::effects::helpers::{
-    resolve_objects_from_spec, resolve_player_filter, resolve_players_from_spec,
-    resolve_single_object_for_effect, resolve_value,
+    resolve_objects_from_spec, resolve_players_from_spec, resolve_single_object_for_effect,
+    resolve_value,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, Target};
@@ -118,7 +118,11 @@ impl DealDistributedDamageEffect {
         let distribution = if let Some(distribution) = announced_distribution {
             distribution.allocations
         } else {
-            let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+            let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(
+                game,
+                &self.chooser,
+                ctx,
+            )?;
             let distribution = make_decision_with_fallback(
                 game,
                 &mut ctx.decision_maker,

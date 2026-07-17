@@ -61,11 +61,24 @@ impl PartialEq for CostEffect {
     }
 }
 
+/// Peel wrappers that deliberately preserve the payment semantics of their
+/// child effect. Cost validation sometimes needs the concrete payload (for
+/// example, a move that consumes an object selected by an earlier cost), while
+/// execution must still retain the wrappers so their tags and outcomes are
+/// recorded.
+fn transparent_cost_effect(mut effect: &Effect) -> &Effect {
+    while let Some(inner) = effect.transparent_child_effect() {
+        effect = inner;
+    }
+    effect
+}
+
 fn tagged_sacrifice_cost_precheck(
     effect: &Effect,
     game: &GameState,
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
+    let effect = transparent_cost_effect(effect);
     let (filter, count, player) = if let Some(effect) =
         effect.downcast_ref::<crate::effects::SacrificeEffect>()
     {
@@ -159,6 +172,7 @@ fn tagged_move_to_zone_cost_precheck(
     effect: &Effect,
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
+    let effect = transparent_cost_effect(effect);
     let move_to_zone = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let tag = match move_to_zone.target.base() {
         crate::target::ChooseSpec::Tagged(tag) => tag,
@@ -181,6 +195,7 @@ fn tagged_unattach_cost_precheck(
     game: &GameState,
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
+    let effect = transparent_cost_effect(effect);
     let unattach = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()?;
     let tag = match unattach.objects.base() {
         crate::target::ChooseSpec::Tagged(tag) => tag,
@@ -247,6 +262,15 @@ fn simple_exile_from_graveyard_filter(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
+        if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+            return result;
+        }
+        if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
         if let Some(pay_energy) = self
             .effect
             .downcast_ref::<crate::effects::PayEnergyEffect>()
@@ -314,9 +338,8 @@ impl CostPayer for CostEffect {
 
         let outcome = execute_effect(game, &self.effect, &mut exec_ctx)
             .map_err(|e| CostPaymentError::Other(format!("{e:?}")))?;
-        if let Some(move_to_zone) = self
-            .effect
-            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        if let Some(move_to_zone) =
+            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
         {
             let moved = outcome
                 .affected_objects()
@@ -511,6 +534,10 @@ impl CostPayer for CostEffect {
             .effect
             .downcast_ref::<crate::effects::LoseLifeEffect>()
             .is_some()
+            || self
+                .effect
+                .downcast_ref::<crate::effects::PayLifeEffect>()
+                .is_some()
             || self.effect.downcast_ref::<PayEnergyEffect>().is_some()
             || self.effect.downcast_ref::<MillEffect>().is_some()
         {

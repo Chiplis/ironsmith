@@ -41,6 +41,16 @@
         );
         return cleanup_decompiled_text(&parts.join(". "));
     }
+    if let Some(retained) = effect.downcast_ref::<crate::effects::ManaRetainedEffect>() {
+        let effect_text = describe_effect_list(&retained.effects);
+        let duration = match retained.duration {
+            ironsmith_core::ManaRetentionDuration::EndOfCombat => "Until end of combat",
+            ironsmith_core::ManaRetentionDuration::EndOfTurn => "Until end of turn",
+        };
+        return cleanup_decompiled_text(&format!(
+            "{effect_text}. {duration}, you don't lose this mana as steps and phases end"
+        ));
+    }
     if effect
         .downcast_ref::<crate::effects::LearnEffect>()
         .is_some()
@@ -90,7 +100,21 @@
         // complete filter. Rendering both levels produces the redundant
         // "For each ..., each ..." surface.
         if let [inner] = for_each.effects.as_slice() {
-            let inner = unwrap_tag_wrapped_effect(inner);
+            let inner = unwrap_basic_tag_wrappers(inner);
+            if let Some(remove) =
+                inner.downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
+                && matches!(remove.target.unhinted(), ChooseSpec::Iterated)
+                && matches!(
+                    &remove.max_count,
+                    Value::CountersOn(spec, None)
+                        if matches!(spec.unhinted(), ChooseSpec::Iterated)
+                )
+            {
+                let mut subject_filter = for_each.filter.clone();
+                subject_filter.zone = None;
+                let subject = describe_count_filter_value_subject(&subject_filter);
+                return format!("Remove all counters from all {subject}");
+            }
             if let Some(apply) = inner.downcast_ref::<crate::effects::ApplyContinuousEffect>()
                 && apply.runtime_modifications.iter().any(|modification| {
                     matches!(
@@ -506,6 +530,9 @@
         if let Some(compact) = describe_for_players_choose_then_exile(for_players) {
             return compact;
         }
+        if let Some(compact) = describe_for_players_choose_then_untap_chosen(for_players) {
+            return compact;
+        }
         if let Some(compact) = describe_for_players_controls_no_lose_game(for_players) {
             return compact;
         }
@@ -533,6 +560,9 @@
             return compact;
         }
         if let Some(compact) = describe_each_player_return_all_from_their_graveyard(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_single_iterated_animation(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_coordinated_actions(for_players) {
@@ -738,6 +768,7 @@
             Zone::Stack => ("on the stack", "stack"),
             Zone::Exile => ("in exile", "exile"),
             Zone::Command => ("in the command zone", "command"),
+            Zone::Ante => ("in ante", "ante"),
             Zone::OutsideGame => ("outside the game", "outside"),
         };
         let filter_lower = filter_text.to_ascii_lowercase();
@@ -1037,18 +1068,32 @@
             return rendered;
         }
         if let Some(surface) = &move_to_zone.exiled_with_source_surface {
-            return describe_exiled_with_source_move(
+            let rendered = describe_exiled_with_source_move(
                 surface,
                 move_to_zone.zone,
                 move_to_zone.destination_player_surface.as_ref(),
+                Some(&move_to_zone.battlefield_controller),
+                move_to_zone.enters_tapped,
             );
+            return if move_to_zone.zone == Zone::Battlefield {
+                append_battlefield_entry_counter_surface(
+                    rendered,
+                    &move_to_zone.enters_with_counters,
+                )
+            } else {
+                rendered
+            };
         }
         let order_suffix = match move_to_zone.library_order.as_ref() {
             Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
             Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
             None => "",
         };
-        let target = if move_to_zone.library_order.is_some()
+        let target = if move_to_zone.zone == Zone::Battlefield
+            && let Some(target) = describe_hand_or_graveyard_choice_target(&move_to_zone.target)
+        {
+            target
+        } else if move_to_zone.library_order.is_some()
             && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(_))
         {
             "those cards".to_string()
@@ -1305,6 +1350,7 @@
             }
             Zone::Stack => format!("Put {target} on the stack"),
             Zone::Command => format!("Move {target} to the command zone"),
+            Zone::Ante => format!("Ante {target}"),
             Zone::OutsideGame => format!("Move {target} outside the game"),
         };
         return if move_to_zone.zone == Zone::Battlefield {
@@ -2901,6 +2947,15 @@
             "Until end of turn, any time you could activate a mana ability, you may {cost}. If you do, add {mana}."
         );
     }
+    if let Some(pay) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+        let player = describe_choose_spec(&pay.player);
+        return format!(
+            "{} {} {}",
+            player,
+            player_verb(&player, "pay", "pays"),
+            describe_life_amount_phrase(&pay.amount)
+        );
+    }
     if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
         let player = describe_choose_spec(&lose.player);
         if value_has_surface_hint(&lose.amount, ValueSurfaceHint::EqualTo) {
@@ -3089,6 +3144,11 @@
             );
         }
         if !discard.any_number
+            && additional_cost_color_discard_surface(
+                &discard.count,
+                discard.card_filter.as_ref(),
+            )
+            .is_none()
             && let Some(where_x) = describe_where_x_basis(&discard.count)
         {
             return format!(
@@ -3374,7 +3434,8 @@
                 return "Mill X cards".to_string();
             }
             if value_prefers_where_x(&mill.count)
-                && let Some(where_x) = describe_where_x_basis(&mill.count)
+                && let Some(where_x) =
+                    describe_mill_where_x_basis_for_player(&mill.count, &mill.player)
             {
                 return format!("Mill X cards, where X is {where_x}");
             }
@@ -3394,7 +3455,8 @@
             );
         }
         if value_prefers_where_x(&mill.count)
-            && let Some(where_x) = describe_where_x_basis(&mill.count)
+            && let Some(where_x) =
+                describe_mill_where_x_basis_for_player(&mill.count, &mill.player)
         {
             return format!(
                 "{} {} X cards, where X is {where_x}",
@@ -3488,10 +3550,19 @@
         {
             return "Attach it to the token".to_string();
         }
+        let target = describe_choose_spec(&attach.target);
+        let target = if attach.target.is_target() {
+            target
+        } else {
+            target
+                .strip_suffix(" of your choice")
+                .unwrap_or(&target)
+                .to_string()
+        };
         return format!(
             "Attach {} to {}",
             describe_attach_objects_spec(&attach.objects),
-            describe_choose_spec(&attach.target)
+            target
         );
     }
     if let Some(unattach) = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>() {
@@ -3504,6 +3575,18 @@
         return describe_sacrifice_effect(sacrifice);
     }
     if let Some(sacrifice_target) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
+        if sacrifice_target.target.is_target()
+            && sacrifice_target.target.count().is_single()
+            && matches!(
+                sacrifice_target.target.base(),
+                ChooseSpec::Object(filter) if filter.controller.is_none()
+            )
+        {
+            return format!(
+                "{}'s controller sacrifices it",
+                capitalize_first(&describe_choose_spec(&sacrifice_target.target))
+            );
+        }
         return format!(
             "Sacrifice {}",
             describe_choose_spec(&sacrifice_target.target)
@@ -3515,6 +3598,8 @@
                 surface,
                 Zone::Hand,
                 return_to_hand.destination_player_surface.as_ref(),
+                None,
+                false,
             );
         }
         let contextual_hand = return_to_hand
@@ -3664,10 +3749,13 @@
         let subject = describe_player_filter(&shuffle_hand_and_gy.player);
         let verb = player_verb(&subject, "shuffle", "shuffles");
         let possessive = if subject == "you" { "your" } else { "their" };
-        return format!(
-            "{} {} {} hand and graveyard into {} library",
-            subject, verb, possessive, possessive
-        );
+        let objects = if shuffle_hand_and_gy.include_owned_permanents {
+            let owner = if subject == "you" { "you" } else { "they" };
+            format!("{} hand, graveyard, and all permanents {owner} own", possessive)
+        } else {
+            format!("{} hand and graveyard", possessive)
+        };
+        return format!("{subject} {verb} {objects} into {possessive} library");
     }
     if let Some(shuffle_gy) =
         effect.downcast_ref::<crate::effects::ShuffleGraveyardIntoLibraryEffect>()
@@ -3791,6 +3879,7 @@
             Zone::Exile => "into exile".to_string(),
             Zone::Stack => "onto the stack".to_string(),
             Zone::Command => "into the command zone".to_string(),
+            Zone::Ante => "into ante".to_string(),
             Zone::OutsideGame => "outside the game".to_string(),
         };
         let mut display_filter = search_library.filter.clone();
@@ -3876,6 +3965,7 @@
             Zone::Exile => "into exile",
             Zone::Stack => "onto the stack",
             Zone::Command => "into the command zone",
+            Zone::Ante => "into ante",
             Zone::OutsideGame => "outside the game",
         };
         let multi_zone = search_slots
@@ -4530,6 +4620,14 @@
         };
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        if conditional.surface == ironsmith_core::ConditionalSurface::TrailingIf {
+            let effect_text = describe_effect_clause_list(&conditional.if_true)
+                .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+            return format!(
+                "{effect_text} if {}",
+                describe_condition(&conditional.condition)
+            );
+        }
         if conditional.surface == ironsmith_core::ConditionalSurface::TrailingUnless {
             let effect_text = describe_effect_clause_list(&conditional.if_true)
                 .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
@@ -4582,6 +4680,30 @@
             return compact;
         }
         if conditional.if_false.is_empty()
+            && conditional.surface == ironsmith_core::ConditionalSurface::LeadingIf
+        {
+            let visible = conditional
+                .if_true
+                .iter()
+                .map(structural_unwrap_render_wrappers)
+                .filter(|effect| {
+                    !effect
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .is_some_and(|target| !target.explicit_declaration)
+                        && effect
+                            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                            .is_none()
+                })
+                .collect::<Vec<_>>();
+            if let Some(inline) = describe_reveal_hand_choose_discard_inline(&visible) {
+                return format!(
+                    "If {}, {}",
+                    describe_condition(&conditional.condition),
+                    lowercase_first(&inline)
+                );
+            }
+        }
+        if conditional.if_false.is_empty()
             && matches!(
                 conditional.condition,
                 crate::effect::Condition::AttackedThisTurn
@@ -4601,7 +4723,17 @@
         {
             return compact;
         }
-        let mut true_branch = describe_effect_clause_list(&conditional.if_true)
+        let chosen_collection_branch = match conditional.if_true.as_slice() {
+            [producer, consumer] => describe_for_players_choose_then_destroy_chosen_collection_pair(
+                producer, consumer,
+            )
+            .or_else(|| {
+                describe_each_player_choose_creature_then_destroy_others_pair(producer, consumer)
+            }),
+            _ => None,
+        };
+        let mut true_branch = chosen_collection_branch
+            .or_else(|| describe_effect_clause_list(&conditional.if_true))
             .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
         if matches!(
             &conditional.condition,
@@ -4635,6 +4767,22 @@
             && let Some((may_branch, did_not_branch)) = true_branch.split_once(". If you don't, ")
             && did_not_branch.eq_ignore_ascii_case(&false_branch)
         {
+            let explicit_may_decline = if let [setup, declined] = conditional.if_true.as_slice()
+                && let Some(with_id) = setup.downcast_ref::<crate::effects::WithIdEffect>()
+                && let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>()
+                && let Some(if_effect) = declined.downcast_ref::<crate::effects::IfEffect>()
+            {
+                may.fallback == crate::decision::FallbackStrategy::Decline
+                    && matches!(may.decider.as_ref(), None | Some(PlayerFilter::You))
+                    && if_effect.condition == with_id.id
+                    && matches!(
+                        if_effect.predicate,
+                        EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined
+                    )
+                    && if_effect.else_.is_empty()
+            } else {
+                false
+            };
             let condition_text = describe_condition(&conditional.condition);
             let may_branch = may_branch.replace("put it onto", "put that card onto");
             let false_branch = false_branch
@@ -4648,7 +4796,14 @@
                 )
                 .replace("Put it into your hand", "put that card into your hand")
                 .replace("put it into your hand", "put that card into your hand");
-            return format!("{may_branch} if {condition_text}. Otherwise, {false_branch}");
+            let fallback_condition = if explicit_may_decline {
+                "If you don't"
+            } else {
+                "Otherwise"
+            };
+            return format!(
+                "{may_branch} if {condition_text}. {fallback_condition}, {false_branch}"
+            );
         }
         if true_branch.is_empty() && !false_branch.is_empty() {
             return describe_false_only_conditional(&conditional.condition, &false_branch);
@@ -4806,7 +4961,7 @@
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
-        if let Some(compact) = describe_may_pay_mana_and_discard(may) {
+        if let Some(compact) = describe_may_compound_payment(may) {
             return compact;
         }
         if let Some(compact) = describe_may_have_source_deal_damage_to_decider(may) {

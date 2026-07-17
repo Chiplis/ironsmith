@@ -12,12 +12,28 @@ pub(super) fn validate_match_setup_accepts_loadable_normal_decks() {
         seed: 1,
         format: MatchFormatInput::Normal,
         decks: Some(vec![
-            vec!["Lightning Bolt".to_string()],
-            vec!["Ornithopter".to_string()],
+            {
+                let mut deck = vec!["Plains".to_string(); 59];
+                deck.push("Lightning Bolt".to_string());
+                deck
+            },
+            {
+                let mut deck = vec!["Island".to_string(); 59];
+                deck.push("Ornithopter".to_string());
+                deck
+            },
         ]),
         sideboards: None,
         commanders: None,
+        planar_decks: None,
+        vanguards: None,
+        scheme_decks: None,
+        conspiracies: None,
+        commander_draft: None,
         opening_hand_size: Some(7),
+        hidden_deck_manifests: None,
+        free_for_all: None,
+        teams: None,
     };
 
     let validation = wasm
@@ -48,7 +64,15 @@ pub(super) fn start_match_loads_sideboards_outside_the_game() {
             vec!["Grizzly Bears".to_string()],
         ]),
         commanders: None,
+        planar_decks: None,
+        vanguards: None,
+        scheme_decks: None,
+        conspiracies: None,
+        commander_draft: None,
         opening_hand_size: Some(0),
+        hidden_deck_manifests: None,
+        free_for_all: None,
+        teams: None,
     };
 
     wasm.start_match(serde_wasm_bindgen::to_value(&config).expect("config should encode"))
@@ -82,7 +106,15 @@ pub(super) fn validate_match_setup_reports_invalid_cards() {
         ]),
         sideboards: None,
         commanders: None,
+        planar_decks: None,
+        vanguards: None,
+        scheme_decks: None,
+        conspiracies: None,
+        commander_draft: None,
         opening_hand_size: Some(7),
+        hidden_deck_manifests: None,
+        free_for_all: None,
+        teams: None,
     };
 
     let validation = wasm
@@ -757,22 +789,21 @@ pub(super) fn load_decks_reports_threshold_and_parse_failures_separately() {
         })
         .expect("expected a compilable generated card that meets the chosen threshold");
 
-    let decks_js = serde_wasm_bindgen::to_value(&vec![
-        vec![
-            loaded_name.clone(),
-            below_threshold_name.clone(),
-            "Sicarian Infiltrator".to_string(),
-        ],
-        Vec::<String>::new(),
-    ])
-    .expect("should encode test deck lists");
+    let mut alice_deck = vec!["Plains".to_string(); 60];
+    alice_deck.extend([
+        loaded_name.clone(),
+        below_threshold_name.clone(),
+        "Sicarian Infiltrator".to_string(),
+    ]);
+    let decks_js = serde_wasm_bindgen::to_value(&vec![alice_deck, vec!["Island".to_string(); 60]])
+        .expect("should encode test deck lists");
     let result = wasm
         .load_decks(decks_js)
         .expect("deck load should return categorized failures");
     let result: DeckLoadResultView =
         serde_wasm_bindgen::from_value(result).expect("should decode deck load result");
 
-    assert_eq!(result.loaded, 1);
+    assert_eq!(result.loaded, 121);
     assert_eq!(
         result.failed,
         vec![
@@ -828,19 +859,18 @@ pub(super) fn load_decks_accepts_alternative_card_names() {
     }
 
     let mut wasm = WasmGame::new();
-    let decks_js = serde_wasm_bindgen::to_value(&vec![
-        vec![
-            "T-60 Power Armor".to_string(),
-            "Sunset Sarsaparilla Machine".to_string(),
-        ],
-        Vec::<String>::new(),
-    ])
-    .expect("should encode deck lists");
+    let mut alice_deck = vec!["Plains".to_string(); 58];
+    alice_deck.extend([
+        "T-60 Power Armor".to_string(),
+        "Sunset Sarsaparilla Machine".to_string(),
+    ]);
+    let decks_js = serde_wasm_bindgen::to_value(&vec![alice_deck, vec!["Island".to_string(); 60]])
+        .expect("should encode deck lists");
     let result = wasm.load_decks(decks_js).expect("deck load should succeed");
     let result: DeckLoadResultView =
         serde_wasm_bindgen::from_value(result).expect("should decode deck load result");
 
-    assert_eq!(result.loaded, 2);
+    assert_eq!(result.loaded, 120);
     assert!(result.failed.is_empty());
     assert!(result.failed_below_threshold.is_empty());
     assert!(result.failed_to_parse.is_empty());
@@ -849,21 +879,22 @@ pub(super) fn load_decks_accepts_alternative_card_names() {
         .game
         .player(PlayerId::from_index(0))
         .expect("alice should exist");
-    let library_names: Vec<String> = alice
+    let loaded_names: Vec<String> = alice
         .library
         .iter()
+        .chain(alice.hand.iter())
         .filter_map(|&id| wasm.game.object(id).map(|object| object.name.clone()))
         .collect();
 
     assert!(
-        library_names.iter().any(|name| name == "T-45 Power Armor"),
-        "expected canonical T-45 Power Armor in library, got {library_names:?}"
+        loaded_names.iter().any(|name| name == "T-45 Power Armor"),
+        "expected canonical T-45 Power Armor in the loaded deck, got {loaded_names:?}"
     );
     assert!(
-        library_names
+        loaded_names
             .iter()
             .any(|name| name == "Nuka-Cola Vending Machine"),
-        "expected canonical Nuka-Cola Vending Machine in library, got {library_names:?}"
+        "expected canonical Nuka-Cola Vending Machine in the loaded deck, got {loaded_names:?}"
     );
 }
 

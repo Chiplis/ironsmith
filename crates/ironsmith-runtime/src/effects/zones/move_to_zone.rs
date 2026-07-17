@@ -21,7 +21,7 @@ use crate::zone::Zone;
 
 use super::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, finalize_zone_change_move,
-    maybe_prompt_for_split_result_order, move_to_battlefield_with_options,
+    maybe_prompt_for_split_result_order, move_to_battlefield_batch_with_options,
     resolve_battlefield_entry_counters, take_recorded_zone_change,
 };
 pub use ironsmith_core::BattlefieldController;
@@ -65,7 +65,8 @@ fn order_library_move_objects(
             Ok(ordered)
         }
         LibraryPlacementOrder::ChosenBy(player) => {
-            let chooser = resolve_player_filter(game, player, ctx)?;
+            let chooser =
+                crate::effects::helpers::resolve_player_filter_as_chooser(game, player, ctx)?;
             let position = if to_top { "top" } else { "bottom" };
             let edge = if to_top { "topmost" } else { "bottom-most" };
             let items = object_ids
@@ -157,11 +158,16 @@ fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<Attac
     }
 
     for &object_id in &game.battlefield {
-        if let Some(object) = game.object(object_id)
-            && game.controller_of(object) == player_id
-            && object.has_card_type(CardType::Planeswalker)
-        {
-            targets.push(AttackTarget::Planeswalker(object_id));
+        if let Some(object) = game.object(object_id) {
+            if game.controller_of(object) == player_id
+                && object.has_card_type(CardType::Planeswalker)
+            {
+                targets.push(AttackTarget::Planeswalker(object_id));
+            } else if object.has_card_type(CardType::Battle)
+                && game.battle_protector(object_id) == Some(player_id)
+            {
+                targets.push(AttackTarget::Battle(object_id));
+            }
         }
     }
 
@@ -194,6 +200,13 @@ fn choose_attack_target_for_player(
                         .map(|object| object.name.to_string())
                         .unwrap_or_else(|| "a planeswalker".to_string());
                     format!("Attack {walker_name} controlled by {player_name}")
+                }
+                AttackTarget::Battle(battle_id) => {
+                    let battle_name = game
+                        .object(*battle_id)
+                        .map(|object| object.name.to_string())
+                        .unwrap_or_else(|| "a battle".to_string());
+                    format!("Attack {battle_name} protected by {player_name}")
                 }
             };
             SelectableOption::new(index, description)
@@ -257,6 +270,7 @@ fn enters_attacking_targets(game: &GameState, combat: &CombatState) -> Vec<Attac
             AttackTarget::Planeswalker(planeswalker) => game
                 .object(planeswalker)
                 .map(|object| game.controller_of(object)),
+            AttackTarget::Battle(battle) => game.battle_protector(battle),
         };
         if let Some(player) = defending_player
             && !defending_players.contains(&player)
@@ -282,6 +296,13 @@ fn enters_attacking_targets(game: &GameState, combat: &CombatState) -> Vec<Attac
                 )
             {
                 targets.push(AttackTarget::Planeswalker(object_id));
+            } else if game.object_has_card_type_with_effects(
+                object_id,
+                crate::types::CardType::Battle,
+                &all_effects,
+            ) && game.battle_protector(object_id) == Some(defender)
+            {
+                targets.push(AttackTarget::Battle(object_id));
             }
         }
     }
@@ -298,6 +319,10 @@ fn attack_target_description(game: &GameState, target: &AttackTarget) -> String 
             .object(*object_id)
             .map(|object| object.name.to_string())
             .unwrap_or_else(|| format!("planeswalker #{}", object_id.0)),
+        AttackTarget::Battle(object_id) => game
+            .object(*object_id)
+            .map(|object| object.name.to_string())
+            .unwrap_or_else(|| format!("battle #{}", object_id.0)),
     }
 }
 
@@ -387,6 +412,7 @@ impl EffectExecutor for MoveToZoneEffect {
         let mut any_replaced = false;
         let mut moved_source_lki = None;
         let mut ordered_library_results = Vec::new();
+        let mut battlefield_entries = Vec::new();
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
@@ -394,6 +420,9 @@ impl EffectExecutor for MoveToZoneEffect {
             };
             let stable_id = obj.stable_id;
             let from_zone = obj.zone;
+            let requested_zone = ctx
+                .simultaneous_zone_destination(object_id)
+                .unwrap_or(self.zone);
             let source_lki_before_move = if moves_source && object_id == ctx.source {
                 Some(
                     crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -414,7 +443,7 @@ impl EffectExecutor for MoveToZoneEffect {
                 game,
                 object_id,
                 from_zone,
-                self.zone,
+                requested_zone,
                 ctx.cause.clone(),
                 &mut ctx.decision_maker,
                 &additional_effects,
@@ -453,49 +482,12 @@ impl EffectExecutor for MoveToZoneEffect {
                         {
                             card.apply_face_down_cast_overlay();
                         }
-                        match move_to_battlefield_with_options(game, ctx, object_id, options) {
-                            BattlefieldEntryOutcome::Moved(new_id) => {
-                                if self.enters_attacking {
-                                    let target =
-                                        if let Some(attack_player) = configured_attack_player {
-                                            let targets =
-                                                attack_targets_for_player(game, attack_player);
-                                            choose_attack_target_for_player(
-                                                game,
-                                                ctx,
-                                                attack_player,
-                                                &targets,
-                                            )
-                                        } else {
-                                            choose_enters_attacking_target(game, ctx, new_id)
-                                        };
-                                    if let Some(target) = target
-                                        && let Some(combat) = game.combat.as_mut()
-                                    {
-                                        combat.attackers.push(AttackerInfo {
-                                            creature: new_id,
-                                            target,
-                                        });
-                                    }
-                                }
-                                ctx.refresh_target_snapshot(target_lki_before_move.clone());
-                                affected_memory.push(OutcomeObjectMemory::from_snapshot(
-                                    &target_lki_before_move,
-                                ));
-                                if let Some(snapshot) = source_lki_before_move.clone() {
-                                    moved_source_lki = Some(snapshot);
-                                }
-                                moved_ids.push(new_id);
-                            }
-                            BattlefieldEntryOutcome::Prevented => {
-                                if self.enters_face_down
-                                    && let Some(card) = game.object_mut(object_id)
-                                {
-                                    card.end_face_down_cast_overlay();
-                                }
-                                any_prevented = true;
-                            }
-                        }
+                        battlefield_entries.push((
+                            object_id,
+                            options,
+                            target_lki_before_move,
+                            source_lki_before_move,
+                        ));
                         continue;
                     }
 
@@ -575,6 +567,57 @@ impl EffectExecutor for MoveToZoneEffect {
                         .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
                 }
                 EventOutcome::NotApplicable => continue,
+            }
+        }
+
+        if !battlefield_entries.is_empty() {
+            let entry_outcomes = move_to_battlefield_batch_with_options(
+                game,
+                ctx,
+                battlefield_entries
+                    .iter()
+                    .map(|(object, options, _, _)| (*object, options.clone()))
+                    .collect(),
+            );
+            for ((object_id, _, target_lki_before_move, source_lki_before_move), outcome) in
+                battlefield_entries.into_iter().zip(entry_outcomes)
+            {
+                match outcome {
+                    BattlefieldEntryOutcome::Moved(new_id) => {
+                        if self.enters_attacking {
+                            let target = if let Some(attack_player) = configured_attack_player {
+                                let targets = attack_targets_for_player(game, attack_player);
+                                choose_attack_target_for_player(game, ctx, attack_player, &targets)
+                            } else {
+                                choose_enters_attacking_target(game, ctx, new_id)
+                            };
+                            if let Some(target) = target
+                                && let Some(combat) = game.combat.as_mut()
+                            {
+                                combat.attackers.push(AttackerInfo {
+                                    creature: new_id,
+                                    target,
+                                });
+                            }
+                        }
+                        ctx.refresh_target_snapshot(target_lki_before_move.clone());
+                        affected_memory
+                            .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                        if let Some(snapshot) = source_lki_before_move {
+                            moved_source_lki = Some(snapshot);
+                        }
+                        affected_ids.push(new_id);
+                        moved_ids.push(new_id);
+                    }
+                    BattlefieldEntryOutcome::Prevented => {
+                        if self.enters_face_down
+                            && let Some(card) = game.object_mut(object_id)
+                        {
+                            card.end_face_down_cast_overlay();
+                        }
+                        any_prevented = true;
+                    }
+                }
             }
         }
 

@@ -31,6 +31,7 @@ pub struct StaticAbilityModelInterpreter {
     model: CompiledStaticAbility,
     leaf_static_ability: Option<StaticAbility>,
     granted_inline_ability: Option<crate::ability::Ability>,
+    source_granted_inline_abilities: Vec<crate::ability::Ability>,
     enter_as_copy_spec: Option<super::EnterAsCopyAsEntersSpec>,
     level_abilities: Option<Vec<crate::ability::LevelAbility>>,
     equipment_grant_abilities: Option<Vec<StaticAbility>>,
@@ -126,6 +127,7 @@ impl StaticAbilityModelInterpreter {
     pub fn new(model: CompiledStaticAbility) -> Self {
         let leaf_static_ability = Self::cached_leaf_static_ability(&model);
         let granted_inline_ability = Self::cached_granted_inline_ability(&model);
+        let source_granted_inline_abilities = Self::cached_source_granted_inline_abilities(&model);
         let enter_as_copy_spec = Self::cached_enter_as_copy_spec(&model);
         let level_abilities = Self::cached_level_abilities(&model);
         let equipment_grant_abilities = Self::cached_equipment_grant_abilities(&model);
@@ -146,6 +148,7 @@ impl StaticAbilityModelInterpreter {
             model,
             leaf_static_ability,
             granted_inline_ability,
+            source_granted_inline_abilities,
             enter_as_copy_spec,
             level_abilities,
             equipment_grant_abilities,
@@ -312,6 +315,7 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::Partner
                 | StaticAbilityId::PartnerWith
                 | StaticAbilityId::StartYourEngines
+                | StaticAbilityId::SpaceSculptor
                 | StaticAbilityId::DoctorsCompanion
                 | StaticAbilityId::Assist
                 | StaticAbilityId::Ascend
@@ -384,6 +388,7 @@ impl StaticAbilityModelInterpreter {
                 crate::zone::Zone::Exile,
                 crate::zone::Zone::Command,
             ]),
+            StaticAbilityId::Dredge => ability.in_zones(vec![crate::zone::Zone::Graveyard]),
             StaticAbilityId::Grants => {
                 if let Some(spec) = static_ability.grant_spec()
                     && spec.filter.source
@@ -449,6 +454,25 @@ impl StaticAbilityModelInterpreter {
                 Self::cached_granted_inline_ability(ability)
             }
             _ => None,
+        }
+    }
+
+    fn cached_source_granted_inline_abilities(
+        model: &CompiledStaticAbility,
+    ) -> Vec<crate::ability::Ability> {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+                if grant.filter.source =>
+            {
+                std::iter::once(&grant.ability)
+                    .chain(grant.additional_abilities.iter())
+                    .map(Self::ability_from_model)
+                    .collect()
+            }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+                Self::cached_source_granted_inline_abilities(ability)
+            }
+            _ => Vec::new(),
         }
     }
 
@@ -920,6 +944,13 @@ impl StaticAbilityModelInterpreter {
                 let mut converted = crate::static_abilities::AttachedAbilityGrant::new(
                     Self::ability_from_model(&grant.ability),
                     grant.display.clone(),
+                )
+                .with_additional_abilities(
+                    grant
+                        .additional_abilities
+                        .iter()
+                        .map(Self::ability_from_model)
+                        .collect(),
                 );
                 if let Some(condition) = &grant.condition {
                     converted = converted.with_condition(condition.clone());
@@ -944,6 +975,17 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Escalate(spec) => {
                 StaticAbility::escalate(spec.clone())
             }
+            ironsmith_core::StaticAbilityPayload::BandsWithOther(filter) => {
+                StaticAbility::bands_with_other(filter.clone(), model.label.clone())
+            }
+            ironsmith_core::StaticAbilityPayload::Dredge(amount) => {
+                StaticAbility::dredge(*amount)
+            }
+            ironsmith_core::StaticAbilityPayload::CounterLimit {
+                counter_type,
+                maximum,
+                display,
+            } => StaticAbility::counter_limit_rule(*counter_type, *maximum, display.clone()),
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 let converted = StaticAbility::from_model((**ability).clone());
                 converted.with_condition(condition.clone()).unwrap_or_else(|| {
@@ -970,6 +1012,13 @@ impl StaticAbilityModelInterpreter {
                     Self::ability_from_model(&grant.ability),
                     grant.display.clone(),
                 )
+                .with_additional_abilities(
+                    grant
+                        .additional_abilities
+                        .iter()
+                        .map(Self::ability_from_model)
+                        .collect(),
+                )
                 .with_set_quantifier_surface(grant.set_quantifier_surface);
                 if let Some(condition) = &grant.condition {
                     converted = converted.with_condition(condition.clone());
@@ -992,6 +1041,15 @@ impl StaticAbilityModelInterpreter {
                     converted = converted.with_once_each_turn();
                 }
                 StaticAbility::copy_activated_abilities(converted)
+            }
+            ironsmith_core::StaticAbilityPayload::CopyStaticAbilityVariants(copy) => {
+                let converted = crate::static_abilities::CopyStaticAbilityVariants::new(
+                    copy.filter.clone(),
+                    copy.selectors.clone(),
+                    copy.display.clone(),
+                )
+                .with_exclude_source_id(copy.exclude_source_id);
+                StaticAbility::copy_static_ability_variants(converted)
             }
             ironsmith_core::StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
                 let converted =
@@ -1093,6 +1151,29 @@ impl StaticAbilityModelInterpreter {
                 Self::cant_attack_unless_condition_from_model(condition),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::BlockCost {
+                blockers,
+                blocker_is_attached_to_source,
+                attackers,
+                cost,
+                display,
+            } => {
+                if *blocker_is_attached_to_source {
+                    StaticAbility::attached_block_cost(
+                        blockers.clone(),
+                        attackers.clone(),
+                        cost.clone(),
+                        display.clone(),
+                    )
+                } else {
+                    StaticAbility::block_cost(
+                        blockers.clone(),
+                        attackers.clone(),
+                        cost.clone(),
+                        display.clone(),
+                    )
+                }
+            }
             ironsmith_core::StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
                 StaticAbility::may_choose_not_to_untap_during_untap_step(subject.clone())
             }
@@ -1206,6 +1287,10 @@ impl StaticAbilityModelInterpreter {
                 linked_trigger.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::EnlistAttack {
+                linked_trigger,
+                display,
+            } => StaticAbility::enlist_attack(linked_trigger.clone(), display.clone()),
             ironsmith_core::StaticAbilityPayload::EquipmentGrant(abilities) => {
                 StaticAbility::equipment_grant(
                     abilities
@@ -1227,12 +1312,28 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SoulbondSharedObjectAbility(ability) => {
                 StaticAbility::soulbond_shared_object_ability(Self::ability_from_model(ability))
             }
-            ironsmith_core::StaticAbilityPayload::RemoveAbilityForFilter { filter, ability } => {
-                StaticAbility::remove_ability(
+            ironsmith_core::StaticAbilityPayload::RemoveAbilityForFilter {
+                filter,
+                ability,
+                mode,
+            } => {
+                StaticAbility::remove_ability_with_mode(
                     filter.clone(),
                     StaticAbility::from_model((**ability).clone()),
+                    *mode,
                 )
             }
+            ironsmith_core::StaticAbilityPayload::RemoveObjectAbilitiesForFilter {
+                filter,
+                abilities,
+                display,
+                mode,
+            } => StaticAbility::remove_object_abilities_with_mode(
+                filter.clone(),
+                abilities.iter().map(Self::ability_from_model).collect(),
+                display.clone(),
+                *mode,
+            ),
             ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter) => {
                 StaticAbility::remove_all_abilities(filter.clone())
             }
@@ -1312,13 +1413,22 @@ impl StaticAbilityModelInterpreter {
                 StaticAbility::this_spell_x_minimum(minimum.clone(), display.clone())
             }
             ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
-                StaticAbility::die_roll_result_adjustment(
-                    spec.player.clone(),
-                    spec.life_cost,
-                    spec.amount,
-                    spec.once_each_turn,
-                    spec.display.clone(),
-                )
+                if spec.reroll {
+                    StaticAbility::die_roll_reroll(
+                        spec.player.clone(),
+                        spec.mana_cost.clone().unwrap_or_default(),
+                        spec.once_each_turn,
+                        spec.display.clone(),
+                    )
+                } else {
+                    StaticAbility::die_roll_result_adjustment(
+                        spec.player.clone(),
+                        spec.life_cost,
+                        spec.amount,
+                        spec.once_each_turn,
+                        spec.display.clone(),
+                    )
+                }
             }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
@@ -1583,6 +1693,15 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::LoseGameReplacement {
+                replacement_effects,
+                optional,
+                display,
+            } => StaticAbility::lose_game_replacement(
+                replacement_effects.clone(),
+                *optional,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::DrawReplacementRevealTopMatchingToHandRestBottom {
                 count,
                 filter,
@@ -1758,6 +1877,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             return ability.id();
         }
         self.model.id.unwrap_or(StaticAbilityId::RuleFallbackText)
+    }
+
+    fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
+        Some(&self.model)
     }
 
     fn prefers_card_name_subject(&self) -> bool {
@@ -2072,9 +2195,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         game: &GameState,
         source: ObjectId,
         controller: PlayerId,
-    ) -> Option<crate::decisions::context::BooleanContext> {
-        self.leaf_static_ability()?
-            .optional_attack_cost_prompt(game, source, controller)
+        attacking_creatures: &[ObjectId],
+    ) -> Option<crate::decisions::context::DecisionContext> {
+        self.leaf_static_ability()?.optional_attack_cost_prompt(
+            game,
+            source,
+            controller,
+            attacking_creatures,
+        )
     }
 
     fn pay_optional_attack_cost(
@@ -2082,14 +2210,39 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         game: &mut GameState,
         source: ObjectId,
         controller: PlayerId,
+        attacking_creatures: &[ObjectId],
         trigger_queue: &mut crate::triggers::TriggerQueue,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<Result<(), String>> {
         self.leaf_static_ability()?.pay_optional_attack_cost(
             game,
             source,
             controller,
+            attacking_creatures,
             trigger_queue,
+            decision_maker,
         )
+    }
+
+    fn block_cost_for_declaration(
+        &self,
+        game: &GameState,
+        ability_source: ObjectId,
+        ability_controller: PlayerId,
+        blocker: ObjectId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        self.leaf_static_ability()?.block_cost_for_declaration(
+            game,
+            ability_source,
+            ability_controller,
+            blocker,
+            attacker,
+        )
+    }
+
+    fn block_cost_model(&self) -> Option<&super::BlockCost> {
+        self.leaf_static_ability()?.block_cost_model()
     }
 
     fn has_reach(&self) -> bool {
@@ -2144,6 +2297,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn counter_limit(&self) -> Option<(crate::object::CounterType, u32)> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CounterLimit {
+                counter_type,
+                maximum,
+                ..
+            } => Some((*counter_type, *maximum)),
+            _ => self.leaf_static_ability()?.counter_limit(),
+        }
+    }
+
     fn has_flying(&self) -> bool {
         self.id() == StaticAbilityId::Flying
     }
@@ -2171,6 +2335,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
         self.granted_inline_ability.as_ref()
+    }
+
+    fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {
+        self.source_granted_inline_abilities.iter().collect()
     }
 
     fn enter_as_copy_as_enters(&self) -> Option<&super::EnterAsCopyAsEntersSpec> {
@@ -2304,6 +2472,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn companion_deck_condition(&self) -> Option<&super::CompanionDeckCondition> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::Companion(condition) => Some(condition),
+            _ => None,
+        }
+    }
+
     fn reveal_drawn_card_spec(&self) -> Option<super::RevealDrawnCardSpec> {
         match self.payload() {
             ironsmith_core::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
@@ -2339,7 +2514,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 Some(super::DieRollResultAdjustmentSpec {
                     player: spec.player.clone(),
                     life_cost: spec.life_cost,
+                    mana_cost: spec.mana_cost.clone(),
                     amount: spec.amount,
+                    reroll: spec.reroll,
                     once_each_turn: spec.once_each_turn,
                 })
             }

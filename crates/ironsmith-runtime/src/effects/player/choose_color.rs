@@ -4,7 +4,6 @@ use crate::color::Color;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
@@ -36,7 +35,8 @@ impl EffectExecutor for ChooseColorEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let options: Vec<SelectableOption> = Self::color_options()
             .iter()
             .enumerate()

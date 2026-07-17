@@ -47,6 +47,11 @@ impl EffectExecutor for MeleeEffect {
                         attacked_opponents.insert(game.controller_of(planeswalker));
                     }
                 }
+                AttackTarget::Battle(battle_id) => {
+                    if let Some(protector) = game.battle_protector(battle_id) {
+                        attacked_opponents.insert(protector);
+                    }
+                }
             }
         }
 

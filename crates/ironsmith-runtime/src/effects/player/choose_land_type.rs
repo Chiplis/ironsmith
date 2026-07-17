@@ -3,7 +3,6 @@
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::types::Subtype;
@@ -33,7 +32,8 @@ impl EffectExecutor for ChooseLandTypeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let subtype_options = land_type_options(self.exclude_basic);
         if subtype_options.is_empty() {
             return Ok(EffectOutcome::resolved());

@@ -462,6 +462,10 @@ fn normalize_scored_compiled_line(line: String) -> String {
         || lower_for_common.contains("unblocked creature")
         || lower_for_common.contains("taps a forest for mana")
         || lower_for_common.contains("that player's exile")
+        || lower_for_common.contains("return it from graveyard to the battlefield, and put ")
+        || lower_for_common.contains(". those permanents are ")
+        || (lower_for_common.contains(". it has base power and toughness ")
+            && lower_for_common.contains(" and becomes a "))
     {
         normalize_common_semantic_phrasing(&line)
     } else {

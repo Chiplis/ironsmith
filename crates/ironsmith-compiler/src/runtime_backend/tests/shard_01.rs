@@ -3333,7 +3333,9 @@ pub(super) fn lonis_keeps_the_target_opponent_as_the_revealed_library_owner()
 
     let battlefield_move = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::ForEachTaggedEffect>())
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+        })
         .and_then(|for_each| {
             for_each
                 .effects
@@ -3763,4 +3765,63 @@ pub(super) fn rewrite_anthem_grant_static_parses_escape_tail_without_word_view()
         debug.contains("Grants") || debug.contains("grants"),
         "{debug}"
     );
+}
+
+#[test]
+pub(super) fn triggering_object_controller_target_choice_keeps_typed_chooser_and_filter()
+-> Result<(), CardTextError> {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Controller Choice Exchange")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever an artifact, creature, or enchantment enters, its controller chooses target permanent another player controls that shares a card type with it. Exchange control of those permanents.",
+        )?;
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected triggered ability");
+    let target_only = triggered
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| &segment.default_effects)
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()?
+                        .effect
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                })
+        })
+        .expect("expected target-only declaration");
+
+    assert!(target_only.explicit_declaration);
+    let chooser = target_only.chooser.as_ref().expect("typed chooser");
+    assert!(matches!(
+        chooser,
+        crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+            if tag.as_str() == "triggering"
+    ));
+    let crate::target::ChooseSpec::Object(filter) = target_only.target.base() else {
+        panic!(
+            "expected permanent target filter, got {:?}",
+            target_only.target
+        );
+    };
+    let Some(crate::target::PlayerFilter::Excluding { base, excluded }) = &filter.controller else {
+        panic!("expected another-player controller exclusion, got {filter:?}");
+    };
+    assert_eq!(base.as_ref(), &crate::target::PlayerFilter::Any);
+    assert_eq!(excluded.as_ref(), chooser);
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == "triggering"
+            && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
+    }));
+
+    Ok(())
 }

@@ -99,11 +99,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
         } => {
             let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
-            let mut resolved_filter = if matches!(player, PlayerAst::Implicit) {
-                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
-            } else {
-                subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
-            };
+            let mut resolved_filter =
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             }
@@ -150,10 +147,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     subject.bind_revealed_hand_choice_filter(filter, ctx)?
                 } else if chooses_tagged_object_pool(filter) {
                     subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
-                } else if matches!(player, PlayerAst::Implicit) {
-                    subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 } else {
-                    subject.bind_battlefield_filter_with_default_controller(filter, ctx)?
+                    subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?
                 };
             let chooses_last_exiled_collection =
                 normalize_choice_from_last_exiled_collection(ctx, &mut resolved_filter);
@@ -216,7 +211,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
             let count_value = count_value
                 .as_ref()
-                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .map(|value| subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx))
                 .transpose()?;
             let (mut effects, choices) = if let Some(zones) = cross_zone_choices {
                 compile_choose_objects_across_zones_with_subject(
@@ -259,7 +254,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     false,
                 )
             } else {
-                let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
+                // The executable choice already carries its primary zone.
+                // Leave an implicit battlefield out of the object predicate
+                // so renderers can distinguish `choose a permanent` from an
+                // explicitly authored `choose ... on the battlefield`.
+                let choice_zone = resolved_filter.zone.unwrap_or(Zone::Battlefield);
                 compile_choose_objects_with_subject(
                     subject,
                     resolved_filter,
@@ -371,7 +370,17 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             zones,
             search_mode,
         } => {
-            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let subject = if *player == PlayerAst::Implicit {
+                // An imperative cross-zone choice (most notably "Search target
+                // player's library ...") is performed by the spell's
+                // controller. The player named after `search` is represented
+                // independently by the object's owner filter, so an ambient
+                // iterator must not capture the otherwise implicit chooser.
+                LoweredSubject::from_resolved(PlayerFilter::You, Vec::new())
+                    .as_role(SubjectRole::Chooser)
+            } else {
+                LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?
+            };
             let chooser = subject.as_chooser();
             let references_revealed_hand = filter.zone == Some(Zone::Hand)
                 && filter.owner.is_none()

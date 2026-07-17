@@ -92,6 +92,15 @@ const THE_RING_TEMPTS_YOU_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["the", "ring", "tempts", "you"]);
 const CHAOS_ENSUES_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["chaos", "ensues"]);
+const YOU_ENCOUNTER_PHENOMENON_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["you", "encounter"]);
+const YOU_SET_THIS_SCHEME_IN_MOTION_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["you", "set", "this", "scheme", "in", "motion"],
+            &["you", "set", "this", "scheme", "in", "motion", "again"],
+        ]
+);
 const THIS_BECOMES_TAPPED_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -390,6 +399,8 @@ const YOU_CLAIM_ATTRACTION_PRIZE_TRIGGER_PATTERN: ClauseShape<'static> = clause_
             &["you", "claimed", "the", "prize", "of", "an", "attraction"],
         ]
 );
+const YOU_MANIFEST_DREAD_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["you", "manifest", "dread"]);
 const EXPLOIT_CREATURE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "creature"], &["creature"]]);
 const THIS_EXPLOITS_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -459,12 +470,19 @@ const ATTACKS_OPPONENT_OR_PLANESWALKER_TAIL_PATTERN: ClauseShape<'static> = clau
 );
 const ATTACKS_PLANESWALKER_OR_BATTLE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "planeswalker"], &["a", "battle"]]);
-const THIS_BLOCKS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["this", "creature", "blocks"], &["this", "blocks"]]);
+const THIS_BLOCKS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["this", "creature", "blocks"],
+            &["this", "token", "blocks"],
+            &["this", "blocks"],
+        ]
+);
 const THIS_BLOCKS_OR_BECOMES_BLOCKED_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
             &["this", "creature", "blocks", "or", "becomes", "blocked"],
+            &["this", "token", "blocks", "or", "becomes", "blocked"],
             &["this", "blocks", "or", "becomes", "blocked"],
         ]
 );
@@ -474,6 +492,7 @@ const THIS_BLOCKS_OR_BECOMES_BLOCKED_BY_TRIGGER_PREFIX: ClauseShape<'static> = c
             &[
                 "this", "creature", "blocks", "or", "becomes", "blocked", "by",
             ],
+            &["this", "token", "blocks", "or", "becomes", "blocked", "by",],
             &["this", "blocks", "or", "becomes", "blocked", "by"],
         ]
 );
@@ -481,6 +500,7 @@ const THIS_BECOMES_BLOCKED_BY_TRIGGER_PREFIX: ClauseShape<'static> = clause_shap
     prefix_any
         & [
             &["this", "creature", "becomes", "blocked", "by"],
+            &["this", "token", "becomes", "blocked", "by"],
             &["this", "becomes", "blocked", "by"],
         ]
 );
@@ -762,6 +782,7 @@ fn parse_player_or_object_damage_recipient(
 fn parse_damage_source_trigger_filter_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<Option<(ObjectFilter, crate::triggers::DamageSourceSurface)>, CardTextError> {
+    let one_or_more = has_leading_one_or_more(subject_tokens);
     let source_surface =
         crate::runtime_backend::grammar::trigger_subjects::parse_damage_source_surface(
             subject_tokens,
@@ -775,6 +796,7 @@ fn parse_damage_source_trigger_filter_lexed(
         // allowing damage sources from any appropriate zone.
         filter.zone = None;
     }
+    filter.set_union_one_or_more(one_or_more);
     Ok(Some((filter, source_surface)))
 }
 
@@ -813,6 +835,11 @@ const PASSIVE_COUNTER_PUT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
             &["counters", "are", "put", "onto"],
         ]]
 );
+const ONE_OR_MORE_COUNTERS_REMOVED_FROM_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["one", "or", "more", "counters", "are", "removed", "from"]);
+const A_COUNTER_REMOVED_FROM_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["a", "counter", "is", "removed", "from"]);
+const THIS_WAY_EXACT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "way"]);
 const SHARED_SUBJECT_ETB_OR_COMBAT_DAMAGE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -1707,9 +1734,19 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(None);
         }
 
+        let timing = clause_words
+            .windows(2)
+            .any(|words| words == ["during", "combat"])
+            .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
+
         let actor = parse_subject_clause_player_filter(clause_words);
         let parse_filter =
             |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
+                let envelope =
+                    crate::runtime_backend::grammar::trigger_subjects::parse_spell_filter_envelope(
+                        filter_tokens,
+                    );
+                let filter_tokens = &filter_tokens[..envelope.end];
                 let filter_words = ActivationRestrictionCompatWords::new(filter_tokens);
                 let filter_words = filter_words.to_word_refs();
                 let is_unqualified_spell =
@@ -1740,6 +1777,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 let cast_trigger = TriggerSpec::SpellCast {
                     filter: filter.clone(),
                     caster: actor.clone(),
+                    timing,
                     during_turn: None,
                     min_spells_this_turn: None,
                     exact_spells_this_turn: None,
@@ -1779,6 +1817,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(Some(TriggerSpec::SpellCast {
                 filter,
                 caster: actor,
+                timing,
                 during_turn: None,
                 min_spells_this_turn: None,
                 exact_spells_this_turn: None,
@@ -1829,6 +1868,47 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Err(CardTextError::ParseError(
             "empty trigger clause".to_string(),
         ));
+    }
+
+    // "... removed from this source this way" is a provenance-qualified
+    // counter event, not a damage event whose subject happens to deal damage
+    // in the following effect sentence.
+    let counter_removed_source = [
+        (
+            7usize,
+            true,
+            ONE_OR_MORE_COUNTERS_REMOVED_FROM_PREFIX_PATTERN,
+        ),
+        (5usize, false, A_COUNTER_REMOVED_FROM_PREFIX_PATTERN),
+    ]
+    .into_iter()
+    .find_map(|(source_word_start, one_or_more, prefix)| {
+        if words.len() <= source_word_start + 2
+            || !trigger_pattern_accepts(&words[..source_word_start], prefix)
+            || !trigger_pattern_accepts(&words[words.len() - 2..], THIS_WAY_EXACT_PATTERN)
+        {
+            return None;
+        }
+        let source_word_end = words.len() - 2;
+        let source_words = &words[source_word_start..source_word_end];
+        if !is_source_reference_words(source_words) {
+            return None;
+        }
+        let source_token_start = trigger_word_token_start(tokens, source_word_start)?;
+        let source_token_end = trigger_word_token_start(tokens, source_word_end)?;
+        let filter = source_reference_surface_for_trigger_subject(
+            &tokens[source_token_start..source_token_end],
+        )
+        .map(ObjectFilter::source_with_surface)
+        .unwrap_or_else(ObjectFilter::source);
+        Some(TriggerSpec::CounterRemovedFrom {
+            filter,
+            one_or_more,
+            caused_by_source: true,
+        })
+    });
+    if let Some(trigger) = counter_removed_source {
+        return Ok(trigger);
     }
 
     if trigger_pattern_accepts(&words, CRAFT_EXILED_FROM_BATTLEFIELD_TRIGGER_PATTERN) {
@@ -2138,6 +2218,19 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if matches!(
+        words.as_slice(),
+        ["another", "ability", "triggers"] | ["another", "triggered", "ability", "triggers"]
+    ) {
+        return Ok(TriggerSpec::AbilityTriggered { another: true });
+    }
+    if matches!(
+        words.as_slice(),
+        ["an", "ability", "triggers"] | ["a", "triggered", "ability", "triggers"]
+    ) {
+        return Ok(TriggerSpec::AbilityTriggered { another: false });
+    }
+
     if let Some(activate_idx) = trigger_atom_word(&words, TriggerClauseAtom::Activate) {
         let subject_tokens = &tokens[..activate_idx];
         let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
@@ -2157,6 +2250,15 @@ pub(crate) fn parse_trigger_clause_lexed(
                     filter,
                     non_mana_only: false,
                     loyalty_only: true,
+                    activation_cost_has_tap,
+                });
+            }
+            if let Some(marker) = parse_named_ability_trigger_tail_lexed(ability_tail_tokens) {
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter: ObjectFilter::default().with_ability_marker(marker),
+                    non_mana_only: false,
+                    loyalty_only: false,
                     activation_cost_has_tap,
                 });
             }
@@ -2276,13 +2378,23 @@ pub(crate) fn parse_trigger_clause_lexed(
                         });
                     }
 
+                    let target_one_or_more = has_leading_one_or_more(&target_tokens);
                     let target_tokens = strip_leading_one_or_more_lexed(&target_tokens);
-                    let target_filter = parse_object_filter_lexed(target_tokens, false).map_err(|_| {
-                        CardTextError::ParseError(format!(
-                            "unsupported combat damage recipient filter in trigger clause (clause: '{}')",
-                            words.join(" ")
-                        ))
-                    })?;
+                    let target_words =
+                        ActivationRestrictionCompatWords::new(target_tokens).to_word_refs();
+                    let source_surface = source_reference_surface_for_words(&target_words)
+                        .or_else(|| this_source_surface_for_words(&target_words));
+                    let mut target_filter = if let Some(surface) = source_surface {
+                        ObjectFilter::source_with_surface(surface)
+                    } else {
+                        parse_object_filter_lexed(target_tokens, false).map_err(|_| {
+                            CardTextError::ParseError(format!(
+                                "unsupported combat damage recipient filter in trigger clause (clause: '{}')",
+                                words.join(" ")
+                            ))
+                        })?
+                    };
+                    target_filter.set_union_one_or_more(target_one_or_more);
                     return Ok(match source_filter {
                         Some(source) => TriggerSpec::DealsCombatDamageTo {
                             source,
@@ -3455,6 +3567,20 @@ pub(crate) fn parse_trigger_clause_lexed(
         });
     }
 
+    if trigger_pattern_accepts(&words, YOU_ENCOUNTER_PHENOMENON_TRIGGER_PATTERN) {
+        return Ok(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::EncounterPhenomenon,
+            player: PlayerFilter::You,
+        });
+    }
+
+    if trigger_pattern_accepts(&words, YOU_SET_THIS_SCHEME_IN_MOTION_TRIGGER_PATTERN) {
+        return Ok(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::SetSchemeInMotion,
+            player: PlayerFilter::You,
+        });
+    }
+
     if let Some(cycle_word_idx) =
         trigger_keyword_action_word(&words, crate::events::KeywordActionKind::Cycle)
     {
@@ -3850,6 +3976,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(TriggerSpec::DealsDamageToPlayer {
                 source: ObjectFilter::default(),
                 player: PlayerFilter::You,
+                source_surface: crate::triggers::DamageSourceSurface::Filter,
             });
         }
         let subject_tokens = &tokens[..is_token_idx];
@@ -3857,6 +3984,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             return Ok(TriggerSpec::DealsDamageToPlayer {
                 source: ObjectFilter::default(),
                 player,
+                source_surface: crate::triggers::DamageSourceSurface::Filter,
             });
         }
         if let Some(filter) = parse_trigger_subject_filter_lexed(subject_tokens)? {
@@ -3912,6 +4040,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         && let Some(to_idx) = trigger_atom_token(tokens, TriggerClauseAtom::To)
     {
         let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
+        let target_one_or_more = has_leading_one_or_more(&target_tokens);
         if target_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing damage recipient filter in trigger clause (clause: '{}')",
@@ -3940,12 +4069,15 @@ pub(crate) fn parse_trigger_clause_lexed(
                 amount: None,
             });
         }
-        let target_filter = parse_object_filter_lexed(&target_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported damage recipient filter in trigger clause (clause: '{}')",
-                words.join(" ")
-            ))
-        })?;
+        let mut target_filter =
+            parse_object_filter_lexed(strip_leading_one_or_more_lexed(&target_tokens), false)
+                .map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported damage recipient filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
+        target_filter.set_union_one_or_more(target_one_or_more);
         return Ok(TriggerSpec::ThisDealsDamageTo(target_filter));
     }
 
@@ -3971,6 +4103,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 ActivationRestrictionCompatWords::new(&tokens[deals_idx + 1..damage_idx])
                     .to_word_refs();
             let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
+            let target_one_or_more = has_leading_one_or_more(&target_tokens);
             let target_view = ActivationRestrictionCompatWords::new(&target_tokens);
             let target_words = target_view.to_word_refs();
             if trigger_pattern_accepts(&amount_words, NONCOMBAT_DAMAGE_AMOUNT_PATTERN)
@@ -3992,6 +4125,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 let player_trigger = TriggerSpec::DealsDamageToPlayer {
                     source: source.clone(),
                     player,
+                    source_surface,
                 };
                 let object_trigger = TriggerSpec::DealsDamageTo {
                     source,
@@ -4005,14 +4139,21 @@ pub(crate) fn parse_trigger_clause_lexed(
                 });
             }
             if let Some(player) = parse_trigger_subject_player_filter(&target_words)
-                && let Some((source, _)) = parse_damage_source_trigger_filter_lexed(subject_tokens)?
-            {
-                return Ok(TriggerSpec::DealsDamageToPlayer { source, player });
-            }
-            if let Ok(target) = parse_object_filter_lexed(&target_tokens, false)
                 && let Some((source, source_surface)) =
                     parse_damage_source_trigger_filter_lexed(subject_tokens)?
             {
+                return Ok(TriggerSpec::DealsDamageToPlayer {
+                    source,
+                    player,
+                    source_surface,
+                });
+            }
+            if let Ok(mut target) =
+                parse_object_filter_lexed(strip_leading_one_or_more_lexed(&target_tokens), false)
+                && let Some((source, source_surface)) =
+                    parse_damage_source_trigger_filter_lexed(subject_tokens)?
+            {
+                target.set_union_one_or_more(target_one_or_more);
                 return Ok(TriggerSpec::DealsDamageTo {
                     source,
                     target,
@@ -4020,10 +4161,15 @@ pub(crate) fn parse_trigger_clause_lexed(
                 });
             }
         }
-        return Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
-            Some(filter) => TriggerSpec::DealsDamage(filter),
-            None => TriggerSpec::ThisDealsDamage,
-        });
+        return Ok(
+            match parse_damage_source_trigger_filter_lexed(subject_tokens)? {
+                Some((source, source_surface)) => TriggerSpec::DealsDamage {
+                    source,
+                    source_surface,
+                },
+                None => TriggerSpec::ThisDealsDamage,
+            },
+        );
     }
 
     if trigger_pattern_accepts(&words, YOU_GAIN_LIFE_TRIGGER_PATTERN) {
@@ -4267,11 +4413,58 @@ pub(crate) fn parse_trigger_clause_lexed(
                     return Ok(TriggerSpec::PlayerRollsResult { player, result });
                 }
                 Some(RollResultShape::UnspecifiedDie) => {
-                    return Ok(TriggerSpec::PlayerRollsDie { player });
+                    return Ok(TriggerSpec::PlayerRollsDie {
+                        player,
+                        one_or_more: false,
+                    });
+                }
+                Some(RollResultShape::OneOrMoreDice) => {
+                    return Ok(TriggerSpec::PlayerRollsDie {
+                        player,
+                        one_or_more: true,
+                    });
                 }
                 None => {}
             }
         }
+    }
+
+    if let Some(result_idx) = words.iter().position(|word| {
+        word.eq_ignore_ascii_case("win")
+            || word.eq_ignore_ascii_case("wins")
+            || word.eq_ignore_ascii_case("lose")
+            || word.eq_ignore_ascii_case("loses")
+    }) && words[result_idx + 1..]
+        .iter()
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        == ["a", "coin", "flip"]
+        && let Some(player) = parse_trigger_subject_player_filter(&words[..result_idx])
+    {
+        let won = words[result_idx].eq_ignore_ascii_case("win")
+            || words[result_idx].eq_ignore_ascii_case("wins");
+        return Ok(TriggerSpec::PlayerCoinFlipResult { player, won });
+    }
+
+    if trigger_pattern_accepts(
+        &words,
+        clause_shape!(exact & ["this", "creature", "enlists", "a", "creature"]),
+    ) {
+        return Ok(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::Enlist,
+            player: PlayerFilter::You,
+        });
+    }
+
+    // "Manifest dread" is one indivisible keyword action. Keep this exact
+    // two-word shape ahead of the generic final-word dispatch so an ordinary
+    // manifest action can never satisfy a manifest-dread observer.
+    if trigger_pattern_accepts(&words, YOU_MANIFEST_DREAD_TRIGGER_PATTERN) {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ManifestDread,
+            player: PlayerFilter::You,
+            source_filter: None,
+        });
     }
 
     if let Some(last_word) = words.last().copied()
@@ -4891,6 +5084,10 @@ fn parse_loyalty_ability_trigger_tail_lexed(
         ))
     })?;
     Ok(Some(owner_filter))
+}
+
+fn parse_named_ability_trigger_tail_lexed(tail_tokens: &[OwnedLexToken]) -> Option<String> {
+    trigger_grammar::parse_named_ability_tail(tail_tokens).map(|tail| tail.marker)
 }
 
 fn parse_possessive_ability_trigger_tail_lexed(

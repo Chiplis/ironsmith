@@ -97,6 +97,10 @@ impl EffectExecutor for LookAtTopCardsEffect {
         }
         Ok(outcome)
     }
+
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]
@@ -104,12 +108,17 @@ mod tests {
     use super::*;
     use crate::card::CardBuilder;
     use crate::decision::DecisionMaker;
-    use crate::effect::Effect;
-    use crate::effects::{ForEachObject, ForPlayersEffect};
+    use crate::effect::{ChoiceCount, Effect};
+    use crate::effects::{
+        ChooseObjectsEffect, ForEachObject, ForPlayersEffect, MoveToZoneEffect, ResolvedTarget,
+        SequenceEffect,
+    };
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaSymbol;
     use crate::tag::TagKey;
-    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+    use crate::target::{
+        ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+    };
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -161,6 +170,37 @@ mod tests {
         }
     }
 
+    fn add_named_card_to_library(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        id: u32,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(id), name).build();
+        game.create_object_from_card(&card, owner, Zone::Library)
+    }
+
+    #[derive(Default)]
+    struct CaptureSingletonChooser {
+        choosers: Vec<PlayerId>,
+    }
+
+    impl DecisionMaker for CaptureSingletonChooser {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<crate::ids::ObjectId> {
+            self.choosers.push(ctx.player);
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(1)
+                .collect()
+        }
+    }
+
     fn add_typed_card_to_library(
         game: &mut GameState,
         owner: PlayerId,
@@ -194,6 +234,119 @@ mod tests {
                 .map(|snapshots| snapshots.len()),
             Some(2)
         );
+    }
+
+    #[test]
+    fn exact_singleton_look_program_moves_one_card_and_leaves_its_sibling() {
+        for target_player_library in [false, true] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let alice_cards = [
+                add_named_card_to_library(&mut game, alice, "Alice Lower", 21_001),
+                add_named_card_to_library(&mut game, alice, "Alice Top", 21_002),
+            ];
+            let bob_cards = [
+                add_named_card_to_library(&mut game, bob, "Bob Lower", 21_003),
+                add_named_card_to_library(&mut game, bob, "Bob Top", 21_004),
+            ];
+            let library_owner = if target_player_library { bob } else { alice };
+            let watched_cards = if target_player_library {
+                bob_cards
+            } else {
+                alice_cards
+            };
+            let watched_stable_ids = watched_cards
+                .map(|id| game.object(id).expect("looked card should exist").stable_id);
+            let other_owner = if target_player_library { alice } else { bob };
+            let other_library_before = game
+                .player(other_owner)
+                .expect("other player should exist")
+                .library
+                .clone();
+
+            let looked_tag = crate::TagKey::from("looked_pool");
+            let selected_tag = crate::TagKey::from("looked_selected");
+            let look_player = if target_player_library {
+                PlayerFilter::target_player()
+            } else {
+                PlayerFilter::You
+            };
+            let owner_filter = if target_player_library {
+                PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any))
+            } else {
+                PlayerFilter::You
+            };
+            let program = SequenceEffect::new(vec![
+                Effect::look_at_top_cards(look_player, 2, looked_tag.clone()),
+                Effect::new(
+                    ChooseObjectsEffect::new(
+                        ObjectFilter::tagged(looked_tag)
+                            .in_zone(Zone::Library)
+                            .owned_by(owner_filter),
+                        ChoiceCount::exactly(1),
+                        PlayerFilter::You,
+                        selected_tag.clone(),
+                    )
+                    .in_zone(Zone::Library),
+                ),
+                Effect::new(MoveToZoneEffect::new(
+                    ChooseSpec::Tagged(selected_tag),
+                    Zone::Graveyard,
+                    false,
+                )),
+            ]);
+            let source = game.new_object_id();
+            let mut dm = CaptureSingletonChooser::default();
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            if target_player_library {
+                ctx.targets.push(ResolvedTarget::Player(bob));
+            }
+            program
+                .execute(&mut game, &mut ctx)
+                .expect("exact singleton looked-card program should resolve");
+            drop(ctx);
+
+            assert_eq!(dm.choosers, vec![alice]);
+            let resulting_zones = watched_stable_ids.map(|stable_id| {
+                let current = game
+                    .find_object_by_stable_id(stable_id)
+                    .expect("looked card should remain in the game");
+                game.object(current)
+                    .expect("current card should exist")
+                    .zone
+            });
+            assert_eq!(
+                resulting_zones
+                    .iter()
+                    .filter(|zone| **zone == Zone::Graveyard)
+                    .count(),
+                1,
+                "exactly the selected card should move"
+            );
+            assert_eq!(
+                resulting_zones
+                    .iter()
+                    .filter(|zone| **zone == Zone::Library)
+                    .count(),
+                1,
+                "the unselected sibling should remain in its library"
+            );
+            assert_eq!(
+                game.player(library_owner)
+                    .expect("library owner should exist")
+                    .graveyard
+                    .len(),
+                1
+            );
+            assert_eq!(
+                game.player(other_owner)
+                    .expect("other player should exist")
+                    .library,
+                other_library_before,
+                "the unrelated player's library must not be touched"
+            );
+        }
     }
 
     #[test]

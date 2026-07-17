@@ -1041,23 +1041,142 @@ fn is_secret_choice_related_predicate(predicate: &PredicateAst) -> bool {
     matches!(predicate, PredicateAst::SecretChoicesMatch)
 }
 
+fn compiled_vote_option_effect_uses_iterated_player(
+    effect: &Effect,
+    iterated_player_bound: bool,
+) -> bool {
+    let nested_uses_iterated_player = |effects: &[Effect], bound| {
+        effects
+            .iter()
+            .any(|effect| compiled_vote_option_effect_uses_iterated_player(effect, bound))
+    };
+
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return nested_uses_iterated_player(&sequence.effects, iterated_player_bound);
+    }
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        return (!iterated_player_bound
+            && may
+                .decider
+                .as_ref()
+                .is_some_and(PlayerFilter::mentions_iterated_player))
+            || nested_uses_iterated_player(&may.effects, iterated_player_bound);
+    }
+    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() {
+        return (!iterated_player_bound && unless_pays.player.mentions_iterated_player())
+            || nested_uses_iterated_player(&unless_pays.effects, iterated_player_bound);
+    }
+    if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect<Effect>>()
+    {
+        return (!iterated_player_bound && unless_action.player.mentions_iterated_player())
+            || nested_uses_iterated_player(&unless_action.effects, iterated_player_bound)
+            || nested_uses_iterated_player(&unless_action.alternative, iterated_player_bound);
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        return (!iterated_player_bound && value_mentions_iterated_player(&repeat.count))
+            || nested_uses_iterated_player(&repeat.effects, iterated_player_bound);
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+        return nested_uses_iterated_player(&repeat.effects, iterated_player_bound);
+    }
+    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>() {
+        return (!iterated_player_bound && for_players.filter.mentions_iterated_player())
+            || nested_uses_iterated_player(&for_players.effects, true);
+    }
+    if let Some(for_each_object) = effect.downcast_ref::<crate::effects::ForEachObject>() {
+        return (!iterated_player_bound
+            && object_filter_mentions_iterated_player(&for_each_object.filter))
+            || nested_uses_iterated_player(&for_each_object.effects, iterated_player_bound);
+    }
+    if let Some(for_each_tagged) =
+        effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+    {
+        return nested_uses_iterated_player(&for_each_tagged.effects, iterated_player_bound);
+    }
+    if let Some(for_each_controller) =
+        effect.downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect<Effect>>()
+    {
+        return nested_uses_iterated_player(&for_each_controller.effects, true);
+    }
+    if let Some(for_each_player) =
+        effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<Effect>>()
+    {
+        return nested_uses_iterated_player(&for_each_player.effects, true);
+    }
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        return (!iterated_player_bound
+            && condition_mentions_iterated_player(&conditional.condition))
+            || nested_uses_iterated_player(&conditional.if_true, iterated_player_bound)
+            || nested_uses_iterated_player(&conditional.if_false, iterated_player_bound);
+    }
+    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        return nested_uses_iterated_player(&if_effect.then, true)
+            || nested_uses_iterated_player(&if_effect.else_, true);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return compiled_vote_option_effect_uses_iterated_player(
+            &tagged.effect,
+            iterated_player_bound,
+        );
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return compiled_vote_option_effect_uses_iterated_player(
+            &with_id.effect,
+            iterated_player_bound,
+        );
+    }
+    if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        return choose_mode
+            .modes
+            .iter()
+            .any(|mode| nested_uses_iterated_player(&mode.effects, iterated_player_bound));
+    }
+
+    !iterated_player_bound && effect_mentions_iterated_player(effect)
+}
+
 fn compiled_vote_option_uses_iterated_player(effects: &[Effect], choices: &[ChooseSpec]) -> bool {
-    effects_mention_iterated_player(effects)
+    effects
+        .iter()
+        .any(|effect| compiled_vote_option_effect_uses_iterated_player(effect, false))
         || choices.iter().any(choose_spec_mentions_iterated_player)
 }
 
-fn vote_option_ast_uses_iterated_player(effects: &[EffectAst]) -> bool {
+fn vote_option_ast_uses_iterated_player_in_scope(
+    effects: &[EffectAst],
+    iterated_player_bound: bool,
+) -> bool {
     let mut found = false;
     for effect in effects {
-        if let EffectAst::ChooseObjects { filter, .. }
-        | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
-        | EffectAst::ChooseObjectsAcrossZones { filter, .. } = effect
-            && object_filter_mentions_iterated_player(filter)
+        if !iterated_player_bound
+            && let EffectAst::ChooseObjects { filter, player, .. }
+            | EffectAst::ChooseObjectsWithAggregateConstraint { filter, player, .. }
+            | EffectAst::ChooseObjectsBottomOfLibrary { filter, player, .. }
+            | EffectAst::ChooseObjectsTopOfLibrary { filter, player, .. }
+            | EffectAst::ChooseTaggedObjectsInZone { filter, player, .. }
+            | EffectAst::ChooseObjectsAcrossZones { filter, player, .. } = effect
+            && (matches!(*player, PlayerAst::That)
+                || object_filter_mentions_iterated_player(filter))
         {
             return true;
         }
+        let nested_player_bound = iterated_player_bound
+            || matches!(
+                effect,
+                EffectAst::ForEachOpponent { .. }
+                    | EffectAst::ForEachPlayersFiltered { .. }
+                    | EffectAst::ForEachPlayer { .. }
+                    | EffectAst::ForEachTargetPlayers { .. }
+                    | EffectAst::ForEachOpponentDoesNot { .. }
+                    | EffectAst::ForEachPlayerDoesNot { .. }
+                    | EffectAst::ForEachOpponentDid { .. }
+                    | EffectAst::ForEachPlayerDid { .. }
+                    | EffectAst::ForEachTaggedPlayer { .. }
+                    | EffectAst::AnyPlayerMay { .. }
+            );
         for_each_nested_effects(effect, true, |nested| {
-            if !found && vote_option_ast_uses_iterated_player(nested) {
+            if !found && vote_option_ast_uses_iterated_player_in_scope(nested, nested_player_bound)
+            {
                 found = true;
             }
         });
@@ -1066,6 +1185,10 @@ fn vote_option_ast_uses_iterated_player(effects: &[EffectAst]) -> bool {
         }
     }
     false
+}
+
+fn vote_option_ast_uses_iterated_player(effects: &[EffectAst]) -> bool {
+    vote_option_ast_uses_iterated_player_in_scope(effects, false)
 }
 
 pub(crate) fn compile_vote_sequence(
@@ -1326,6 +1449,26 @@ pub(crate) fn choose_spec_for_targeted_player_filter(filter: &PlayerFilter) -> O
         return Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())));
     }
     None
+}
+
+pub(crate) fn collect_targeted_player_specs_from_player_filter(
+    filter: &PlayerFilter,
+    specs: &mut Vec<ChooseSpec>,
+) {
+    match filter {
+        PlayerFilter::Target(inner) => {
+            push_choice(
+                specs,
+                ChooseSpec::target(ChooseSpec::Player((**inner).clone())),
+            );
+            collect_targeted_player_specs_from_player_filter(inner, specs);
+        }
+        PlayerFilter::Excluding { base, excluded } => {
+            collect_targeted_player_specs_from_player_filter(base, specs);
+            collect_targeted_player_specs_from_player_filter(excluded, specs);
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn collect_targeted_player_specs_from_filter(

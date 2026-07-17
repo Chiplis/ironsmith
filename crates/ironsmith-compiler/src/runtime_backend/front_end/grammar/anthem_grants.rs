@@ -87,9 +87,10 @@ pub(crate) use subject_shapes::{
     AnthemSubjectGrammarMatch, object_filter_specificity_score, parse_exact_anthem_subject_grammar,
 };
 pub(crate) use tail_static_shapes::{
-    IsntCreatureShapeError, parse_base_power_grant_shape, parse_base_power_toughness_grant_shape,
-    parse_base_power_toughness_shape, parse_base_power_toughness_type_addition_shape,
-    parse_isnt_creature_shape, parse_multi_subject_segments, persistent_anthem_subject_facts,
+    BasePowerToughnessConditionShape, IsntCreatureShapeError, parse_base_power_grant_shape,
+    parse_base_power_toughness_grant_shape, parse_base_power_toughness_shape,
+    parse_base_power_toughness_type_addition_shape, parse_isnt_creature_shape,
+    parse_multi_subject_segments, persistent_anthem_subject_facts,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,6 +209,7 @@ pub(crate) struct SubjectLosesKeywordsClause<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
     pub(crate) loss_tokens: &'a [OwnedLexToken],
     pub(crate) additional_gain_tokens: Option<&'a [OwnedLexToken]>,
+    pub(crate) loss_mode: ironsmith_core::AbilityLossMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -598,7 +600,12 @@ pub(crate) fn granted_keyword_subject_is_rejected(tokens: &[OwnedLexToken]) -> b
                 | "though"
         )
     });
-    has_attached_marker || has_bare_mana || has_rejected_word
+    let attached_marker_is_typed = has_attached_marker
+        && matches!(
+            parse_exact_anthem_subject_grammar(tokens),
+            Some(AnthemSubjectGrammarMatch::Filter(_))
+        );
+    (has_attached_marker && !attached_marker_is_typed) || has_bare_mana || has_rejected_word
 }
 
 pub(crate) fn split_trailing_as_long_as_clause(
@@ -733,7 +740,7 @@ pub(crate) fn parse_subject_loses_keywords_clause(
     if tail.is_empty() {
         return None;
     }
-    if let Some((and_token, gain_start)) = find_cant_gain_tail(tail) {
+    if let Some((and_token, gain_start, loss_mode)) = find_cant_gain_tail(tail) {
         let loss_tokens = trim_lexed_commas(&tail[..and_token]);
         let additional_gain_tokens = trim_lexed_commas(&tail[gain_start..]);
         if loss_tokens.is_empty() || additional_gain_tokens.is_empty() {
@@ -743,12 +750,14 @@ pub(crate) fn parse_subject_loses_keywords_clause(
             subject_tokens,
             loss_tokens,
             additional_gain_tokens: Some(additional_gain_tokens),
+            loss_mode,
         });
     }
     Some(SubjectLosesKeywordsClause {
         subject_tokens,
         loss_tokens: tail,
         additional_gain_tokens: None,
+        loss_mode: ironsmith_core::AbilityLossMode::Lose,
     })
 }
 
@@ -851,6 +860,13 @@ pub(crate) fn parse_lose_all_abilities_shape(
         return None;
     }
     let lose_word = first_word_offset(&words, &["lose", "loses"])?;
+    // A preceding `get(s)` belongs to an anthem compound such as
+    // "gets -5/-0 and loses all abilities". It is not part of the affected
+    // object's filter, and accepting it here would silently discard the P/T
+    // modification before the dedicated compound parser gets a chance.
+    if first_word_offset(words.get(..lose_word).unwrap_or_default(), &["get", "gets"]).is_some() {
+        return None;
+    }
     if !word_phrase_occurs(
         words.get(lose_word + 1..).unwrap_or_default(),
         &["all", "abilities"],
@@ -1751,12 +1767,16 @@ fn find_no_defender_phrase(
     }
 }
 
-fn find_cant_gain_tail(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
-    const CANT_GAIN_PHRASES: &[&[&str]] = &[
+fn find_cant_gain_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<(usize, usize, ironsmith_core::AbilityLossMode)> {
+    const CANT_HAVE_OR_GAIN_PHRASES: &[&[&str]] = &[
         &["cant", "have", "or", "gain"],
         &["can't", "have", "or", "gain"],
         &["cannot", "have", "or", "gain"],
         &["can", "t", "have", "or", "gain"],
+    ];
+    const CANT_GAIN_PHRASES: &[&[&str]] = &[
         &["cant", "gain"],
         &["can't", "gain"],
         &["cannot", "gain"],
@@ -1770,13 +1790,19 @@ fn find_cant_gain_tail(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
             continue;
         }
         let after_and = &tokens[and_token + 1..];
-        let Some((_, rest)) =
+        let (rest, loss_mode) = if let Some((_, rest)) =
+            primitives::parse_prefix(after_and, primitives::any_phrase(CANT_HAVE_OR_GAIN_PHRASES))
+        {
+            (rest, ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain)
+        } else if let Some((_, rest)) =
             primitives::parse_prefix(after_and, primitives::any_phrase(CANT_GAIN_PHRASES))
-        else {
+        {
+            (rest, ironsmith_core::AbilityLossMode::LoseAndCantGain)
+        } else {
             continue;
         };
         let consumed = after_and.len().saturating_sub(rest.len());
-        return Some((and_token, and_token + 1 + consumed));
+        return Some((and_token, and_token + 1 + consumed, loss_mode));
     }
     None
 }
@@ -1876,5 +1902,44 @@ mod tests {
 
         let tokens = lex_line("counters on this enchantment", 0).unwrap();
         assert_eq!(parse_source_counter_count_clause(&tokens), None);
+    }
+
+    #[test]
+    fn lose_all_abilities_shape_does_not_steal_preceding_anthem() {
+        let direct = lex_line("Enchanted creature loses all abilities.", 0).unwrap();
+        assert!(parse_lose_all_abilities_shape(&direct).is_some());
+
+        let compound =
+            lex_line("Enchanted creature gets -5/-0 and loses all abilities.", 0).unwrap();
+        assert!(parse_lose_all_abilities_shape(&compound).is_none());
+    }
+
+    #[test]
+    fn subject_keyword_loss_preserves_have_or_gain_prohibition_mode() {
+        let tokens = lex_line(
+            "Creatures your opponents control lose flying and can't have or gain flying.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_subject_loses_keywords_clause(&tokens)
+            .expect("Archetype-style keyword loss should parse");
+
+        assert_eq!(
+            parsed.loss_mode,
+            ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain
+        );
+        assert_eq!(
+            TokenWordView::new(parsed.loss_tokens).word_refs(),
+            ["flying"]
+        );
+        assert_eq!(
+            TokenWordView::new(
+                parsed
+                    .additional_gain_tokens
+                    .expect("prohibited keyword should be retained"),
+            )
+            .word_refs(),
+            ["flying"]
+        );
     }
 }

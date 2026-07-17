@@ -47,7 +47,7 @@ export default function Shell() {
   );
   const [logOpen, setLogOpen] = useState(false);
   const [lobbyOpen, setLobbyOpen] = useState(false);
-  const [zoneViews, setZoneViews] = useState(["battlefield"]);
+  const [zoneViews, setZoneViews] = useState(["battlefield", "ante"]);
   const [deckLoadingMode, setDeckLoadingMode] = useState(false);
   const [puzzleSetupMode, setPuzzleSetupMode] = useState(false);
   const [mobileOpponentIndex, setMobileOpponentIndex] = useState(0);

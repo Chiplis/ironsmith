@@ -104,6 +104,11 @@ impl<T: Clone + PartialEq> RefState<T> {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct ReferenceImports {
     pub(crate) last_object_tag: Option<TagKey>,
+    /// Stable parse-time aliases already bound by the enclosing reference
+    /// context. Nested lowering must import these alongside `last_object_tag`;
+    /// otherwise compiling a conditional branch can erase an alias before the
+    /// condition itself is lowered.
+    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) iterated_object: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
@@ -115,6 +120,7 @@ pub(crate) struct ReferenceImports {
 impl ReferenceImports {
     pub(crate) fn is_empty(&self) -> bool {
         self.last_object_tag.is_none()
+            && self.snapshot_tag_aliases.is_empty()
             && !self.last_it_choice_is_set
             && !self.iterated_object
             && self.last_player_filter.is_none()
@@ -135,6 +141,7 @@ impl ReferenceImports {
     pub(crate) fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: frame.last_object_tag.as_ref().map(TagKey::from),
+            snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             iterated_object: frame.iterated_object,
             last_player_filter: frame.last_player_filter.clone(),
@@ -196,7 +203,7 @@ impl ReferenceEnv {
     ) -> Self {
         Self {
             last_object_tag: RefState::from_option(imports.last_object_tag.clone()),
-            snapshot_tag_aliases: Vec::new(),
+            snapshot_tag_aliases: imports.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: imports.last_it_choice_is_set,
             last_player_filter: RefState::from_option(imports.last_player_filter.clone()),
             source_object_antecedent: imports.source_object_antecedent,
@@ -356,6 +363,7 @@ impl ReferenceExports {
     pub(crate) fn to_imports(&self) -> ReferenceImports {
         ReferenceImports {
             last_object_tag: self.last_object_tag.clone().into_option(),
+            snapshot_tag_aliases: Vec::new(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             iterated_object: false,
             last_player_filter: self.last_player_filter.clone().into_option(),

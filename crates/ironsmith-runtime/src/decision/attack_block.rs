@@ -164,52 +164,61 @@ pub fn compute_legal_attackers(game: &GameState, _combat: &CombatState) -> Vec<A
     compute_legal_attackers_with_view(game, _combat, &view)
 }
 
-pub(crate) fn compute_legal_attackers_with_view(
+fn attack_targets_for_player(
     game: &GameState,
-    _combat: &CombatState,
+    attacking_player: PlayerId,
     view: &DerivedGameView<'_>,
-) -> Vec<AttackerOption> {
-    use crate::FxMap;
-
-    let mut options = Vec::new();
-    let active_player = game.turn.active_player;
-    let mut attack_capable = Vec::new();
-
-    // Attack targets and defender-wide taxes are independent of the attacking
-    // creature. Build them once instead of rescanning the battlefield for each
-    // candidate attacker.
-    let mut attack_targets = Vec::new();
+) -> Vec<(AttackTarget, PlayerId)> {
+    let mut targets = Vec::new();
     for opponent in &game.players {
-        if opponent.id != active_player && opponent.is_in_game() {
-            attack_targets.push((AttackTarget::Player(opponent.id), opponent.id));
+        if game.are_opponents(attacking_player, opponent.id)
+            && opponent.is_in_game()
+            && game.player_is_within_range(attacking_player, opponent.id)
+            && game.attack_direction_allows_defender(attacking_player, opponent.id)
+        {
+            targets.push((AttackTarget::Player(opponent.id), opponent.id));
         }
     }
     for &other_perm_id in &game.battlefield {
         let Some(other_perm) = game.object(other_perm_id) else {
             continue;
         };
-        if game.controller_of(other_perm) != active_player
+        let controller = game.controller_of(other_perm);
+        if game.are_opponents(attacking_player, controller)
+            && game.object_is_within_range(attacking_player, other_perm_id, None)
             && view.object_has_card_type(other_perm_id, crate::types::CardType::Planeswalker)
+            && game.attack_direction_allows_defender(attacking_player, controller)
         {
-            attack_targets.push((
-                AttackTarget::Planeswalker(other_perm_id),
-                game.controller_of(other_perm),
-            ));
+            targets.push((AttackTarget::Planeswalker(other_perm_id), controller));
+        }
+        if view.object_has_card_type(other_perm_id, crate::types::CardType::Battle)
+            && let Some(protector) = game.battle_protector(other_perm_id)
+            && game.are_opponents(attacking_player, protector)
+            && game.player_is_within_range(attacking_player, protector)
+            && game.attack_direction_allows_defender(attacking_player, protector)
+            && game
+                .player(protector)
+                .is_some_and(|player| player.is_in_game())
+        {
+            targets.push((AttackTarget::Battle(other_perm_id), protector));
         }
     }
+    targets
+}
 
-    let mut generic_attack_taxes = FxMap::default();
-    for &(_, defending_player) in &attack_targets {
-        generic_attack_taxes
-            .entry(defending_player)
-            .or_insert_with(|| generic_attack_tax_preview(game, defending_player, view));
-    }
+pub(crate) fn compute_legal_attackers_with_view(
+    game: &GameState,
+    _combat: &CombatState,
+    view: &DerivedGameView<'_>,
+) -> Vec<AttackerOption> {
+    let mut options = Vec::new();
+    let mut attack_capable = Vec::new();
 
     for &perm_id in &game.battlefield {
         let Some(perm) = game.object(perm_id) else {
             continue;
         };
-        if game.controller_of(perm) != active_player {
+        if !game.is_active_player(game.controller_of(perm)) {
             continue;
         }
         if !view.object_has_card_type(perm_id, crate::types::CardType::Creature) {
@@ -232,6 +241,7 @@ pub(crate) fn compute_legal_attackers_with_view(
 
         let abilities = static_abilities_for_attack_preview(view, perm);
         let goaded_by = active_goaders_for_attack_preview(game, perm, &abilities);
+        let attack_targets = attack_targets_for_player(game, game.controller_of(perm), view);
 
         // Determine valid attack targets
         let mut legal_targets = Vec::new();
@@ -241,10 +251,7 @@ pub(crate) fn compute_legal_attackers_with_view(
         let mut nongoad_targets = Vec::new();
 
         for (target, defending_player) in &attack_targets {
-            let generic_attack_tax = generic_attack_taxes
-                .get(defending_player)
-                .copied()
-                .unwrap_or(0);
+            let generic_attack_tax = generic_attack_tax_preview(game, *defending_player, view);
             if can_declare_attack_target_preview(
                 game,
                 perm,
@@ -268,7 +275,7 @@ pub(crate) fn compute_legal_attackers_with_view(
             .iter()
             .filter(|target| match target {
                 AttackTarget::Player(player) => required_attack_players.contains(player),
-                AttackTarget::Planeswalker(_) => false,
+                AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => false,
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -285,7 +292,7 @@ pub(crate) fn compute_legal_attackers_with_view(
         let has_required_attack_target = !required_attack_players.is_empty()
             && valid_targets.iter().any(|target| match target {
                 AttackTarget::Player(player) => required_attack_players.contains(player),
-                AttackTarget::Planeswalker(_) => false,
+                AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => false,
             });
         let must_attack = abilities
             .iter()
@@ -320,8 +327,14 @@ pub fn compute_legal_blockers(
     // For each attacker, find creatures that can block it
     for attacker_info in &combat.attackers {
         let attacker_id = attacker_info.creature;
-        if crate::combat_state::defending_player_for_attack_target(game, &attacker_info.target)
-            != Some(defending_player)
+        let Some(attacked_player) =
+            crate::combat_state::defending_player_for_attack_target(game, &attacker_info.target)
+        else {
+            continue;
+        };
+        if attacked_player != defending_player
+            && !(game.shared_team_turns_enabled()
+                && game.are_teammates(attacked_player, defending_player))
         {
             continue;
         }
@@ -337,7 +350,10 @@ pub fn compute_legal_blockers(
                 continue;
             };
 
-            if game.controller_of(blocker) != defending_player {
+            if game.controller_of(blocker) != defending_player
+                && !(game.shared_team_turns_enabled()
+                    && game.are_teammates(game.controller_of(blocker), defending_player))
+            {
                 continue;
             }
 

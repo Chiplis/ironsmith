@@ -142,7 +142,7 @@ pub(crate) fn collect_automatic_draw_reveal_candidates(
             let Some(spec) = static_ability.reveal_drawn_card_spec() else {
                 continue;
             };
-            if spec.your_turns_only && game.turn.active_player != player_id {
+            if spec.your_turns_only && !game.is_active_player(player_id) {
                 continue;
             }
             let draw_number = spec.card_number;
@@ -443,6 +443,40 @@ mod tests {
         source
     }
 
+    fn empty_library_draw_win_ability() -> crate::static_abilities::StaticAbility {
+        crate::static_abilities::StaticAbility::conditional_draw_replacement(
+            crate::effect::Condition::ValueComparison {
+                left: crate::effect::Value::CardsInLibrary(crate::target::PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: crate::effect::Value::Fixed(0),
+            },
+            vec![crate::effect::Effect::win_the_game()],
+            "If you would draw a card while your library has no cards in it, you win the game instead.",
+        )
+    }
+
+    fn add_graveyard_dredger(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        amount: u32,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&card, owner, Zone::Graveyard);
+        game.object_mut(source)
+            .expect("dredger exists")
+            .abilities_mut()
+            .push(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::dredge(amount),
+                )
+                .in_zones(vec![Zone::Graveyard]),
+            );
+        source
+    }
+
     struct ChooseReplacementNamed(&'static str);
 
     impl crate::decision::DecisionMaker for ChooseReplacementNamed {
@@ -564,6 +598,105 @@ mod tests {
     }
 
     #[test]
+    fn empty_library_draw_win_replaces_each_impossible_draw_before_the_loss_flag() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        add_cards_to_library(&mut game, alice, 1);
+        let laboratory_maniac = add_static_source(
+            &mut game,
+            alice,
+            "Laboratory Maniac",
+            empty_library_draw_win_ability(),
+        );
+        let mut ctx = ExecutionContext::new_default(laboratory_maniac, alice);
+
+        let result = DrawCardsEffect::you(2)
+            .execute(&mut game, &mut ctx)
+            .expect("the second draw should be replaced with a win");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        let alice_state = game.player(alice).expect("alice exists");
+        assert_eq!(
+            alice_state.hand.len(),
+            1,
+            "the first draw should still happen"
+        );
+        assert!(alice_state.library.is_empty());
+        assert!(
+            !alice_state.attempted_draw_from_empty_library,
+            "the replaced second draw must not set the CR 704.5b loss flag"
+        );
+        assert!(
+            !game.player(bob).expect("bob exists").is_in_game(),
+            "the replacement's win effect should resolve"
+        );
+    }
+
+    #[test]
+    fn empty_library_draw_win_only_matches_its_controllers_draw() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let laboratory_maniac = add_static_source(
+            &mut game,
+            alice,
+            "Laboratory Maniac",
+            empty_library_draw_win_ability(),
+        );
+        let mut ctx = ExecutionContext::new_default(laboratory_maniac, alice);
+
+        DrawCardsEffect::new(1, crate::target::PlayerFilter::Specific(bob))
+            .execute(&mut game, &mut ctx)
+            .expect("Bob's ordinary empty-library draw should resolve");
+
+        assert!(
+            game.player(bob)
+                .expect("bob exists")
+                .attempted_draw_from_empty_library,
+            "Alice's replacement must not apply to an opponent"
+        );
+        assert!(game.player(alice).expect("alice exists").is_in_game());
+        assert!(game.player(bob).expect("bob exists").is_in_game());
+    }
+
+    #[test]
+    fn failed_empty_library_draw_win_is_still_replaced_when_winning_is_forbidden() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let laboratory_maniac = add_static_source(
+            &mut game,
+            alice,
+            "Laboratory Maniac",
+            empty_library_draw_win_ability(),
+        );
+        add_static_source(
+            &mut game,
+            bob,
+            "Your Opponents Can't Win",
+            crate::static_abilities::StaticAbility::opponents_cant_win_game(),
+        );
+        game.update_cant_effects();
+        let mut ctx = ExecutionContext::new_default(laboratory_maniac, alice);
+
+        let result = DrawCardsEffect::you(1)
+            .execute(&mut game, &mut ctx)
+            .expect("the replacement should resolve even when its win is prevented");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert!(game.player(alice).expect("alice exists").is_in_game());
+        assert!(game.player(bob).expect("bob exists").is_in_game());
+        assert!(
+            !game
+                .player(alice)
+                .expect("alice exists")
+                .attempted_draw_from_empty_library,
+            "a failed replacement action does not restore the replaced draw"
+        );
+    }
+
+    #[test]
     fn test_draw_cards_respects_double_draw_replacement() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -611,6 +744,87 @@ mod tests {
         assert_eq!(game.player(alice).unwrap().hand.len(), 0);
         assert_eq!(game.player(alice).unwrap().library.len(), 1);
         assert_eq!(game.exile.len(), 2);
+    }
+
+    #[test]
+    fn draw_cards_effect_declines_one_dredge_then_uses_another() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        add_cards_to_library(&mut game, alice, 4);
+        let first = add_graveyard_dredger(&mut game, alice, "First Dredger", 2);
+        let second = add_graveyard_dredger(&mut game, alice, "Second Dredger", 3);
+        let mut dm = ChooseReplacementNamed("Do not apply First Dredger");
+        let mut ctx = ExecutionContext::new(second, alice, &mut dm);
+
+        let result = DrawCardsEffect::you(1)
+            .execute(&mut game, &mut ctx)
+            .expect("dredge replacement should execute through DrawCardsEffect");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        let player = game.player(alice).expect("alice");
+        assert_eq!(player.library.len(), 1);
+        assert_eq!(player.graveyard.len(), 4);
+        assert!(player.graveyard.contains(&first));
+        assert_eq!(
+            game.current_name(player.hand[0]).as_deref(),
+            Some("Second Dredger")
+        );
+    }
+
+    #[test]
+    fn draw_replacement_choice_contains_all_dredges_declines_and_other_replacements() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        add_cards_to_library(&mut game, alice, 5);
+        let first = add_graveyard_dredger(&mut game, alice, "First Dredger", 2);
+        let second = add_graveyard_dredger(&mut game, alice, "Second Dredger", 3);
+        let other = add_static_source(
+            &mut game,
+            alice,
+            "Thought Reflection",
+            crate::static_abilities::StaticAbility::draw_replacement_double(),
+        );
+        game.update_replacement_effects();
+
+        let result = crate::events::processing::process_trait_event(
+            &mut game,
+            crate::events::Event::draw(alice, 1, true),
+        );
+        let crate::events::processing::TraitEventResult::NeedsChoice {
+            applicable_effects, ..
+        } = result
+        else {
+            panic!("all equal-priority draw replacements should share one CR 616 choice");
+        };
+        let effects: Vec<_> = applicable_effects
+            .iter()
+            .filter_map(|id| game.effect_store.replacement_effects.get_effect(*id))
+            .collect();
+        assert_eq!(effects.len(), 5);
+        for dredger in [first, second] {
+            assert_eq!(
+                effects
+                    .iter()
+                    .filter(|effect| effect.source == dredger)
+                    .count(),
+                2,
+                "each dredger should contribute its replacement and explicit decline"
+            );
+            assert!(effects.iter().any(|effect| {
+                effect.source == dredger
+                    && matches!(
+                        &effect.replacement,
+                        crate::replacement::ReplacementAction::DeclineOptional(_)
+                    )
+            }));
+        }
+        assert_eq!(
+            effects
+                .iter()
+                .filter(|effect| effect.source == other)
+                .count(),
+            1
+        );
     }
 
     #[test]

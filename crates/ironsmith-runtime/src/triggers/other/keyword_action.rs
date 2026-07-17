@@ -153,7 +153,7 @@ impl TriggerMatcher for KeywordActionTrigger {
             return false;
         }
         if self.during_your_main_phase
-            && (ctx.game.turn.active_player != ctx.controller
+            && (!ctx.game.is_active_player(ctx.controller)
                 || !matches!(ctx.game.turn.phase, Phase::FirstMain | Phase::NextMain))
         {
             return false;
@@ -235,6 +235,9 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.source_must_match && self.action == KeywordActionKind::Exploit {
             return "Whenever this creature exploits a creature".to_string();
         }
+        if self.source_must_match && self.action == KeywordActionKind::Enlist {
+            return "Whenever this creature enlists a creature".to_string();
+        }
         if self.source_must_match && self.action == KeywordActionKind::Train {
             return "Whenever this creature trains".to_string();
         }
@@ -287,18 +290,12 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.action == KeywordActionKind::Exert
             && let Some(source_filter) = &self.source_filter
         {
+            let source = ensure_singular_noun_phrase_article(source_filter.description());
             return match &self.player {
-                PlayerFilter::You => {
-                    format!("Whenever you exert {}", source_filter.description())
-                }
-                PlayerFilter::Opponent => format!(
-                    "Whenever an opponent exerts {}",
-                    source_filter.description()
-                ),
-                PlayerFilter::Any => {
-                    format!("Whenever a player exerts {}", source_filter.description())
-                }
-                _ => format!("Whenever a player exerts {}", source_filter.description()),
+                PlayerFilter::You => format!("Whenever you exert {source}"),
+                PlayerFilter::Opponent => format!("Whenever an opponent exerts {source}"),
+                PlayerFilter::Any => format!("Whenever a player exerts {source}"),
+                _ => format!("Whenever a player exerts {source}"),
             };
         }
         if self.action == KeywordActionKind::Crew
@@ -412,6 +409,13 @@ impl TriggerMatcher for KeywordActionTrigger {
             ),
         }
     }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        self.action == KeywordActionKind::Planeswalk
+            && event
+                .downcast::<KeywordActionEvent>()
+                .is_some_and(|event| event.action == KeywordActionKind::Planeswalk)
+    }
 }
 
 #[cfg(test)]
@@ -420,6 +424,29 @@ mod tests {
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
     use crate::snapshot::ObjectSnapshot;
+
+    #[test]
+    fn manifest_dread_observer_does_not_match_ordinary_manifest() {
+        let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source_id = ObjectId::from_raw(1);
+        let trigger =
+            KeywordActionTrigger::new(KeywordActionKind::ManifestDread, PlayerFilter::You);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let manifest = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Manifest, alice, source_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&manifest, &ctx));
+
+        let manifest_dread = TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::ManifestDread, alice, source_id, 1),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&manifest_dread, &ctx));
+        assert_eq!(trigger.display(), "Whenever you manifest dread");
+    }
 
     #[test]
     fn keyword_action_trigger_matches_you() {
@@ -868,6 +895,7 @@ mod tests {
             PlayerFilter::You,
             ObjectFilter::creature(),
         );
+        assert_eq!(trigger.display(), "Whenever you exert a creature");
         let ctx = TriggerContext::for_source(creature_id, alice, &game);
 
         let creature_event = TriggerEvent::new_with_provenance(

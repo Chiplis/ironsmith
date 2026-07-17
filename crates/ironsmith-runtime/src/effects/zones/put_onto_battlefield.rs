@@ -1,7 +1,7 @@
 //! Put onto battlefield effect implementation.
 
 use super::battlefield_entry::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
 };
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::EffectExecutor;
@@ -46,22 +46,37 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
             return Ok(EffectOutcome::target_invalid());
         }
 
+        let entries = object_ids
+            .into_iter()
+            .filter_map(|object_id| {
+                game.object(object_id).map(|object| {
+                    (
+                        object_id,
+                        OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(
+                            object, game,
+                        )),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        let outcomes = move_to_battlefield_batch_with_options(
+            game,
+            ctx,
+            entries
+                .iter()
+                .map(|(object, _)| {
+                    (
+                        *object,
+                        BattlefieldEntryOptions::specific(controller_id, self.tapped),
+                    )
+                })
+                .collect(),
+        );
+
         let mut moved_ids = Vec::new();
         let mut affected_memory = Vec::new();
         let mut prevented = false;
-
-        for object_id in object_ids {
-            let Some(obj) = game.object(object_id) else {
-                continue;
-            };
-            let memory =
-                OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(obj, game));
-            let outcome = move_to_battlefield_with_options(
-                game,
-                ctx,
-                object_id,
-                BattlefieldEntryOptions::specific(controller_id, self.tapped),
-            );
+        for ((_, memory), outcome) in entries.into_iter().zip(outcomes) {
             match outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     moved_ids.push(new_id);

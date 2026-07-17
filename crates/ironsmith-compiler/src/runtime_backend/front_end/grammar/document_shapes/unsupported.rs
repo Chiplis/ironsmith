@@ -3,7 +3,12 @@ use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
 
-use super::super::primitives::{self, WordSliceInput};
+use super::super::{
+    anthem_grants,
+    effects::become_shapes,
+    primitives::{self, WordSliceInput},
+    structure,
+};
 use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -363,6 +368,9 @@ const RULES: &[UnsupportedRule] = &[
 pub(crate) fn parse_unsupported_rewrite_line_kind(
     tokens: &[OwnedLexToken],
 ) -> Option<UnsupportedRewriteLineKind> {
+    if supported_static_loses_abilities_becomes_line(tokens) {
+        return None;
+    }
     let words = TokenWordView::new(tokens).word_refs();
     for rule in RULES {
         if let Some(kind) = parse_static_rule(&words, *rule) {
@@ -383,6 +391,39 @@ pub(crate) fn parse_unsupported_rewrite_line_kind(
     ))
     .parse_next(&mut input)
     .ok()
+}
+
+fn supported_static_loses_abilities_becomes_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let Some(shape) = anthem_grants::parse_lose_all_abilities_shape(tokens) else {
+        return false;
+    };
+    if !shape.becomes {
+        return false;
+    }
+    let words = TokenWordView::new(tokens).word_refs();
+    let Some(becomes_word) = words.iter().position(|word| *word == "becomes") else {
+        return false;
+    };
+    let Some(power_toughness) = become_shapes::parse_become_base_pt_words(
+        words.get(becomes_word + 1..).unwrap_or_default(),
+    ) else {
+        return false;
+    };
+    become_shapes::parse_become_creature_descriptor_words(power_toughness.descriptor_words)
+        .is_some()
+}
+
+fn supported_static_loses_abilities_becomes_line(tokens: &[OwnedLexToken]) -> bool {
+    let sentences = structure::split_lexed_sentences(tokens);
+    match sentences.as_slice() {
+        [sentence] => supported_static_loses_abilities_becomes_sentence(sentence),
+        [sentence, continuation] => {
+            supported_static_loses_abilities_becomes_sentence(sentence)
+                && super::parse_static_effect_continues_until_end_of_turn_surface(continuation)
+                    .is_some()
+        }
+        _ => false,
+    }
 }
 
 fn parse_static_rule<'a>(

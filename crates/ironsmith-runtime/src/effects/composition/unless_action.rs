@@ -23,26 +23,7 @@ fn execute_effect_sequence(
 }
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
-    if game.turn_store.turn_order.is_empty() {
-        return Vec::new();
-    }
-
-    let start = game
-        .turn_store
-        .turn_order
-        .iter()
-        .position(|&player_id| player_id == game.turn.active_player)
-        .unwrap_or(0);
-
-    (0..game.turn_store.turn_order.len())
-        .filter_map(|offset| {
-            let player_id =
-                game.turn_store.turn_order[(start + offset) % game.turn_store.turn_order.len()];
-            game.player(player_id)
-                .filter(|player| player.is_in_game())
-                .map(|_| player_id)
-        })
-        .collect()
+    game.team_apnap_player_order()
 }
 
 fn cost_effect_sequence_can_execute(

@@ -4,9 +4,7 @@ use crate::effect::{
     ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, OutcomeStatus,
 };
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{
-    ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
-};
+use crate::effects::helpers::{apply_single_target_object_from_spec, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_destroy};
 use crate::events::zones::ZoneChangeEvent;
@@ -124,49 +122,67 @@ impl EffectExecutor for DestroyEffect {
             );
         }
 
-        // For all/multi-target effects, count only successful destructions.
-        let pending_start = game.effect_store.pending_trigger_events.len();
+        let selected_objects = match resolve_objects_for_effect(game, ctx, &self.spec) {
+            Ok(objects) => objects,
+            Err(_) => return Ok(EffectOutcome::target_invalid()),
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        // Stage the entire simultaneous destruction transaction on a clone.
+        // Owner order choices see `decision_view`, the immutable pre-event
+        // state, and the clone is committed only after every choice succeeds.
+        let decision_view = game.clone();
+        let mut staged_game = decision_view.clone();
+        let pending_start = staged_game.effect_store.pending_trigger_events.len();
         let mut destroyed_objects = Vec::new();
         let mut destroyed_memory = Vec::new();
         let mut graveyard_zone_changes = Vec::new();
-        let apply_result = match apply_to_selected_objects(
-            game,
-            ctx,
-            &self.spec,
-            ObjectApplyResultPolicy::CountApplied,
-            |game, ctx, object_id| {
-                let pre_snapshot = game.object(object_id).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                });
-                let result =
-                    process_destroy(game, object_id, Some(ctx.source), &mut *ctx.decision_maker);
-                if let Some(snapshot) = pre_snapshot.as_ref()
-                    && !game
-                        .object(object_id)
-                        .is_some_and(|obj| obj.zone == Zone::Battlefield)
-                {
-                    ctx.refresh_target_snapshot(snapshot.clone());
-                    if snapshot.object_id == ctx.source {
-                        ctx.refresh_source_snapshot(snapshot.clone());
-                    }
+        let mut departed_snapshots = Vec::new();
+        let mut applied_count = 0usize;
+        for object_id in selected_objects {
+            let pre_snapshot = decision_view.object(object_id).map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, &decision_view)
+            });
+            let result = process_destroy(
+                &mut staged_game,
+                object_id,
+                Some(ctx.source),
+                &mut *ctx.decision_maker,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if let Some(snapshot) = pre_snapshot.as_ref()
+                && !staged_game
+                    .object(object_id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+            {
+                departed_snapshots.push(snapshot.clone());
+            }
+            if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
+                applied_count += 1;
+                if let Some(snapshot) = pre_snapshot.as_ref() {
+                    destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
                 }
-                if matches!(result, EventOutcome::Proceed(crate::zone::Zone::Graveyard)) {
-                    if let Some(snapshot) = pre_snapshot.as_ref() {
-                        destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                    }
-                    let result_objects = game.take_zone_change_results(object_id);
-                    if let Some(snapshot) = pre_snapshot {
-                        graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
-                    }
-                    destroyed_objects.extend(result_objects);
-                    return Ok(true);
+                let result_objects = staged_game.take_zone_change_results(object_id);
+                if let Some(snapshot) = pre_snapshot {
+                    graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
                 }
-                Ok(false)
-            },
+                destroyed_objects.extend(result_objects);
+            }
+        }
+
+        if !super::order_simultaneous_graveyard_batch(
+            &decision_view,
+            &mut staged_game,
+            &mut *ctx.decision_maker,
+            Some(ctx.source),
+            &destroyed_objects,
         ) {
-            Ok(result) => result,
-            Err(_) => return Ok(EffectOutcome::target_invalid()),
-        };
+            return Ok(EffectOutcome::count(0));
+        }
 
         if graveyard_zone_changes.len() > 1 {
             let event_objects = graveyard_zone_changes
@@ -183,7 +199,7 @@ impl EffectExecutor for DestroyEffect {
                 .collect::<Vec<_>>();
 
             let removed =
-                game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+                staged_game.remove_pending_trigger_events_matching_from(pending_start, |event| {
                     let Some(zone_change) = event.downcast::<ZoneChangeEvent>() else {
                         return false;
                     };
@@ -214,15 +230,24 @@ impl EffectExecutor for DestroyEffect {
                     snapshots,
                 );
                 event.result_objects = result_objects;
-                game.queue_trigger_event(
+                staged_game.queue_trigger_event(
                     ctx.provenance,
                     TriggerEvent::new_with_provenance(event, ctx.provenance)
+                        .with_simultaneous_batch(ctx.provenance)
                         .with_lookback_source_snapshots(lookback_source_snapshots),
                 );
             }
         }
 
-        let mut outcome = apply_result.outcome;
+        *game = staged_game;
+        for snapshot in departed_snapshots {
+            ctx.refresh_target_snapshot(snapshot.clone());
+            if snapshot.object_id == ctx.source {
+                ctx.refresh_source_snapshot(snapshot);
+            }
+        }
+
+        let mut outcome = EffectOutcome::count(applied_count as i32);
         if !destroyed_objects.is_empty() {
             outcome =
                 outcome.with_execution_fact(ExecutionFact::AffectedObjects(destroyed_objects));
@@ -590,5 +615,243 @@ mod tests {
 
         assert_eq!(alice_elephants, 1);
         assert_eq!(bob_elephants, 1);
+    }
+
+    #[derive(Default)]
+    struct U010OrderDecisionMaker {
+        calls: Vec<PlayerId>,
+        pre_event_objects: Vec<ObjectId>,
+        every_prompt_saw_pre_event_state: bool,
+        defer: bool,
+        awaiting: bool,
+        malformed_order: bool,
+    }
+
+    impl crate::decision::DecisionMaker for U010OrderDecisionMaker {
+        fn awaiting_choice(&self) -> bool {
+            self.awaiting
+        }
+
+        fn decide_order(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::OrderContext,
+        ) -> Vec<ObjectId> {
+            self.calls.push(ctx.player);
+            self.every_prompt_saw_pre_event_state |= !self.pre_event_objects.is_empty();
+            self.every_prompt_saw_pre_event_state &=
+                self.pre_event_objects.iter().all(|object_id| {
+                    game.object(*object_id)
+                        .is_some_and(|object| object.zone == Zone::Battlefield)
+                });
+            if self.defer {
+                self.awaiting = true;
+                return Vec::new();
+            }
+            if self.malformed_order {
+                let last = ctx.items.last().map(|(object_id, _)| *object_id);
+                return last
+                    .into_iter()
+                    .chain([ObjectId::from_raw(9_999_999)])
+                    .chain(last)
+                    .collect();
+            }
+            ctx.items
+                .iter()
+                .rev()
+                .map(|(object_id, _)| *object_id)
+                .collect()
+        }
+    }
+
+    fn graveyard_names(game: &GameState, player: PlayerId) -> Vec<String> {
+        game.player(player)
+            .expect("player")
+            .graveyard
+            .iter()
+            .filter_map(|object_id| game.object(*object_id))
+            .map(|object| object.name.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn u010_owner_orders_only_cards_legally_reaching_the_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature(&mut game, alice, "First", 60_001);
+        let second = create_creature(&mut game, alice, "Second", 60_002);
+        let indestructible_definition =
+            crate::cards::CardDefinitionBuilder::new(CardId::from_raw(60_003), "Indestructible")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .with_ability(Ability::static_ability(StaticAbility::indestructible()))
+                .build();
+        let indestructible = game.create_object_from_definition(
+            &indestructible_definition,
+            alice,
+            Zone::Battlefield,
+        );
+
+        let mut decisions = U010OrderDecisionMaker {
+            pre_event_objects: vec![first, second, indestructible],
+            every_prompt_saw_pre_event_state: true,
+            malformed_order: true,
+            ..U010OrderDecisionMaker::default()
+        };
+        let source = game.new_object_id();
+        let outcome = {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+            DestroyEffect::all(ObjectFilter::creature())
+                .execute(&mut game, &mut ctx)
+                .expect("mass destruction should resolve")
+        };
+
+        assert_eq!(outcome.as_count(), Some(2));
+        assert_eq!(decisions.calls, vec![alice]);
+        assert!(decisions.every_prompt_saw_pre_event_state);
+        assert_eq!(graveyard_names(&game, alice), vec!["Second", "First"]);
+        assert!(game.object(indestructible).is_some_and(|object| {
+            object.zone == Zone::Battlefield && object.name == "Indestructible"
+        }));
+    }
+
+    #[test]
+    fn u010_multiplayer_owner_choices_are_apnap_and_commit_simultaneously() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        game.turn_store.turn_order = vec![alice, bob, cara];
+        game.turn.active_player = cara;
+
+        let objects = vec![
+            create_creature(&mut game, alice, "Alice One", 60_011),
+            create_creature(&mut game, alice, "Alice Two", 60_012),
+            create_creature(&mut game, bob, "Bob One", 60_013),
+            create_creature(&mut game, bob, "Bob Two", 60_014),
+            create_creature(&mut game, cara, "Cara One", 60_015),
+            create_creature(&mut game, cara, "Cara Two", 60_016),
+        ];
+        let mut decisions = U010OrderDecisionMaker {
+            pre_event_objects: objects.clone(),
+            every_prompt_saw_pre_event_state: true,
+            ..U010OrderDecisionMaker::default()
+        };
+        let source = game.new_object_id();
+        let outcome = {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+            DestroyEffect::all(ObjectFilter::creature())
+                .execute(&mut game, &mut ctx)
+                .expect("multiplayer mass destruction should resolve")
+        };
+
+        assert_eq!(outcome.as_count(), Some(6));
+        assert_eq!(decisions.calls, vec![cara, alice, bob]);
+        assert!(decisions.every_prompt_saw_pre_event_state);
+        assert!(
+            objects
+                .iter()
+                .all(|object_id| game.object(*object_id).is_none())
+        );
+        assert_eq!(
+            graveyard_names(&game, alice),
+            vec!["Alice Two", "Alice One"]
+        );
+        assert_eq!(graveyard_names(&game, bob), vec!["Bob Two", "Bob One"]);
+        assert_eq!(graveyard_names(&game, cara), vec!["Cara Two", "Cara One"]);
+    }
+
+    #[test]
+    fn u010_deferred_owner_order_cancels_the_whole_batch() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature(&mut game, alice, "First", 60_021);
+        let second = create_creature(&mut game, alice, "Second", 60_022);
+        let pending_before = game.effect_store.pending_trigger_events.len();
+        let mut decisions = U010OrderDecisionMaker {
+            pre_event_objects: vec![first, second],
+            every_prompt_saw_pre_event_state: true,
+            defer: true,
+            ..U010OrderDecisionMaker::default()
+        };
+        let source = game.new_object_id();
+        let outcome = {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+            DestroyEffect::all(ObjectFilter::creature())
+                .execute(&mut game, &mut ctx)
+                .expect("deferred order should yield cleanly")
+        };
+
+        assert_eq!(outcome.as_count(), Some(0));
+        assert_eq!(decisions.calls, vec![alice]);
+        assert!(decisions.every_prompt_saw_pre_event_state);
+        assert!(game.player(alice).expect("alice").graveyard.is_empty());
+        assert!(
+            game.object(first)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+        );
+        assert!(
+            game.object(second)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+        );
+        assert_eq!(
+            game.effect_store.pending_trigger_events.len(),
+            pending_before
+        );
+    }
+
+    #[test]
+    fn u010_batch_event_keeps_simultaneous_provenance_and_lki() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature(&mut game, alice, "First LKI", 60_031);
+        let second = create_creature(&mut game, alice, "Second LKI", 60_032);
+        let source = game.new_object_id();
+        let mut decisions = U010OrderDecisionMaker::default();
+        let provenance = game.provenance_graph_mut().alloc_root(
+            crate::provenance::ProvenanceNodeKind::EffectExecution {
+                source,
+                controller: alice,
+            },
+        );
+        {
+            let mut ctx =
+                ExecutionContext::new(source, alice, &mut decisions).with_provenance(provenance);
+            DestroyEffect::all(ObjectFilter::creature())
+                .execute(&mut game, &mut ctx)
+                .expect("mass destruction should resolve");
+        }
+
+        let events = game.take_pending_trigger_events();
+        let batch_events = events
+            .iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<ZoneChangeEvent>()
+                    .filter(|change| {
+                        change.from == Zone::Battlefield && change.to == Zone::Graveyard
+                    })
+                    .map(|change| (event, change))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(batch_events.len(), 1);
+        let (raw, change) = batch_events[0];
+        assert_eq!(change.objects, vec![first, second]);
+        assert_eq!(change.result_objects.len(), 2);
+        assert_eq!(change.snapshots().len(), 2);
+        assert_eq!(
+            change
+                .snapshots()
+                .iter()
+                .map(|snapshot| snapshot.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["First LKI", "Second LKI"]
+        );
+        assert_eq!(change.cause.source, Some(source));
+        assert!(game.provenance_graph().node(raw.provenance()).is_some());
+        assert_eq!(raw.simultaneous_batch(), Some(provenance));
     }
 }

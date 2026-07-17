@@ -77,9 +77,9 @@ use crate::continuous::ContinuousEffect;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 pub use ironsmith_core::{
-    ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec, EscalateSpec, GraveyardCountMetric,
-    PregameActionKind, PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec,
-    SpliceQuality, SpliceSpec,
+    CompanionDeckCardFacts, CompanionDeckCondition, ConditionalSpellKeywordKind,
+    ConditionalSpellKeywordSpec, EscalateSpec, GraveyardCountMetric, PregameActionKind,
+    PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec, SpliceQuality, SpliceSpec,
 };
 
 /// Extra condition for "Cast this spell only ..." restrictions.
@@ -291,6 +291,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     ///
     /// Examples: "Flying", "Protection from red", "Creatures you control get +1/+1"
     fn display(&self) -> String;
+
+    /// Retain the compiler's typed static-ability model for structural
+    /// rendering passes. Hand-authored runtime abilities return `None`.
+    fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
+        None
+    }
 
     /// Whether compiled Oracle text should use the card's authored name as
     /// this ability's subject instead of the generic "this permanent" form.
@@ -512,23 +518,57 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
-    /// Optional attack-cost prompt for abilities like Exert.
+    /// Return the complete cost this ability imposes on one proposed
+    /// blocker-attacker edge. Callers clone this value while declarations are
+    /// prepared so later continuous changes cannot alter the locked cost.
+    fn block_cost_for_declaration(
+        &self,
+        _game: &GameState,
+        _ability_source: ObjectId,
+        _ability_controller: PlayerId,
+        _blocker: ObjectId,
+        _attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        None
+    }
+
+    /// Typed block-cost data for structural renderers and other read-only
+    /// consumers that must not infer semantics from the display label.
+    fn block_cost_model(&self) -> Option<&BlockCost> {
+        None
+    }
+
+    /// Capture resolution-context values embedded in a granted static
+    /// ability before it becomes part of a continuous effect. Most static
+    /// abilities contain no such values and can be reused unchanged.
+    fn materialize_resolution_values(
+        &self,
+        _game: &GameState,
+        _ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<StaticAbility>, crate::effects::ExecutionError> {
+        Ok(None)
+    }
+
+    /// Optional attack-cost prompt for abilities like Exert and Enlist.
     fn optional_attack_cost_prompt(
         &self,
         _game: &GameState,
         _source: ObjectId,
         _controller: PlayerId,
-    ) -> Option<crate::decisions::context::BooleanContext> {
+        _attacking_creatures: &[ObjectId],
+    ) -> Option<crate::decisions::context::DecisionContext> {
         None
     }
 
-    /// Pays an optional non-mana attack cost after the player accepted it.
+    /// Offers and, when selected, pays an optional non-mana attack cost.
     fn pay_optional_attack_cost(
         &self,
         _game: &mut GameState,
         _source: ObjectId,
         _controller: PlayerId,
+        _attacking_creatures: &[ObjectId],
         _trigger_queue: &mut crate::triggers::TriggerQueue,
+        _decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<Result<(), String>> {
         None
     }
@@ -566,6 +606,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Returns the maximum number of blockers this creature can be blocked by.
     fn maximum_blockers(&self) -> Option<usize> {
+        None
+    }
+
+    /// Returns the counter kind and maximum allowed by a "can't have more
+    /// than N ... counters" ability (CR 704.5r).
+    fn counter_limit(&self) -> Option<(crate::object::CounterType, u32)> {
         None
     }
 
@@ -718,6 +764,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns object abilities carried by a source-filtered grant. This is
+    /// used by schemas such as level tiers that can store only static ability
+    /// carriers even when the granted keyword is triggered or activated.
+    fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {
+        Vec::new()
+    }
+
     /// Returns the typed rule restriction, its source display, and any runtime
     /// condition when this is a generic rule-restriction ability.
     fn rule_restriction_parts(
@@ -742,6 +795,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Get hexproof-from filter if this is a hexproof-from ability.
     fn hexproof_from_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        None
+    }
+
+    /// Get the shared quality for a "bands with other" ability.
+    fn bands_with_other_filter(&self) -> Option<&crate::target::ObjectFilter> {
         None
     }
 
@@ -1019,6 +1077,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Return the CR 702.139 starting-deck predicate, if this is companion.
+    fn companion_deck_condition(&self) -> Option<&CompanionDeckCondition> {
+        None
+    }
+
     /// Return a draw-reveal descriptor, if this ability reveals one of the cards you draw.
     fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         None
@@ -1190,7 +1253,9 @@ pub struct CountAsCardNamedForSpellEffectSpec {
 pub struct DieRollResultAdjustmentSpec {
     pub player: crate::target::PlayerFilter,
     pub life_cost: u32,
+    pub mana_cost: Option<crate::mana::ManaCost>,
     pub amount: u32,
+    pub reroll: bool,
     pub once_each_turn: bool,
 }
 
@@ -1231,6 +1296,9 @@ impl PartialEq for StaticAbility {
 
         match self.0.id() {
             StaticAbilityId::Protection => self.0.protection_from() == other.0.protection_from(),
+            StaticAbilityId::HexproofFrom => {
+                self.0.hexproof_from_filter() == other.0.hexproof_from_filter()
+            }
             StaticAbilityId::Ward => self.0.ward_cost() == other.0.ward_cost(),
             StaticAbilityId::Landwalk => self.0.landwalk_kind() == other.0.landwalk_kind(),
             StaticAbilityId::PartnerWith => self.0.display() == other.0.display(),
@@ -1272,6 +1340,10 @@ impl StaticAbility {
         self.0.life_total_note_as_enters()
     }
 
+    pub fn reveal_from_hand_choice_as_enters(&self) -> Option<RevealFromHandAsEntersSpec> {
+        self.0.reveal_from_hand_as_enters()
+    }
+
     pub fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
         self.0.card_name_choice_as_enters()
     }
@@ -1304,6 +1376,10 @@ impl StaticAbility {
 
     pub fn granted_inline_ability(&self) -> Option<&crate::ability::Ability> {
         self.0.granted_inline_ability()
+    }
+
+    pub fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {
+        self.0.source_granted_inline_abilities()
     }
 
     pub fn rule_restriction_parts(
@@ -1356,6 +1432,10 @@ impl StaticAbility {
         self.0.pregame_action_effects()
     }
 
+    pub fn companion_deck_condition(&self) -> Option<&CompanionDeckCondition> {
+        self.0.companion_deck_condition()
+    }
+
     pub fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         self.0.reveal_drawn_card_spec()
     }
@@ -1373,6 +1453,10 @@ impl StaticAbility {
     /// Get the display text for this ability.
     pub fn display(&self) -> String {
         self.0.display()
+    }
+
+    pub(crate) fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
+        self.0.compiled_model()
     }
 
     pub fn prefers_card_name_subject(&self) -> bool {
@@ -1551,13 +1635,44 @@ impl StaticAbility {
         self.0.pay_non_mana_attack_cost(game, source, controller)
     }
 
+    pub fn block_cost_for_declaration(
+        &self,
+        game: &GameState,
+        ability_source: ObjectId,
+        ability_controller: PlayerId,
+        blocker: ObjectId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        self.0.block_cost_for_declaration(
+            game,
+            ability_source,
+            ability_controller,
+            blocker,
+            attacker,
+        )
+    }
+
+    pub(crate) fn block_cost_model(&self) -> Option<&BlockCost> {
+        self.0.block_cost_model()
+    }
+
+    pub(crate) fn materialize_resolution_values(
+        &self,
+        game: &GameState,
+        ctx: &mut crate::effects::ExecutionContext<'_>,
+    ) -> Result<Option<StaticAbility>, crate::effects::ExecutionError> {
+        self.0.materialize_resolution_values(game, ctx)
+    }
+
     pub fn optional_attack_cost_prompt(
         &self,
         game: &GameState,
         source: ObjectId,
         controller: PlayerId,
-    ) -> Option<crate::decisions::context::BooleanContext> {
-        self.0.optional_attack_cost_prompt(game, source, controller)
+        attacking_creatures: &[ObjectId],
+    ) -> Option<crate::decisions::context::DecisionContext> {
+        self.0
+            .optional_attack_cost_prompt(game, source, controller, attacking_creatures)
     }
 
     pub fn pay_optional_attack_cost(
@@ -1565,10 +1680,18 @@ impl StaticAbility {
         game: &mut GameState,
         source: ObjectId,
         controller: PlayerId,
+        attacking_creatures: &[ObjectId],
         trigger_queue: &mut crate::triggers::TriggerQueue,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<Result<(), String>> {
-        self.0
-            .pay_optional_attack_cost(game, source, controller, trigger_queue)
+        self.0.pay_optional_attack_cost(
+            game,
+            source,
+            controller,
+            attacking_creatures,
+            trigger_queue,
+            decision_maker,
+        )
     }
 
     pub fn landwalk_kind(&self) -> Option<crate::static_abilities::LandwalkKind> {
@@ -1590,6 +1713,10 @@ impl StaticAbility {
 
     pub fn maximum_blockers(&self) -> Option<usize> {
         self.0.maximum_blockers()
+    }
+
+    pub fn counter_limit(&self) -> Option<(crate::object::CounterType, u32)> {
+        self.0.counter_limit()
     }
 
     pub fn minimum_blockers(&self) -> Option<usize> {
@@ -1666,6 +1793,10 @@ impl StaticAbility {
 
     pub fn hexproof_from_filter(&self) -> Option<&crate::target::ObjectFilter> {
         self.0.hexproof_from_filter()
+    }
+
+    pub fn bands_with_other_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        self.0.bands_with_other_filter()
     }
 
     pub fn has_shroud(&self) -> bool {
@@ -1891,6 +2022,13 @@ impl StaticAbility {
         Self::new(Banding)
     }
 
+    pub fn bands_with_other(
+        filter: crate::target::ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(BandsWithOther::new(filter, display))
+    }
+
     pub fn reach() -> Self {
         Self::new(Reach)
     }
@@ -1975,8 +2113,16 @@ impl StaticAbility {
         Self::new(StartYourEngines)
     }
 
+    pub fn space_sculptor() -> Self {
+        Self::new(SpaceSculptor)
+    }
+
     pub fn doctors_companion() -> Self {
         Self::new(DoctorsCompanion)
+    }
+
+    pub fn companion(condition: CompanionDeckCondition, text: impl Into<String>) -> Self {
+        Self::from_model(CompiledStaticAbility::companion(condition, text))
     }
 
     pub fn assist() -> Self {
@@ -2047,6 +2193,24 @@ impl StaticAbility {
         Self::new(CantBlock)
     }
 
+    pub fn block_cost(
+        blockers: crate::target::ObjectFilter,
+        attackers: crate::target::ObjectFilter,
+        cost: crate::cost::TotalCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(BlockCost::new(blockers, attackers, cost, display))
+    }
+
+    pub fn attached_block_cost(
+        blockers: crate::target::ObjectFilter,
+        attackers: crate::target::ObjectFilter,
+        cost: crate::cost::TotalCost,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(BlockCost::attached(blockers, attackers, cost, display))
+    }
+
     pub fn must_attack() -> Self {
         Self::new(MustAttack)
     }
@@ -2077,6 +2241,13 @@ impl StaticAbility {
             linked_trigger,
             display,
         ))
+    }
+
+    pub fn enlist_attack(
+        linked_trigger: crate::ability::TriggeredAbility,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(EnlistAttack::new(linked_trigger, display))
     }
 
     pub fn cant_attack_unless_defending_player_controls_land_subtype(
@@ -2462,6 +2633,40 @@ impl StaticAbility {
         Self::new(RemoveAbilityForFilter::new(filter, ability))
     }
 
+    pub fn remove_ability_with_mode(
+        filter: crate::target::ObjectFilter,
+        ability: StaticAbility,
+        mode: ironsmith_core::AbilityLossMode,
+    ) -> Self {
+        Self::new(RemoveAbilityForFilter::new_with_mode(filter, ability, mode))
+    }
+
+    pub fn remove_object_abilities(
+        filter: crate::target::ObjectFilter,
+        abilities: Vec<crate::ability::Ability>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(RemoveAbilityForFilter::object_abilities(
+            filter,
+            abilities,
+            display.into(),
+        ))
+    }
+
+    pub fn remove_object_abilities_with_mode(
+        filter: crate::target::ObjectFilter,
+        abilities: Vec<crate::ability::Ability>,
+        display: impl Into<String>,
+        mode: ironsmith_core::AbilityLossMode,
+    ) -> Self {
+        Self::new(RemoveAbilityForFilter::object_abilities_with_mode(
+            filter,
+            abilities,
+            display.into(),
+            mode,
+        ))
+    }
+
     pub fn remove_all_abilities(filter: crate::target::ObjectFilter) -> Self {
         Self::new(RemoveAllAbilitiesForFilter::new(filter))
     }
@@ -2588,6 +2793,10 @@ impl StaticAbility {
     }
 
     pub fn copy_activated_abilities(ability: CopyActivatedAbilities) -> Self {
+        Self::new(ability)
+    }
+
+    pub fn copy_static_ability_variants(ability: CopyStaticAbilityVariants) -> Self {
         Self::new(ability)
     }
 
@@ -2968,6 +3177,10 @@ impl StaticAbility {
 
     pub fn escalate(spec: EscalateSpec<crate::costs::Cost>) -> Self {
         Self::new(EscalateAbility::new(spec))
+    }
+
+    pub fn dredge(amount: u32) -> Self {
+        Self::new(DredgeAbility::new(amount))
     }
 
     pub fn this_spell_cast_restriction(
@@ -3407,6 +3620,18 @@ impl StaticAbility {
         ))
     }
 
+    pub fn lose_game_replacement(
+        replacement_effects: Vec<crate::effect::Effect>,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(LoseGameReplacement::new(
+            replacement_effects,
+            optional,
+            display,
+        ))
+    }
+
     pub fn draw_replacement_exile_top_and_play(count: u32) -> Self {
         Self::new(DrawReplacementExileTopAndPlay::new(count))
     }
@@ -3554,6 +3779,14 @@ impl StaticAbility {
         Self::new(CantHaveCountersPlaced)
     }
 
+    pub fn counter_limit_rule(
+        counter_type: crate::object::CounterType,
+        maximum: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(CounterLimit::new(counter_type, maximum, display))
+    }
+
     pub fn permanents_you_control_cant_be_sacrificed() -> Self {
         Self::new(PermanentsCantBeSacrificed)
     }
@@ -3624,6 +3857,20 @@ impl StaticAbility {
         ))
     }
 
+    pub fn die_roll_reroll(
+        player: crate::target::PlayerFilter,
+        mana_cost: crate::mana::ManaCost,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(DieRollResultAdjustment::reroll(
+            player,
+            mana_cost,
+            once_each_turn,
+            display,
+        ))
+    }
+
     pub fn keyword_fallback_text(text: impl Into<String>) -> Self {
         Self::new(KeywordFallbackText::new(text))
     }
@@ -3634,6 +3881,14 @@ impl StaticAbility {
 
     pub fn draft_rule_text(text: impl Into<String>) -> Self {
         Self::new(DraftRuleText::new(text))
+    }
+
+    pub fn hidden_agenda() -> Self {
+        Self::new(HiddenAgenda)
+    }
+
+    pub fn double_agenda() -> Self {
+        Self::new(DoubleAgenda)
     }
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {

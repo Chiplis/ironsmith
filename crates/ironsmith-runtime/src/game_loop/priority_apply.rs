@@ -2,6 +2,17 @@ use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::perf::PerfTimer;
 
+fn total_cost_contains_tap(cost: &crate::cost::TotalCost) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            costs.iter().any(crate::costs::Cost::requires_tap)
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            branches.iter().any(total_cost_contains_tap)
+        }
+    }
+}
+
 pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) -> ActivationStage {
     if !pending.remaining_requirements.is_empty() {
         ActivationStage::ChoosingTargets
@@ -96,7 +107,7 @@ thread_local! {
     static LAST_MANA_PIP_PAYMENT_PERF: RefCell<Option<ManaPipPaymentPerfMetrics>> = const { RefCell::new(None) };
 }
 
-fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
+pub(super) fn store_priority_action_perf(metrics: PriorityActionPerfMetrics) {
     LAST_PRIORITY_ACTION_PERF.with(|slot| {
         *slot.borrow_mut() = Some(metrics);
     });
@@ -149,6 +160,13 @@ pub fn apply_priority_response_with_dm(
     response: &PriorityResponse,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    if !matches!(
+        response,
+        PriorityResponse::PriorityAction(LegalAction::PassPriority)
+    ) {
+        state.mandatory_loop.observe_player_action();
+    }
+
     if let PriorityResponse::Attackers(declarations) = response {
         if game.turn.step != Some(Step::DeclareAttackers) {
             return Err(GameLoopError::InvalidState(
@@ -294,13 +312,27 @@ pub fn apply_priority_response_with_dm(
                 &mut *decision_maker,
             )
         } else if state.pending_cast.is_some() {
-            apply_pip_payment_response_cast(
-                game,
-                trigger_queue,
-                state,
-                *choice,
-                &mut *decision_maker,
-            )
+            if state
+                .pending_cast
+                .as_ref()
+                .is_some_and(|pending| matches!(pending.stage, CastStage::PayingAssistMana))
+            {
+                apply_assist_pip_payment_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    *choice,
+                    &mut *decision_maker,
+                )
+            } else {
+                apply_pip_payment_response_cast(
+                    game,
+                    trigger_queue,
+                    state,
+                    *choice,
+                    &mut *decision_maker,
+                )
+            }
         } else {
             Err(GameLoopError::InvalidState(
                 "ManaPipPayment response but no pending activation or cast".to_string(),
@@ -399,54 +431,24 @@ pub fn apply_priority_response_with_dm(
         return Err(ResponseError::WrongResponseType.into());
     };
 
-    match action {
-        LegalAction::PassPriority => {
-            let total_started_at = PerfTimer::start();
-            let pass_started_at = PerfTimer::start();
-            let result = pass_priority(game, &mut state.tracker);
-            let mut perf = PriorityActionPerfMetrics {
-                action_kind: "pass_priority".to_string(),
-                pass_priority_ms: pass_started_at.elapsed_ms(),
-                ..PriorityActionPerfMetrics::default()
-            };
+    if !matches!(action, LegalAction::PassPriority) {
+        let actor =
+            super::priority_core::priority_actor_for_action(game, action).ok_or_else(|| {
+                GameLoopError::InvalidState(
+                    "selected action is not legal for any member of the priority team".to_string(),
+                )
+            })?;
+        game.turn.priority_player = Some(actor);
+    }
 
-            match result {
-                PriorityResult::Continue => {
-                    // Next player gets priority, advance again
-                    // Use decision maker for triggered ability targeting if available
-                    let advance_started_at = PerfTimer::start();
-                    let result = advance_priority_with_dm(game, trigger_queue, decision_maker);
-                    perf.advance_priority_ms = advance_started_at.elapsed_ms();
-                    perf.priority_result = "continue".to_string();
-                    perf.nested_priority_advance = crate::game_loop::last_priority_advance_perf();
-                    perf.total_ms = total_started_at.elapsed_ms();
-                    store_priority_action_perf(perf);
-                    result
-                }
-                PriorityResult::StackResolves => {
-                    // Resolve top of stack, passing decision maker for ETB replacements, choices, etc.
-                    let resolve_started_at = PerfTimer::start();
-                    resolve_stack_entry_with_dm_and_triggers(game, decision_maker, trigger_queue)?;
-                    perf.resolve_stack_entry_ms = resolve_started_at.elapsed_ms();
-                    // Reset priority to active player
-                    let reset_started_at = PerfTimer::start();
-                    reset_priority(game, &mut state.tracker);
-                    perf.reset_priority_ms = reset_started_at.elapsed_ms();
-                    // Signal that stack resolved - outer loop will call advance_priority_with_dm
-                    // with the proper decision maker for trigger target selection
-                    perf.priority_result = "stack_resolves".to_string();
-                    perf.total_ms = total_started_at.elapsed_ms();
-                    store_priority_action_perf(perf);
-                    Ok(GameProgress::StackResolved)
-                }
-                PriorityResult::PhaseEnds => {
-                    perf.priority_result = "phase_ends".to_string();
-                    perf.total_ms = total_started_at.elapsed_ms();
-                    store_priority_action_perf(perf);
-                    Ok(GameProgress::Continue)
-                }
-            }
-        }
+    match action {
+        LegalAction::PassPriority => super::priority_mana::apply_priority_action_with_dm(
+            game,
+            trigger_queue,
+            state,
+            action,
+            decision_maker,
+        ),
         LegalAction::KeepOpeningHand
         | LegalAction::TakeMulligan
         | LegalAction::ContinuePregame
@@ -754,7 +756,11 @@ pub fn apply_priority_response_with_dm(
             let cost = crate::decision::calculate_effective_activation_total_cost(
                 game, player, *source, &base_cost,
             );
-            let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
+            let activation_cost_has_tap = total_cost_contains_tap(&cost);
+            let alternative_cost_branches = cost
+                .as_one_of()
+                .map(|branches| branches.to_vec())
+                .unwrap_or_default();
             let payment_reason = crate::costs::PaymentReason::ActivateAbility;
             let activation_provenance =
                 game.provenance_graph_mut()
@@ -768,8 +774,12 @@ pub fn apply_priority_response_with_dm(
             let mut remaining_cost_steps = Vec::new();
             let payment_trace: Vec<CostStep> = Vec::new();
 
-            append_activation_cost_steps_from_components(cost.costs(), &mut remaining_cost_steps);
-            for cost_component in cost.costs() {
+            let flat_components = cost.as_all().unwrap_or(&[]);
+            append_activation_cost_steps_from_components(
+                flat_components,
+                &mut remaining_cost_steps,
+            );
+            for cost_component in flat_components {
                 if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
                     let mut execution_ctx =
                         ExecutionContext::new(*source, player, &mut *decision_maker)
@@ -824,6 +834,7 @@ pub fn apply_priority_response_with_dm(
             // Create pending activation if there are choices to make
             if has_x
                 || has_modal
+                || !alternative_cost_branches.is_empty()
                 || !remaining_cost_steps.is_empty()
                 || has_hybrid_pips
                 || !target_requirements.is_empty()
@@ -834,6 +845,8 @@ pub fn apply_priority_response_with_dm(
                 // → non-mana costs → Mana payment.
                 let stage = if has_modal {
                     ActivationStage::ChoosingModes
+                } else if !alternative_cost_branches.is_empty() {
+                    ActivationStage::ChoosingAlternativeCost
                 } else if has_x {
                     ActivationStage::ChoosingX
                 } else if has_hybrid_pips {
@@ -855,6 +868,7 @@ pub fn apply_priority_response_with_dm(
                     effects,
                     target_requirements,
                     mana_cost_to_pay,
+                    alternative_cost_branches,
                     payment_reason,
                     payment_trace,
                     remaining_cost_steps,
@@ -1397,19 +1411,23 @@ pub(super) fn apply_targets_response(
                     &activated.mana_cost,
                     &pending.chosen_targets,
                 );
-            pending.mana_cost_to_pay = None;
-            pending.remaining_cost_steps.clear();
-            crate::game_loop::priority_state::append_activation_cost_steps_from_components(
-                repriced.costs(),
-                &mut pending.remaining_cost_steps,
-            );
-            for cost_component in repriced.costs() {
-                if let crate::costs::CostProcessingMode::ManaPayment { cost } =
-                    cost_component.processing_mode()
-                {
-                    pending.mana_cost_to_pay = Some(cost);
+            let locked_cost = match repriced.kind() {
+                ironsmith_core::TotalCostKind::All(_) => repriced.clone(),
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    pending.alternative_cost_branches = branches.clone();
+                    let selected = pending.selected_alternative_cost.ok_or_else(|| {
+                        GameLoopError::InvalidState(
+                            "targets were chosen before an alternative activation cost".to_string(),
+                        )
+                    })?;
+                    branches.get(selected).cloned().ok_or_else(|| {
+                        GameLoopError::InvalidState(format!(
+                            "selected activation cost branch {selected} no longer exists"
+                        ))
+                    })?
                 }
-            }
+            };
+            assign_pending_activation_cost(game, &mut pending, &locked_cost, decision_maker)?;
         }
 
         pending.stage = stage_after_activation_announcements(&pending);

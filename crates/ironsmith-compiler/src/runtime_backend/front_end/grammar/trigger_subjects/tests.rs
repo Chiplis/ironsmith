@@ -58,6 +58,32 @@ fn typed_spell_filter_envelope_stops_at_semantic_boundaries() {
 }
 
 #[test]
+fn typed_spell_filter_envelope_preserves_serial_type_and_subtype_lists() {
+    let mixed_union = lex_line("an instant, sorcery, or Wizard spell during your turn", 0).unwrap();
+    let envelope = parse_spell_filter_envelope(&mixed_union);
+    assert_eq!(
+        TokenWordView::new(&mixed_union[..envelope.end]).word_refs(),
+        ["an", "instant", "sorcery", "or", "Wizard", "spell"]
+    );
+
+    let subtype_union = lex_line("a Pegasus, Unicorn, or Horse creature spell", 0).unwrap();
+    let envelope = parse_spell_filter_envelope(&subtype_union);
+    assert_eq!(
+        TokenWordView::new(&subtype_union[..envelope.end]).word_refs(),
+        [
+            "a", "Pegasus", "Unicorn", "or", "Horse", "creature", "spell"
+        ]
+    );
+
+    let simple = lex_line("a creature spell, during combat", 0).unwrap();
+    let envelope = parse_spell_filter_envelope(&simple);
+    assert_eq!(
+        TokenWordView::new(&simple[..envelope.end]).word_refs(),
+        ["a", "creature", "spell"]
+    );
+}
+
+#[test]
 fn typed_controller_suffix_preserves_longest_tail_and_subject_boundary() {
     let suffix =
         parse_trigger_control_suffix(&["creatures", "an", "opponent", "controls"]).unwrap();

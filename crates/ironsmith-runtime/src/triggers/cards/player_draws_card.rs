@@ -3,7 +3,9 @@
 use crate::events::EventKind;
 use crate::events::other::CardsDrawnEvent;
 use crate::target::PlayerFilter;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{
+    TriggerContext, TriggerMatcher, current_turn_matches_player_filter,
+};
 use crate::triggers::{TriggerEvent, describe_player_filter_subject};
 
 /// Trigger for "Whenever [player] draws a card" or "Whenever [player] draws one or more cards".
@@ -58,19 +60,11 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => e.player != ctx.controller,
             PlayerFilter::Any => true,
+            PlayerFilter::Active => ctx.game.is_active_player(e.player),
             PlayerFilter::Specific(id) => e.player == *id,
             _ => true,
         }) && if let Some(not_during_turn) = &self.not_during_turn {
-            let active_player = ctx.game.turn.active_player;
-            let turn_matches = match not_during_turn {
-                PlayerFilter::You => active_player == ctx.controller,
-                PlayerFilter::Opponent => active_player != ctx.controller,
-                PlayerFilter::Any | PlayerFilter::Active => true,
-                PlayerFilter::Specific(id) => active_player == *id,
-                PlayerFilter::IteratedPlayer => active_player == e.player,
-                _ => false,
-            };
-            !turn_matches
+            !current_turn_matches_player_filter(not_during_turn, ctx, Some(e.player))
         } else {
             true
         }
@@ -198,5 +192,44 @@ mod tests {
         // Per-card trigger fires 3 times
         let per_card_trigger = PlayerDrawsCardTrigger::per_card(PlayerFilter::Any);
         assert_eq!(per_card_trigger.trigger_count(&event), 3);
+    }
+
+    #[test]
+    fn shared_turn_restriction_recognizes_a_nonprimary_active_teammate() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Diana".into(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let diana = PlayerId::from_index(3);
+        game.set_teams(vec![vec![alice, bob], vec![charlie, diana]])
+            .expect("valid teams");
+        game.enable_shared_team_turns().expect("shared turns");
+        assert_eq!(game.active_player_id(), Some(bob));
+
+        let source_id = ObjectId::from_raw(1);
+        let card_id = ObjectId::from_raw(2);
+        let event = TriggerEvent::new_with_provenance(
+            CardsDrawnEvent::single(alice, card_id, true),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let trigger = PlayerDrawsCardTrigger::not_during_turn(PlayerFilter::You, PlayerFilter::You);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(
+            !trigger.matches(&event, &ctx),
+            "Alice is taking the shared turn even though Bob is its primary player"
+        );
+
+        let opponent_ctx = TriggerContext::for_source(source_id, charlie, &game);
+        let opponent_turn =
+            PlayerDrawsCardTrigger::not_during_turn(PlayerFilter::Any, PlayerFilter::Opponent);
+        assert!(!opponent_turn.matches(&event, &opponent_ctx));
     }
 }

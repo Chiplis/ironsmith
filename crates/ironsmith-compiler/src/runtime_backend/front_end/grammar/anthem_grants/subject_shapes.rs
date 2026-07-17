@@ -39,30 +39,54 @@ pub(crate) fn parse_exact_anthem_subject_grammar(
 fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    let tag = if words.ends_with(&["that", "is", "enchanted"])
-        || words.ends_with(&["that", "are", "enchanted"])
-    {
-        "enchanted"
-    } else if words.ends_with(&["that", "is", "equipped"])
-        || words.ends_with(&["that", "are", "equipped"])
-    {
-        "equipped"
-    } else {
-        return None;
-    };
+    let attachment_tags: &[&str] =
+        if words.ends_with(&["that", "is", "enchanted", "or", "equipped"])
+            || words.ends_with(&["that", "are", "enchanted", "or", "equipped"])
+        {
+            &["enchanted", "equipped"]
+        } else if words.ends_with(&["that", "is", "equipped", "or", "enchanted"])
+            || words.ends_with(&["that", "are", "equipped", "or", "enchanted"])
+        {
+            &["equipped", "enchanted"]
+        } else if words.ends_with(&["that", "is", "enchanted"])
+            || words.ends_with(&["that", "are", "enchanted"])
+        {
+            &["enchanted"]
+        } else if words.ends_with(&["that", "is", "equipped"])
+            || words.ends_with(&["that", "are", "equipped"])
+        {
+            &["equipped"]
+        } else {
+            return None;
+        };
 
-    let base_word_count = words.len().checked_sub(3)?;
+    let suffix_word_count = if attachment_tags.len() == 2 { 5 } else { 3 };
+    let base_word_count = words.len().checked_sub(suffix_word_count)?;
     let base_token_end = view.token_index_after_words(base_word_count)?;
     let base_tokens = trim_lexed_commas(tokens.get(..base_token_end)?);
     if base_tokens.is_empty() {
         return None;
     }
-    let mut filter =
+    let base_filter =
         filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false).ok()?;
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: TagKey::from(tag),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
+    let mut branches = attachment_tags
+        .iter()
+        .map(|tag| {
+            let mut branch = base_filter.clone();
+            branch.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(*tag),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+            branch
+        })
+        .collect::<Vec<_>>();
+    let mut filter = if branches.len() == 1 {
+        branches.pop()?
+    } else {
+        let mut union = ObjectFilter::default();
+        union.any_of = branches;
+        union
+    };
     filter.set_relative_attachment_state_surface(true);
     Some(filter)
 }

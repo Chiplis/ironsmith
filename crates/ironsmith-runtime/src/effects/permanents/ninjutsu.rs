@@ -349,6 +349,14 @@ fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
         AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
             obj.zone == Zone::Battlefield && obj.has_card_type(CardType::Planeswalker)
         }),
+        AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
+            obj.zone == Zone::Battlefield
+                && obj.has_card_type(CardType::Battle)
+                && game.battle_protector(*battle).is_some_and(|protector| {
+                    game.player(protector)
+                        .is_some_and(|player| player.is_in_game())
+                })
+        }),
     }
 }
 

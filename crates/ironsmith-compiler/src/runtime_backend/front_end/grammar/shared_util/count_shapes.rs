@@ -25,6 +25,27 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
+    if words
+        .get(idx..idx + 4)
+        .is_some_and(|tail| matches!(tail, ["counter" | "counters", "removed", "this", "way"]))
+    {
+        return Some((
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
+            idx + 4,
+        ));
+    }
+
+    if let Some(value) = super::value_expr::colored_mana_symbols_in_costs(words) {
+        return Some(value);
+    }
+
     let history_end = value_boundary(&words[idx..]) + idx;
     let history_tokens = synthetic_word_tokens(&words[..history_end]);
     if let Some(value) = super::value_semantics::parse_turn_history_count_value(&history_tokens) {
@@ -173,8 +194,7 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             {
                 filter_words = &filter_words[..filter_words.len() - 1];
                 Some(PlayerFilter::You)
-            } else if permission_shapes::suffix_words(filter_words, &["that", "player"])
-            {
+            } else if permission_shapes::suffix_words(filter_words, &["that", "player"]) {
                 filter_words = &filter_words[..filter_words.len() - 2];
                 Some(PlayerFilter::IteratedPlayer)
             } else {
@@ -190,11 +210,11 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                     filter.set_explicit_card_noun(true);
                 }
                 let mut query = ironsmith_core::PriorEffectMetricQuery::new(
-                        ironsmith_core::EffectMetricSource::AffectedObjects,
-                        ironsmith_core::EffectMetric::Count,
-                    )
-                    .with_filter(filter)
-                    .with_action(action);
+                    ironsmith_core::EffectMetricSource::AffectedObjects,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_filter(filter)
+                .with_action(action);
                 if let Some(player) = player {
                     query = query.with_player(player);
                 }
@@ -345,13 +365,32 @@ fn parse_exact_dynamic_count_basis(words: &[&str], consumed: usize) -> Option<(V
         Value::MaxCardsDrawnThisTurn(PlayerFilter::IteratedPlayer)
     } else if exact_one_of(
         words,
+        &[&["opponent", "you", "have"], &["opponents", "you", "have"]],
+    ) {
+        Value::CountPlayers(PlayerFilter::Opponent)
+    } else if exact_one_of(
+        words,
         &[
             &[
-                "modified", "creature", "you", "controlled", "as", "you", "cast", "this",
+                "modified",
+                "creature",
+                "you",
+                "controlled",
+                "as",
+                "you",
+                "cast",
+                "this",
                 "spell",
             ],
             &[
-                "modified", "creatures", "you", "controlled", "as", "you", "cast", "this",
+                "modified",
+                "creatures",
+                "you",
+                "controlled",
+                "as",
+                "you",
+                "cast",
+                "this",
                 "spell",
             ],
         ],
@@ -385,12 +424,8 @@ fn parse_exact_dynamic_count_basis(words: &[&str], consumed: usize) -> Option<(V
     } else if exact_one_of(
         words,
         &[
-            &[
-                "creature", "blocking", "it", "beyond", "the", "first",
-            ],
-            &[
-                "creatures", "blocking", "it", "beyond", "the", "first",
-            ],
+            &["creature", "blocking", "it", "beyond", "the", "first"],
+            &["creatures", "blocking", "it", "beyond", "the", "first"],
         ],
     ) {
         Value::EventValue(ironsmith_core::EventValueSpec::BlockersBeyondFirst { multiplier: 1 })
@@ -398,23 +433,18 @@ fn parse_exact_dynamic_count_basis(words: &[&str], consumed: usize) -> Option<(V
     } else if exact_one_of(
         words,
         &[
-            &[
-                "card", "looked", "at", "while", "scrying", "this", "way",
-            ],
-            &[
-                "cards", "looked", "at", "while", "scrying", "this", "way",
-            ],
+            &["card", "looked", "at", "while", "scrying", "this", "way"],
+            &["cards", "looked", "at", "while", "scrying", "this", "way"],
         ],
     ) {
-        Value::EventValue(ironsmith_core::EventValueSpec::Amount).with_surface_hint(
-            ironsmith_core::ValueSurfaceHint::CardsLookedAtWhileScryingThisWay,
-        )
+        Value::EventValue(ironsmith_core::EventValueSpec::Amount)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsLookedAtWhileScryingThisWay)
     } else if exact_one_of(
         words,
         &[
             &[
-                "mana", "from", "a", "treasure", "that", "was", "spent", "to", "cast",
-                "this", "spell",
+                "mana", "from", "a", "treasure", "that", "was", "spent", "to", "cast", "this",
+                "spell",
             ],
             &[
                 "mana", "from", "a", "treasure", "spent", "to", "cast", "this", "spell",
@@ -538,6 +568,7 @@ fn is_kick_count(words: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::target::ObjectFilter;
     use ironsmith_core::ValueSurfaceHint;
 
     #[test]
@@ -581,6 +612,48 @@ mod tests {
             parse_for_each_count_value_words(&["for", "each", "creature", "in", "your", "party"]),
             Some((Value::PartySize(PlayerFilter::You), 6))
         );
+    }
+
+    #[test]
+    fn parses_for_each_colored_mana_symbol_across_a_filtered_scope() {
+        let words = [
+            "for",
+            "each",
+            "white",
+            "mana",
+            "symbol",
+            "in",
+            "the",
+            "mana",
+            "costs",
+            "of",
+            "permanents",
+            "you",
+            "control",
+        ];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("mana-symbol token count should parse");
+        assert_eq!(used, words.len());
+        let Value::ManaSymbolsInManaCostOf { spec, color } = value else {
+            panic!("expected structured mana-symbol value");
+        };
+        assert_eq!(color, crate::color::Color::White);
+        let ChooseSpec::All(filter) = spec.unhinted() else {
+            panic!("expected aggregate object scope");
+        };
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Battlefield));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn parses_for_each_opponent_you_have_as_a_player_count() {
+        for noun in ["opponent", "opponents"] {
+            let words = ["for", "each", noun, "you", "have"];
+            let (value, used) =
+                parse_for_each_count_value_words(&words).expect("opponent count should parse");
+            assert_eq!(used, words.len());
+            assert_eq!(value, Value::CountPlayers(PlayerFilter::Opponent));
+        }
     }
 
     #[test]

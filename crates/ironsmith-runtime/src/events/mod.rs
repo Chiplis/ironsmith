@@ -93,9 +93,9 @@ pub use traits::{
 // Re-export event types
 pub use cards::{DiscardEvent, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
-pub use damage::DamageEvent;
+pub use damage::{DamageEvent, DamagePreventedEvent, PreventedDamage};
 pub use life::{LifeGainEvent, LifeLossEvent};
-pub use mana::ManaAddedEvent;
+pub use mana::{ManaAddedEvent, ManaUnitSpentEvent};
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};
 pub use tokens::CreateTokensEvent;
 pub use zones::{EnterBattlefieldEvent, ZoneChangeEvent};
@@ -106,7 +106,7 @@ pub use combat::{
     CreatureBecameBlockedEvent, CreatureBlockedEvent,
 };
 pub use other::{
-    BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
+    BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent, CoinFlippedEvent,
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
     MutatedEvent, ObjectBecameUnattachedEvent, PermanentPhasedOutEvent, PermanentTappedEvent,
@@ -120,7 +120,10 @@ pub use phase::{
     BeginningOfUpkeepEvent, EndOfCombatEvent,
 };
 pub use raw_event::RawEvent;
-pub use spells::{AbilityActivatedEvent, BecomesTargetedEvent, SpellCastEvent, SpellCopiedEvent};
+pub use spells::{
+    AbilityActivatedEvent, AbilityTriggeredEvent, BecomesTargetedEvent, SpellCastEvent,
+    SpellCopiedEvent,
+};
 
 // Re-export matchers
 pub use cards::matchers::*;
@@ -259,6 +262,7 @@ impl Event {
                 player,
                 amount,
                 from_damage,
+                from_radiation: false,
             },
             ProvNodeId::default(),
         )
@@ -334,6 +338,7 @@ impl Event {
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
                 controller_override: None,
+                prepared_choices: None,
             },
             ProvNodeId::default(),
         )

@@ -5,10 +5,39 @@ use super::search_library::normalize_search_library_filter;
 use crate::cards::builders::{CardTextError, ObjectFilter, PlayerAst};
 use crate::runtime_backend::grammar::effects::looked_card_shapes;
 
+fn parse_imperative_possessive_library_view(
+    tokens: &[OwnedLexToken],
+) -> Option<(PlayerAst, crate::effect::Value, bool)> {
+    let (owner_start, player) = tokens.windows(4).enumerate().find_map(|(index, window)| {
+        if !window[0].is_word("of") || !window[3].is_word("library") {
+            return None;
+        }
+        if window[1].is_word("target") && window[2].is_word("player's") {
+            Some((index, PlayerAst::Target))
+        } else if window[1].is_word("target") && window[2].is_word("opponent's") {
+            Some((index, PlayerAst::TargetOpponent))
+        } else {
+            None
+        }
+    })?;
+
+    // Reuse the ordinary, fully typed top-card count grammar after replacing
+    // only the possessive library owner. The returned PlayerAst retains the
+    // target declaration; this rewrite changes no effect semantics.
+    let mut normalized = tokens.to_vec();
+    normalized.remove(owner_start + 1);
+    normalized.get_mut(owner_start + 1)?.replace_word("your");
+    let shape = looked_card_shapes::parse_top_cards_view_shape(&normalized)?;
+    Some((player, shape.count, shape.revealed))
+}
+
 pub(crate) fn parse_top_cards_view_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
     let tokens = trim_lexed_commas(tokens);
+    if let Some(view) = parse_imperative_possessive_library_view(tokens) {
+        return Some(view);
+    }
     let explicit_subject = match tokens {
         [first, second, ..]
             if first.parser_text() == "target" && second.parser_text() == "opponent" =>

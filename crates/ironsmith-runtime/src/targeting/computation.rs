@@ -185,6 +185,12 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     let Some(target) = game.object(target_id) else {
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     };
+    if game.grand_melee().is_some()
+        && target.zone == Zone::Stack
+        && !game.object_is_on_current_stack(target_id)
+    {
+        return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
+    }
 
     let Some(source) = game.object(source_id) else {
         // Rule 608.2b: if the source of an ability has left its expected zone,
@@ -261,6 +267,12 @@ fn can_target_object_from_source_snapshot_with_view(
     let Some(target) = game.object(target_id) else {
         return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
     };
+    if game.grand_melee().is_some()
+        && target.zone == Zone::Stack
+        && !game.object_is_on_current_stack(target_id)
+    {
+        return TargetingResult::Invalid(TargetingInvalidReason::DoesntExist);
+    }
 
     if target.zone != Zone::Battlefield && target.zone != Zone::Stack {
         return TargetingResult::legal();
@@ -687,9 +699,18 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_combat_context_with_view
                 caster,
                 source_id,
                 source_snapshot,
+                combat_context,
             ));
             targets
         }
+        ChooseSpec::Player(filter) => compute_player_targets(
+            game,
+            filter,
+            caster,
+            source_id,
+            source_snapshot,
+            combat_context,
+        ),
         _ => compute_legal_targets_with_tagged_objects_source_snapshot_with_view(
             game,
             spec,
@@ -767,7 +788,7 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
         }
         ChooseSpec::AttackedPlayerOrPlaneswalker => Vec::new(),
         ChooseSpec::Player(filter) => {
-            compute_player_targets(game, filter, caster, source_id, source_snapshot)
+            compute_player_targets(game, filter, caster, source_id, source_snapshot, None)
         }
         ChooseSpec::Object(filter) => compute_object_targets_with_view(
             game,
@@ -796,6 +817,7 @@ pub(crate) fn compute_legal_targets_with_tagged_objects_source_snapshot_with_vie
                 caster,
                 source_id,
                 source_snapshot,
+                None,
             ));
             targets
         }
@@ -820,8 +842,14 @@ fn compute_player_or_planeswalker_targets_with_view(
     source_snapshot: Option<&ObjectSnapshot>,
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> Vec<Target> {
-    let mut targets =
-        compute_player_targets(game, player_filter, caster, source_id, source_snapshot);
+    let mut targets = compute_player_targets(
+        game,
+        player_filter,
+        caster,
+        source_id,
+        source_snapshot,
+        None,
+    );
 
     view.prewarm_characteristics(&game.battlefield);
     for &obj_id in &game.battlefield {
@@ -829,6 +857,11 @@ fn compute_player_or_planeswalker_targets_with_view(
             continue;
         };
         if !view.object_has_card_type(obj_id, CardType::Planeswalker) {
+            continue;
+        }
+        if !game.source_snapshot_is_exempt_from_range(source_id, source_snapshot)
+            && !game.object_is_within_range(caster, obj_id, source_id)
+        {
             continue;
         }
 
@@ -865,9 +898,11 @@ fn compute_any_targets_with_view(
 ) -> Vec<Target> {
     let mut targets = Vec::new();
 
-    // All players in the game
+    let range_exempt = game.source_snapshot_is_exempt_from_range(source_id, source_snapshot);
+
+    // All players in the game and in the source controller's range.
     for player in &game.players {
-        if player.is_in_game() {
+        if player.is_in_game() && (range_exempt || game.player_is_within_range(caster, player.id)) {
             targets.push(Target::Player(player.id));
         }
     }
@@ -880,6 +915,9 @@ fn compute_any_targets_with_view(
                 && !view.object_has_card_type(obj_id, CardType::Planeswalker)
                 && !view.object_has_card_type(obj_id, CardType::Battle)
             {
+                continue;
+            }
+            if !range_exempt && !game.object_is_within_range(caster, obj_id, source_id) {
                 continue;
             }
 
@@ -931,6 +969,7 @@ fn compute_player_targets(
     controller: PlayerId,
     source_id: Option<ObjectId>,
     source_snapshot: Option<&ObjectSnapshot>,
+    combat_context: Option<(PlayerId, PlayerId)>,
 ) -> Vec<Target> {
     // Unwrap Target wrapper — during legal target computation we want to know
     // which players *could be* targeted, not which are already targeted.
@@ -939,7 +978,11 @@ fn compute_player_targets(
         other => other,
     };
 
-    let filter_ctx = target_filter_context(game, controller, source_id);
+    let mut filter_ctx = target_filter_context(game, controller, source_id);
+    if game.source_snapshot_is_exempt_from_range(source_id, source_snapshot) {
+        filter_ctx.players_in_range = None;
+    }
+    apply_combat_target_filter_context(game, &mut filter_ctx, combat_context);
 
     game.players
         .iter()
@@ -1003,10 +1046,10 @@ fn compute_object_targets_with_view(
 
     // Build filter context
     let mut filter_ctx = target_filter_context(game, caster, source_id);
-    if let Some((defending_player, attacking_player)) = combat_context {
-        filter_ctx.defending_player = Some(defending_player);
-        filter_ctx.attacking_player = Some(attacking_player);
+    if game.source_snapshot_is_exempt_from_range(source_id, source_snapshot) {
+        filter_ctx.players_in_range = None;
     }
+    apply_combat_target_filter_context(game, &mut filter_ctx, combat_context);
     if let Some(tagged) = tagged_objects {
         filter_ctx = filter_ctx.with_tagged_objects(tagged);
     }
@@ -1041,6 +1084,12 @@ fn compute_object_targets_with_view(
         let Some(object) = game.object(object_id) else {
             continue;
         };
+        if game.grand_melee().is_some()
+            && object.zone == Zone::Stack
+            && !game.object_is_on_current_stack(object_id)
+        {
+            continue;
+        }
         if !filter.matches_with_view(object, &filter_ctx, game, view) {
             continue;
         }
@@ -1086,10 +1135,29 @@ fn target_filter_context(
         && let Some((defending_player, attacking_player)) =
             combat_players_for_attacking_source(game, source_id)
     {
-        filter_ctx.defending_player = Some(defending_player);
-        filter_ctx.attacking_player = Some(attacking_player);
+        apply_combat_target_filter_context(
+            game,
+            &mut filter_ctx,
+            Some((defending_player, attacking_player)),
+        );
     }
     filter_ctx
+}
+
+fn apply_combat_target_filter_context(
+    game: &GameState,
+    filter_ctx: &mut crate::target::FilterContext,
+    combat_context: Option<(PlayerId, PlayerId)>,
+) {
+    let Some((defending_player, attacking_player)) = combat_context else {
+        return;
+    };
+    filter_ctx.defending_player = Some(defending_player);
+    filter_ctx.attacking_player = Some(attacking_player);
+    if game.shared_team_turns_enabled() {
+        filter_ctx.defending_players = game.team_players_for(defending_player);
+        filter_ctx.attacking_players = game.team_players_for(attacking_player);
+    }
 }
 
 fn combat_players_for_attacking_source(
@@ -1103,6 +1171,9 @@ fn combat_players_for_attacking_source(
         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => {
             let planeswalker = game.object(*planeswalker_id)?;
             game.controller_of(planeswalker)
+        }
+        crate::combat_state::AttackTarget::Battle(battle_id) => {
+            game.battle_protector(*battle_id)?
         }
     };
     let source = game.object(source_id)?;

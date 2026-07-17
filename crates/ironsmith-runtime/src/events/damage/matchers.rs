@@ -1093,9 +1093,12 @@ impl ReplacementMatcher for DamageToSelfFromSourceFilterMatcher {
             return false;
         }
         if self.source_relation == ironsmith_core::StaticDamageSourceRelation::BlockingStaticSource
-            && ctx.game.combat.as_ref().and_then(|combat| {
-                crate::combat_state::get_blocked_attacker(combat, damage.source)
-            }) != Some(target_id)
+            && ctx
+                .game
+                .combat
+                .as_ref()
+                .and_then(|combat| crate::combat_state::get_blocked_attacker(combat, damage.source))
+                != Some(target_id)
         {
             return false;
         }

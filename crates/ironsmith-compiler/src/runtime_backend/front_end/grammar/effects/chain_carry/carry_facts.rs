@@ -60,18 +60,33 @@ pub(crate) fn parse_rest_action_tokens(tokens: &[OwnedLexToken]) -> Option<RestA
 pub(crate) fn parse_carry_duration_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<CarryDurationPrefix<'_>> {
-    let parsed = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)?;
-    let duration = match parsed.duration {
-        leaf::LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
-        leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
-        leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
-        leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
-        _ => return None,
+    let (duration, rest) = if let Some(parsed) =
+        leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)
+    {
+        let duration = match parsed.duration {
+            leaf::LeafDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
+            leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
+            leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
+            leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
+            _ => return None,
+        };
+        (duration, parsed.rest)
+    } else {
+        let parsed = leaf::parse_leaf_conditional_duration_prefix_tokens(tokens)?;
+        let duration = match parsed.duration {
+            leaf::LeafConditionalDurationKind::YouControlSource => Until::YouStopControllingThis,
+            leaf::LeafConditionalDurationKind::SourceRemainsTapped => Until::SourceUntaps,
+            leaf::LeafConditionalDurationKind::SourceRemainsOnBattlefield => {
+                Until::ThisLeavesTheBattlefield
+            }
+        };
+        (duration, parsed.rest)
     };
-    Some(CarryDurationPrefix {
-        duration,
-        rest: trim_lexed_commas(parsed.rest),
-    })
+    let rest = trim_lexed_commas(rest);
+    if super::super::clause_primitive_shapes::parse_trigger_clause_intro_shape(rest).is_some() {
+        return None;
+    }
+    Some(CarryDurationPrefix { duration, rest })
 }
 
 pub(crate) fn parse_carryable_subject_tokens(

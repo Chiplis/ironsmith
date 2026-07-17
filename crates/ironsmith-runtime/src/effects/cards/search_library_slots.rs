@@ -13,7 +13,7 @@ use crate::effects::cards::search_overrides::{
 };
 use crate::effects::helpers::{resolve_player_filter, view_hidden_candidate_objects};
 use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{SearchLibraryEvent, ShuffleLibraryEvent};
@@ -32,7 +32,8 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser_id = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser_id =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let search_override = opposition_agent_search(game, chooser_id, player_id);
 
@@ -42,7 +43,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         let search_control =
             begin_opposition_agent_search_control(game, chooser_id, search_override);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let search_viewer = game.controlling_player_for(chooser_id);
+            let search_viewer = chooser_id;
             let library_cards = game
                 .player(player_id)
                 .map(|player| player.library.clone())
@@ -170,22 +171,29 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                     "searched cards put on top after library shuffle",
                 );
                 moved_ids.extend(chosen_ids);
+            } else if self.destination == Zone::Battlefield && search_override.is_none() {
+                moved_ids.extend(
+                    move_to_battlefield_batch_with_options(
+                        game,
+                        ctx,
+                        chosen_ids
+                            .into_iter()
+                            .map(|card_id| (card_id, BattlefieldEntryOptions::preserve(false)))
+                            .collect(),
+                    )
+                    .into_iter()
+                    .filter_map(|outcome| match outcome {
+                        BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
+                        BattlefieldEntryOutcome::Prevented => None,
+                    }),
+                );
+                game.shuffle_player_library(player_id);
             } else {
                 for card_id in chosen_ids {
                     let new_id = if let Some(search) = search_override {
                         exile_found_cards_for_opposition_agent(game, &[card_id], search)
                             .first()
                             .copied()
-                    } else if self.destination == Zone::Battlefield {
-                        match move_to_battlefield_with_options(
-                            game,
-                            ctx,
-                            card_id,
-                            BattlefieldEntryOptions::preserve(false),
-                        ) {
-                            BattlefieldEntryOutcome::Moved(new_id) => Some(new_id),
-                            BattlefieldEntryOutcome::Prevented => None,
-                        }
                     } else {
                         game.move_object_by_effect(card_id, self.destination)
                     };

@@ -198,6 +198,113 @@ pub(super) fn rewrite_lose_all_transform_name_uses_parser_word_coordinates() {
 }
 
 #[test]
+pub(super) fn rewrite_compound_lose_all_base_pt_dispatch_keeps_both_modifications() {
+    let tokens = lex_line(
+        "Non-Horror creatures with slime counters on them lose all abilities and have base power and toughness 2/2.",
+        0,
+    )
+    .expect("compound lose-all/base-pt line should lex");
+    let parsed = super::super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("compound lose-all/base-pt line should parse")
+        .expect("compound lose-all/base-pt line should produce static abilities");
+    let ids = parsed
+        .iter()
+        .filter_map(|ability| match ability {
+            crate::cards::builders::StaticAbilityAst::Static(ability) => Some(ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        ids,
+        vec![
+            crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter,
+            crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter,
+        ]
+    );
+    for ability in &parsed {
+        let crate::cards::builders::StaticAbilityAst::Static(ability) = ability else {
+            panic!("expected static ability, got {ability:#?}");
+        };
+        let filter = match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::RemoveAllAbilities(filter)
+            | crate::static_abilities::StaticAbilityPayload::SetBasePowerToughness {
+                filter, ..
+            } => filter,
+            payload => panic!("unexpected payload: {payload:#?}"),
+        };
+        assert!(filter.card_types.contains(&CardType::Creature));
+        assert!(filter.excluded_subtypes.contains(&Subtype::Horror));
+        assert!(filter.with_counter.is_some());
+    }
+}
+
+#[test]
+pub(super) fn rewrite_dynamic_lose_all_becomes_shape_bypasses_fixed_early_route() {
+    let tokens = lex_line(
+        "Each noncreature artifact loses all abilities and becomes an artifact creature with power and toughness each equal to its mana value.",
+        0,
+    )
+    .expect("dynamic lose-all animation should lex");
+    let parsed = super::super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("dynamic lose-all animation should continue past fixed early routing")
+        .expect("dynamic lose-all animation should produce static abilities");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+}
+
+#[test]
+pub(super) fn filtered_per_object_animation_cards_keep_dynamic_characteristics() {
+    let animate = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant artifact\nAs long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value.",
+        )
+        .expect("Animate Artifact should parse");
+    let animate_debug = format!("{:#?}", animate.abilities);
+    assert!(animate_debug.contains("SetCardTypes"), "{animate_debug}");
+    assert!(
+        animate_debug.contains("SetBasePowerToughnessValue"),
+        "{animate_debug}"
+    );
+    assert!(animate_debug.contains("ManaValueOf"), "{animate_debug}");
+    assert!(animate_debug.contains("Iterated"), "{animate_debug}");
+    assert!(animate_debug.contains("Not"), "{animate_debug}");
+    assert!(animate_debug.contains("enchanted"), "{animate_debug}");
+
+    let march = CardDefinitionBuilder::new(CardId::new(), "March of the Machines")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Each noncreature artifact is an artifact creature with power and toughness each equal to its mana value. (Equipment that's a creature can't equip a creature.)",
+        )
+        .expect("March of the Machines should parse");
+    let march_debug = format!("{:#?}", march.abilities);
+    assert!(march_debug.contains("SetCardTypes"), "{march_debug}");
+    assert!(march_debug.contains("ManaValueOf"), "{march_debug}");
+    assert!(march_debug.contains("Iterated"), "{march_debug}");
+    assert!(
+        march_debug.contains("excluded_card_types") && march_debug.contains("Creature"),
+        "{march_debug}"
+    );
+
+    let spark = CardDefinitionBuilder::new(CardId::new(), "Spark Rupture")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, draw a card.\nEach planeswalker with one or more loyalty counters on it loses all abilities and is a creature with power and toughness each equal to the number of loyalty counters on it.",
+        )
+        .expect("Spark Rupture should parse");
+    let spark_debug = format!("{:#?}", spark.abilities);
+    assert!(spark_debug.contains("RemoveAllAbilities"), "{spark_debug}");
+    assert!(spark_debug.contains("SetCardTypes"), "{spark_debug}");
+    assert!(spark_debug.contains("CountersOn"), "{spark_debug}");
+    assert!(spark_debug.contains("Loyalty"), "{spark_debug}");
+    assert!(spark_debug.contains("Iterated"), "{spark_debug}");
+}
+
+#[test]
 pub(super) fn rewrite_grammar_exile_to_countered_exile_instead_of_graveyard_splitter_matches_static_shape()
  {
     let tokens = lex_line(
@@ -301,11 +408,8 @@ pub(super) fn parse_card_or_token_exile_instead_keeps_cards_in_filter() {
 
 #[test]
 pub(super) fn parse_cycling_card_exile_instead_unless_cycled() {
-    let tokens = lex_line(
-        "If a card that has a cycling ability would be put into your graveyard from anywhere and it wasn't cycled, exile it instead.",
-        0,
-    )
-    .expect("cycling exile-replacement line should lex");
+    let line = "If a card that has a cycling ability would be put into your graveyard from anywhere and it wasn't cycled, exile it instead.";
+    let tokens = lex_line(line, 0).expect("cycling exile-replacement line should lex");
     let parsed =
         super::super::keyword_static::parse_exile_to_exile_instead_of_graveyard_line(&tokens)
             .expect("cycling exile-replacement line should parse");
@@ -321,6 +425,46 @@ pub(super) fn parse_cycling_card_exile_instead_unless_cycled() {
     assert!(
         debug.contains("cycling") && debug.contains("exclude_cycled: true"),
         "debug={debug}"
+    );
+    let crate::static_abilities::StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+        filter,
+        ..
+    } = &ability.payload
+    else {
+        panic!("expected typed exile replacement: {ability:#?}");
+    };
+    assert!(filter.has_explicit_card_noun(), "{filter:#?}");
+}
+
+#[test]
+pub(super) fn graveyard_play_grants_render_filtered_spell_subjects() {
+    let cycling_line = "You may cast spells that have a cycling ability from your graveyard.";
+    let cycling_tokens = lex_line(cycling_line, 0).expect("cycling permission should lex");
+    let cycling_abilities =
+        super::super::keyword_static::parse_you_may_static_grant_line(&cycling_tokens)
+            .expect("cycling permission parser should not error")
+            .expect("cycling permission should parse");
+    let [cycling_ability] = cycling_abilities.as_slice() else {
+        panic!("expected one cycling grant: {cycling_abilities:#?}");
+    };
+    let crate::static_abilities::StaticAbilityPayload::Grants(cycling_grant) =
+        &cycling_ability.payload
+    else {
+        panic!("expected a typed cycling grant: {cycling_ability:#?}");
+    };
+    assert_eq!(cycling_grant.display(), cycling_line.trim_end_matches('.'));
+
+    let zombie_filter = crate::filter::ObjectFilter::default()
+        .with_subtype(Subtype::Zombie)
+        .without_type(CardType::Land);
+    let zombie_grant = crate::grant::GrantSpec::new(
+        crate::grant::Grantable::play_from(),
+        zombie_filter,
+        Zone::Graveyard,
+    );
+    assert_eq!(
+        zombie_grant.display(),
+        "You may cast Zombie spells from your graveyard"
     );
 }
 
@@ -616,6 +760,48 @@ pub(super) fn rewrite_grammar_living_conundrum_empty_library_draw_skip_matches_s
         Some(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::DrawReplacementSkipEmptyLibrary
     ));
+}
+
+#[test]
+pub(super) fn rewrite_grammar_empty_library_draw_win_lowers_to_conditional_replacement() {
+    let text =
+        "If you would draw a card while your library has no cards in it, you win the game instead.";
+    let tokens = lex_line(text, 0).expect("empty-library draw-win replacement should lex");
+
+    assert!(
+        super::super::grammar::abilities::is_draw_replacement_win_empty_library_line_lexed(&tokens),
+        "grammar-owned empty-library draw-win replacement probe should match"
+    );
+
+    let ability = super::super::keyword_static::parse_conditional_draw_replacement_line(&tokens)
+        .expect("empty-library draw-win replacement should parse")
+        .expect("empty-library draw-win replacement should be recognized");
+    assert_eq!(ability.id(), StaticAbilityId::ConditionalDrawReplacement);
+
+    let StaticAbilityPayload::ConditionalDrawReplacement {
+        condition,
+        replacement_effects,
+        display,
+    } = &ability.payload
+    else {
+        panic!("expected conditional draw replacement payload: {ability:#?}");
+    };
+    assert!(matches!(
+        condition,
+        crate::effect::Condition::ValueComparison {
+            left: crate::effect::Value::CardsInLibrary(crate::target::PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(0),
+        }
+    ));
+    assert_eq!(replacement_effects.len(), 1);
+    assert!(
+        replacement_effects[0]
+            .downcast_ref::<crate::effects::WinTheGameEffect>()
+            .is_some(),
+        "replacement action should be a typed win effect"
+    );
+    assert_eq!(display, text);
 }
 
 #[test]
@@ -2551,6 +2737,40 @@ pub(super) fn rewrite_lexed_damage_to_object_trigger_preserves_generic_source_su
     assert!(debug.contains("DealsDamageTo"), "{debug}");
     assert!(debug.contains("source_surface: Source"), "{debug}");
     assert!(debug.contains("Draw"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_lexed_damage_to_player_trigger_preserves_generic_source_surface() {
+    let text = "Whenever a source an opponent controls deals damage to you, draw a card.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify source damage trigger");
+
+    let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("generic-source damage-to-player line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DealsDamageToPlayer"), "{debug}");
+    assert!(debug.contains("source_surface: Source"), "{debug}");
+    assert!(debug.contains("zone: None"), "{debug}");
+    assert!(debug.contains("controller: Some(Opponent)"), "{debug}");
+    assert!(debug.contains("Draw"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_lexed_recipientless_damage_trigger_preserves_generic_source_surface() {
+    let text = "Whenever a noncreature source you control deals damage, you gain that much life.";
+    let tokens = lex_line(text, 0).expect("rewrite lexer should classify source damage trigger");
+
+    let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens)
+        .expect("recipientless generic-source damage line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("DealsDamage"), "{debug}");
+    assert!(debug.contains("source_surface: Source"), "{debug}");
+    assert!(debug.contains("zone: None"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+    assert!(debug.contains("excluded_card_types"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("GainLife"), "{debug}");
 }
 
 #[test]

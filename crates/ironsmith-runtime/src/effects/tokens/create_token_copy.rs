@@ -58,11 +58,16 @@ fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<Attac
     }
 
     for &object_id in &game.battlefield {
-        if let Some(object) = game.object(object_id)
-            && game.controller_of(object) == player_id
-            && object.has_card_type(CardType::Planeswalker)
-        {
-            targets.push(AttackTarget::Planeswalker(object_id));
+        if let Some(object) = game.object(object_id) {
+            if game.controller_of(object) == player_id
+                && object.has_card_type(CardType::Planeswalker)
+            {
+                targets.push(AttackTarget::Planeswalker(object_id));
+            } else if object.has_card_type(CardType::Battle)
+                && game.battle_protector(object_id) == Some(player_id)
+            {
+                targets.push(AttackTarget::Battle(object_id));
+            }
         }
     }
 
@@ -95,6 +100,13 @@ fn choose_attack_target(
                         .map(|object| object.name.to_string())
                         .unwrap_or_else(|| "a planeswalker".to_string());
                     format!("Attack {walker_name} controlled by {player_name}")
+                }
+                AttackTarget::Battle(battle_id) => {
+                    let battle_name = game
+                        .object(*battle_id)
+                        .map(|object| object.name.to_string())
+                        .unwrap_or_else(|| "a battle".to_string());
+                    format!("Attack {battle_name} protected by {player_name}")
                 }
             };
             SelectableOption::new(index, description)
@@ -189,6 +201,12 @@ impl EffectExecutor for CreateTokenCopyEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
+        if !game
+            .player(controller_id)
+            .is_some_and(|player| player.is_in_game())
+        {
+            return Ok(EffectOutcome::with_objects(Vec::new()));
+        }
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
 
         // A sacrificed copy source has already left the battlefield. Its tag
@@ -1121,7 +1139,7 @@ mod tests {
             .iter()
             .filter_map(|(_, target)| match target {
                 AttackTarget::Player(player) => Some(*player),
-                AttackTarget::Planeswalker(_) => None,
+                AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => None,
             })
             .collect();
         attacked_players.sort();

@@ -136,6 +136,7 @@ fn payment_can_complete(
     let mut simulated_dm = SelectFirstDecisionMaker;
     let mut simulated_ctx = ExecutionContext::new_default(ctx.source, ctx.controller)
         .with_decision_maker(&mut simulated_dm);
+    simulated_ctx.mana.payment_reason = Some(crate::costs::PaymentReason::CumulativeUpkeep);
 
     for _ in 0..count {
         let Ok(outcome) = execute_sequence(&mut simulated_game, &mut simulated_ctx, effects) else {
@@ -156,6 +157,7 @@ fn execute_payment_atomically(
 ) -> Result<Option<EffectOutcome>, ExecutionError> {
     let game_checkpoint = game.clone();
     let ctx_checkpoint = ExecutionContextCheckpoint::from_context(ctx);
+    ctx.mana.payment_reason = Some(crate::costs::PaymentReason::CumulativeUpkeep);
     let mut outcomes = Vec::new();
     let mut failed_to_pay = false;
     let mut execution_error = None;

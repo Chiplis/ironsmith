@@ -89,6 +89,17 @@ fn parse_exile_card_from_their_hand_or_permanent_they_control(
 
 pub(crate) use effect_grammar::ParsedExileOwnerPrefix as ParsedOwnerPrefix;
 
+fn strip_source_top_only_prefix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
+    use winnow::Parser as _;
+
+    crate::runtime_backend::grammar::primitives::parse_prefix(
+        tokens,
+        crate::runtime_backend::grammar::primitives::phrase(&["the", "top"]).void(),
+    )
+    .map(|(_, rest)| (rest, true))
+    .unwrap_or((tokens, false))
+}
+
 pub(crate) fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -230,16 +241,22 @@ pub(crate) fn parse_exile(
     }
 
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
-        let mut target = parse_target_phrase(spec.leading_tokens)?;
+        let (target_tokens, source_top_only) = strip_source_top_only_prefix(spec.leading_tokens);
+        if source_top_only && until_source_leaves {
+            return Err(CardTextError::ParseError(
+                "top-of-zone exile-until-source-leaves is not supported".to_string(),
+            ));
+        }
+        let mut target = parse_target_phrase(target_tokens)?;
         apply_exile_subject_hand_owner_context(&mut target, subject);
-        return Ok(EffectAst::Conditional {
+        return Ok(EffectAst::TrailingIf {
             predicate: spec.predicate,
-            if_true: vec![if until_source_leaves {
+            effects: vec![if until_source_leaves {
                 EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
             } else {
                 EffectAst::subject_verb_exile(target, face_down)
+                    .with_source_top_only(source_top_only)
             }],
-            if_false: Vec::new(),
         });
     } else if grammar::contains_word(tokens, "if") {
         return Err(CardTextError::ParseError(format!(
@@ -248,12 +265,18 @@ pub(crate) fn parse_exile(
         )));
     }
 
-    let mut target = parse_target_phrase(tokens)?;
+    let (target_tokens, source_top_only) = strip_source_top_only_prefix(tokens);
+    if source_top_only && until_source_leaves {
+        return Err(CardTextError::ParseError(
+            "top-of-zone exile-until-source-leaves is not supported".to_string(),
+        ));
+    }
+    let mut target = parse_target_phrase(target_tokens)?;
     apply_exile_subject_hand_owner_context(&mut target, subject);
     Ok(if until_source_leaves {
         EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
     } else {
-        EffectAst::subject_verb_exile(target, face_down)
+        EffectAst::subject_verb_exile(target, face_down).with_source_top_only(source_top_only)
     })
 }
 

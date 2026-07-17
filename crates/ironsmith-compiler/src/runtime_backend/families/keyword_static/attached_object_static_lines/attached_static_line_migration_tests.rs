@@ -43,32 +43,74 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
 }
 
 #[test]
-fn attached_pt_and_all_ability_loss_preserves_both_characteristic_effects() {
-    let tokens = crate::runtime_backend::lexer::lex_line(
-        "Enchanted creature gets -5/-0 and loses all abilities.",
-        0,
-    )
-    .unwrap();
-    let abilities = parse_attached_gets_and_cant_block_line(&tokens)
-        .unwrap()
-        .expect("compound attached characteristic line should parse");
-    assert_eq!(abilities.len(), 2, "{abilities:#?}");
-
-    let debug = format!("{abilities:#?}");
-    assert!(debug.contains("Anthem"), "{debug}");
-    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
-    assert_eq!(debug.matches("TagKey(\"enchanted\")").count(), 2, "{debug}");
-
-    let routed = parse_static_ability_ast_line_lexed(&tokens)
-        .unwrap()
-        .expect("static rule dispatch should retain the narrow attached compound");
-    let routed_debug = format!("{routed:#?}");
-    assert_eq!(routed.len(), 2, "{routed_debug}");
-    assert!(routed_debug.contains("Anthem"), "{routed_debug}");
-    assert!(
-        routed_debug.contains("RemoveAllAbilities"),
-        "{routed_debug}"
-    );
+fn attached_pt_compounds_preserve_both_characteristic_effects() {
+    for (line, expected_secondary) in [
+        (
+            "Enchanted creature gets -5/-0 and loses all abilities.",
+            "RemoveAllAbilities",
+        ),
+        (
+            "Enchanted creature gets -3/-0 and loses all abilities.",
+            "RemoveAllAbilities",
+        ),
+        (
+            "Enchanted creature gets -2/-0 and loses all abilities.",
+            "RemoveAllAbilities",
+        ),
+        ("Enchanted creature gets +3/+1 and is black.", "SetColors"),
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(line, 0).unwrap();
+        if line.contains(" is black") {
+            let intended = parse_anthem_and_type_color_addition_line(&tokens)
+                .unwrap()
+                .expect("PT/color conjunction should match the compound characteristic parser");
+            assert_eq!(intended.len(), 2, "{line}: {intended:#?}");
+        }
+        let routed = parse_static_ability_ast_line_lexed(&tokens)
+            .unwrap()
+            .expect("static rule dispatch should retain both characteristic effects");
+        let routed_debug = format!("{routed:#?}");
+        assert_eq!(routed.len(), 2, "{line}: {routed_debug}");
+        assert!(
+            routed_debug.contains("Anthem"),
+            "{line}: {routed_debug}"
+        );
+        assert!(
+            routed_debug.contains(expected_secondary),
+            "{line}: {routed_debug}"
+        );
+        let filters = routed
+            .iter()
+            .filter_map(|ability| {
+                let StaticAbilityAst::Static(ability) = ability else {
+                    return None;
+                };
+                match &ability.payload {
+                    ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
+                        anthem.filter.as_ref()
+                    }
+                    ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter)
+                    | ironsmith_core::StaticAbilityPayload::SetColors { filter, .. } => {
+                        Some(filter)
+                    }
+                    _ => None,
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            filters.len(),
+            2,
+            "{line}: {routed_debug}"
+        );
+        assert_eq!(filters[0], filters[1], "{line}: {routed_debug}");
+        assert!(
+            filters[0]
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == "enchanted"),
+            "{line}: {routed_debug}"
+        );
+    }
 
     let standalone = crate::runtime_backend::lexer::lex_line(
         "Creatures your opponents control lose all abilities.",

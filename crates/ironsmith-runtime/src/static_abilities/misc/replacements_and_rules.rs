@@ -1436,6 +1436,85 @@ impl StaticAbilityKind for EffectDiscardToLibraryReplacement {
     }
 }
 
+/// Dredge N — while this card is in its owner's graveyard, its owner may
+/// replace one draw by milling exactly N cards and returning this card to hand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DredgeAbility {
+    pub amount: u32,
+}
+
+impl DredgeAbility {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DredgeDrawMatcher {
+    amount: u32,
+}
+
+impl ReplacementMatcher for DredgeDrawMatcher {
+    fn matches_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::EventContext,
+    ) -> bool {
+        if event.event_kind() != EventKind::Draw {
+            return false;
+        }
+        let Some(draw) = downcast_event::<crate::events::cards::DrawEvent>(event) else {
+            return false;
+        };
+        let Some(source) = ctx.source.and_then(|source| ctx.game.object(source)) else {
+            return false;
+        };
+
+        draw.count == 1
+            && source.zone == Zone::Graveyard
+            && source.owner == draw.player
+            && ctx
+                .game
+                .player(draw.player)
+                .is_some_and(|player| player.library.len() >= self.amount as usize)
+    }
+
+    fn display(&self) -> String {
+        format!("Dredge {}", self.amount)
+    }
+}
+
+impl StaticAbilityKind for DredgeAbility {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Dredge
+    }
+
+    fn display(&self) -> String {
+        format!("Dredge {}", self.amount)
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(
+            ReplacementEffect::with_matcher(
+                source,
+                controller,
+                DredgeDrawMatcher {
+                    amount: self.amount,
+                },
+                ReplacementAction::Instead(vec![
+                    Effect::mill(self.amount),
+                    Effect::move_to_zone(ChooseSpec::Source, Zone::Hand, false),
+                ]),
+            )
+            .optional(),
+        )
+    }
+}
+
 /// Replacement for opponent-controlled effects causing this card to be discarded.
 ///
 /// "If a spell or ability an opponent controls causes you to discard this card,
@@ -1625,6 +1704,56 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
             },
             ReplacementAction::Instead(self.replacement_effects.clone()),
         ))
+    }
+}
+
+/// "If you would lose the game, instead [effects]."
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoseGameReplacement {
+    pub replacement_effects: Vec<Effect>,
+    pub optional: bool,
+    pub display: String,
+}
+
+impl LoseGameReplacement {
+    pub fn new(
+        replacement_effects: Vec<Effect>,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            replacement_effects,
+            optional,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for LoseGameReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LoseGameReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        let replacement = ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::other::WouldLoseGameMatcher,
+            ReplacementAction::Instead(self.replacement_effects.clone()),
+        );
+        Some(if self.optional {
+            replacement.optional()
+        } else {
+            replacement
+        })
     }
 }
 
@@ -1955,6 +2084,24 @@ impl ExileToExileInsteadOfGraveyard {
             _ => "a",
         }
     }
+
+    fn replacement_subject_phrase(&self) -> String {
+        if self.filter.has_explicit_card_noun()
+            && let [marker] = self.filter.ability_markers.as_slice()
+        {
+            let mut normalized = self.filter.clone();
+            normalized.ability_markers.clear();
+            if normalized == ObjectFilter::default() {
+                let marker = marker.to_ascii_lowercase();
+                let article = match marker.chars().next() {
+                    Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                    _ => "a",
+                };
+                return format!("a card that has {article} {marker} ability");
+            }
+        }
+        self.filter.description()
+    }
 }
 
 impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
@@ -1970,7 +2117,7 @@ impl StaticAbilityKind for ExileToExileInsteadOfGraveyard {
         };
         format!(
             "If {} would be put into {} graveyard from anywhere{}, exile it instead.",
-            self.filter.description(),
+            self.replacement_subject_phrase(),
             self.graveyard_owner_phrase(),
             cycled_clause
         )
@@ -2578,6 +2725,34 @@ impl StaticAbilityKind for DraftRuleText {
 
     fn display(&self) -> String {
         self.text.clone()
+    }
+}
+
+/// Marker for CR 702.106 hidden agenda setup and reveal semantics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiddenAgenda;
+
+impl StaticAbilityKind for HiddenAgenda {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::HiddenAgenda
+    }
+
+    fn display(&self) -> String {
+        "Hidden agenda".to_string()
+    }
+}
+
+/// Marker for the two-name hidden-agenda variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DoubleAgenda;
+
+impl StaticAbilityKind for DoubleAgenda {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DoubleAgenda
+    }
+
+    fn display(&self) -> String {
+        "Double agenda".to_string()
     }
 }
 

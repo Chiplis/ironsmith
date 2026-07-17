@@ -22,8 +22,20 @@ fn parses_base_power_toughness_shapes() {
     )
     .unwrap();
     let shape = parse_base_power_toughness_shape(&tokens).unwrap();
-    assert!(shape.condition_tokens.is_some());
+    assert!(matches!(
+        shape.condition,
+        BasePowerToughnessConditionShape::Tokens(_)
+    ));
     assert_eq!((shape.power, shape.toughness), (1, 1));
+
+    let tokens = lex_line(
+        "During your turn, this creature has base power and toughness 5/2.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_base_power_toughness_shape(&tokens).unwrap();
+    assert_eq!(shape.condition, BasePowerToughnessConditionShape::YourTurn);
+    assert_eq!((shape.power, shape.toughness), (5, 2));
 
     let tokens = lex_line(
         "As long as you control an artifact, this creature has base power and toughness 4/4 and has flying.",

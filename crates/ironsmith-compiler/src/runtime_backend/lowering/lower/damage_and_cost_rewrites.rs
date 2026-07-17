@@ -7,6 +7,7 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
         mut annotations,
         items,
         overload_branch,
+        cleave_branch,
         allow_unsupported,
     } = ast;
     let overload_ast = overload_branch.map(|branch| NormalizedCardAst {
@@ -14,6 +15,15 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
         annotations: ParseAnnotations::default(),
         items: branch.items,
         overload_branch: None,
+        cleave_branch: None,
+        allow_unsupported,
+    });
+    let cleave_ast = cleave_branch.map(|branch| NormalizedCardAst {
+        builder: builder.clone(),
+        annotations: ParseAnnotations::default(),
+        items: branch.items,
+        overload_branch: None,
+        cleave_branch: None,
         allow_unsupported,
     });
 
@@ -78,6 +88,17 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
                 method
             {
                 *effects = overload_effects.clone();
+            }
+        }
+    }
+    if let Some(cleave_ast) = cleave_ast {
+        let cleaved = lower_normalized_card_ast_with_facts(cleave_ast)?;
+        let cleave_effects = cleaved.definition.spell_effect.unwrap_or_default().to_vec();
+        for method in &mut builder.alternative_casts {
+            if let crate::alternative_cast::AlternativeCastingMethod::Cleave { effects, .. } =
+                method
+            {
+                *effects = cleave_effects.clone();
             }
         }
     }

@@ -406,6 +406,10 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
         Some(StaticAbilityId::Flanking)
     } else if permission_shapes::exact_words(words, &["skulk"]) {
         Some(StaticAbilityId::Skulk)
+    } else if permission_shapes::exact_words(words, &["protection"])
+        || permission_shapes::exact_words(words, &["protection", "from", "any", "color"])
+    {
+        Some(StaticAbilityId::Protection)
     } else if permission_shapes::exact_words(words, &["changeling"]) {
         Some(StaticAbilityId::Changeling)
     } else if permission_shapes::exact_words(words, &["cascade"]) {
@@ -434,6 +438,10 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
         Some(Marker("mutate"))
     } else if permission_shapes::exact_words(words, &["toxic"]) {
         Some(Marker("toxic"))
+    } else if permission_shapes::exact_words(words, &["doctor's", "companion"])
+        || permission_shapes::exact_words(words, &["doctors", "companion"])
+    {
+        Some(Marker("doctor's companion"))
     } else if permission_shapes::exact_words(words, &["islandwalk"]) {
         Some(Marker("islandwalk"))
     } else if permission_shapes::exact_words(words, &["swampwalk"]) {
@@ -570,6 +578,10 @@ mod tests {
         assert_eq!(
             parse_filter_keyword_constraint_words(&["toxic"]),
             Some((FilterKeywordConstraint::Marker("toxic"), 1))
+        );
+        assert_eq!(
+            parse_filter_keyword_constraint_words(&["doctor's", "companion"]),
+            Some((FilterKeywordConstraint::Marker("doctor's companion"), 2))
         );
         assert_eq!(
             parse_life_advantage_player(&["opponent", "who", "has", "more", "life", "than", "you"]),

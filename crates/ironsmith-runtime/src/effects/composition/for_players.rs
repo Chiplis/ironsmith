@@ -77,6 +77,26 @@ fn rotate_players_to_start(players: &mut Vec<PlayerId>, start: PlayerId) {
     }
 }
 
+fn order_selected_players_from(
+    game: &GameState,
+    selected_players: Vec<PlayerId>,
+    start: PlayerId,
+) -> Vec<PlayerId> {
+    let mut turn_order = game.turn_store.turn_order.clone();
+    rotate_players_to_start(&mut turn_order, start);
+
+    let mut ordered_players = turn_order
+        .into_iter()
+        .filter(|player_id| selected_players.contains(player_id))
+        .collect::<Vec<_>>();
+    for player_id in selected_players {
+        if !ordered_players.contains(&player_id) {
+            ordered_players.push(player_id);
+        }
+    }
+    ordered_players
+}
+
 impl EffectExecutor for ForPlayersEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -104,52 +124,168 @@ impl EffectExecutor for ForPlayersEffect {
             .map(|p| p.id)
             .collect();
 
-        if self.starting_with_controller {
-            let mut ordered_players: Vec<PlayerId> = game
-                .turn_store
-                .turn_order
-                .iter()
-                .copied()
-                .filter(|&player_id| players.contains(&player_id))
-                .collect();
-            if ordered_players.len() == players.len() {
-                rotate_players_to_start(&mut ordered_players, ctx.controller);
-                players = ordered_players;
-            } else {
-                rotate_players_to_start(&mut players, ctx.controller);
-            }
-        }
+        let first_player = if self.starting_with_controller {
+            ctx.controller
+        } else {
+            game.turn.active_player
+        };
+        players = order_selected_players_from(game, players, first_player);
 
         if players.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
 
         let mut outcomes = Vec::new();
+        let mut outcomes_by_player = vec![Vec::new(); players.len()];
+
+        if !self.starting_with_controller
+            && !self.stop_after_first_happened
+            && self.effects.iter().any(|effect| {
+                !effect.0.supports_simultaneous_player_action()
+                    && !effect.0.is_read_only_simultaneous_player_action()
+            })
+        {
+            return Err(ExecutionError::Impossible(
+                "generic each-player action lacks simultaneous proposal support".to_string(),
+            ));
+        }
+
+        if self.starting_with_controller || self.stop_after_first_happened {
+            // An explicit starting player describes a sequential instruction
+            // ("starting with ..."), as does stopping after the first player
+            // whose action happened. Preserve player-major execution there.
+            for (player_index, &player_id) in players.iter().enumerate() {
+                let mut stop = false;
+                ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                    for effect in &self.effects {
+                        let outcome = execute_effect(game, effect, ctx)?;
+                        outcomes_by_player[player_index].push(outcome.clone());
+                        outcomes.push(outcome);
+                    }
+                    let count = EffectOutcome::aggregate_summing_counts(
+                        outcomes_by_player[player_index].iter().cloned(),
+                    )
+                    .as_count()
+                    .unwrap_or(0);
+                    stop = self.stop_after_first_happened && count > 0;
+                    Ok::<(), ExecutionError>(())
+                })?;
+                if stop {
+                    break;
+                }
+            }
+        } else {
+            // CR 608.2e: for a generic each-player instruction, finish the
+            // first action for every player in APNAP order before beginning the
+            // next printed action.
+            for effect in &self.effects {
+                if effect.0.supports_simultaneous_player_action() {
+                    // CR 101.4/608.2f: collect every player's fully determined
+                    // proposal from one immutable state, then commit the whole
+                    // action as one transaction. No proposal can observe a
+                    // mutation committed for an earlier player.
+                    let action_players = if game.two_headed_giant().is_some()
+                        && effect
+                            .downcast_ref::<crate::effects::SetLifeTotalEffect>()
+                            .is_some()
+                    {
+                        let mut seen_teams = std::collections::HashSet::new();
+                        let mut selected = Vec::new();
+                        for player in players.iter().copied() {
+                            let Some(team) = game.team_index_for(player) else {
+                                selected.push(player);
+                                continue;
+                            };
+                            if !seen_teams.insert(team) {
+                                continue;
+                            }
+                            let candidates = game
+                                .team_players_for(player)
+                                .into_iter()
+                                .filter(|member| players.contains(member))
+                                .collect::<Vec<_>>();
+                            let options = candidates
+                                .iter()
+                                .filter_map(|member| {
+                                    game.player(*member)
+                                        .map(|candidate| (candidate.name.to_string(), *member))
+                                })
+                                .collect::<Vec<_>>();
+                            let chooser = game.primary_player_for_team(team).unwrap_or(player);
+                            let chosen = crate::decisions::ask_choose_one(
+                                game,
+                                &mut ctx.decision_maker,
+                                chooser,
+                                ctx.source,
+                                &options,
+                            )
+                            .unwrap_or(player);
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
+                            selected.push(chosen);
+                        }
+                        selected
+                    } else {
+                        players.clone()
+                    };
+                    let mut proposals = Vec::with_capacity(action_players.len());
+                    for player_id in action_players {
+                        let player_index = players
+                            .iter()
+                            .position(|candidate| *candidate == player_id)
+                            .expect("team-selected action player is in the iteration set");
+                        let proposal = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                            effect.0.prepare_simultaneous_player_action(game, ctx)
+                        })?;
+                        proposals.push((player_index, proposal));
+                    }
+
+                    let game_checkpoint = game.clone();
+                    let mut batch_outcomes = Vec::with_capacity(proposals.len());
+                    for (player_index, proposal) in proposals {
+                        match proposal.commit(game) {
+                            Ok(outcome) => batch_outcomes.push((player_index, outcome)),
+                            Err(error) => {
+                                *game = game_checkpoint;
+                                return Err(error);
+                            }
+                        }
+                    }
+                    for (player_index, outcome) in batch_outcomes {
+                        outcomes_by_player[player_index].push(outcome.clone());
+                        outcomes.push(outcome);
+                    }
+                } else if effect.0.is_read_only_simultaneous_player_action() {
+                    for (player_index, &player_id) in players.iter().enumerate() {
+                        let outcome = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                            execute_effect(game, effect, ctx)
+                        })?;
+                        outcomes_by_player[player_index].push(outcome.clone());
+                        outcomes.push(outcome);
+                    }
+                } else {
+                    return Err(ExecutionError::Impossible(
+                        "generic each-player action lacks simultaneous proposal support"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+
         let mut player_counts = Vec::new();
         let mut player_affected_memory = Vec::new();
-
-        for player_id in players {
-            if ctx.with_temp_iterated_player(Some(player_id), |ctx| {
-                let start = outcomes.len();
-                // Execute all inner effects for this player
-                for effect in &self.effects {
-                    outcomes.push(execute_effect(game, effect, ctx)?);
-                }
-                let count =
-                    EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned())
-                        .as_count()
-                        .unwrap_or(0);
-                player_counts.push((player_id, count));
-                let iteration_outcome =
-                    EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned());
-                if let Some(memory) = iteration_outcome.affected_object_memory()
-                    && !memory.is_empty()
-                {
-                    player_affected_memory.push((player_id, memory.to_vec()));
-                }
-                Ok::<bool, ExecutionError>(self.stop_after_first_happened && count > 0)
-            })? {
-                break;
+        for (&player_id, player_outcomes) in players.iter().zip(&outcomes_by_player) {
+            if player_outcomes.is_empty() {
+                continue;
+            }
+            let iteration_outcome =
+                EffectOutcome::aggregate_summing_counts(player_outcomes.iter().cloned());
+            player_counts.push((player_id, iteration_outcome.as_count().unwrap_or(0)));
+            if let Some(memory) = iteration_outcome.affected_object_memory()
+                && !memory.is_empty()
+            {
+                player_affected_memory.push((player_id, memory.to_vec()));
             }
         }
 
@@ -163,8 +299,294 @@ impl EffectExecutor for ForPlayersEffect {
 mod tests {
     use super::*;
 
+    #[derive(Debug, Clone)]
+    struct RecordIteratedPlayerChoice(&'static str);
+
+    #[derive(Debug)]
+    struct ReadOnlyChoiceProposal;
+
+    impl crate::effects::SimultaneousEffectProposal for ReadOnlyChoiceProposal {
+        fn commit(self: Box<Self>, _game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+            Ok(EffectOutcome::count(0))
+        }
+    }
+
+    impl EffectExecutor for RecordIteratedPlayerChoice {
+        fn execute(
+            &self,
+            game: &mut GameState,
+            ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            let player = ctx
+                .iteration
+                .iterated_player
+                .expect("ForPlayers must set the iterated player");
+            let prompt =
+                crate::decisions::context::BooleanContext::new(player, Some(ctx.source), self.0);
+            ctx.decision_maker.decide_boolean(game, &prompt);
+            Ok(EffectOutcome::count(0))
+        }
+
+        fn supports_simultaneous_player_action(&self) -> bool {
+            true
+        }
+
+        fn prepare_simultaneous_player_action(
+            &self,
+            game: &GameState,
+            ctx: &mut ExecutionContext,
+        ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+            let player = ctx
+                .iteration
+                .iterated_player
+                .expect("ForPlayers must set the iterated player");
+            let prompt =
+                crate::decisions::context::BooleanContext::new(player, Some(ctx.source), self.0);
+            ctx.decision_maker.decide_boolean(game, &prompt);
+            Ok(Box::new(ReadOnlyChoiceProposal))
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordChoiceOrder {
+        prompts: Vec<(PlayerId, String)>,
+    }
+
+    impl crate::decision::DecisionMaker for RecordChoiceOrder {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.prompts.push((ctx.player, ctx.description.clone()));
+            false
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct AtomicBatchProbe;
+
+    #[derive(Debug, Clone)]
+    struct UnsupportedMutationProbe;
+
+    impl EffectExecutor for UnsupportedMutationProbe {
+        fn execute(
+            &self,
+            game: &mut GameState,
+            ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            let player = ctx.iteration.iterated_player.expect("iterated player");
+            game.player_mut(player).expect("probe player").lose_life(1);
+            Ok(EffectOutcome::count(1))
+        }
+    }
+
+    #[derive(Debug)]
+    struct AtomicBatchProposal {
+        player: PlayerId,
+        fail: bool,
+    }
+
+    impl crate::effects::SimultaneousEffectProposal for AtomicBatchProposal {
+        fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+            if self.fail {
+                return Err(ExecutionError::Impossible("probe failure".to_string()));
+            }
+            game.player_mut(self.player)
+                .expect("probe player")
+                .lose_life(1);
+            Ok(EffectOutcome::count(1))
+        }
+    }
+
+    impl EffectExecutor for AtomicBatchProbe {
+        fn execute(
+            &self,
+            _game: &mut GameState,
+            _ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            unreachable!("generic each-player execution must use the proposal hook")
+        }
+
+        fn supports_simultaneous_player_action(&self) -> bool {
+            true
+        }
+
+        fn prepare_simultaneous_player_action(
+            &self,
+            _game: &GameState,
+            ctx: &mut ExecutionContext,
+        ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+            let player = ctx.iteration.iterated_player.expect("iterated player");
+            Ok(Box::new(AtomicBatchProposal {
+                player,
+                fail: player == PlayerId::from_index(1),
+            }))
+        }
+    }
+
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn i004_generic_each_player_choices_use_apnap_order() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        game.turn.active_player = cara;
+        game.turn_store.turn_order = vec![alice, bob, cara];
+
+        let source = game.new_object_id();
+        let mut decisions = RecordChoiceOrder::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+        ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::new(RecordIteratedPlayerChoice("choose"))],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("each-player effect should resolve");
+
+        assert_eq!(
+            decisions.prompts,
+            vec![
+                (cara, "choose".to_string()),
+                (alice, "choose".to_string()),
+                (bob, "choose".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn i004_generic_each_player_clauses_are_action_major() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+        game.turn.active_player = bob;
+        game.turn_store.turn_order = vec![alice, bob, cara];
+
+        let source = game.new_object_id();
+        let mut decisions = RecordChoiceOrder::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+        ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![
+                Effect::new(RecordIteratedPlayerChoice("first action")),
+                Effect::new(RecordIteratedPlayerChoice("second action")),
+            ],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("each-player effect should resolve");
+
+        assert_eq!(
+            decisions.prompts,
+            vec![
+                (bob, "first action".to_string()),
+                (cara, "first action".to_string()),
+                (alice, "first action".to_string()),
+                (bob, "second action".to_string()),
+                (cara, "second action".to_string()),
+                (alice, "second action".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn i004_generic_each_player_action_uses_one_immutable_proposal_state() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let result = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::lose_life_player(
+                crate::effect::Value::LifeTotal(PlayerFilter::You),
+                PlayerFilter::IteratedPlayer,
+            )],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("simultaneous each-player life loss should resolve");
+
+        assert_eq!(game.player(alice).expect("alice").life, 0);
+        assert_eq!(
+            game.player(bob).expect("bob").life,
+            0,
+            "Bob's proposal must use Alice's pre-action life total"
+        );
+        assert_eq!(
+            result.player_counts(),
+            Some([(alice, 20), (bob, 20)].as_slice())
+        );
+        assert_eq!(result.events.len(), 2);
+        assert!(
+            result
+                .events
+                .iter()
+                .all(|event| event.provenance() == ctx.provenance)
+        );
+        assert!(
+            game.player(alice).expect("alice").is_in_game()
+                && game.player(bob).expect("bob").is_in_game(),
+            "state-based actions are checked only after the whole batch resolves"
+        );
+    }
+
+    #[test]
+    fn i004_simultaneous_proposal_commit_is_atomic_on_error() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let error = ForPlayersEffect::new(PlayerFilter::Any, vec![Effect::new(AtomicBatchProbe)])
+            .execute(&mut game, &mut ctx)
+            .expect_err("second proposal should fail");
+
+        assert_eq!(
+            error,
+            ExecutionError::Impossible("probe failure".to_string())
+        );
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
+    }
+
+    #[test]
+    fn i004_unsupported_generic_mutation_fails_closed() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let error = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![
+                Effect::lose_life_player(1, PlayerFilter::IteratedPlayer),
+                Effect::new(UnsupportedMutationProbe),
+            ],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect_err("unsupported mutation must not run sequentially");
+
+        assert_eq!(
+            error,
+            ExecutionError::Impossible(
+                "generic each-player action lacks simultaneous proposal support".to_string()
+            )
+        );
+        assert_eq!(game.player(alice).expect("alice").life, 20);
+        assert_eq!(game.player(bob).expect("bob").life, 20);
     }
 
     #[test]

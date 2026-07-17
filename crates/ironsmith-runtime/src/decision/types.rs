@@ -138,6 +138,9 @@ pub struct BlockerDeclaration {
 pub struct TargetRequirement {
     /// The target specification.
     pub spec: ChooseSpec,
+    /// Player assigned to make this target choice. `None` uses the spell or
+    /// ability controller.
+    pub chooser: Option<crate::target::PlayerFilter>,
     /// Legal targets that match this specification.
     pub legal_targets: Vec<Target>,
     /// Legal target groups for constraints that apply to the selected set.
@@ -162,6 +165,7 @@ impl TargetRequirement {
     pub fn single(spec: ChooseSpec, legal_targets: Vec<Target>, description: String) -> Self {
         Self {
             spec,
+            chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
             description,
@@ -177,6 +181,7 @@ impl TargetRequirement {
     pub fn any_number(spec: ChooseSpec, legal_targets: Vec<Target>, description: String) -> Self {
         Self {
             spec,
+            chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
             description,
@@ -198,6 +203,7 @@ impl TargetRequirement {
     ) -> Self {
         Self {
             spec,
+            chooser: None,
             legal_targets,
             legal_target_sets: Vec::new(),
             description,
@@ -424,10 +430,7 @@ impl<'a> CastLegalityContext<'a> {
                 .effect_store
                 .temporary_spell_cost_reductions
                 .iter()
-                .any(|effect| {
-                    effect.player == player
-                        && !effect.is_expired(game.turn.turn_number, game.turn.active_player)
-                }),
+                .any(|effect| effect.player == player && !effect.is_expired(game)),
             minimum_total_spell_mana_payment: view.minimum_total_spell_mana_payment(),
             strips_life_pips_for_casts: view.player_cant_pay_life_to_cast_or_activate(player),
             perf: RefCell::new(CastLegalityPerfBreakdown::default()),

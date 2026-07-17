@@ -54,6 +54,16 @@ impl CardDefinitionRuntimeExt for CardDefinition {
                 return cost.clone();
             };
             if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+                // A Behold-and-exile cost uses this tag to connect the object
+                // selected by Behold to the following exile component. Keep
+                // that typed linkage available to the structural cost renderer.
+                if tagged
+                    .effect
+                    .downcast_ref::<crate::effects::BeholdEffect>()
+                    .is_some()
+                {
+                    return cost.clone();
+                }
                 return crate::costs::Cost::try_from_runtime_effect(*tagged.effect.clone())
                     .unwrap_or_else(|_| cost.clone());
             }

@@ -42,6 +42,8 @@ impl EffectExecutor for ChooseModeEffect {
             min_modes: self.min_choose_count.clone(),
             allow_repeated_modes: self.allow_repeated_modes,
             mode_point_costs: self.mode_point_costs.clone(),
+            spree: self.spree,
+            mode_additional_mana_costs: self.mode_additional_mana_costs.clone(),
             distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
             conditional_mode_range: self.conditional_mode_range.clone(),
         })
@@ -57,6 +59,8 @@ impl EffectExecutor for ChooseModeEffect {
             min_modes: &self.min_choose_count,
             allow_repeated_modes: self.allow_repeated_modes,
             mode_point_costs: &self.mode_point_costs,
+            spree: self.spree,
+            mode_additional_mana_costs: &self.mode_additional_mana_costs,
             disallow_previously_chosen_modes: self.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: self
                 .disallow_previously_chosen_modes_this_turn,

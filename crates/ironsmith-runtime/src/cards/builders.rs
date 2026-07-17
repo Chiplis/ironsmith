@@ -531,7 +531,9 @@ pub(crate) enum KeywordAction {
     Exalted,
     Cascade,
     Storm,
+    Gravestorm,
     Toxic(u32),
+    Poisonous(u32),
     BattleCry,
     Dethrone,
     Evolve,
@@ -572,6 +574,7 @@ pub(crate) enum KeywordAction {
     },
     Disturb(ManaCost),
     Overload(ManaCost),
+    Cleave(ManaCost),
     Awaken {
         amount: u32,
         cost: ManaCost,
@@ -624,6 +627,7 @@ pub(crate) enum KeywordAction {
     Tribute(u32),
     Rampage(u32),
     Bushido(u32),
+    Frenzy(u32),
     Changeling,
     HexproofFrom(ObjectFilter),
     ProtectionFrom(ColorSet),
@@ -703,7 +707,9 @@ impl KeywordAction {
                 | Self::Exalted
                 | Self::Cascade
                 | Self::Storm
+                | Self::Gravestorm
                 | Self::Toxic(_)
+                | Self::Poisonous(_)
                 | Self::BattleCry
                 | Self::Dethrone
                 | Self::Evolve
@@ -745,6 +751,7 @@ impl KeywordAction {
                 | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
+                | Self::Frenzy(_)
                 | Self::Changeling
                 | Self::HexproofFrom(_)
                 | Self::ProtectionFrom(_)
@@ -819,7 +826,9 @@ impl KeywordAction {
             Self::Exalted => "Exalted".to_string(),
             Self::Cascade => "Cascade".to_string(),
             Self::Storm => "Storm".to_string(),
+            Self::Gravestorm => "Gravestorm".to_string(),
             Self::Toxic(amount) => format!("Toxic {amount}"),
+            Self::Poisonous(amount) => format!("Poisonous {amount}"),
             Self::BattleCry => "Battle cry".to_string(),
             Self::Dethrone => "Dethrone".to_string(),
             Self::Evolve => "Evolve".to_string(),
@@ -862,6 +871,7 @@ impl KeywordAction {
             Self::Suspend { time, cost } => format!("Suspend {time}—{}", cost.to_oracle()),
             Self::Disturb(cost) => format!("Disturb {}", cost.to_oracle()),
             Self::Overload(cost) => format!("Overload {}", cost.to_oracle()),
+            Self::Cleave(cost) => format!("Cleave {}", cost.to_oracle()),
             Self::Awaken { amount, cost } => format!("Awaken {amount}—{}", cost.to_oracle()),
             Self::Spectacle(cost) => format!("Spectacle {}", cost.to_oracle()),
             Self::Foretell(cost) => format!("Foretell {}", cost.to_oracle()),
@@ -906,6 +916,7 @@ impl KeywordAction {
             Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
+            Self::Frenzy(amount) => format!("Frenzy {amount}"),
             Self::Changeling => "Changeling".to_string(),
             Self::HexproofFrom(filter) => {
                 format!("Hexproof from {}", describe_hexproof_from_filter(filter))
@@ -1005,6 +1016,7 @@ pub(crate) enum DamageBySpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlayerAst {
     You,
+    Active,
     Any,
     Chosen,
     Defending,
@@ -1297,6 +1309,7 @@ fn parse_type_line(
             match lower.as_str() {
                 "basic" => push_unique(&mut supertypes, Supertype::Basic),
                 "legendary" => push_unique(&mut supertypes, Supertype::Legendary),
+                "ongoing" => push_unique(&mut supertypes, Supertype::Ongoing),
                 "snow" => push_unique(&mut supertypes, Supertype::Snow),
                 "world" => push_unique(&mut supertypes, Supertype::World),
                 "land" => push_unique(&mut card_types, CardType::Land),
@@ -1307,6 +1320,11 @@ fn parse_type_line(
                 "instant" => push_unique(&mut card_types, CardType::Instant),
                 "sorcery" => push_unique(&mut card_types, CardType::Sorcery),
                 "battle" => push_unique(&mut card_types, CardType::Battle),
+                "plane" => push_unique(&mut card_types, CardType::Plane),
+                "phenomenon" => push_unique(&mut card_types, CardType::Phenomenon),
+                "vanguard" => push_unique(&mut card_types, CardType::Vanguard),
+                "scheme" => push_unique(&mut card_types, CardType::Scheme),
+                "conspiracy" => push_unique(&mut card_types, CardType::Conspiracy),
                 "kindred" | "tribal" => push_unique(&mut card_types, CardType::Kindred),
                 _ => {
                     return Err(CardTextError::ParseError(format!(
@@ -1722,7 +1740,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Exalted => self.exalted(),
             KeywordAction::Cascade => self.cascade(),
             KeywordAction::Storm => self.storm(),
+            KeywordAction::Gravestorm => self.gravestorm(),
             KeywordAction::Toxic(amount) => self.toxic(amount),
+            KeywordAction::Poisonous(amount) => self.poisonous(amount),
             KeywordAction::BattleCry => self.battle_cry(),
             KeywordAction::Dethrone => self.dethrone(),
             KeywordAction::Evolve => self.evolve(),
@@ -1762,6 +1782,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Disturb(cost) => self.disturb(cost),
             KeywordAction::Overload(cost) => self.overload(cost),
+            KeywordAction::Cleave(cost) => self.cleave(cost),
             KeywordAction::Awaken { amount, cost } => self.awaken(amount, cost),
             KeywordAction::Spectacle(cost) => self.spectacle(cost),
             KeywordAction::Foretell(cost) => self.foretell(cost),
@@ -1798,9 +1819,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::ReadAhead => self.read_ahead(),
-            KeywordAction::Firebending(amount) => self.with_ability(Ability::static_ability(
-                StaticAbility::keyword_marker(format!("firebending {amount}")),
-            )),
+            KeywordAction::Firebending(amount) => self.firebending(amount),
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Fear => self.fear(),
@@ -1837,6 +1856,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Tribute(amount) => self.tribute(amount),
             KeywordAction::Rampage(amount) => self.rampage(amount),
             KeywordAction::Bushido(amount) => self.bushido(amount),
+            KeywordAction::Frenzy(amount) => self.frenzy(amount),
             KeywordAction::Changeling => {
                 self.with_ability(Ability::static_ability(StaticAbility::changeling()))
             }
@@ -2532,6 +2552,26 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Add poisonous N.
+    pub fn poisonous(self, amount: u32) -> Self {
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
+                effects: vec![Effect::poison_counters_player(
+                    amount as i32,
+                    PlayerFilter::DamagedPlayer,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Poisonous(amount),
+                )),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
+    }
+
     /// Add battle cry.
     ///
     /// Battle cry means "Whenever this creature attacks, each other attacking creature
@@ -2543,6 +2583,32 @@ impl CardDefinitionBuilder {
             Trigger::this_attacks(),
             vec![Effect::pump_all(filter, 1, 0, Until::EndOfTurn)],
         ))
+    }
+
+    /// Add Firebending N (CR 702.189).
+    pub fn firebending(self, amount: u32) -> Self {
+        let add_mana = Effect::new(crate::effects::AddScaledManaEffect::new(
+            vec![ManaSymbol::Red],
+            Value::Fixed(amount as i32),
+            PlayerFilter::You,
+        ));
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::this_attacks(),
+                effects: ResolutionProgram::from_effects(vec![
+                    Effect::new(crate::effects::ManaRetainedEffect::until_end_of_combat(
+                        vec![add_mana],
+                    )),
+                    Effect::emit_keyword_action(crate::events::KeywordActionKind::Firebend, 1),
+                ]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: Some(ability::PresentationLabel::Keyword(
+                    ability::PresentationKeyword::Firebending(amount.to_string()),
+                )),
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        })
     }
 
     /// Add melee.
@@ -3326,27 +3392,25 @@ impl CardDefinitionBuilder {
     /// control without summoning sickness. When you do, add its power to this creature's
     /// until end of turn."
     pub fn enlist(self) -> Self {
-        let tag = "enlisted_creature";
-        let mut filter = ObjectFilter::creature().you_control().other();
-        filter.untapped = true;
-        filter.nonattacking = true;
-        filter.enlist_eligible = true;
-        let effects = vec![
-            Effect::tag_triggering_object("enlist_attacker"),
-            Effect::choose_objects(filter, 1, PlayerFilter::You, tag),
-            Effect::tap(ChooseSpec::Tagged(tag.into())),
-            Effect::pump_for_each(
-                ChooseSpec::Tagged("enlist_attacker".into()),
-                1,
-                0,
-                Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.into()))),
-                Until::EndOfTurn,
-            ),
-        ];
-        self.with_ability(Ability::triggered(
-            Trigger::this_attacks(),
-            vec![Effect::may_player(PlayerFilter::You, effects)],
-        ))
+        let linked_trigger = crate::ability::TriggeredAbility {
+            trigger: Trigger::this_attacks(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::pump_for_each(
+                    ChooseSpec::Source,
+                    1,
+                    0,
+                    Value::PowerOf(Box::new(ChooseSpec::Tagged("enlisted_creature".into()))),
+                    Until::EndOfTurn,
+                ),
+            ]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+        self.with_ability(Ability::static_ability(StaticAbility::enlist_attack(
+            linked_trigger,
+            "Enlist",
+        )))
     }
 
     /// Add undaunted.
@@ -3747,6 +3811,34 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// Add gravestorm.
+    ///
+    /// Gravestorm copies this spell for each permanent put into a graveyard
+    /// from the battlefield this turn.
+    pub fn gravestorm(self) -> Self {
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::with_id(
+                        0,
+                        Effect::copy_spell_n(
+                            ChooseSpec::Source,
+                            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(
+                                ObjectFilter::default(),
+                            )),
+                        ),
+                    ),
+                    Effect::may_choose_new_targets(EffectId(0)),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Stack],
+        })
+    }
+
     /// Add fear.
     pub fn fear(self) -> Self {
         self.with_ability(Ability::static_ability(StaticAbility::fear()))
@@ -3929,6 +4021,22 @@ impl CardDefinitionBuilder {
             vec![Effect::pump(
                 amount,
                 amount,
+                ChooseSpec::Source,
+                Until::EndOfTurn,
+            )],
+        ))
+    }
+
+    /// Add frenzy N.
+    ///
+    /// Frenzy means "Whenever this creature attacks and isn't blocked, it gets +N/+0 until
+    /// end of turn."
+    pub fn frenzy(self, amount: u32) -> Self {
+        self.with_ability(Ability::triggered(
+            Trigger::this_attacks_and_isnt_blocked(),
+            vec![Effect::pump(
+                amount,
+                0,
                 ChooseSpec::Source,
                 Until::EndOfTurn,
             )],
@@ -4285,6 +4393,17 @@ impl CardDefinitionBuilder {
         self
     }
 
+    /// Add Cleave with the given alternative cost. The compiler fills the
+    /// bracket-removed effect program after document lowering.
+    pub fn cleave(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(AlternativeCastingMethod::Cleave {
+                cost,
+                effects: Vec::new(),
+            });
+        self
+    }
+
     /// Add awaken with the given counter count and alternative cost.
     pub fn awaken(mut self, amount: u32, cost: ManaCost) -> Self {
         let mut effects = self
@@ -4570,6 +4689,11 @@ impl CardDefinitionBuilder {
 
     /// Build the card definition.
     pub fn build(self) -> CardDefinition {
+        let refers_to_ante = self
+            .card_builder
+            .oracle_text_ref()
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .any(|word| word.eq_ignore_ascii_case("ante"));
         let definition = finalize_backup_abilities(CardDefinition {
             card: self.card_builder.build(),
             abilities: self.abilities,
@@ -4579,6 +4703,7 @@ impl CardDefinitionBuilder {
             has_fuse: self.has_fuse,
             optional_costs: self.optional_costs,
             additional_cost: self.additional_cost,
+            refers_to_ante,
         });
         finalize_cipher_effects(definition)
     }
@@ -4623,6 +4748,20 @@ mod delayed_trigger_finalization_tests;
 
 #[cfg(test)]
 mod keyword_behavior_tests;
+
+#[cfg(test)]
+mod scheme_type_line_tests {
+    use super::*;
+
+    #[test]
+    fn ongoing_scheme_is_a_supertype_and_nontraditional_card_type() {
+        let (supertypes, card_types, subtypes) =
+            parse_type_line("Ongoing Scheme").expect("canonical Scheme type line");
+        assert_eq!(supertypes, vec![Supertype::Ongoing]);
+        assert_eq!(card_types, vec![CardType::Scheme]);
+        assert!(subtypes.is_empty());
+    }
+}
 
 #[cfg(all(test, ironsmith_runtime_removed_parser_helper_unit_tests))]
 mod target_parse_tests;

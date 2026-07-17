@@ -37,6 +37,33 @@ fn parses_active_and_passive_consult_traversal_surfaces() {
 }
 
 #[test]
+fn repeated_card_filter_union_commas_stay_inside_consult_stop() {
+    let parsed = parse_consult_traversal_shape(&lex(
+        "Reveal cards from the top of your library until you reveal a Doctor card, a card with doctor's companion, or a Vehicle card",
+    ))
+    .unwrap();
+
+    assert_eq!(
+        TokenWordView::new(&parsed.stop.filter).word_refs(),
+        vec![
+            "a",
+            "doctor",
+            "card",
+            "a",
+            "card",
+            "with",
+            "doctors",
+            "companion",
+            "or",
+            "a",
+            "vehicle",
+            "card",
+        ]
+    );
+    assert!(parsed.trailing_effect.is_empty());
+}
+
+#[test]
 fn captures_a_preceding_effect_before_then() {
     let parsed = parse_consult_traversal_shape(&lex(
         "Target opponent mills a card, then they reveal cards from the top of their library until a land card is revealed",

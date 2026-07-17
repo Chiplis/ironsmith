@@ -1,4 +1,4 @@
-use crate::runtime_backend::lexer::{OwnedLexToken, parser_token_word_refs};
+use crate::runtime_backend::lexer::{OwnedLexToken, TokenKind, parser_token_word_refs};
 
 use super::{exact_word_occurs, parse_trigger_word_token, word_slice_has_any_prefix};
 
@@ -37,11 +37,17 @@ pub(crate) fn parse_embedded_token_rules_boundary_tokens(
         return None;
     }
     let with_index = parse_trigger_word_token(tokens, &["with"])?;
-    tokens
+    let starts_tap_ability = tokens
         .get(with_index + 1)
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| word == "t")
-        .then_some(with_index)
+        .is_some_and(|word| word == "t");
+    let starts_quoted_rule = tokens
+        .get(with_index + 1)
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+        && tokens[with_index + 2..]
+            .iter()
+            .any(|token| token.kind == TokenKind::Quote);
+    (starts_tap_ability || starts_quoted_rule).then_some(with_index)
 }
 
 #[cfg(test)]
@@ -64,7 +70,18 @@ mod tests {
         let boundary = parse_embedded_token_rules_boundary_tokens(&tokens).unwrap();
         assert_eq!(tokens[boundary].as_word(), Some("with"));
 
+        let quoted = lex_line(
+            "Create two 0/2 blue Illusion creature tokens with \"Whenever this token blocks a creature, that creature doesn't untap during its controller's next untap step.\"",
+            0,
+        )
+        .unwrap();
+        let boundary = parse_embedded_token_rules_boundary_tokens(&quoted).unwrap();
+        assert_eq!(quoted[boundary].as_word(), Some("with"));
+
         let unrelated = lex_line("Target token gains flying", 0).unwrap();
         assert!(parse_embedded_token_rules_boundary_tokens(&unrelated).is_none());
+
+        let ordinary_modifier = lex_line("Create a 1/1 token with flying", 0).unwrap();
+        assert!(parse_embedded_token_rules_boundary_tokens(&ordinary_modifier).is_none());
     }
 }

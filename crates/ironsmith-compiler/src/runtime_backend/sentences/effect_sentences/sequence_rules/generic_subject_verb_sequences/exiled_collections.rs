@@ -179,20 +179,18 @@ pub(crate) fn parse_exile_each_player_put_return_exiled_then_exile_source(
 
 /// Composes "exile the top N ...; put <count/filter> from among them onto the
 /// battlefield" while keeping the selection scoped to the exact exiled set.
-pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
+pub(crate) fn parse_exile_top_then_put_from_among_tokens(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Ok(mut effects) =
-        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
-    else {
+    let Ok(mut effects) = effect_sentences::parse_effect_sentence_lexed(first) else {
         return Ok(None);
     };
     let Some(exiled_tag) = find_exiled_top_collection_tag(&effects) else {
         return Ok(None);
     };
 
-    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second = trim_commas(second);
     let second = strip_leading_token_words_any(&second, &["then", "and"]);
     let Some(action) = sentence_markers::parse_leading_may_action_tokens(second, &["put"], true)
     else {
@@ -225,7 +223,7 @@ pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
 
-    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen_exiled");
+    let chosen_tag = helper_tag_for_tokens(second, "chosen_exiled");
     let chooser = leading_actor_player(action.actor);
     if all_matching {
         filter.zone = None;
@@ -254,6 +252,16 @@ pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
         )],
     });
     Ok(Some(effects))
+}
+
+pub(crate) fn parse_exile_top_then_put_from_among_onto_battlefield(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_exile_top_then_put_from_among_tokens(
+        sentences[sentence_idx].lowered(),
+        sentences[sentence_idx + 1].lowered(),
+    )
 }
 
 /// Composes "exile the top N ...; you may cast any number ... from among

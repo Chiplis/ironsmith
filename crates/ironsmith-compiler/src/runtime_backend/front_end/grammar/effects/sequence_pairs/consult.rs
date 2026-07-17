@@ -222,7 +222,8 @@ pub(crate) fn is_consult_move_all_to_graveyard_shape(tokens: &[OwnedLexToken]) -
 pub(crate) fn is_consult_hand_others_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, HAND_PREFIXES)
         && (contains_sequence_phrase(tokens, &[&["other", "cards"]])
-            || contains_sequence_phrase(tokens, &[&["all", "other"]]))
+            || contains_sequence_phrase(tokens, &[&["all", "other"]])
+            || contains_sequence_word(tokens, "rest"))
         && contains_sequence_word(tokens, "graveyard")
 }
 

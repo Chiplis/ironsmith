@@ -38,6 +38,11 @@ pub(crate) enum StaticAbilityAst {
         effect_before_timing: bool,
         display: String,
     },
+    LoseGameReplacement {
+        effects: Vec<EffectAst>,
+        optional: bool,
+        display: String,
+    },
     ConditionalStaticAbility {
         ability: Box<StaticAbilityAst>,
         condition: ConditionExpr,
@@ -72,6 +77,7 @@ pub(crate) enum StaticAbilityAst {
     RemoveKeywordAction {
         filter: ObjectFilter,
         action: KeywordAction,
+        mode: ironsmith_core::AbilityLossMode,
     },
     AttachedStaticAbilityGrant {
         ability: Box<StaticAbilityAst>,
@@ -209,7 +215,10 @@ pub(crate) enum TriggerSpec {
     ThisDealsDamageTo(ObjectFilter),
     ThisDealsCombatDamage,
     ThisDealsCombatDamageTo(ObjectFilter),
-    DealsDamage(ObjectFilter),
+    DealsDamage {
+        source: ObjectFilter,
+        source_surface: crate::triggers::DamageSourceSurface,
+    },
     DealsDamageTo {
         source: ObjectFilter,
         target: ObjectFilter,
@@ -218,6 +227,7 @@ pub(crate) enum TriggerSpec {
     DealsDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
+        source_surface: crate::triggers::DamageSourceSurface,
     },
     DealsNoncombatDamageToPlayer {
         source: ObjectFilter,
@@ -253,6 +263,11 @@ pub(crate) enum TriggerSpec {
     },
     PlayerRollsDie {
         player: PlayerFilter,
+        one_or_more: bool,
+    },
+    PlayerCoinFlipResult {
+        player: PlayerFilter,
+        won: bool,
     },
     AbilityActivated {
         activator: PlayerFilter,
@@ -260,6 +275,9 @@ pub(crate) enum TriggerSpec {
         non_mana_only: bool,
         loyalty_only: bool,
         activation_cost_has_tap: Option<bool>,
+    },
+    AbilityTriggered {
+        another: bool,
     },
     ThisIsDealtDamage,
     ThisIsDealtCombatDamage,
@@ -348,6 +366,11 @@ pub(crate) enum TriggerSpec {
         source_controller: Option<PlayerFilter>,
         one_or_more: bool,
     },
+    CounterRemovedFrom {
+        filter: ObjectFilter,
+        one_or_more: bool,
+        caused_by_source: bool,
+    },
     PlayerGetsCounters {
         player: PlayerFilter,
         counter_type: Option<CounterType>,
@@ -360,6 +383,7 @@ pub(crate) enum TriggerSpec {
     SpellCast {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        timing: Option<ironsmith_core::TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
@@ -467,6 +491,7 @@ pub(crate) enum TriggerSpec {
 pub(crate) enum PredicateAst {
     ItIsNight,
     FirstCombatPhaseOfTurn,
+    SourceControllersMainPhase,
     ItIsLandCard,
     ItIsSoulbondPaired,
     SourceChosenOption(String),
@@ -667,6 +692,7 @@ pub(crate) enum PredicateAst {
     SourceIsEquipped,
     SourceIsEnchanted,
     SourceIsSaddled,
+    SourceIsRenowned,
     SourceCrewedByExactly {
         count: u32,
         filter: ObjectFilter,
@@ -786,6 +812,7 @@ pub(crate) enum TurnHistoryPredicateAst {
     SourceAttackedThisTurn {
         surface: SourceReferenceSurface,
     },
+    TriggeringObjectEnlistedThisCombat,
     TriggeringObjectWasCast,
     TriggeringObjectWasCastFromZone(Zone),
     PlayerPlayedLandThisTurn(PlayerAst),
@@ -829,6 +856,7 @@ impl PredicateAst {
             | PredicateAst::SourceIsEquipped
             | PredicateAst::SourceIsEnchanted
             | PredicateAst::SourceIsSaddled
+            | PredicateAst::SourceIsRenowned
             | PredicateAst::SourceCrewedByExactly { .. }
             | PredicateAst::SourceMatches(_)
             | PredicateAst::AttachedToSourceMatches(_)
@@ -920,6 +948,9 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
     },
     LoseLife {
+        amount: Value,
+    },
+    PayLife {
         amount: Value,
     },
     GainLife {
@@ -1029,6 +1060,7 @@ pub(crate) enum SubjectVerbActionAst {
         die_text: Option<String>,
     },
     ShuffleHandAndGraveyardIntoLibrary,
+    ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
     ShuffleGraveyardIntoLibrary,
     ReorderGraveyard,
     ChooseColor,
@@ -1193,6 +1225,7 @@ pub(crate) enum SubjectVerbActionAst {
         count: Value,
         tags: Vec<TagKey>,
         accumulated_tags: Vec<TagKey>,
+        face_down: bool,
     },
     RevealTagged {
         tag: TagKey,
@@ -1205,6 +1238,8 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         tapped: bool,
         controller: ReturnControllerAst,
+        cloak: bool,
+        shuffle_before: bool,
     },
     RevealCardsFromHand {
         count: ChoiceCount,
@@ -1345,6 +1380,7 @@ pub(crate) enum SubjectVerbActionAst {
         keep_tagged: Option<TagKey>,
         order: LibraryBottomOrderAst,
         player: PlayerAst,
+        surface: ironsmith_core::LibraryRemainderSurface,
     },
     /// Moves every object tagged `tag` that is NOT also in the `keep_tagged`
     /// group to `zone`, preserving each object's controller. Lowers to
@@ -1391,6 +1427,9 @@ pub(crate) enum SubjectVerbActionAst {
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         filter: Option<ObjectFilter>,
+        /// Restrict the persistent permission to turns in which this counter
+        /// type was put on the ability source.
+        during_turns_counter_put_on_source: Option<crate::object::CounterType>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagKey,
@@ -1423,6 +1462,8 @@ pub(crate) enum SubjectVerbActionAst {
     },
     MoveToZone {
         target: TargetAst,
+        /// The target is selected from the first matching object in its ordered source zone.
+        source_top_only: bool,
         zone: Zone,
         to_top: bool,
         library_order: Option<LibraryBottomOrderAst>,
@@ -1480,6 +1521,8 @@ pub(crate) enum SubjectVerbActionAst {
         granted_abilities: Vec<GrantedAbilityAst>,
         preserve_other_types: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
+        animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
+        animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
         duration: Until,
     },
     SetBasePower {
@@ -1608,11 +1651,16 @@ pub(crate) enum SubjectVerbActionAst {
         duration: Until,
         condition: Option<crate::ConditionExpr>,
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
+        /// CR 611.2c normally fixes the affected set when a resolving effect
+        /// starts. Some rules effects instead create a continuous rule for a
+        /// filter for the stated duration and must also affect later entrants.
+        lock_filter_at_resolution: bool,
     },
     RemoveAbilitiesAll {
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
+        condition: Option<crate::ConditionExpr>,
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     GrantAbilitiesChoiceAll {
@@ -1727,6 +1775,9 @@ pub(crate) enum SubjectVerbActionAst {
         count: Value,
         dynamic_power_toughness: Option<(Value, Value)>,
         player: PlayerAst,
+        /// The source text explicitly used `you` as the create-action actor.
+        /// This does not participate in controller resolution.
+        actor_surface_explicit: bool,
         attached_to: Option<TargetAst>,
         tapped: bool,
         attacking: bool,
@@ -1795,6 +1846,7 @@ pub(crate) enum SubjectVerbActionAst {
         source: TargetAst,
         amount: Value,
         target: TargetAst,
+        unpreventable: bool,
     },
     DealDistributedDamage {
         amount: Value,
@@ -1867,6 +1919,8 @@ pub(crate) enum SubjectVerbActionAst {
     Exile {
         target: TargetAst,
         face_down: bool,
+        /// The target is selected from the first matching object in its ordered source zone.
+        source_top_only: bool,
     },
     ExileAll {
         filter: ObjectFilter,
@@ -2025,6 +2079,7 @@ pub(crate) enum SubjectVerbActionAst {
         amount: Value,
     },
     EndTurn,
+    EndCombatPhase,
     SkipTurn,
     SkipCombatPhases,
     SkipNextCombatPhaseThisTurn,
@@ -2076,6 +2131,10 @@ pub(crate) enum SubjectVerbActionAst {
     ClearSuspected {
         target: Option<TargetAst>,
     },
+    HealDamage {
+        target: TargetAst,
+        amount: Option<Value>,
+    },
     RemoveFromCombat {
         target: TargetAst,
     },
@@ -2093,6 +2152,9 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
         count: u32,
         target: Option<TargetAst>,
+        /// The object phrase selected one member of a referenced collection
+        /// ("one of them") rather than referring to a known singleton ("it").
+        one_of_referenced_set: bool,
     },
     SacrificeAll {
         filter: ObjectFilter,
@@ -2136,6 +2198,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("filter", filter)
                 .finish(),
             Self::LoseLife { amount } => f.debug_tuple("LoseLife").field(amount).finish(),
+            Self::PayLife { amount } => f.debug_tuple("PayLife").field(amount).finish(),
             Self::GainLife { amount } => f.debug_tuple("GainLife").field(amount).finish(),
             Self::RevealHand => f.write_str("RevealHand"),
             Self::Mill { count } => f.debug_tuple("Mill").field(count).finish(),
@@ -2225,6 +2288,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ShuffleHandAndGraveyardIntoLibrary => {
                 f.write_str("ShuffleHandAndGraveyardIntoLibrary")
+            }
+            Self::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary => {
+                f.write_str("ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary")
             }
             Self::ShuffleGraveyardIntoLibrary => f.write_str("ShuffleGraveyardIntoLibrary"),
             Self::ReorderGraveyard => f.write_str("ReorderGraveyard"),
@@ -2489,22 +2555,28 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 count,
                 tags,
                 accumulated_tags,
+                face_down,
             } => f
                 .debug_struct("ExileTopOfLibrary")
                 .field("count", count)
                 .field("tags", tags)
                 .field("accumulated_tags", accumulated_tags)
+                .field("face_down", face_down)
                 .finish(),
             Self::RevealTagged { tag } => f.debug_tuple("RevealTagged").field(tag).finish(),
             Self::PutOntoBattlefield {
                 target,
                 tapped,
                 controller,
+                cloak,
+                shuffle_before,
             } => f
                 .debug_struct("PutOntoBattlefield")
                 .field("target", target)
                 .field("tapped", tapped)
                 .field("controller", controller)
+                .field("cloak", cloak)
+                .field("shuffle_before", shuffle_before)
                 .finish(),
             Self::RevealCardsFromHand {
                 count,
@@ -2733,12 +2805,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 keep_tagged,
                 order,
                 player,
+                surface,
             } => f
                 .debug_struct("PutTaggedRemainderOnBottomOfLibrary")
                 .field("tag", tag)
                 .field("keep_tagged", keep_tagged)
                 .field("order", order)
                 .field("player", player)
+                .field("surface", surface)
                 .finish(),
             Self::PutTaggedRemainderInZone {
                 tag,
@@ -2811,6 +2885,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 filter,
+                during_turns_counter_put_on_source,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
@@ -2819,6 +2894,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .field("filter", filter)
+                .field(
+                    "during_turns_counter_put_on_source",
+                    during_turns_counter_put_on_source,
+                )
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
@@ -2880,6 +2959,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::MoveToZone {
                 target,
+                source_top_only,
                 zone,
                 to_top,
                 library_order,
@@ -2899,6 +2979,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             } => f
                 .debug_struct("MoveToZone")
                 .field("target", target)
+                .field("source_top_only", source_top_only)
                 .field("zone", zone)
                 .field("to_top", to_top)
                 .field("library_order", library_order)
@@ -2982,6 +3063,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 granted_abilities,
                 preserve_other_types,
                 type_retention_surface,
+                animation_pt_surface,
+                animation_duration_surface,
                 duration,
             } => f
                 .debug_struct("BecomeBasePtCreature")
@@ -2996,6 +3079,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("granted_abilities", granted_abilities)
                 .field("preserve_other_types", preserve_other_types)
                 .field("type_retention_surface", type_retention_surface)
+                .field("animation_pt_surface", animation_pt_surface)
+                .field("animation_duration_surface", animation_duration_surface)
                 .field("duration", duration)
                 .finish(),
             Self::SetBasePower {
@@ -3229,6 +3314,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
                 condition,
                 set_quantifier_surface,
+                lock_filter_at_resolution,
             } => f
                 .debug_struct("GrantAbilitiesAll")
                 .field("filter", filter)
@@ -3236,17 +3322,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("condition", condition)
                 .field("set_quantifier_surface", set_quantifier_surface)
+                .field("lock_filter_at_resolution", lock_filter_at_resolution)
                 .finish(),
             Self::RemoveAbilitiesAll {
                 filter,
                 abilities,
                 duration,
+                condition,
                 set_quantifier_surface,
             } => f
                 .debug_struct("RemoveAbilitiesAll")
                 .field("filter", filter)
                 .field("abilities", abilities)
                 .field("duration", duration)
+                .field("condition", condition)
                 .field("set_quantifier_surface", set_quantifier_surface)
                 .finish(),
             Self::GrantAbilitiesChoiceAll {
@@ -3477,11 +3566,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source,
                 amount,
                 target,
+                unpreventable,
             } => f
                 .debug_struct("DealDamageEqualToPower")
                 .field("source", source)
                 .field("amount", amount)
                 .field("target", target)
+                .field("unpreventable", unpreventable)
                 .finish(),
             Self::DealDistributedDamage {
                 amount,
@@ -3571,10 +3662,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("face_down", face_down)
                 .finish(),
-            Self::Exile { target, face_down } => f
+            Self::Exile {
+                target,
+                face_down,
+                source_top_only,
+            } => f
                 .debug_struct("Exile")
                 .field("target", target)
                 .field("face_down", face_down)
+                .field("source_top_only", source_top_only)
                 .finish(),
             Self::ExileAll { filter, face_down } => f
                 .debug_struct("ExileAll")
@@ -3812,6 +3908,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),
             Self::SetLifeTotal { amount } => f.debug_tuple("SetLifeTotal").field(amount).finish(),
             Self::EndTurn => f.write_str("EndTurn"),
+            Self::EndCombatPhase => f.write_str("EndCombatPhase"),
             Self::SkipTurn => f.write_str("SkipTurn"),
             Self::SkipCombatPhases => f.write_str("SkipCombatPhases"),
             Self::SkipNextCombatPhaseThisTurn => f.write_str("SkipNextCombatPhaseThisTurn"),
@@ -3869,6 +3966,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ClearSuspected { target } => {
                 f.debug_tuple("ClearSuspected").field(target).finish()
             }
+            Self::HealDamage { target, amount } => f
+                .debug_struct("HealDamage")
+                .field("target", target)
+                .field("amount", amount)
+                .finish(),
             Self::RemoveFromCombat { target } => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }
@@ -3886,11 +3988,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 filter,
                 count,
                 target,
+                one_of_referenced_set,
             } => f
                 .debug_struct("Sacrifice")
                 .field("filter", filter)
                 .field("count", count)
                 .field("target", target)
+                .field("one_of_referenced_set", one_of_referenced_set)
                 .finish(),
             Self::SacrificeAll { filter } => f
                 .debug_struct("SacrificeAll")

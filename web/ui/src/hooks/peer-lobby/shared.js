@@ -64,6 +64,7 @@ import {
 import {
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
+  MATCH_FORMAT_PLANECHASE,
   evaluateLobbyDeckSubmission,
   normalizeMatchFormat,
   parseCommanderList,
@@ -98,7 +99,7 @@ import {
   normalizeMultiplayerSecurityMode,
 } from "@/lib/multiplayer-security";
 
-export { CURRENT_AUDIT_MAX_PLAYERS, CURRENT_AUDIT_MIN_PLAYERS, CURRENT_AUDIT_PROTOCOL_VERSION, DISCONNECT_AUTO_FORFEIT_MS, DISCONNECT_FORFEIT_REASON, MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL, MULTIPLAYER_SECURITY_TRUSTED, MULTIPLAYER_SECURITY_VERIFIED, PROTOCOL_RESPONSE_TIMEOUT_MS, PROTOCOL_RESPONSE_TIMEOUT_REASON, Peer, ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD, actionQuorumThreshold, assertResyncActionsExtendLocalTranscript, auditStateHash, authorizeCryptoMaterialRequestRequirements, buildActionForkDisputeEvidence, buildDeckSlotOpening, buildPrivateDeckManifest, buildSignedActionEnvelope, buildSignedActionQuorumVote, buildSignedDisconnectForfeitVote, buildSignedMatchGenesis, buildSignedPlayerGenesis, buildSignedProtocolResponseTimeoutVote, buildSignedResyncEnvelope, buildZiffleOpeningProof, canonicalJson, createAuditEncryptionKey, createAuditSessionKey, cryptoMaterialResponsibleSeat, decklistHashForCards, decryptPrivateAuditPayload, emitSyncFailureNotice, encryptPrivateAuditPayload, evaluateLobbyDeckSubmission, exportAuditEncryptionKeyPair, exportAuditEncryptionPublicKey, exportAuditKeyPair, exportAuditPublicKey, fairRandomCombinedSeedHex, importAuditEncryptionKeyPair, importAuditKeyPair, importAuditPublicKey, isCurrentAuditPlayerCount, isDecisionCommandCompatible, isDisadvantageousActivePlayerClockAdvance, isDisconnectForfeitReason, isProtocolResponseTimeoutForfeitReason, isSupportedZiffleDeckCount, isTrustedMultiplayerSecurityMode, isVerifiedMultiplayerSecurityMode, normalizeMatchFormat, normalizeMultiplayerSecurityMode, normalizeSelectObjectHiddenRef, normalizeZiffleCardPositions, parseCommanderList, parseDeckList, parseDeckPrintPreferences, parseSideboardList, pendingActionIntentHardTimeoutMs, preloadCardArt, protocolResponseTimeoutVoteThreshold, publicCheckpointHash, publicDeckManifest, randomAuditHex, rngCommitmentPayload, rngRevealPayload, saveDefaultLobbyDeck, selectObjectCandidateForId, selectObjectCandidateRevealPolicy, selectObjectSyncMetadataForCommand, setPreferredCardPrints, sha256Hex, signAuditPayload, useCallback, useEffect, useRef, useState, verifyActionQuorumCertificate, verifyActionQuorumVote, verifyAuditPayload, verifyCardOpeningAgainstManifest, verifyDisconnectForfeitCertificate, verifyDisconnectForfeitVote, verifyLiveAuditTranscript, verifyProtocolResponseTimeoutCertificate, verifyProtocolResponseTimeoutVote, verifySignedMatchGenesis, verifySignedResyncEnvelope, ziffleRevealTokenTimeoutMs };
+export { CURRENT_AUDIT_MAX_PLAYERS, CURRENT_AUDIT_MIN_PLAYERS, CURRENT_AUDIT_PROTOCOL_VERSION, DISCONNECT_AUTO_FORFEIT_MS, DISCONNECT_FORFEIT_REASON, MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL, MATCH_FORMAT_PLANECHASE, MULTIPLAYER_SECURITY_TRUSTED, MULTIPLAYER_SECURITY_VERIFIED, PROTOCOL_RESPONSE_TIMEOUT_MS, PROTOCOL_RESPONSE_TIMEOUT_REASON, Peer, ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD, actionQuorumThreshold, assertResyncActionsExtendLocalTranscript, auditStateHash, authorizeCryptoMaterialRequestRequirements, buildActionForkDisputeEvidence, buildDeckSlotOpening, buildPrivateDeckManifest, buildSignedActionEnvelope, buildSignedActionQuorumVote, buildSignedDisconnectForfeitVote, buildSignedMatchGenesis, buildSignedPlayerGenesis, buildSignedProtocolResponseTimeoutVote, buildSignedResyncEnvelope, buildZiffleOpeningProof, canonicalJson, createAuditEncryptionKey, createAuditSessionKey, cryptoMaterialResponsibleSeat, decklistHashForCards, decryptPrivateAuditPayload, emitSyncFailureNotice, encryptPrivateAuditPayload, evaluateLobbyDeckSubmission, exportAuditEncryptionKeyPair, exportAuditEncryptionPublicKey, exportAuditKeyPair, exportAuditPublicKey, fairRandomCombinedSeedHex, importAuditEncryptionKeyPair, importAuditKeyPair, importAuditPublicKey, isCurrentAuditPlayerCount, isDecisionCommandCompatible, isDisadvantageousActivePlayerClockAdvance, isDisconnectForfeitReason, isProtocolResponseTimeoutForfeitReason, isSupportedZiffleDeckCount, isTrustedMultiplayerSecurityMode, isVerifiedMultiplayerSecurityMode, normalizeMatchFormat, normalizeMultiplayerSecurityMode, normalizeSelectObjectHiddenRef, normalizeZiffleCardPositions, parseCommanderList, parseDeckList, parseDeckPrintPreferences, parseSideboardList, pendingActionIntentHardTimeoutMs, preloadCardArt, protocolResponseTimeoutVoteThreshold, publicCheckpointHash, publicDeckManifest, randomAuditHex, rngCommitmentPayload, rngRevealPayload, saveDefaultLobbyDeck, selectObjectCandidateForId, selectObjectCandidateRevealPolicy, selectObjectSyncMetadataForCommand, setPreferredCardPrints, sha256Hex, signAuditPayload, useCallback, useEffect, useRef, useState, verifyActionQuorumCertificate, verifyActionQuorumVote, verifyAuditPayload, verifyCardOpeningAgainstManifest, verifyDisconnectForfeitCertificate, verifyDisconnectForfeitVote, verifyLiveAuditTranscript, verifyProtocolResponseTimeoutCertificate, verifyProtocolResponseTimeoutVote, verifySignedMatchGenesis, verifySignedResyncEnvelope, ziffleRevealTokenTimeoutMs };
 
 
 export const PROTOCOL_VERSION = CURRENT_AUDIT_PROTOCOL_VERSION;
@@ -380,7 +381,16 @@ export function mixMatchSeedCardLists(hash, lists) {
   return next;
 }
 
-export function createMatchSeed({ players, format, decks, commanders, sideboards, startingLife, openingHandSize }) {
+export function createMatchSeed({
+  players,
+  format,
+  decks,
+  commanders,
+  planarDecks,
+  sideboards,
+  startingLife,
+  openingHandSize,
+}) {
   let hash = MATCH_SEED_OFFSET;
   hash = mixMatchSeedString(hash, "ironsmith-match-seed-v1");
   hash = mixMatchSeedString(hash, format || MATCH_FORMAT_NORMAL);
@@ -393,6 +403,12 @@ export function createMatchSeed({ players, format, decks, commanders, sideboards
   }
   hash = mixMatchSeedCardLists(hash, decks);
   hash = mixMatchSeedCardLists(hash, commanders);
+  hash = mixMatchSeedCardLists(
+    hash,
+    (planarDecks || []).map((cards) =>
+      (cards || []).map((card) => String(card?.name || card || ""))
+    )
+  );
   hash = mixMatchSeedCardLists(hash, sideboards);
 
   const seed = Number(hash & BigInt(Number.MAX_SAFE_INTEGER));
@@ -2924,6 +2940,18 @@ export function validationCommandersForMatchPayload(payload) {
   return payload?.commanders;
 }
 
+export function validationPlanarDecksForMatchPayload(payload) {
+  if (normalizeMatchFormat(payload?.format) !== MATCH_FORMAT_PLANECHASE) {
+    return undefined;
+  }
+  if (payload?.openDecklists && Array.isArray(payload.players)) {
+    return payload.players.map((player) =>
+      sanitizeCardList(player.commanders).map((name) => ({ name }))
+    );
+  }
+  return payload?.planarDecks;
+}
+
 export function canHostedMatchStart(session) {
   const playerCount = session.players.length;
   const lobbyReady = (
@@ -2935,6 +2963,12 @@ export function canHostedMatchStart(session) {
     session.players.every((player) => player.connected !== false && player.ready)
   );
   if (!lobbyReady) return false;
+  if (
+    normalizeMatchFormat(session.format) === MATCH_FORMAT_PLANECHASE
+    && !isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))
+  ) {
+    return false;
+  }
   if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) return true;
   return session.players.every((player) =>
     player.ziffleKey && isSupportedZiffleDeckCount(player.deckCount)
@@ -3048,4 +3082,3 @@ export function summarizeMatchValidationIssues(issues) {
     ].join("\n"),
   };
 }
-

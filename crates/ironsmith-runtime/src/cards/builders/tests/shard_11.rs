@@ -3665,3 +3665,225 @@ pub(super) fn render_put_counter_on_each_attacking_creature_from_for_each_form()
         "expected normalized each-attacking counter wording, got {joined}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn explicit_you_create_actor_surface_regressions() {
+    let cases = [
+        (
+            "Fake Your Own Death",
+            vec![CardType::Instant],
+            Vec::new(),
+            "Until end of turn, target creature gets +2/+0 and gains \"When this creature dies, return it to the battlefield tapped under its owner's control and you create a Treasure token.\"",
+            "treasure token",
+        ),
+        (
+            "Liliana's Reaver",
+            vec![CardType::Creature],
+            Vec::new(),
+            "Whenever this creature deals combat damage to a player, that player discards a card and you create a tapped 2/2 black Zombie creature token.",
+            "tapped 2/2 black zombie creature token",
+        ),
+        (
+            "Nurgle's Rot",
+            vec![CardType::Enchantment],
+            vec![Subtype::Aura],
+            "When enchanted creature dies, return this card to its owner's hand and you create a 1/3 black Demon creature token named Plaguebearer of Nurgle.",
+            "1/3 black demon creature token named plaguebearer of nurgle",
+        ),
+        (
+            "Sleep with the Fishes",
+            vec![CardType::Enchantment],
+            vec![Subtype::Aura],
+            "When this Aura enters, tap enchanted creature and you create a 1/1 blue Fish creature token with \"This token can't be blocked.\"",
+            "1/1 blue fish creature token",
+        ),
+    ];
+
+    for (name, card_types, subtypes, oracle, token_phrase) in cases {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .subtypes(subtypes)
+            .parse_text(oracle)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
+        let compiled = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains("and you create") && compiled.contains(token_phrase),
+            "expected {name} to preserve its explicit create actor, got {compiled}"
+        );
+    }
+
+    let implicit = CardDefinitionBuilder::new(CardId::new(), "Implicit Create Control")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Create a Treasure token.")
+        .expect("bare imperative create should parse");
+    let compiled = unprocessed_compiled_lines(&implicit)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("create a treasure token") && !compiled.contains("you create"),
+        "expected bare imperative create to remain implicit, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn attached_pt_conjunctions_keep_both_layered_static_effects() {
+    use crate::static_abilities::StaticAbilityId;
+
+    let cases = [
+        (
+            "Fresh Start",
+            "Flash\nEnchant creature\nEnchanted creature gets -5/-0 and loses all abilities.",
+            StaticAbilityId::RemoveAllAbilitiesForFilter,
+            "enchanted creature gets -5/-0 and loses all abilities",
+        ),
+        (
+            "Duskmourn's Domination",
+            "Enchant creature\nYou control enchanted creature.\nEnchanted creature gets -3/-0 and loses all abilities.",
+            StaticAbilityId::RemoveAllAbilitiesForFilter,
+            "enchanted creature gets -3/-0 and loses all abilities",
+        ),
+        (
+            "Mystic Subdual",
+            "Flash\nEnchant creature\nEnchanted creature gets -2/-0 and loses all abilities. (Mutating onto the creature won't give it new abilities. It can gain abilities in other ways.)",
+            StaticAbilityId::RemoveAllAbilitiesForFilter,
+            "enchanted creature gets -2/-0 and loses all abilities",
+        ),
+        (
+            "Sinister Strength",
+            "Enchant creature\nEnchanted creature gets +3/+1 and is black.",
+            StaticAbilityId::SetColors,
+            "enchanted creature gets +3/+1 and is black",
+        ),
+    ];
+
+    let expected_filter = ObjectFilter::creature()
+        .in_zone(Zone::Battlefield)
+        .match_tagged(
+            "enchanted",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        );
+
+    for (name, oracle, expected_secondary, expected_surface) in cases {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .parse_text(oracle)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
+
+        let mut anthem_filter = None;
+        let mut secondary_filter = None;
+        for ability in &def.abilities {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            let Some(model) = static_ability.compiled_model() else {
+                continue;
+            };
+            match &model.payload {
+                ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
+                    anthem_filter = anthem.filter.clone();
+                }
+                ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter)
+                    if expected_secondary == StaticAbilityId::RemoveAllAbilitiesForFilter =>
+                {
+                    secondary_filter = Some(filter.clone());
+                }
+                ironsmith_core::StaticAbilityPayload::SetColors { filter, .. }
+                    if expected_secondary == StaticAbilityId::SetColors =>
+                {
+                    secondary_filter = Some(filter.clone());
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(
+            anthem_filter.as_ref(),
+            Some(&expected_filter),
+            "{name} should retain its enchanted-creature anthem filter"
+        );
+        assert_eq!(
+            secondary_filter, anthem_filter,
+            "{name} should use the identical filter for both layered effects"
+        );
+
+        let compiled = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            compiled.contains(expected_surface),
+            "{name} should structurally recombine both effects, got {compiled}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn possessed_threshold_source_modifier_family_recombines() {
+    let cases = [
+        (
+            "Possessed Aven",
+            "Flying",
+            "blue",
+            "Flying\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target blue creature.\"",
+        ),
+        (
+            "Possessed Barbarian",
+            "First strike",
+            "red",
+            "First strike\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target red creature.\"",
+        ),
+        (
+            "Possessed Centaur",
+            "Trample",
+            "green",
+            "Trample\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target green creature.\"",
+        ),
+        (
+            "Possessed Nomad",
+            "Vigilance",
+            "white",
+            "Vigilance\nThreshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target white creature.\"",
+        ),
+    ];
+
+    for (name, intrinsic, destroyed_color, oracle) in cases {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .parse_text(oracle)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
+        let expected = format!(
+            "Threshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{{2}}{{B}}, {{T}}: Destroy target {destroyed_color} creature.\""
+        );
+        let rendered = unprocessed_compiled_lines(&def);
+        assert!(
+            rendered.iter().any(|line| line == intrinsic),
+            "{name} should retain its intrinsic keyword, got {rendered:#?}"
+        );
+        assert!(
+            rendered.iter().any(|line| line == &expected),
+            "{name} should retain its structural Threshold surface, got {rendered:#?}"
+        );
+
+        let static_ids = def
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            static_ids.contains(&crate::static_abilities::StaticAbilityId::Anthem)
+                && static_ids.contains(&crate::static_abilities::StaticAbilityId::SetColors)
+                && static_ids.contains(
+                    &crate::static_abilities::StaticAbilityId::GrantObjectAbilityForFilter
+                ),
+            "{name} should retain all three executable static siblings, got {static_ids:?}"
+        );
+    }
+}

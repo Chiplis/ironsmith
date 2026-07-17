@@ -1,7 +1,7 @@
 use super::*;
 use crate::ability::{
-    Ability, AbilityKind, ActivatedAbility, ManaUsageRestriction, ManaUsageSubtypeRequirement,
-    RestrictedManaUnit,
+    Ability, AbilityKind, ActivatedAbility, ManaPaymentPredicate, ManaPaymentPurpose,
+    ManaSpendPayload, ManaUsageRestriction, ManaUsageSubtypeRequirement, RestrictedManaUnit,
 };
 use crate::cards::CardDefinitionBuilder;
 use crate::cards::definitions::{
@@ -15,12 +15,315 @@ use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use crate::game_state::Phase;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::resolution::ResolutionProgram;
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 fn setup_game() -> GameState {
     crate::tests::test_helpers::setup_two_player_game()
+}
+
+fn add_test_mana_from_source(
+    game: &mut GameState,
+    player: PlayerId,
+    name: &str,
+    snow: bool,
+    symbol: ManaSymbol,
+) -> ObjectId {
+    let mut builder =
+        CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![CardType::Land]);
+    if snow {
+        builder = builder.supertypes(vec![Supertype::Snow]);
+    }
+    let source = game.create_object_from_definition(&builder.build(), player, Zone::Battlefield);
+    let snapshot = ObjectSnapshot::from_object(game.object(source).expect("mana source"), game);
+    game.player_mut(player)
+        .expect("player")
+        .add_unrestricted_mana(symbol, source, Some(snapshot));
+    source
+}
+
+#[test]
+fn i006_snow_pip_options_offer_only_mana_from_snow_sources() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    add_test_mana_from_source(
+        &mut game,
+        alice,
+        "Ordinary Colorless Source",
+        false,
+        ManaSymbol::Colorless,
+    );
+    add_test_mana_from_source(
+        &mut game,
+        alice,
+        "Snow Green Source",
+        true,
+        ManaSymbol::Green,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+
+    let options = build_pip_payment_options(
+        &game,
+        alice,
+        &[ManaSymbol::Snow],
+        Some(&[ManaSymbol::Snow]),
+        &crate::player::ManaSpendPolicy::default(),
+        false,
+        None,
+        crate::costs::PaymentReason::Other,
+        false,
+        &mut dm,
+    );
+
+    let pool_symbols = options
+        .iter()
+        .filter_map(|option| match option.action {
+            ManaPipPaymentAction::UseFromPool(symbol) => Some(symbol),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pool_symbols,
+        vec![ManaSymbol::Green],
+        "{{S}} must offer every mana type from a snow source and no mana from a nonsnow source"
+    );
+}
+
+#[test]
+fn i006_generic_cost_reduction_never_reduces_a_snow_pip() {
+    let cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Snow]);
+    let reduced = cost.reduce_generic(99);
+    assert_eq!(reduced.pips(), &[vec![ManaSymbol::Snow]]);
+}
+
+#[test]
+fn i006_snow_pip_spends_the_exact_snow_source_unit() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    add_test_mana_from_source(
+        &mut game,
+        alice,
+        "Ordinary Green Source",
+        false,
+        ManaSymbol::Green,
+    );
+    add_test_mana_from_source(
+        &mut game,
+        alice,
+        "Snow Green Source",
+        true,
+        ManaSymbol::Green,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    let mut trigger_queue = TriggerQueue::new();
+    let mut trace = Vec::new();
+    let mut spent = ManaPool::default();
+    let mut spent_sources = Vec::new();
+
+    assert!(
+        execute_pip_payment_action(
+            &mut game,
+            &mut trigger_queue,
+            alice,
+            None,
+            crate::costs::PaymentReason::Other,
+            &[ManaSymbol::Snow],
+            &crate::player::ManaSpendPolicy::default(),
+            &ManaPipPaymentAction::UseFromPool(ManaSymbol::Green),
+            &mut dm,
+            &mut trace,
+            Some(&mut spent),
+            Some(&mut spent_sources),
+        )
+        .expect("the snow-produced green mana should pay {S}")
+    );
+    assert_eq!(spent.green, 1);
+    assert_eq!(spent_sources.len(), 1);
+    assert_eq!(spent_sources[0].name, "Snow Green Source");
+    assert_eq!(game.player(alice).expect("player").mana_pool.green, 1);
+}
+
+#[test]
+fn i006_bulk_snow_payment_rejects_nonsnow_mana_and_accepts_snow_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    add_test_mana_from_source(
+        &mut game,
+        alice,
+        "Ordinary Colorless Source",
+        false,
+        ManaSymbol::Colorless,
+    );
+    let cost = ManaCost::from_symbols(vec![ManaSymbol::Snow]);
+
+    assert!(!game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &cost,
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+    assert!(!game.try_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &cost,
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+    assert_eq!(game.player(alice).expect("player").mana_pool.colorless, 1);
+
+    add_test_mana_from_source(&mut game, alice, "Snow Blue Source", true, ManaSymbol::Blue);
+    assert!(game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &cost,
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+    assert!(game.try_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &cost,
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+    assert_eq!(game.player(alice).expect("player").mana_pool.blue, 0);
+    assert_eq!(game.player(alice).expect("player").mana_pool.colorless, 1);
+}
+
+#[test]
+fn i006_mana_remembers_a_continuously_snow_source_after_the_effect_ends() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source_def = CardDefinitionBuilder::new(CardId::new(), "Temporarily Snow Land")
+        .card_types(vec![CardType::Land])
+        .taps_for(ManaSymbol::Green)
+        .build();
+    let source = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+    let ability_index = game
+        .object(source)
+        .expect("mana source")
+        .abilities
+        .iter()
+        .position(Ability::is_mana_ability)
+        .expect("mana ability");
+    let effect_id = game.effect_store.continuous_effects.add_effect(
+        crate::continuous::ContinuousEffect::new(
+            source,
+            alice,
+            crate::continuous::EffectTarget::Specific(source),
+            crate::continuous::Modification::AddSupertypes(vec![Supertype::Snow]),
+        )
+        .until(crate::effect::Until::EndOfTurn),
+    );
+    assert!(game.current_has_supertype(source, Supertype::Snow));
+
+    let mut dm = SelectFirstDecisionMaker;
+    crate::special_actions::perform_activate_mana_ability(
+        &mut game,
+        alice,
+        source,
+        ability_index,
+        &mut dm,
+    )
+    .expect("snow source mana ability should activate");
+    game.effect_store
+        .continuous_effects
+        .remove_effect(effect_id);
+    assert!(!game.current_has_supertype(source, Supertype::Snow));
+
+    let snow_cost = ManaCost::from_symbols(vec![ManaSymbol::Snow]);
+    assert!(game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &snow_cost,
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+    assert!(game.try_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &snow_cost,
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+}
+
+#[test]
+fn ordered_graveyard_cost_candidates_only_offer_the_top_matching_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Ordered Cost Source")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let creature = |name| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build()
+    };
+    let noncreature = |name| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build()
+    };
+    let lower_creature =
+        game.create_object_from_definition(&creature("Lower Creature"), alice, Zone::Graveyard);
+    let _middle_noncreature = game.create_object_from_definition(
+        &noncreature("Middle Noncreature"),
+        alice,
+        Zone::Graveyard,
+    );
+    let top_creature =
+        game.create_object_from_definition(&creature("Top Creature"), alice, Zone::Graveyard);
+    let _actual_top = game.create_object_from_definition(
+        &noncreature("Actual Top Noncreature"),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let mut filter = crate::target::ObjectFilter::creature();
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(crate::target::PlayerFilter::You);
+
+    assert_eq!(
+        get_legal_cost_choice_objects(&game, alice, source_id, &filter, Zone::Graveyard, true,),
+        vec![top_creature]
+    );
+    let ordinary =
+        get_legal_cost_choice_objects(&game, alice, source_id, &filter, Zone::Graveyard, false);
+    assert!(ordinary.contains(&lower_creature));
+    assert!(ordinary.contains(&top_creature));
+}
+
+#[test]
+fn opponent_owned_exile_cost_candidates_exclude_the_activating_players_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Processor Source")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let material = |name| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build()
+    };
+    let alice_exiled =
+        game.create_object_from_definition(&material("Alice Exiled"), alice, Zone::Exile);
+    let bob_exiled = game.create_object_from_definition(&material("Bob Exiled"), bob, Zone::Exile);
+
+    let filter = crate::target::ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .owned_by(crate::target::PlayerFilter::Opponent);
+
+    let candidates =
+        get_legal_cost_choice_objects(&game, alice, source_id, &filter, Zone::Exile, false);
+    assert_eq!(candidates, vec![bob_exiled]);
+    assert!(!candidates.contains(&alice_exiled));
 }
 
 #[test]
@@ -1234,4 +1537,552 @@ fn test_build_pip_payment_options_does_not_add_krrik_life_to_announced_phyrexian
             .all(|option| !matches!(option.action, ManaPipPaymentAction::PayLife(2))),
         "Krrik should not create a second life-payment option for a printed Phyrexian pip"
     );
+}
+
+#[test]
+fn mandatory_trigger_action_loop_104_4b_ends_the_game_in_a_draw() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Mandatory Life Loop")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::triggered(
+            crate::triggers::Trigger::you_gain_life(),
+            vec![crate::effect::Effect::gain_life(1)],
+        ))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(
+        &mut game,
+        &mut trigger_queue,
+        crate::triggers::TriggerEvent::new(
+            crate::events::LifeGainEvent::new(alice, 1),
+            crate::provenance::ProvNodeId::default(),
+        ),
+        false,
+    );
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut progress = advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("mandatory loop should begin");
+
+    for _ in 0..64 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_context),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                &mut dm,
+            )
+            .unwrap_or_else(|error| panic!("passing through mandatory loop failed: {error}")),
+            GameProgress::StackResolved => {
+                advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                    .expect("mandatory loop should continue after resolution")
+            }
+            GameProgress::GameOver(GameResult::Draw) => return,
+            GameProgress::GameOver(other) => {
+                panic!("mandatory loop produced the wrong game result: {other:?}")
+            }
+            GameProgress::Continue => panic!("mandatory loop incorrectly ended the phase"),
+            GameProgress::NeedsDecisionCtx(other) => {
+                panic!("mandatory loop unexpectedly requested a choice: {other:?}")
+            }
+        };
+    }
+
+    panic!("mandatory loop failed to produce the CR 104.4b draw");
+}
+
+#[test]
+fn optional_priority_action_prevents_104_4b_automatic_draw() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Interruptible Life Loop")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::triggered(
+            crate::triggers::Trigger::you_gain_life(),
+            vec![crate::effect::Effect::gain_life(1)],
+        ))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let optional_instant = CardDefinitionBuilder::new(CardId::new(), "Optional Interruption")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_definition(&optional_instant, bob, Zone::Hand);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(
+        &mut game,
+        &mut trigger_queue,
+        crate::triggers::TriggerEvent::new(
+            crate::events::LifeGainEvent::new(alice, 1),
+            crate::provenance::ProvNodeId::default(),
+        ),
+        false,
+    );
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut progress = advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("interruptible loop should begin");
+    let mut saw_optional_action = false;
+    let mut resolutions = 0;
+
+    for _ in 0..64 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(context),
+            ) => {
+                saw_optional_action |= context
+                    .actions
+                    .iter()
+                    .any(|action| !matches!(action, LegalAction::PassPriority));
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                    &mut dm,
+                )
+                .unwrap_or_else(|error| panic!("passing through optional loop failed: {error}"))
+            }
+            GameProgress::StackResolved => {
+                resolutions += 1;
+                if resolutions == 4 {
+                    break;
+                }
+                advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                    .expect("optional loop should continue after resolution")
+            }
+            GameProgress::GameOver(GameResult::Draw) => {
+                panic!("a loop with an available optional action must not draw")
+            }
+            GameProgress::GameOver(other) => {
+                panic!("interruptible loop produced an unexpected result: {other:?}")
+            }
+            GameProgress::Continue => panic!("interruptible loop incorrectly ended the phase"),
+            GameProgress::NeedsDecisionCtx(other) => {
+                panic!("interruptible loop unexpectedly requested a choice: {other:?}")
+            }
+        };
+    }
+
+    assert!(saw_optional_action);
+    assert_eq!(resolutions, 4);
+}
+
+#[derive(Debug, Clone)]
+struct GainLifeWhileChargeCounterRemains;
+
+impl crate::effects::EffectExecutor for GainLifeWhileChargeCounterRemains {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+        let _ = game.remove_counters(
+            ctx.source,
+            crate::object::CounterType::Charge,
+            1,
+            Some(ctx.source),
+            Some(ctx.controller),
+        );
+        let remaining = game
+            .object(ctx.source)
+            .and_then(|source| {
+                source
+                    .counters
+                    .get(&crate::object::CounterType::Charge)
+                    .copied()
+            })
+            .unwrap_or(0);
+        if remaining > 0 {
+            crate::effects::EffectExecutor::execute(
+                &crate::effects::GainLifeEffect::you(1),
+                game,
+                ctx,
+            )
+        } else {
+            Ok(crate::effect::EffectOutcome::resolved())
+        }
+    }
+}
+
+#[test]
+fn finite_state_changing_trigger_chain_does_not_draw_under_104_4b() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Finite Life Chain")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::triggered(
+            crate::triggers::Trigger::you_gain_life(),
+            vec![crate::effect::Effect::new(
+                GainLifeWhileChargeCounterRemains,
+            )],
+        ))
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    game.add_counters(source_id, crate::object::CounterType::Charge, 3)
+        .expect("finite-chain source should accept charge counters");
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(
+        &mut game,
+        &mut trigger_queue,
+        crate::triggers::TriggerEvent::new(
+            crate::events::LifeGainEvent::new(alice, 1),
+            crate::provenance::ProvNodeId::default(),
+        ),
+        false,
+    );
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut progress = advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("finite trigger chain should begin");
+    let mut resolutions = 0;
+
+    for _ in 0..64 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                &mut dm,
+            )
+            .unwrap_or_else(|error| panic!("passing through finite chain failed: {error}")),
+            GameProgress::StackResolved => {
+                resolutions += 1;
+                if resolutions == 3 {
+                    break;
+                }
+                advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                    .expect("finite trigger chain should continue while a counter remains")
+            }
+            GameProgress::GameOver(GameResult::Draw) => {
+                panic!("a bounded state-changing trigger chain must not draw")
+            }
+            GameProgress::GameOver(other) => {
+                panic!("finite trigger chain produced an unexpected result: {other:?}")
+            }
+            GameProgress::Continue => panic!("finite trigger chain ended its phase too early"),
+            GameProgress::NeedsDecisionCtx(other) => {
+                panic!("finite trigger chain unexpectedly requested a choice: {other:?}")
+            }
+        };
+    }
+
+    assert_eq!(resolutions, 3);
+    assert_eq!(
+        game.object(source_id)
+            .and_then(|source| source.counters.get(&crate::object::CounterType::Charge))
+            .copied()
+            .unwrap_or(0),
+        0
+    );
+}
+
+#[derive(Default)]
+struct AlwaysAcceptMayDecisionMaker {
+    choices: usize,
+}
+
+impl DecisionMaker for AlwaysAcceptMayDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.choices += 1;
+        true
+    }
+}
+
+#[test]
+fn nested_may_choice_prevents_104_4b_automatic_draw() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Optional Nested Life Loop")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::triggered(
+            crate::triggers::Trigger::you_gain_life(),
+            vec![crate::effect::Effect::new(crate::effects::MayEffect::new(
+                vec![crate::effect::Effect::gain_life(1)],
+            ))],
+        ))
+        .build();
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(
+        &mut game,
+        &mut trigger_queue,
+        crate::triggers::TriggerEvent::new(
+            crate::events::LifeGainEvent::new(alice, 1),
+            crate::provenance::ProvNodeId::default(),
+        ),
+        false,
+    );
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AlwaysAcceptMayDecisionMaker::default();
+    let mut progress = advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("optional nested loop should begin");
+    let mut resolutions = 0;
+
+    for _ in 0..64 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                &mut dm,
+            )
+            .unwrap_or_else(|error| panic!("passing through nested may loop failed: {error}")),
+            GameProgress::StackResolved => {
+                resolutions += 1;
+                if resolutions == 4 {
+                    break;
+                }
+                advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                    .expect("accepted nested may loop should continue")
+            }
+            GameProgress::GameOver(GameResult::Draw) => {
+                panic!("a loop containing a nested may choice must not draw")
+            }
+            GameProgress::GameOver(other) => {
+                panic!("nested may loop produced an unexpected result: {other:?}")
+            }
+            GameProgress::Continue => panic!("nested may loop incorrectly ended the phase"),
+            GameProgress::NeedsDecisionCtx(other) => {
+                panic!("nested may loop unexpectedly surfaced a choice: {other:?}")
+            }
+        };
+    }
+
+    assert_eq!(resolutions, 4);
+    assert_eq!(dm.choices, 4);
+}
+
+#[test]
+fn immediate_triggered_mana_procedure_loop_104_4b_is_a_draw() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Mandatory Mana Loop")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::triggered(
+            crate::triggers::Trigger::mana_added(crate::target::PlayerFilter::You),
+            vec![crate::effect::Effect::add_mana(vec![ManaSymbol::Green])],
+        ))
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(
+        &mut game,
+        &mut trigger_queue,
+        crate::triggers::TriggerEvent::new(
+            crate::events::ManaAddedEvent::new(source_id, alice, alice, vec![ManaSymbol::Green]),
+            crate::provenance::ProvNodeId::default(),
+        ),
+        false,
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+
+    assert_eq!(
+        put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm),
+        Err(GameLoopError::MandatoryLoopDraw)
+    );
+}
+
+#[test]
+fn u078_transaction_predicates_cover_cumulative_upkeep_and_costs_containing_x() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.new_object_id();
+    let cumulative = RestrictedManaUnit {
+        symbol: ManaSymbol::Blue,
+        source,
+        source_chosen_creature_type: None,
+        restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::Purpose(
+                ManaPaymentPurpose::CumulativeUpkeep,
+            )),
+            on_spend: Vec::new(),
+        }],
+    };
+    game.player_mut(alice)
+        .expect("alice")
+        .add_restricted_mana(cumulative);
+    let blue = ManaCost::from_symbols(vec![ManaSymbol::Blue]);
+
+    assert!(!game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &blue,
+        0,
+        crate::costs::PaymentReason::Effect,
+    ));
+    assert!(game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &blue,
+        0,
+        crate::costs::PaymentReason::CumulativeUpkeep,
+    ));
+
+    let mut game = setup_game();
+    let contains_x = RestrictedManaUnit {
+        symbol: ManaSymbol::Colorless,
+        source,
+        source_chosen_creature_type: None,
+        restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::CostContainsX),
+            on_spend: Vec::new(),
+        }],
+    };
+    game.player_mut(alice)
+        .expect("alice")
+        .add_restricted_mana(contains_x);
+    assert!(!game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]),
+        0,
+        crate::costs::PaymentReason::Other,
+    ));
+    assert!(game.can_pay_mana_cost_with_reason(
+        alice,
+        None,
+        &ManaCost::from_symbols(vec![ManaSymbol::X]),
+        1,
+        crate::costs::PaymentReason::Other,
+    ));
+}
+
+#[test]
+fn u078_each_doubled_mana_unit_publishes_an_event_and_queues_its_own_payload() {
+    use crate::effects::{DoubleManaPoolEffect, EffectExecutor, ExecutionContext};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mana_source_definition = CardDefinitionBuilder::new(CardId::new(), "Payload Mana Rock")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mana_source =
+        game.create_object_from_definition(&mana_source_definition, alice, Zone::Battlefield);
+    let payload = ManaSpendPayload {
+        predicate: ManaPaymentPredicate::All(vec![
+            ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+            ManaPaymentPredicate::SourceMatches(
+                crate::target::ObjectFilter::default().with_type(CardType::Creature),
+            ),
+        ]),
+        effects: ResolutionProgram::from_effects(vec![crate::effect::Effect::scry(1)]),
+        choices: Vec::new(),
+    };
+    game.player_mut(alice)
+        .expect("alice")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Green,
+            source: mana_source,
+            source_chosen_creature_type: None,
+            restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+                restriction: None,
+                on_spend: vec![payload],
+            }],
+        });
+
+    let mut ctx = ExecutionContext::new_default(mana_source, alice);
+    DoubleManaPoolEffect::you()
+        .execute(&mut game, &mut ctx)
+        .expect("doubling should preserve the complete mana-unit payload");
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Paid Creature")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .card_types(vec![CardType::Creature])
+        .build();
+    let spell = game.create_object_from_definition(&creature, alice, Zone::Stack);
+    assert!(game.try_pay_mana_cost_with_reason(
+        alice,
+        Some(spell),
+        &ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+        0,
+        crate::costs::PaymentReason::CastSpell,
+    ));
+
+    let spent_events = game
+        .take_pending_trigger_events()
+        .into_iter()
+        .filter(|event| {
+            event
+                .downcast::<crate::events::ManaUnitSpentEvent>()
+                .is_some()
+        })
+        .count();
+    assert_eq!(
+        spent_events, 2,
+        "one spend record is required per concrete unit"
+    );
+
+    let entries = game.take_pending_trigger_entries();
+    assert_eq!(entries.len(), 2, "CR 106.6a requires one trigger per unit");
+    assert!(entries.iter().all(|entry| {
+        entry
+            .tagged_objects
+            .get(ironsmith_core::MANA_PAID_OBJECT_TAG)
+            .is_some_and(|snapshots| snapshots.len() == 1 && snapshots[0].object_id == spell)
+            && entry.ability.effects.all_effects().iter().any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::ScryEffect>()
+                    .is_some()
+            })
+    }));
+}
+
+#[test]
+fn u078_on_spend_predicate_does_not_restrict_ordinary_use_or_trigger_on_mismatch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.new_object_id();
+    game.player_mut(alice)
+        .expect("alice")
+        .add_restricted_mana(RestrictedManaUnit {
+            symbol: ManaSymbol::Red,
+            source,
+            source_chosen_creature_type: None,
+            restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+                restriction: None,
+                on_spend: vec![ManaSpendPayload {
+                    predicate: ManaPaymentPredicate::SourceMatches(
+                        crate::target::ObjectFilter::default().with_type(CardType::Creature),
+                    ),
+                    effects: ResolutionProgram::from_effects(vec![crate::effect::Effect::scry(1)]),
+                    choices: Vec::new(),
+                }],
+            }],
+        });
+    let artifact = CardDefinitionBuilder::new(CardId::new(), "Paid Artifact")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let spell = game.create_object_from_definition(&artifact, alice, Zone::Stack);
+
+    assert!(game.try_pay_mana_cost_with_reason(
+        alice,
+        Some(spell),
+        &ManaCost::from_symbols(vec![ManaSymbol::Red]),
+        0,
+        crate::costs::PaymentReason::CastSpell,
+    ));
+    assert!(game.take_pending_trigger_entries().is_empty());
 }

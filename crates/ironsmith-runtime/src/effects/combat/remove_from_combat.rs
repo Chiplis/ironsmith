@@ -57,6 +57,11 @@ impl EffectExecutor for RemoveFromCombatEffect {
                         combat.attackers.retain(|info| info.creature != object_id);
                         combat.blockers.remove(&object_id);
                         combat.damage_assignment_order.remove(&object_id);
+                        for band in &mut combat.attacking_bands {
+                            band.retain(|member| *member != object_id);
+                        }
+                        combat.attacking_bands.retain(|band| !band.is_empty());
+                        combat.had_to_attack_this_combat.remove(&object_id);
                     }
 
                     if was_attacking || was_blocking {
@@ -130,12 +135,22 @@ mod tests {
 
         let attacker =
             game.create_object_from_card(&creature_card(1, "Attacker"), alice, Zone::Battlefield);
+        let companion = game.create_object_from_card(
+            &creature_card(5, "Band Companion"),
+            alice,
+            Zone::Battlefield,
+        );
         let mut combat = crate::combat_state::CombatState::default();
         combat.attackers.push(AttackerInfo {
             creature: attacker,
             target: AttackTarget::Player(bob),
         });
+        combat.attackers.push(AttackerInfo {
+            creature: companion,
+            target: AttackTarget::Player(bob),
+        });
         combat.blockers.insert(attacker, Vec::new());
+        combat.attacking_bands.push(vec![attacker, companion]);
         game.combat = Some(combat);
 
         assert!(
@@ -152,6 +167,11 @@ mod tests {
         assert!(
             !is_attacking(game.combat.as_ref().expect("combat"), attacker),
             "attacker should be removed from combat"
+        );
+        assert_eq!(
+            game.combat.as_ref().expect("combat").attacking_bands,
+            vec![vec![companion]],
+            "the removed attacker must also leave its band"
         );
     }
 

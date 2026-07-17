@@ -338,6 +338,318 @@ pub(super) fn sublime_archangel_grants_real_exalted_triggers_to_other_creatures(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn frenzy_instances_trigger_separately_only_for_unblocked_attackers() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let frenzy_sliver = CardDefinitionBuilder::new(CardId::from_raw(72_020), "Frenzy Sliver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sliver])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("All Sliver creatures have frenzy 1.")
+        .expect("Frenzy Sliver should parse");
+    game.create_object_from_definition(&frenzy_sliver, alice, Zone::Battlefield);
+    game.create_object_from_definition(&frenzy_sliver, alice, Zone::Battlefield);
+
+    let make_attacker = |game: &mut GameState, id, name| {
+        let card = CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Sliver])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(object);
+        object
+    };
+    let blocked = make_attacker(&mut game, 72_021, "Blocked Sliver");
+    let unblocked = make_attacker(&mut game, 72_022, "Unblocked Sliver");
+    let blocker = create_creature(&mut game, "Blocker", bob, 1, 1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            AttackerDeclaration {
+                creature: blocked,
+                target: AttackTarget::Player(bob),
+            },
+            AttackerDeclaration {
+                creature: unblocked,
+                target: AttackTarget::Player(bob),
+            },
+        ],
+    )
+    .expect("both Slivers should attack");
+    apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[BlockerDeclaration {
+            blocker,
+            blocking: blocked,
+        }],
+        bob,
+    )
+    .expect("one Sliver should be blocked");
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        2,
+        "two independently granted Frenzy instances should trigger for only the unblocked Sliver"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Frenzy triggers should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Frenzy trigger should resolve");
+    }
+    game.refresh_continuous_state();
+
+    assert_eq!(game.calculated_power(blocked), Some(1));
+    assert_eq!(game.calculated_power(unblocked), Some(3));
+    assert_eq!(game.calculated_toughness(unblocked), Some(1));
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.calculated_power(unblocked),
+        Some(1),
+        "each Frenzy bonus should expire at end of turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn poisonous_instances_trigger_separately_only_for_combat_damage_to_a_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let virulent = CardDefinitionBuilder::new(CardId::from_raw(72_030), "Virulent Sliver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sliver])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text("All Sliver creatures have poisonous 1.")
+        .expect("Virulent Sliver should parse");
+    game.create_object_from_definition(&virulent, alice, Zone::Battlefield);
+    game.create_object_from_definition(&virulent, alice, Zone::Battlefield);
+
+    let attacker = CardBuilder::new(CardId::from_raw(72_031), "Attacking Sliver")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sliver])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let attacker = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+    let damaged_creature = create_creature(&mut game, "Damaged Creature", bob, 1, 1);
+
+    let event = |target, combat, cause| {
+        TriggerEvent::new_with_provenance(
+            crate::events::DamageEvent::with_cause(attacker, target, 1, combat, cause),
+            crate::provenance::ProvNodeId::default(),
+        )
+    };
+    let noncombat = event(
+        crate::events::DamageTarget::Player(bob),
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    let creature_combat = event(
+        crate::events::DamageTarget::Object(damaged_creature),
+        true,
+        crate::events::cause::EventCause::combat_damage(attacker),
+    );
+    assert!(crate::triggers::check_triggers(&game, &noncombat).is_empty());
+    assert!(crate::triggers::check_triggers(&game, &creature_combat).is_empty());
+
+    let player_combat = event(
+        crate::events::DamageTarget::Player(bob),
+        true,
+        crate::events::cause::EventCause::combat_damage(attacker),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &player_combat) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 2);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("independent Poisonous triggers should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Poisonous trigger should resolve");
+    }
+    assert_eq!(game.player(bob).expect("Bob exists").poison_counters, 2);
+
+    let poison_shield = CardDefinitionBuilder::new(CardId::from_raw(72_032), "Poison Shield")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::restriction(
+            crate::effect::Restriction::poison_counters(PlayerFilter::Specific(bob)),
+            "Bob can't get poison counters".to_string(),
+        )))
+        .build();
+    game.create_object_from_definition(&poison_shield, alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+    for trigger in crate::triggers::check_triggers(&game, &player_combat) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("prohibited Poisonous triggers should still stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("prohibited Poisonous trigger should resolve");
+    }
+    assert_eq!(
+        game.player(bob).expect("Bob exists").poison_counters,
+        2,
+        "a player who can't get poison counters should receive none"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn transfigure_activation_sacrifices_source_and_searches_by_its_lki_mana_value() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+
+    let source_definition =
+        CardDefinitionBuilder::new(CardId::from_raw(54_001), "LKI Transfigurer")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text("Transfigure {0}")
+            .expect("Transfigure should parse");
+    let source = game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
+    game.turn.phase = Phase::Combat;
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .all(|action| !matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility {
+                    source: action_source,
+                    ..
+                } if *action_source == source
+            )),
+        "Transfigure cannot be activated outside sorcery timing"
+    );
+    game.turn.phase = Phase::FirstMain;
+
+    let matching = CardDefinitionBuilder::new(CardId::from_raw(54_002), "Matching Four")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    game.create_object_from_definition(&matching, alice, Zone::Library);
+    let wrong_value = CardDefinitionBuilder::new(CardId::from_raw(54_003), "Wrong Three")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_definition(&wrong_value, alice, Zone::Library);
+    let wrong_type = CardDefinitionBuilder::new(CardId::from_raw(54_004), "Wrong Relic")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_definition(&wrong_type, alice, Zone::Library);
+
+    let action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility {
+                    source: action_source,
+                    ..
+                } if *action_source == source
+            )
+        })
+        .expect("Transfigure should be legal in the active player's main phase");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut dm,
+    )
+    .expect("Transfigure activation should begin");
+
+    for _ in 0..4 {
+        if game.stack.len() == 1 {
+            break;
+        }
+
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        option
+                            .description
+                            .to_ascii_lowercase()
+                            .contains("sacrifice")
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("expected the Transfigure sacrifice cost, got {ctx:?}")
+                    });
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("choosing the Transfigure sacrifice cost should continue activation")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(_),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::SacrificeTarget(source),
+                &mut dm,
+            )
+            .expect("selecting the Transfigure source should pay its sacrifice cost"),
+            other => panic!("Transfigure activation did not advance through costs: {other:?}"),
+        };
+    }
+
+    assert!(
+        game.object(source)
+            .is_none_or(|object| object.zone == Zone::Graveyard),
+        "the source is sacrificed while paying the activation cost"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "the ability should remain on the stack"
+    );
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Transfigure should resolve");
+
+    assert!(game.battlefield.iter().any(|object| {
+        game.object(*object)
+            .is_some_and(|object| object.name == "Matching Four")
+    }));
+    assert!(!game.battlefield.iter().any(|object| {
+        game.object(*object)
+            .is_some_and(|object| object.name == "Wrong Three" || object.name == "Wrong Relic")
+    }));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

@@ -1,7 +1,7 @@
 //! "Whenever this creature becomes blocked by [filter]" trigger.
 
 use crate::events::EventKind;
-use crate::events::combat::CreatureBecameBlockedEvent;
+use crate::events::combat::CreatureBlockedEvent;
 use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
@@ -50,28 +50,31 @@ fn with_indefinite_article(text: &str) -> String {
 
 impl TriggerMatcher for ThisBecomesBlockedByObjectTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        if event.kind() != EventKind::CreatureBecameBlocked {
+        if event.kind() != EventKind::CreatureBlocked {
             return false;
         }
-        let Some(e) = event.downcast::<CreatureBecameBlockedEvent>() else {
+        let Some(e) = event.downcast::<CreatureBlockedEvent>() else {
             return false;
         };
         if e.attacker != ctx.source_id {
             return false;
         }
 
-        e.blockers.iter().any(|blocker| {
-            ctx.game
-                .object(*blocker)
-                .is_some_and(|obj| self.blocker_filter.matches(obj, &ctx.filter_ctx, ctx.game))
-        }) || e.blocker_snapshots.iter().any(|snapshot| {
-            self.blocker_filter
-                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-        })
+        e.blocker_snapshot.as_ref().map_or_else(
+            || {
+                ctx.game
+                    .object(e.blocker)
+                    .is_some_and(|obj| self.blocker_filter.matches(obj, &ctx.filter_ctx, ctx.game))
+            },
+            |snapshot| {
+                self.blocker_filter
+                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            },
+        )
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
-        Some(vec![EventKind::CreatureBecameBlocked])
+        Some(vec![EventKind::CreatureBlocked])
     }
 
     fn display(&self) -> String {
@@ -114,13 +117,7 @@ mod tests {
         let source = create_creature(&mut game, "Attacker", alice, 4, 4);
         let blocker = create_creature(&mut game, "Small Blocker", bob, 1, 1);
         let event = TriggerEvent::new_with_provenance(
-            CreatureBecameBlockedEvent::with_target_and_blockers(
-                source,
-                vec![blocker],
-                None,
-                None,
-                Vec::new(),
-            ),
+            CreatureBlockedEvent::new(blocker, source),
             crate::provenance::ProvNodeId::default(),
         );
 
@@ -140,13 +137,7 @@ mod tests {
         let source = create_creature(&mut game, "Attacker", alice, 4, 4);
         let blocker = create_creature(&mut game, "Large Blocker", bob, 2, 2);
         let event = TriggerEvent::new_with_provenance(
-            CreatureBecameBlockedEvent::with_target_and_blockers(
-                source,
-                vec![blocker],
-                None,
-                None,
-                Vec::new(),
-            ),
+            CreatureBlockedEvent::new(blocker, source),
             crate::provenance::ProvNodeId::default(),
         );
 
@@ -155,6 +146,33 @@ mod tests {
         let trigger = ThisBecomesBlockedByObjectTrigger::new(blocker_filter);
         let ctx = TriggerContext::for_source(source, alice, &game);
         assert!(!trigger.matches(&event, &ctx));
+    }
+
+    #[test]
+    fn matches_each_blocker_relationship_independently() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = create_creature(&mut game, "Attacker", alice, 4, 4);
+        let small = create_creature(&mut game, "Small Blocker", bob, 1, 1);
+        let large = create_creature(&mut game, "Large Blocker", bob, 3, 3);
+        let mut blocker_filter = ObjectFilter::creature();
+        blocker_filter.power = Some(crate::filter::Comparison::LessThanOrEqual(1));
+        let trigger = ThisBecomesBlockedByObjectTrigger::new(blocker_filter);
+        let ctx = TriggerContext::for_source(source, alice, &game);
+
+        let small_event = TriggerEvent::new_with_provenance(
+            CreatureBlockedEvent::new(small, source),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let large_event = TriggerEvent::new_with_provenance(
+            CreatureBlockedEvent::new(large, source),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&small_event, &ctx));
+        assert!(!trigger.matches(&large_event, &ctx));
     }
 
     #[test]

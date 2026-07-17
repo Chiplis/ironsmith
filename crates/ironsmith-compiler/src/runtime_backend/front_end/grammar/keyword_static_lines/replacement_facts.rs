@@ -34,6 +34,7 @@ pub(crate) enum KeywordActionReplacementShape<'a> {
     ProliferateOpponentTwice,
     ExploreTwice,
     ExploreAfterScry { value_tokens: &'a [OwnedLexToken] },
+    AssembleRiggerTwice,
 }
 
 pub(crate) fn parse_noncombat_damage_minus_counter_replacement_tokens(
@@ -108,6 +109,7 @@ pub(crate) fn parse_keyword_action_replacement_tokens(
             parse_proliferate_you_replacement_lexed,
             parse_proliferate_opponent_replacement_lexed,
             parse_explore_replacement_lexed,
+            parse_assemble_rigger_replacement_lexed,
         )),
         "keyword-action replacement",
     )
@@ -208,6 +210,27 @@ fn parse_explore_replacement_lexed<'a>(
             .value(KeywordActionReplacementShape::ExploreTwice),
     ))
     .parse_next(input)
+}
+
+fn parse_assemble_rigger_replacement_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordActionReplacementShape<'a>> {
+    primitives::phrase(&[
+        "if",
+        "a",
+        "rigger",
+        "you",
+        "control",
+        "would",
+        "assemble",
+        "a",
+        "contraption",
+    ])
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["it", "assembles", "two", "contraptions", "instead"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordActionReplacementShape::AssembleRiggerTwice)
 }
 
 fn parse_energy_counter_replacement(tokens: &[OwnedLexToken]) -> bool {
@@ -428,6 +451,19 @@ mod tests {
         assert_eq!(
             parse_keyword_action_replacement_tokens(&tokens),
             Some(KeywordActionReplacementShape::ExploreTwice)
+        );
+    }
+
+    #[test]
+    fn parses_rigger_assemble_replacement() {
+        let tokens = lex_line(
+            "If a Rigger you control would assemble a Contraption, it assembles two Contraptions instead.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_keyword_action_replacement_tokens(&tokens),
+            Some(KeywordActionReplacementShape::AssembleRiggerTwice)
         );
     }
 }

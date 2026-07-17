@@ -680,6 +680,7 @@ function objectStableIdMapFromState(state) {
     "graveyard_cards",
     "exile_cards",
     "command_cards",
+    "ante_cards",
   ];
   for (const player of state?.players || []) {
     for (const zoneKey of zoneKeys) {

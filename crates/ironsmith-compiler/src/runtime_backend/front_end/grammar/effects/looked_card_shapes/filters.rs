@@ -3,7 +3,7 @@ use crate::runtime_backend::front_end::lexer::{
     OwnedLexToken, parser_token_word_refs, trim_lexed_commas,
 };
 use crate::runtime_backend::object_filters::{
-    is_comparison_or_delimiter, parse_object_filter_lexed,
+    is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
 };
 use crate::runtime_backend::util::{
     non_article_word_refs, parse_choice_count_token_prefix_consumed,
@@ -230,6 +230,33 @@ fn parse_noncreature_nonland_permanent(
     Some(filter)
 }
 
+/// A comma between consecutive negated characteristics is an adjective
+/// separator, not an inclusive card-type union: "noncreature, nonland card"
+/// means a card satisfying both exclusions. Explicit `or`/`and/or` lists keep
+/// flowing to the disjunction parser below.
+fn parse_conjunctive_negated_card_filter(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+) -> Option<ObjectFilter> {
+    let (noun, modifiers) = words.split_last()?;
+    if modifiers.len() < 2
+        || !is_card_word(noun)
+        || !tokens.iter().any(OwnedLexToken::is_comma)
+        || tokens
+            .iter()
+            .any(|token| token.is_word("or") || token.is_word("and/or"))
+        || !modifiers.iter().all(|word| word.starts_with("non"))
+    {
+        return None;
+    }
+    let filter = parse_object_filter_lexed(tokens, false).ok()?;
+    let exclusion_count = filter.excluded_card_types.len()
+        + filter.excluded_subtypes.len()
+        + filter.excluded_supertypes.len()
+        + usize::from(!filter.excluded_colors.is_empty());
+    (filter.any_of.is_empty() && exclusion_count >= 2).then_some(filter)
+}
+
 fn parse_land_or_legendary_permanent(
     tokens: &[OwnedLexToken],
     words: &[&str],
@@ -305,6 +332,13 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
     if segments.len() < 2 {
         return None;
     }
+    let explicit_branch_articles = segments.iter().all(|segment| {
+        let words = parser_token_word_refs(segment);
+        words
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an"))
+            && words.iter().any(|word| is_card_word(word))
+    });
     let mut branches = Vec::new();
     for mut segment in segments {
         if shared_card_suffix
@@ -318,14 +352,25 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
                 TextSpan::synthetic(),
             ));
         }
-        let parsed = parse_object_filter_lexed(&segment, false)
-            .ok()
-            .filter(|filter| *filter != ObjectFilter::default())
-            .or_else(|| parse_named_card_filter_segment(&segment))?;
+        // Repeated complete card-noun arms carry independently scoped
+        // predicates. Route those arms through the full object-filter parser:
+        // the lexed simple fast path treats words inside an ability predicate
+        // (for example, `doctor's` in `with doctor's companion`) as ordinary
+        // subtype atoms before the predicate grammar gets a chance to own
+        // them.
+        let parsed = (if explicit_branch_articles {
+            parse_object_filter(&segment, false)
+        } else {
+            parse_object_filter_lexed(&segment, false)
+        })
+        .ok()
+        .filter(|filter| *filter != ObjectFilter::default())
+        .or_else(|| parse_named_card_filter_segment(&segment))?;
         branches.push(parsed);
     }
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
+    filter.set_explicit_union_branch_articles(explicit_branch_articles);
     apply_disjunction_qualifiers(&mut filter, parse_disjunction_qualifiers(words));
     Some(filter)
 }
@@ -398,6 +443,9 @@ pub(crate) fn parse_looked_card_reveal_filter_shape(
     if let Some(filter) = parse_noncreature_nonland_permanent(filter_tokens, &words) {
         return Some(apply_same_name(filter, same_name));
     }
+    if let Some(filter) = parse_conjunctive_negated_card_filter(filter_tokens, &words) {
+        return Some(apply_same_name(filter, same_name));
+    }
     if let Some(filter) = parse_land_or_legendary_permanent(filter_tokens, &words) {
         return Some(apply_same_name(filter, same_name));
     }
@@ -430,7 +478,40 @@ pub(crate) fn strip_up_to_one_looked_card_choice_tokens(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Subtype;
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn comma_separated_negated_characteristics_are_conjunctive() {
+        let tokens = lex_line("a noncreature, nonland card", 0).unwrap();
+        let filter =
+            parse_looked_card_reveal_filter_shape(&tokens).expect("negated characteristic filter");
+
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.excluded_card_types,
+            vec![CardType::Creature, CardType::Land]
+        );
+    }
+
+    #[test]
+    fn repeated_complete_card_union_preserves_branch_scope_and_surface() {
+        let filter = parse("a Doctor card, a card with doctor's companion, or a Vehicle card");
+
+        assert!(filter.has_explicit_union_branch_articles(), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert_eq!(filter.any_of[0].subtypes, [Subtype::Doctor]);
+        assert!(filter.any_of[1].subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.any_of[1].ability_markers,
+            ["doctor's companion".to_string()]
+        );
+        assert_eq!(filter.any_of[2].subtypes, [Subtype::Vehicle]);
+        assert_eq!(
+            filter.description(),
+            "a Doctor card, a card with doctor's companion, or a Vehicle card"
+        );
+    }
 
     fn parse(raw: &str) -> ObjectFilter {
         parse_looked_card_reveal_filter_shape(&lex_line(raw, 0).unwrap()).unwrap()

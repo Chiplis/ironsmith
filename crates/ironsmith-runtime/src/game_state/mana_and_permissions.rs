@@ -1,5 +1,27 @@
 use super::*;
 
+#[derive(Debug, Clone)]
+struct PayableManaUnit {
+    symbol: crate::mana::ManaSymbol,
+    source: Option<ObjectId>,
+    provenance_index: Option<usize>,
+    restricted_index: Option<usize>,
+    from_snow_source: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ManaPaymentPlan {
+    unit_indices: Vec<usize>,
+    life_to_pay: u32,
+}
+
+#[derive(Debug, Clone)]
+struct SpentManaUnitCommit {
+    symbol: crate::mana::ManaSymbol,
+    restriction: Option<crate::ability::RestrictedManaUnit>,
+    provenance: Option<crate::player::ManaSourceProvenance>,
+}
+
 impl GameState {
     /// Update continuous effects from static abilities on the battlefield.
     ///
@@ -51,9 +73,15 @@ impl GameState {
         // can still request characteristics through the normal on-demand cache.
         let effects = generate_replacement_effects_from_abilities(self);
         for effect in effects {
+            let decline = effect.optional_decline_effect();
             self.effect_store
                 .replacement_effects
                 .add_static_ability_effect(effect);
+            if let Some(decline) = decline {
+                self.effect_store
+                    .replacement_effects
+                    .add_static_ability_effect(decline);
+            }
         }
     }
 
@@ -571,6 +599,7 @@ impl GameState {
             | Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
             | Modification::SetAbilities(_)
+            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbility(static_ability)
@@ -578,7 +607,7 @@ impl GameState {
                 Self::static_ability_may_provide_enter_as_copy(static_ability)
             }
             Modification::AddAbilityGeneric(ability)
-            | Modification::RemoveAbilityGeneric(ability) => matches!(
+            | Modification::RemoveAbilityGeneric { ability, .. } => matches!(
                 &ability.kind,
                 AbilityKind::Static(static_ability)
                     if Self::static_ability_may_provide_enter_as_copy(static_ability)
@@ -956,11 +985,116 @@ impl GameState {
         filter.matches(source_obj, &filter_ctx, self)
     }
 
+    pub(crate) fn mana_payment_predicate_matches(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        predicate: &crate::ability::ManaPaymentPredicate,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        cost: Option<&crate::mana::ManaCost>,
+    ) -> bool {
+        let effective_cost = cost.or_else(|| {
+            payment_source
+                .and_then(|source| self.object(source))
+                .and_then(|object| object.mana_cost.as_deref())
+        });
+        match predicate {
+            crate::ability::ManaPaymentPredicate::Any => true,
+            crate::ability::ManaPaymentPredicate::Purpose(purpose) => {
+                reason.mana_payment_purpose() == *purpose
+            }
+            crate::ability::ManaPaymentPredicate::SourceMatches(filter) => {
+                let Some(source_id) = payment_source else {
+                    return false;
+                };
+                let Some(source_obj) = self.object(source_id) else {
+                    return false;
+                };
+                let controller = self
+                    .object(unit.source)
+                    .map(|mana_source| self.controller_of(mana_source))
+                    .unwrap_or_else(|| self.controller_of(source_obj));
+                let filter_ctx = self.filter_context_for(controller, Some(unit.source));
+                filter.matches(source_obj, &filter_ctx, self)
+            }
+            crate::ability::ManaPaymentPredicate::CostContains(symbol) => effective_cost
+                .is_some_and(|cost| cost.pips().iter().any(|pip| pip.contains(symbol))),
+            crate::ability::ManaPaymentPredicate::CostContainsX => {
+                effective_cost.is_some_and(crate::mana::ManaCost::has_x)
+            }
+            crate::ability::ManaPaymentPredicate::SharesCreatureTypeWithPayersCommander => {
+                let Some(source_id) = payment_source else {
+                    return false;
+                };
+                let Some(source_obj) = self.object(source_id) else {
+                    return false;
+                };
+                let payer = self.controller_of(source_obj);
+                let Some(source_subtypes) = self.current_subtypes(source_id) else {
+                    return false;
+                };
+                self.player(payer).is_some_and(|player| {
+                    player.get_commanders().iter().copied().any(|commander| {
+                        self.current_commander_object(commander)
+                            .is_some_and(|commander| {
+                                self.current_subtypes(commander)
+                                    .is_some_and(|commander_subtypes| {
+                                        commander_subtypes
+                                            .iter()
+                                            .any(|subtype| source_subtypes.contains(subtype))
+                                    })
+                            })
+                    })
+                })
+            }
+            crate::ability::ManaPaymentPredicate::All(predicates) => {
+                predicates.iter().all(|part| {
+                    self.mana_payment_predicate_matches(
+                        unit,
+                        part,
+                        payment_source,
+                        reason,
+                        effective_cost,
+                    )
+                })
+            }
+            crate::ability::ManaPaymentPredicate::AnyOf(predicates) => {
+                predicates.iter().any(|part| {
+                    self.mana_payment_predicate_matches(
+                        unit,
+                        part,
+                        payment_source,
+                        reason,
+                        effective_cost,
+                    )
+                })
+            }
+            crate::ability::ManaPaymentPredicate::Not(predicate) => !self
+                .mana_payment_predicate_matches(
+                    unit,
+                    predicate,
+                    payment_source,
+                    reason,
+                    effective_cost,
+                ),
+        }
+    }
+
     pub(crate) fn restricted_mana_unit_is_payable_for_reason(
         &self,
         unit: &crate::ability::RestrictedManaUnit,
         payment_source: Option<ObjectId>,
         reason: crate::costs::PaymentReason,
+    ) -> bool {
+        self.restricted_mana_unit_is_payable_for_transaction(unit, payment_source, reason, None)
+    }
+
+    pub(crate) fn restricted_mana_unit_is_payable_for_transaction(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        cost: Option<&crate::mana::ManaCost>,
     ) -> bool {
         unit.restrictions
             .iter()
@@ -1045,82 +1179,337 @@ impl GameState {
                         .is_some_and(|source_obj| source_obj.zone != Zone::Stack)
                 })
             }
+            crate::ability::ManaUsageRestriction::PaymentTransaction {
+                restriction, ..
+            } => restriction.as_ref().is_none_or(|predicate| {
+                self.mana_payment_predicate_matches(
+                    unit,
+                    predicate,
+                    payment_source,
+                    reason,
+                    cost,
+                )
+            }),
         }
             })
     }
 
-    fn remove_unpayable_restricted_mana_from_pool(
+    fn mana_provenance_is_from_snow_source(
         &self,
-        pool: &mut ManaPool,
-        payer: PlayerId,
-        payment_source: Option<ObjectId>,
-        reason: crate::costs::PaymentReason,
-    ) -> Vec<crate::mana::ManaSymbol> {
-        let Some(player) = self.player(payer) else {
-            return Vec::new();
-        };
-        let mut removed = Vec::new();
-        for unit in &player.restricted_mana {
-            if self.restricted_mana_unit_is_payable_for_reason(unit, payment_source, reason) {
-                continue;
-            }
-            if pool.remove(unit.symbol, 1) {
-                removed.push(unit.symbol);
-            }
-        }
-        removed
+        unit: &crate::player::ManaSourceProvenance,
+    ) -> bool {
+        unit.snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.supertypes.contains(&crate::types::Supertype::Snow))
+            || (unit.snapshot.is_none()
+                && self.current_has_supertype(unit.source, crate::types::Supertype::Snow))
     }
 
-    fn restricted_mana_indices_spent(
+    fn payable_mana_units(
         &self,
         payer: PlayerId,
-        before: &ManaPool,
-        after: &ManaPool,
         payment_source: Option<ObjectId>,
         reason: crate::costs::PaymentReason,
-    ) -> Vec<usize> {
+        cost: &crate::mana::ManaCost,
+        required_pool_symbol: Option<crate::mana::ManaSymbol>,
+    ) -> Vec<PayableManaUnit> {
+        use crate::mana::ManaSymbol;
+
+        const SYMBOLS: [ManaSymbol; 6] = [
+            ManaSymbol::White,
+            ManaSymbol::Blue,
+            ManaSymbol::Black,
+            ManaSymbol::Red,
+            ManaSymbol::Green,
+            ManaSymbol::Colorless,
+        ];
+
         let Some(player) = self.player(payer) else {
             return Vec::new();
         };
-        let symbols = [
-            crate::mana::ManaSymbol::White,
-            crate::mana::ManaSymbol::Blue,
-            crate::mana::ManaSymbol::Black,
-            crate::mana::ManaSymbol::Red,
-            crate::mana::ManaSymbol::Green,
-            crate::mana::ManaSymbol::Colorless,
-        ];
-        let mut indices = Vec::new();
-        for symbol in symbols {
-            let spent = before.amount(symbol).saturating_sub(after.amount(symbol));
-            if spent == 0 {
+        let mut represented = crate::player::ManaPool::default();
+        let mut used_restricted = std::collections::HashSet::new();
+        let mut units = Vec::new();
+
+        for (provenance_index, provenance) in player.mana_source_provenance.iter().enumerate() {
+            if !SYMBOLS.contains(&provenance.symbol)
+                || represented.amount(provenance.symbol)
+                    >= player.mana_pool.amount(provenance.symbol)
+            {
                 continue;
             }
-            let restricted_total = player
-                .restricted_mana
-                .iter()
-                .filter(|unit| unit.symbol == symbol)
-                .count() as u32;
-            let unrestricted_total = before.amount(symbol).saturating_sub(restricted_total);
-            let mut restricted_to_remove = spent.saturating_sub(unrestricted_total);
-            if restricted_to_remove == 0 {
+            represented.add(provenance.symbol, 1);
+
+            let restricted_index = if provenance.restricted {
+                player
+                    .restricted_mana
+                    .iter()
+                    .enumerate()
+                    .find(|(index, unit)| {
+                        !used_restricted.contains(index)
+                            && unit.symbol == provenance.symbol
+                            && unit.source == provenance.source
+                    })
+                    .map(|(index, _)| index)
+            } else {
+                None
+            };
+            if provenance.restricted && restricted_index.is_none() {
                 continue;
             }
-            for (idx, unit) in player.restricted_mana.iter().enumerate() {
-                if unit.symbol == symbol
-                    && self.restricted_mana_unit_is_payable_for_reason(unit, payment_source, reason)
-                {
-                    indices.push(idx);
-                    restricted_to_remove -= 1;
-                    if restricted_to_remove == 0 {
-                        break;
-                    }
+            if let Some(index) = restricted_index {
+                used_restricted.insert(index);
+                if !self.restricted_mana_unit_is_payable_for_transaction(
+                    &player.restricted_mana[index],
+                    payment_source,
+                    reason,
+                    Some(cost),
+                ) {
+                    continue;
                 }
             }
+            if required_pool_symbol.is_some_and(|required| required != provenance.symbol) {
+                continue;
+            }
+
+            units.push(PayableManaUnit {
+                symbol: provenance.symbol,
+                source: Some(provenance.source),
+                provenance_index: Some(provenance_index),
+                restricted_index,
+                from_snow_source: self.mana_provenance_is_from_snow_source(provenance),
+            });
         }
-        indices.sort_unstable();
-        indices.dedup();
-        indices
+
+        for symbol in SYMBOLS {
+            if required_pool_symbol.is_some_and(|required| required != symbol) {
+                continue;
+            }
+            let untracked = player
+                .mana_pool
+                .amount(symbol)
+                .saturating_sub(represented.amount(symbol));
+            units.extend((0..untracked).map(|_| PayableManaUnit {
+                symbol,
+                source: None,
+                provenance_index: None,
+                restricted_index: None,
+                from_snow_source: false,
+            }));
+        }
+
+        units
+    }
+
+    fn expanded_payment_pips(
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        allow_black_life: bool,
+    ) -> Vec<Vec<crate::mana::ManaSymbol>> {
+        use crate::mana::ManaSymbol;
+
+        let mut pips = Vec::new();
+        for pip in cost.pips() {
+            if pip.len() == 1 {
+                match pip[0] {
+                    ManaSymbol::Generic(amount) => {
+                        pips.extend((0..amount).map(|_| vec![ManaSymbol::Generic(1)]));
+                        continue;
+                    }
+                    ManaSymbol::X => {
+                        pips.extend((0..x_value).map(|_| vec![ManaSymbol::Generic(1)]));
+                        continue;
+                    }
+                    ManaSymbol::Black if allow_black_life => {
+                        pips.push(vec![ManaSymbol::Black, ManaSymbol::Life(2)]);
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            pips.push(pip.clone());
+        }
+        pips.sort_by_key(|pip| {
+            if pip.iter().any(|symbol| matches!(symbol, ManaSymbol::Snow)) {
+                0u8
+            } else if pip.iter().any(|symbol| {
+                matches!(
+                    symbol,
+                    ManaSymbol::White
+                        | ManaSymbol::Blue
+                        | ManaSymbol::Black
+                        | ManaSymbol::Red
+                        | ManaSymbol::Green
+                        | ManaSymbol::Colorless
+                )
+            }) {
+                1
+            } else if pip
+                .iter()
+                .any(|symbol| matches!(symbol, ManaSymbol::Generic(_)))
+            {
+                2
+            } else {
+                3
+            }
+        });
+        pips
+    }
+
+    fn mana_unit_can_pay(
+        &self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        base_policy: &crate::player::ManaSpendPolicy,
+        unit: &PayableManaUnit,
+        required: crate::mana::ManaSymbol,
+    ) -> bool {
+        use crate::mana::ManaSymbol;
+
+        match required {
+            ManaSymbol::Snow => unit.from_snow_source,
+            ManaSymbol::Generic(_) => true,
+            ManaSymbol::White
+            | ManaSymbol::Blue
+            | ManaSymbol::Black
+            | ManaSymbol::Red
+            | ManaSymbol::Green
+            | ManaSymbol::Colorless => {
+                let mut policy = base_policy.clone();
+                if unit.source.is_some_and(|mana_source| {
+                    self.can_spend_mana_as_any_color_from_mana_source(
+                        payer,
+                        payment_source,
+                        mana_source,
+                    )
+                }) {
+                    policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
+                }
+                policy.can_pay_symbol(unit.symbol, required)
+            }
+            ManaSymbol::Life(_) | ManaSymbol::X => false,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn search_mana_payment_plan(
+        &self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        pips: &[Vec<crate::mana::ManaSymbol>],
+        pip_index: usize,
+        units: &[PayableManaUnit],
+        used: &mut [bool],
+        selected: &mut Vec<usize>,
+        life_to_pay: u32,
+        base_policy: &crate::player::ManaSpendPolicy,
+    ) -> Option<ManaPaymentPlan> {
+        use crate::mana::ManaSymbol;
+
+        if pip_index == pips.len() {
+            return self
+                .can_pay_life_with_reason(payer, life_to_pay, reason)
+                .then(|| ManaPaymentPlan {
+                    unit_indices: selected.clone(),
+                    life_to_pay,
+                });
+        }
+
+        for &alternative in &pips[pip_index] {
+            if let ManaSymbol::Life(amount) = alternative {
+                if let Some(plan) = self.search_mana_payment_plan(
+                    payer,
+                    payment_source,
+                    reason,
+                    pips,
+                    pip_index + 1,
+                    units,
+                    used,
+                    selected,
+                    life_to_pay.saturating_add(amount as u32),
+                    base_policy,
+                ) {
+                    return Some(plan);
+                }
+                continue;
+            }
+
+            for (unit_index, unit) in units.iter().enumerate() {
+                if used[unit_index]
+                    || !self.mana_unit_can_pay(
+                        payer,
+                        payment_source,
+                        base_policy,
+                        unit,
+                        alternative,
+                    )
+                {
+                    continue;
+                }
+                used[unit_index] = true;
+                selected.push(unit_index);
+                if let Some(plan) = self.search_mana_payment_plan(
+                    payer,
+                    payment_source,
+                    reason,
+                    pips,
+                    pip_index + 1,
+                    units,
+                    used,
+                    selected,
+                    life_to_pay,
+                    base_policy,
+                ) {
+                    return Some(plan);
+                }
+                selected.pop();
+                used[unit_index] = false;
+            }
+        }
+        None
+    }
+
+    fn mana_payment_plan(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        reason: crate::costs::PaymentReason,
+    ) -> Option<(Vec<PayableManaUnit>, ManaPaymentPlan)> {
+        let policy = self.mana_spend_policy(payer, source);
+        let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
+            && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
+        let required_symbol = source
+            .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason));
+        let units = self.payable_mana_units(payer, source, reason, cost, required_symbol);
+        let pips = Self::expanded_payment_pips(cost, x_value, allow_black_life);
+        let minimum_mana_units = pips
+            .iter()
+            .filter(|pip| {
+                !pip.iter()
+                    .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Life(_)))
+            })
+            .count();
+        if units.len() < minimum_mana_units {
+            return None;
+        }
+        let mut used = vec![false; units.len()];
+        let mut selected = Vec::new();
+        let plan = self.search_mana_payment_plan(
+            payer,
+            source,
+            reason,
+            &pips,
+            0,
+            &units,
+            &mut used,
+            &mut selected,
+            0,
+            &policy,
+        )?;
+        Some((units, plan))
     }
 
     /// Check if a player can pay a mana cost for a specific reason.
@@ -1132,29 +1521,8 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        let Some(player) = self.player(payer) else {
-            return false;
-        };
-
-        let mana_spend_policy = self.mana_spend_policy(payer, source);
-        let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
-            && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
-        let mut preview_pool = if let Some(symbol) = source
-            .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason))
-        {
-            self.mana_pool_restricted_to_symbol(&player.mana_pool, symbol)
-        } else {
-            player.mana_pool.clone()
-        };
-        self.remove_unpayable_restricted_mana_from_pool(&mut preview_pool, payer, source, reason);
-        let (can_pay, life_to_pay) = preview_pool
-            .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
-                cost,
-                x_value,
-                &mana_spend_policy,
-                allow_black_life,
-            );
-        can_pay && self.can_pay_life_with_reason(payer, life_to_pay, reason)
+        self.mana_payment_plan(payer, source, cost, x_value, reason)
+            .is_some()
     }
 
     /// Attempt to pay a mana cost, accounting for "spend as though any color".
@@ -1183,142 +1551,216 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        let mana_spend_policy = self.mana_spend_policy(payer, source);
-        let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
-            && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
-        let original_pool = self.player(payer).map(|player| player.mana_pool.clone());
-        let original_provenance = self
-            .player(payer)
-            .map(|player| player.mana_source_provenance.clone())
-            .unwrap_or_default();
-        if let Some(symbol) = source
-            .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason))
-        {
-            let Some(original_pool) = original_pool else {
-                return false;
-            };
-            let mut restricted_pool = self.mana_pool_restricted_to_symbol(&original_pool, symbol);
-            let (paid, life_to_pay) = restricted_pool
-                .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
-                    cost,
-                    x_value,
-                    &mana_spend_policy,
-                    allow_black_life,
-                );
-            if !paid || !self.can_pay_life_with_reason(payer, life_to_pay, reason) {
-                return false;
-            }
+        let Some((units, plan)) = self.mana_payment_plan(payer, source, cost, x_value, reason)
+        else {
+            return false;
+        };
+        let Some(player) = self.player(payer) else {
+            return false;
+        };
+        let original_pool = player.mana_pool.clone();
+        let original_restricted = player.restricted_mana.clone();
+        let original_provenance = player.mana_source_provenance.clone();
 
-            let spent = original_pool
-                .amount(symbol)
-                .saturating_sub(restricted_pool.amount(symbol));
-            if let Some(player) = self.player_mut(payer) {
-                if spent > 0 && !player.mana_pool.remove(symbol, spent) {
-                    return false;
+        let selected = plan
+            .unit_indices
+            .iter()
+            .filter_map(|&index| units.get(index))
+            .cloned()
+            .collect::<Vec<_>>();
+        if selected.len() != plan.unit_indices.len() {
+            return false;
+        }
+        let spent_units = selected
+            .iter()
+            .map(|unit| SpentManaUnitCommit {
+                symbol: unit.symbol,
+                restriction: unit
+                    .restricted_index
+                    .and_then(|index| original_restricted.get(index))
+                    .cloned(),
+                provenance: unit
+                    .provenance_index
+                    .and_then(|index| original_provenance.get(index))
+                    .cloned(),
+            })
+            .collect::<Vec<_>>();
+        let mut restricted_indices = selected
+            .iter()
+            .filter_map(|unit| unit.restricted_index)
+            .collect::<Vec<_>>();
+        let mut provenance_indices = selected
+            .iter()
+            .filter_map(|unit| unit.provenance_index)
+            .collect::<Vec<_>>();
+        restricted_indices.sort_unstable();
+        restricted_indices.dedup();
+        provenance_indices.sort_unstable();
+        provenance_indices.dedup();
+
+        let committed = if let Some(player) = self.player_mut(payer) {
+            let mut removed_all = true;
+            for unit in &selected {
+                removed_all &= player.mana_pool.remove(unit.symbol, 1);
+            }
+            if removed_all {
+                for index in restricted_indices.into_iter().rev() {
+                    player.restricted_mana.remove(index);
+                }
+                for index in provenance_indices.into_iter().rev() {
+                    player.mana_source_provenance.remove(index);
                 }
                 player.trim_mana_source_provenance_to_pool();
-            } else {
-                return false;
             }
-            if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
-                if let Some(player) = self.player_mut(payer) {
-                    player.mana_pool = original_pool;
-                    player.mana_source_provenance = original_provenance.clone();
-                }
-                return false;
-            }
-            self.record_bulk_mana_sources_spent_to_cast(
-                payer,
-                source,
-                reason,
-                &original_provenance,
-            );
-            return true;
-        }
-        let (paid, life_to_pay, payment_pool, spent_restricted) = {
-            let Some(before_pool) = self.player(payer).map(|player| player.mana_pool.clone())
-            else {
-                return false;
-            };
-            let mut payment_pool = before_pool.clone();
-            let removed_unpayable = self.remove_unpayable_restricted_mana_from_pool(
-                &mut payment_pool,
-                payer,
-                source,
-                reason,
-            );
-            let result = payment_pool.try_pay_tracking_life_with_mana_spend_policy_and_black_life(
-                cost,
-                x_value,
-                &mana_spend_policy,
-                allow_black_life,
-            );
-            for symbol in removed_unpayable {
-                payment_pool.add(symbol, 1);
-            }
-            let spent_restricted = if result.0 {
-                let spent_restricted = self.restricted_mana_indices_spent(
-                    payer,
-                    &before_pool,
-                    &payment_pool,
-                    source,
-                    reason,
-                );
-                spent_restricted
-            } else {
-                Vec::new()
-            };
-            (result.0, result.1, payment_pool, spent_restricted)
+            removed_all
+        } else {
+            false
         };
-        if !paid {
-            return false;
-        }
-        if !self.can_pay_life_with_reason(payer, life_to_pay, reason) {
-            return false;
-        }
-        if let Some(player) = self.player_mut(payer) {
-            let before_pool = player.mana_pool.clone();
-            let spent_restricted_units = spent_restricted
-                .iter()
-                .filter_map(|idx| player.restricted_mana.get(*idx).cloned())
-                .collect::<Vec<_>>();
-            for symbol in [
-                crate::mana::ManaSymbol::White,
-                crate::mana::ManaSymbol::Blue,
-                crate::mana::ManaSymbol::Black,
-                crate::mana::ManaSymbol::Red,
-                crate::mana::ManaSymbol::Green,
-                crate::mana::ManaSymbol::Colorless,
-            ] {
-                let total_spent = before_pool
-                    .amount(symbol)
-                    .saturating_sub(payment_pool.amount(symbol));
-                let restricted_spent = spent_restricted_units
-                    .iter()
-                    .filter(|unit| unit.symbol == symbol)
-                    .count() as u32;
-                for _ in 0..total_spent.saturating_sub(restricted_spent) {
-                    player.take_mana_source_provenance(symbol, false, None);
-                }
-            }
-            for unit in &spent_restricted_units {
-                player.take_mana_source_provenance(unit.symbol, true, Some(unit.source));
-            }
-            player.mana_pool = payment_pool;
-            for idx in spent_restricted.into_iter().rev() {
-                player.restricted_mana.remove(idx);
-            }
-            player.trim_mana_source_provenance_to_pool();
-        }
-        if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
-            if let (Some(original_pool), Some(player)) = (original_pool, self.player_mut(payer)) {
+        if !committed || (plan.life_to_pay > 0 && !self.pay_life(payer, plan.life_to_pay)) {
+            if let Some(player) = self.player_mut(payer) {
                 player.mana_pool = original_pool;
-                player.mana_source_provenance = original_provenance.clone();
+                player.restricted_mana = original_restricted;
+                player.mana_source_provenance = original_provenance;
             }
             return false;
         }
+
+        self.publish_spent_mana_units(payer, source, reason, spent_units);
         self.record_bulk_mana_sources_spent_to_cast(payer, source, reason, &original_provenance);
         true
+    }
+
+    fn publish_spent_mana_units(
+        &mut self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        spent_units: Vec<SpentManaUnitCommit>,
+    ) {
+        for spent in spent_units {
+            let mana_source = spent
+                .restriction
+                .as_ref()
+                .map(|unit| unit.source)
+                .or_else(|| spent.provenance.as_ref().map(|unit| unit.source))
+                .unwrap_or_else(|| ObjectId::from_raw(0));
+            let source_snapshot = spent
+                .provenance
+                .as_ref()
+                .and_then(|unit| unit.snapshot.clone())
+                .or_else(|| {
+                    self.object(mana_source)
+                        .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self))
+                });
+            self.publish_spent_mana_unit(
+                payer,
+                payment_source,
+                reason,
+                spent.symbol,
+                mana_source,
+                source_snapshot,
+                spent.restriction,
+            );
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn publish_spent_mana_unit(
+        &mut self,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+        symbol: crate::mana::ManaSymbol,
+        mana_source: ObjectId,
+        source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        restriction: Option<crate::ability::RestrictedManaUnit>,
+    ) {
+        let payment_snapshot = payment_source
+            .and_then(|source| self.object(source))
+            .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, self));
+        let event_provenance = self
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::ManaSpent);
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::ManaUnitSpentEvent {
+                player: payer,
+                mana_source,
+                payment_source,
+                symbol,
+                purpose: reason.mana_payment_purpose(),
+                source_snapshot: source_snapshot.clone(),
+            },
+            event_provenance,
+        );
+        self.queue_trigger_event(event_provenance, event.clone());
+
+        let Some(restriction) = restriction else {
+            return;
+        };
+        for payload in restriction
+            .restrictions
+            .iter()
+            .filter_map(|restriction| match restriction {
+                crate::ability::ManaUsageRestriction::PaymentTransaction { on_spend, .. } => {
+                    Some(on_spend.as_slice())
+                }
+                _ => None,
+            })
+            .flatten()
+        {
+            if !self.mana_payment_predicate_matches(
+                &restriction,
+                &payload.predicate,
+                payment_source,
+                reason,
+                None,
+            ) {
+                continue;
+            }
+            let ability = crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::custom(
+                    "mana_unit_spent_payload",
+                    "When you spend this mana".to_string(),
+                ),
+                effects: payload.effects.clone(),
+                choices: payload.choices.clone(),
+                intervening_if: None,
+                presentation_label: None,
+            };
+            let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
+            let mut tagged_objects = std::collections::HashMap::new();
+            if let Some(snapshot) = payment_snapshot.clone() {
+                tagged_objects.insert(
+                    crate::tag::TagKey::from(ironsmith_core::MANA_PAID_OBJECT_TAG),
+                    vec![snapshot],
+                );
+            }
+            self.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+                source: mana_source,
+                controller: source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.controller)
+                    .unwrap_or(payer),
+                x_value: payment_snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.x_value),
+                event_value_amount: None,
+                ability,
+                triggering_event: event.clone(),
+                source_stable_id: source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.stable_id)
+                    .unwrap_or_else(|| crate::ids::StableId::from(mana_source)),
+                source_name: source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.name.clone())
+                    .unwrap_or_else(|| "mana ability".to_string()),
+                source_snapshot: source_snapshot.clone(),
+                tagged_objects,
+                source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+                trigger_identity,
+            }]);
+        }
     }
 
     fn record_bulk_mana_sources_spent_to_cast(
@@ -1396,19 +1838,9 @@ impl GameState {
         })?
     }
 
-    fn mana_pool_restricted_to_symbol(
-        &self,
-        pool: &crate::player::ManaPool,
-        symbol: crate::mana::ManaSymbol,
-    ) -> crate::player::ManaPool {
-        let mut restricted = crate::player::ManaPool::new();
-        restricted.add(symbol, pool.amount(symbol));
-        restricted
-    }
-
     /// Gets a reference to a player by ID.
     pub fn player(&self, id: PlayerId) -> Option<&Player> {
-        self.players.get(id.index())
+        self.player_last_known_information(id)
     }
 
     /// Gets a mutable reference to a player by ID.
@@ -1466,6 +1898,15 @@ impl GameState {
         }
     }
 
+    /// Enable or disable the CR 704.6c commander-damage state-based action.
+    pub fn set_commander_damage_loss_enabled(&mut self, enabled: bool) {
+        self.commander_damage_loss_enabled = enabled;
+    }
+
+    pub fn commander_damage_loss_enabled(&self) -> bool {
+        self.commander_damage_loss_enabled
+    }
+
     /// Resolve a commander's stable identity from either its original or current object ID.
     pub fn commander_identity(&self, obj_id: ObjectId) -> Option<ObjectId> {
         if self
@@ -1478,10 +1919,28 @@ impl GameState {
 
         let obj = self.object(obj_id)?;
         let stable_identity = obj.stable_id.object_id();
-        self.players
+        if self
+            .players
             .iter()
             .any(|player| player.commanders.contains(&stable_identity))
-            .then_some(stable_identity)
+        {
+            return Some(stable_identity);
+        }
+
+        // CR 903.3c: a commander that is a component of a merged permanent
+        // keeps its commander designation even when it is not the top
+        // component and therefore does not supply the permanent's stable id.
+        self.merged_permanent(obj.stable_id).and_then(|merged| {
+            merged.components.iter().find_map(|component| {
+                let identity = component.object.stable_id.object_id();
+                (component.is_commander
+                    || self
+                        .players
+                        .iter()
+                        .any(|player| player.commanders.contains(&identity)))
+                .then_some(identity)
+            })
+        })
     }
 
     /// Resolve the current object ID for a stored commander identity.
@@ -1491,6 +1950,19 @@ impl GameState {
         }
 
         self.find_object_by_stable_id(StableId::from(commander_id))
+            .or_else(|| {
+                self.battlefield.iter().copied().find(|permanent_id| {
+                    let Some(permanent) = self.object(*permanent_id) else {
+                        return false;
+                    };
+                    self.merged_permanent(permanent.stable_id)
+                        .is_some_and(|merged| {
+                            merged.components.iter().any(|component| {
+                                component.object.stable_id.object_id() == commander_id
+                            })
+                        })
+                })
+            })
     }
 
     /// Resolve the destination for a commander moving to hand or library.
@@ -1507,6 +1979,16 @@ impl GameState {
             Zone::Library => "putting it into its owner's library",
             _ => return requested_zone,
         };
+
+        // A merged permanent moves as one object, then its components become
+        // separate new objects. CR 730.3d and 903.9b let only the commander
+        // component use the hand/library command-zone replacement.
+        if self
+            .object(object_id)
+            .is_some_and(|object| self.merged_permanent(object.stable_id).is_some())
+        {
+            return requested_zone;
+        }
 
         if !self.is_commander(object_id) {
             return requested_zone;
@@ -1531,6 +2013,60 @@ impl GameState {
         }
     }
 
+    /// Resolve hand/library commander replacement choices independently for
+    /// the physical components of a merged permanent.
+    pub(crate) fn prepare_merged_component_destinations(
+        &mut self,
+        object_id: ObjectId,
+        requested_zone: Zone,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    ) {
+        if !matches!(requested_zone, Zone::Hand | Zone::Library) {
+            return;
+        }
+        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
+            return;
+        };
+        let Some(merged) = self.merged_permanent(stable_id).cloned() else {
+            return;
+        };
+
+        let mut destinations = Vec::with_capacity(merged.components.len());
+        for component in &merged.components {
+            let commander_identity = component.object.stable_id.object_id();
+            let is_commander = component.is_commander
+                || self.players.iter().any(|player| {
+                    player
+                        .commanders
+                        .iter()
+                        .any(|identity| *identity == commander_identity)
+                });
+            if !is_commander {
+                destinations.push(requested_zone);
+                continue;
+            }
+            let destination_text = match requested_zone {
+                Zone::Hand => "putting it into its owner's hand",
+                Zone::Library => "putting it into its owner's library",
+                _ => unreachable!(),
+            };
+            let choice = crate::decisions::context::BooleanContext::new(
+                component.object.owner,
+                Some(object_id),
+                format!("move it to the command zone instead of {destination_text}"),
+            )
+            .with_source_name(component.object.name.to_string());
+            destinations.push(if decision_maker.decide_boolean(self, &choice) {
+                Zone::Command
+            } else {
+                requested_zone
+            });
+        }
+        self.commander_tracking_mut()
+            .pending_merged_component_destinations
+            .insert(stable_id, destinations);
+    }
+
     /// Move an object while applying commander hand/library replacement choices.
     pub fn move_object_with_commander_options(
         &mut self,
@@ -1541,6 +2077,7 @@ impl GameState {
     ) -> Option<(ObjectId, Zone)> {
         let final_zone =
             self.resolve_commander_move_destination(object_id, requested_zone, decision_maker);
+        self.prepare_merged_component_destinations(object_id, final_zone, decision_maker);
         self.move_object(object_id, final_zone, cause)
             .map(|new_id| (new_id, final_zone))
     }
@@ -1618,6 +2155,9 @@ impl GameState {
     ///
     /// Use `None` to clear the designation.
     pub fn set_monarch(&mut self, monarch: Option<PlayerId>) {
+        if monarch != self.monarch {
+            self.mark_continuous_state_dirty();
+        }
         if monarch.is_some() && monarch != self.monarch {
             self.record_ui_effect_event("monarch", monarch, None, Vec::new(), None, None);
         }
@@ -1838,6 +2378,7 @@ impl GameState {
             Zone::Stack => Box::new(self.stack.iter().map(|entry| entry.object_id)),
             Zone::Exile => Box::new(self.exile.iter().copied()),
             Zone::Command => Box::new(self.command_zone.iter().copied()),
+            Zone::Ante => Box::new(self.ante.iter().copied()),
         }
     }
 
@@ -1947,7 +2488,7 @@ impl GameState {
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbilityGeneric(ability)
-            | Modification::RemoveAbilityGeneric(ability) => {
+            | Modification::RemoveAbilityGeneric { ability, .. } => {
                 matches!(ability.kind, AbilityKind::Triggered(_))
             }
             // Static-only ability edits and pure characteristic changes
@@ -1955,6 +2496,7 @@ impl GameState {
             Modification::AddAbility(_)
             | Modification::RemoveAbility(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::ChangeController(_)
             | Modification::SetName(_)
             | Modification::AddCardTypes(_)

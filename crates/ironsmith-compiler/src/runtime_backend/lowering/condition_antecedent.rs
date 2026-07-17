@@ -703,7 +703,7 @@ mod tests {
             )),
             Box::new(PredicateAst::PlayerControls {
                 player: PlayerAst::You,
-                filter: ObjectFilter::creature().with_subtype(crate::object::Subtype::Lizard),
+                filter: ObjectFilter::creature().with_subtype(crate::types::Subtype::Lizard),
             }),
         );
 
@@ -860,6 +860,7 @@ mod tests {
             count: Value::Fixed(2),
             dynamic_power_toughness: None,
             player: PlayerAst::That,
+            actor_surface_explicit: false,
             attached_to: None,
             tapped: false,
             attacking: false,

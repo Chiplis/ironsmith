@@ -46,6 +46,10 @@ impl EffectExecutor for RevealTopEffect {
         }
         Ok(result.attach_to_outcome(EffectOutcome::count(count)))
     }
+
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]

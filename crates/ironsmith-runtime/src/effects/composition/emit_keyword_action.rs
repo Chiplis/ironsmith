@@ -10,7 +10,7 @@ use crate::card::LinkedFaceLayout;
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::KeywordActionEvent;
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
@@ -129,6 +129,50 @@ impl EffectExecutor for EmitKeywordActionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.action == KeywordActionKind::AssembleContraption {
+            // CR 701.45a deliberately does not define the Unstable Contraption
+            // procedure. Keep the action typed and observable for an external
+            // profile, but never pretend ordinary CR-only play can execute it.
+            return Err(ExecutionError::ExternalRulesProfileRequired {
+                action: "assembling a Contraption",
+                specification: "the Unstable FAQ",
+            });
+        }
+        if self.action == KeywordActionKind::Planeswalk {
+            if let Some(planar_roll) = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+                .filter(|event| event.is_planar)
+                && !game.is_face_up_planar_object(planar_roll.source)
+            {
+                // CR 901.9a: this sourceless ability leaves the plane that was
+                // face up when the die was rolled. If that plane has already
+                // left the planar zone, the ability does nothing on resolution.
+                return Ok(EffectOutcome::count(0));
+            }
+            for _ in 0..self.amount {
+                game.planeswalk(ctx.controller, ctx.source)
+                    .map_err(ExecutionError::Impossible)?;
+            }
+            return Ok(EffectOutcome::count(self.amount as i32));
+        }
+        if self.action == KeywordActionKind::SetSchemeInMotion {
+            let mut schemes = Vec::with_capacity(self.amount as usize);
+            for _ in 0..self.amount {
+                schemes.push(
+                    game.set_scheme_in_motion(ctx.controller)
+                        .map_err(ExecutionError::Impossible)?,
+                );
+            }
+            return Ok(EffectOutcome::resolved().with_affected_objects(schemes));
+        }
+        if self.action == KeywordActionKind::AbandonScheme {
+            let scheme = game
+                .abandon_scheme(ctx.source)
+                .map_err(ExecutionError::Impossible)?;
+            return Ok(EffectOutcome::resolved().with_affected_objects(vec![scheme]));
+        }
         let object_tags = object_tags_from_config(self, game, ctx)?;
         let event = TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)

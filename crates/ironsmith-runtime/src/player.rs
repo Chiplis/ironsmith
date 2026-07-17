@@ -27,6 +27,7 @@ pub(crate) struct ManaSourceProvenance {
     pub(crate) source: ObjectId,
     pub(crate) snapshot: Option<ObjectSnapshot>,
     pub(crate) restricted: bool,
+    pub(crate) retention: Option<ironsmith_core::ManaRetentionDuration>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -77,7 +78,7 @@ impl ManaSpendPolicy {
             | ManaSymbol::Red
             | ManaSymbol::Green => symbol == required || self.symbol_spends_as_any_color(symbol),
             ManaSymbol::Colorless => self.symbol_spends_as_colorless(symbol),
-            ManaSymbol::Generic(_) | ManaSymbol::Snow => matches!(
+            ManaSymbol::Generic(_) => matches!(
                 symbol,
                 ManaSymbol::White
                     | ManaSymbol::Blue
@@ -86,7 +87,7 @@ impl ManaSpendPolicy {
                     | ManaSymbol::Green
                     | ManaSymbol::Colorless
             ),
-            ManaSymbol::Life(_) | ManaSymbol::X => false,
+            ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X => false,
         }
     }
 }
@@ -273,11 +274,8 @@ impl ManaPool {
                         }
                     }
                     ManaSymbol::Snow => {
-                        if self.total() > 0 {
-                            self.pay_generic(1);
-                            paid = true;
-                            break;
-                        }
+                        // Snow is a quality of the source that produced a mana
+                        // unit, not a mana type. A bare ManaPool cannot prove it.
                     }
                     ManaSymbol::Life(_) => {
                         paid = true;
@@ -520,11 +518,7 @@ impl ManaPool {
                         }
                     }
                     ManaSymbol::Snow => {
-                        if self.total() > 0 {
-                            self.pay_generic(1);
-                            paid = true;
-                            break;
-                        }
+                        // Snow-source provenance is tracked by GameState.
                     }
                     ManaSymbol::Life(amount) => {
                         life_to_pay += *amount as u32;
@@ -669,12 +663,7 @@ impl ManaPool {
                         }
                     }
                     ManaSymbol::Snow => {
-                        // Snow mana - for simplicity, treat as generic
-                        if self.total() > 0 {
-                            self.pay_generic(1);
-                            paid = true;
-                            break;
-                        }
+                        // Snow-source provenance is tracked by GameState.
                     }
                     ManaSymbol::Life(amount) => {
                         // Life payment - track the amount to be deducted
@@ -800,6 +789,12 @@ pub struct Player {
     pub sideboard: Vec<ObjectId>,
     pub attachments: Vec<ObjectId>,
 
+    // Companion tracking (CR 103.2b, 116.2g, 702.139)
+    /// The one outside-game card this player revealed as their companion.
+    pub companion: Option<ObjectId>,
+    /// Whether this player has taken the companion special action this game.
+    pub companion_special_action_used: bool,
+
     // Commander tracking
     /// The card IDs of this player's commanders.
     /// Supports Partner mechanic (multiple commanders).
@@ -842,6 +837,8 @@ impl Player {
             graveyard: Vec::new(),
             sideboard: Vec::new(),
             attachments: Vec::new(),
+            companion: None,
+            companion_special_action_used: false,
             commanders: Vec::new(),
             commander_damage: HashMap::new(),
         }
@@ -881,12 +878,23 @@ impl Player {
         source: ObjectId,
         snapshot: Option<ObjectSnapshot>,
     ) {
+        self.add_unrestricted_mana_with_retention(symbol, source, snapshot, None);
+    }
+
+    pub(crate) fn add_unrestricted_mana_with_retention(
+        &mut self,
+        symbol: ManaSymbol,
+        source: ObjectId,
+        snapshot: Option<ObjectSnapshot>,
+        retention: Option<ironsmith_core::ManaRetentionDuration>,
+    ) {
         self.mana_pool.add(symbol, 1);
         self.mana_source_provenance.push(ManaSourceProvenance {
             symbol,
             source,
             snapshot,
             restricted: false,
+            retention,
         });
     }
 
@@ -899,12 +907,22 @@ impl Player {
         unit: crate::ability::RestrictedManaUnit,
         snapshot: Option<ObjectSnapshot>,
     ) {
+        self.add_restricted_mana_with_snapshot_and_retention(unit, snapshot, None);
+    }
+
+    pub(crate) fn add_restricted_mana_with_snapshot_and_retention(
+        &mut self,
+        unit: crate::ability::RestrictedManaUnit,
+        snapshot: Option<ObjectSnapshot>,
+        retention: Option<ironsmith_core::ManaRetentionDuration>,
+    ) {
         self.mana_pool.add(unit.symbol, 1);
         self.mana_source_provenance.push(ManaSourceProvenance {
             symbol: unit.symbol,
             source: unit.source,
             snapshot,
             restricted: true,
+            retention,
         });
         self.restricted_mana.push(unit);
     }
@@ -915,11 +933,18 @@ impl Player {
         restricted: bool,
         source: Option<ObjectId>,
     ) -> Option<ManaSourceProvenance> {
-        let index = self.mana_source_provenance.iter().position(|unit| {
-            unit.symbol == symbol
-                && unit.restricted == restricted
-                && source.is_none_or(|source| unit.source == source)
-        })?;
+        let index = self
+            .mana_source_provenance
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| {
+                unit.symbol == symbol
+                    && unit.restricted == restricted
+                    && source.is_none_or(|source| unit.source == source)
+            })
+            // Spend ordinary mana before longer-lived mana when both can pay.
+            .min_by_key(|(_, unit)| unit.retention.is_some())
+            .map(|(index, _)| index)?;
         Some(self.mana_source_provenance.remove(index))
     }
 

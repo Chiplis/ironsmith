@@ -17,6 +17,12 @@ use crate::target::{ChooseSpec, PlayerFilter};
 /// Returns `Count(1)` when paid, `Impossible` when the player can't pay.
 pub type PayManaEffect = ironsmith_core::PayManaEffect;
 
+fn payment_reason(ctx: &ExecutionContext<'_>) -> crate::costs::PaymentReason {
+    ctx.mana
+        .payment_reason
+        .unwrap_or(crate::costs::PaymentReason::Effect)
+}
+
 fn try_pay_interactively(
     effect: &PayManaEffect,
     game: &mut GameState,
@@ -31,20 +37,21 @@ fn try_pay_interactively(
         .transpose()?
         .unwrap_or(0)
         .max(0) as u32;
+    let payment_reason = payment_reason(ctx);
 
     for _ in 0..MAX_PAYMENT_STEPS {
         let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
             player_id,
             Some(ctx.source),
             &effect.cost,
-            crate::costs::PaymentReason::Effect,
+            payment_reason,
         );
         let can_pay_now = game.can_pay_mana_cost_with_reason(
             player_id,
             Some(ctx.source),
             &adjusted_cost,
             x_value,
-            crate::costs::PaymentReason::Effect,
+            payment_reason,
         );
         let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
 
@@ -95,7 +102,7 @@ fn try_pay_interactively(
                     Some(ctx.source),
                     &adjusted_cost,
                     x_value,
-                    crate::costs::PaymentReason::Effect,
+                    payment_reason,
                 ));
             }
             return Ok(false);
@@ -111,7 +118,7 @@ fn try_pay_interactively(
                     Some(ctx.source),
                     &adjusted_cost,
                     x_value,
-                    crate::costs::PaymentReason::Effect,
+                    payment_reason,
                 ));
             }
             PayManaChoice::ActivateManaAbility {
@@ -134,14 +141,14 @@ fn try_pay_interactively(
         player_id,
         Some(ctx.source),
         &effect.cost,
-        crate::costs::PaymentReason::Effect,
+        payment_reason,
     );
     Ok(game.try_pay_mana_cost_with_reason(
         player_id,
         Some(ctx.source),
         &adjusted_cost,
         x_value,
-        crate::costs::PaymentReason::Effect,
+        payment_reason,
     ))
 }
 

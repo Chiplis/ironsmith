@@ -37,7 +37,7 @@ impl CardsLeaveYourGraveyardTrigger {
             return 0;
         }
 
-        if self.during_your_turn && ctx.game.turn.active_player != ctx.controller {
+        if self.during_your_turn && !ctx.game.is_active_player(ctx.controller) {
             return 0;
         }
 

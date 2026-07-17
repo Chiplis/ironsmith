@@ -1168,6 +1168,199 @@ fn compile_static_ability_with_zones(
     compiled
 }
 
+fn effect_returns_removed_counter_count(effect: &crate::effect::Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
+        .is_some()
+        || effect
+            .downcast_ref::<crate::effects::RemoveUpToCountersEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::RemoveCountersEffect>()
+            .is_some()
+    {
+        return true;
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return effect_returns_removed_counter_count(&with_id.effect);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return effect_returns_removed_counter_count(&tagged.effect);
+    }
+    if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
+        return matches!(for_each.effects.as_slice(), [inner] if effect_returns_removed_counter_count(inner));
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return matches!(sequence.effects.as_slice(), [inner] if effect_returns_removed_counter_count(inner));
+    }
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>() {
+        return matches!(may.effects.as_slice(), [inner] if effect_returns_removed_counter_count(inner));
+    }
+    false
+}
+
+fn removed_counter_metric_effect_id(
+    effect: &crate::effect::Effect,
+) -> Option<crate::effect::EffectId> {
+    if let Some(with_id) = effect.as_with_id()
+        && effect_returns_removed_counter_count(&with_id.effect)
+    {
+        return Some(with_id.id);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return removed_counter_metric_effect_id(&tagged.effect);
+    }
+    None
+}
+
+fn max_effect_id(effect: &crate::effect::Effect) -> Option<u32> {
+    let mut maximum = effect.as_with_id().map(|with_id| with_id.id.0);
+    effect.visit_child_effects(&mut |child| {
+        if let Some(child_maximum) = max_effect_id(child) {
+            maximum = Some(maximum.map_or(child_maximum, |current| current.max(child_maximum)));
+        }
+    });
+    maximum
+}
+
+fn bind_removed_counter_followup(
+    program: &mut crate::resolution::ResolutionProgram,
+    counter: crate::object::CounterType,
+    count: &crate::effect::Value,
+) -> bool {
+    let crate::effect::Value::PendingPriorEffectMetric(query) = count.unhinted() else {
+        return false;
+    };
+    if query.action != Some(ironsmith_core::PriorEffectAction::Removed) {
+        return false;
+    }
+
+    let producer =
+        program
+            .segments
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(segment_index, segment)| {
+                segment
+                    .default_effects
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, effect)| effect_returns_removed_counter_count(effect))
+                    .map(|(effect_index, _)| (segment_index, effect_index))
+            });
+    let Some((segment_index, effect_index)) = producer else {
+        return false;
+    };
+
+    let existing_id = removed_counter_metric_effect_id(
+        &program.segments[segment_index].default_effects[effect_index],
+    );
+    let effect_id = if let Some(effect_id) = existing_id {
+        effect_id
+    } else {
+        let next_id = program
+            .segments
+            .iter()
+            .flat_map(|segment| {
+                segment.default_effects.iter().chain(
+                    segment
+                        .self_replacements
+                        .iter()
+                        .flat_map(|branch| branch.replacement_effects.iter()),
+                )
+            })
+            .filter_map(max_effect_id)
+            .max()
+            .map_or(Some(0), |maximum| maximum.checked_add(1))
+            .filter(|next| *next != u32::MAX);
+        let Some(next_id) = next_id else {
+            return false;
+        };
+        let producer = program.segments[segment_index].default_effects[effect_index].clone();
+        program.segments[segment_index].default_effects[effect_index] =
+            crate::effect::Effect::with_id(next_id, producer);
+        crate::effect::EffectId(next_id)
+    };
+
+    let bound_count = crate::effect::Value::PriorEffectMetric {
+        effect_id,
+        query: query.clone(),
+    }
+    .with_surface_hints(count.surface_hints().iter().cloned());
+    *program = crate::resolution::ResolutionProgram::new(program.segments.clone());
+    program.push(crate::effect::Effect::put_counters(
+        counter,
+        bound_count,
+        ChooseSpec::Source,
+    ));
+    true
+}
+
+fn fuse_pending_removed_counter_as_enters(builder: &mut CardDefinitionBuilder) {
+    let Some((counter_ability_index, counter, count)) = builder
+        .abilities
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, ability)| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            let crate::static_abilities::StaticAbilityPayload::EntersWithCountersValue {
+                counter,
+                count,
+            } = &static_ability.payload
+            else {
+                return None;
+            };
+            matches!(
+                count.unhinted(),
+                crate::effect::Value::PendingPriorEffectMetric(query)
+                    if query.action == Some(ironsmith_core::PriorEffectAction::Removed)
+            )
+            .then(|| (index, *counter, count.clone()))
+        })
+    else {
+        return;
+    };
+
+    let as_enters_index = builder
+        .abilities
+        .iter()
+        .enumerate()
+        .filter_map(|(index, ability)| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            matches!(
+                &static_ability.payload,
+                crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
+                    uses_enters_with_counter_surface: true,
+                    ..
+                }
+            )
+            .then_some(index)
+        })
+        .min_by_key(|index| index.abs_diff(counter_ability_index));
+    let Some(as_enters_index) = as_enters_index else {
+        return;
+    };
+
+    let AbilityKind::Static(as_enters) = &mut builder.abilities[as_enters_index].kind else {
+        return;
+    };
+    let crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram { program, .. } =
+        &mut as_enters.payload
+    else {
+        return;
+    };
+    if bind_removed_counter_followup(program, counter, &count) {
+        builder.abilities.remove(counter_ability_index);
+    }
+}
+
 fn rewrite_self_spell_cost_modifier(
     ability: crate::static_abilities::StaticAbility,
     facts: &crate::runtime_backend::shared_types::StaticLineSemanticFacts,
@@ -1236,10 +1429,12 @@ fn lower_static_ability_chunk(
         }
         Err(err) => return Err(err),
     };
-    Ok(builder.with_ability(compile_static_ability_with_zones(
+    builder = builder.with_ability(compile_static_ability_with_zones(
         ability,
         &semantic_facts.static_ability,
-    )))
+    ));
+    fuse_pending_removed_counter_as_enters(&mut builder);
+    Ok(builder)
 }
 
 fn lower_static_abilities_chunk(
@@ -1286,6 +1481,7 @@ fn lower_static_abilities_chunk(
             ability,
             &semantic_facts.static_ability,
         ));
+        fuse_pending_removed_counter_as_enters(&mut builder);
     }
     Ok(builder)
 }
@@ -1342,9 +1538,6 @@ fn preserve_latest_self_replacement_presentation(
     builder: &mut CardDefinitionBuilder,
     statement_facts: &crate::runtime_backend::shared_types::StatementLineSemanticFacts,
 ) {
-    let Some(presentation_label) = statement_facts.presentation_label.as_ref() else {
-        return;
-    };
     let Some(branch) = builder
         .spell_effect
         .as_mut()
@@ -1353,10 +1546,16 @@ fn preserve_latest_self_replacement_presentation(
     else {
         return;
     };
-    if branch.presentation_label.is_none() {
-        branch.presentation_label = Some(presentation_label.clone());
+
+    if let Some(presentation_label) = statement_facts.presentation_label.as_ref() {
+        if branch.presentation_label.is_none() {
+            branch.presentation_label = Some(presentation_label.clone());
+        }
+        branch.condition_after_replacement = statement_facts.leading_condition_intro.is_none();
     }
-    branch.condition_after_replacement = statement_facts.leading_condition_intro.is_none();
+    if statement_facts.trailing_instead_if_predicate.is_some() {
+        branch.condition_after_replacement = true;
+    }
 }
 
 fn lower_statement_chunk(
@@ -1462,6 +1661,18 @@ fn lower_statement_chunk(
     }
 
     let statement_facts = &semantic_facts.statement;
+    if let Some(as_enters) = statement_facts.as_enters_effect_program.as_ref() {
+        let static_ability = crate::static_abilities::StaticAbility::as_enters_effect_program(
+            compiled,
+            as_enters.subject.clone(),
+            as_enters.also_turns_face_up,
+            as_enters.uses_enters_with_counter_surface,
+            statement_facts.presentation_label.clone(),
+        );
+        builder = builder.with_ability(crate::ability::Ability::static_ability(static_ability));
+        fuse_pending_removed_counter_as_enters(&mut builder);
+        return Ok(builder);
+    }
     let instead_semantics = statement_facts.instead_followup.semantics;
     let trailing_instead_if_condition = if matches!(
         instead_semantics,
@@ -2223,7 +2434,7 @@ fn lower_triggered_chunk(
         functional_zones,
         Some(info.raw_line.clone()),
         intervening_if,
-        None,
+        trigger_facts.presentation_label.as_ref(),
         prepared.prepared.imports.clone(),
     );
     let mut parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {

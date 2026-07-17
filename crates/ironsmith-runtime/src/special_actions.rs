@@ -363,10 +363,10 @@ fn has_sorcery_speed_special_action_timing(
     game: &GameState,
     player: PlayerId,
 ) -> Result<(), ActionError> {
-    if game.turn.active_player != player {
+    if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
     }
-    if game.turn.priority_player != Some(player) {
+    if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
     }
     if !matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain) {
@@ -410,6 +410,15 @@ pub enum SpecialAction {
 
     /// Unlock the locked linked face of a split Room permanent.
     UnlockRoomDoor { room_id: ObjectId },
+
+    /// Roll the planar die during the Planechase variant (CR 901.9).
+    RollPlanarDie,
+
+    /// Reveal a controlled hidden/double-agenda conspiracy (CR 702.106c).
+    TurnConspiracyFaceUp { conspiracy_id: ObjectId },
+
+    /// Pay {3} to put the chosen companion into its owner's hand (CR 116.2g).
+    Companion { card_id: ObjectId },
 }
 
 /// Errors that can occur when attempting to perform a special action.
@@ -530,6 +539,11 @@ pub fn can_perform(
             ability_index,
         } => can_activate_mana_ability(game, player, *permanent_id, *ability_index, decision_maker),
         SpecialAction::UnlockRoomDoor { room_id } => can_unlock_room_door(game, player, *room_id),
+        SpecialAction::RollPlanarDie => can_roll_planar_die(game, player),
+        SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
+            can_turn_conspiracy_face_up(game, player, *conspiracy_id)
+        }
+        SpecialAction::Companion { card_id } => can_take_companion_action(game, player, *card_id),
     }
 }
 
@@ -557,6 +571,11 @@ pub fn can_perform_check(
             ability_index,
         } => can_activate_mana_ability_check(game, player, *permanent_id, *ability_index),
         SpecialAction::UnlockRoomDoor { room_id } => can_unlock_room_door(game, player, *room_id),
+        SpecialAction::RollPlanarDie => can_roll_planar_die(game, player),
+        SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
+            can_turn_conspiracy_face_up(game, player, *conspiracy_id)
+        }
+        SpecialAction::Companion { card_id } => can_take_companion_action(game, player, *card_id),
     }
 }
 
@@ -594,19 +613,158 @@ pub fn perform(
         SpecialAction::UnlockRoomDoor { room_id } => {
             perform_unlock_room_door(game, player, room_id, &mut *decision_maker)
         }
+        SpecialAction::RollPlanarDie => perform_roll_planar_die(game, player),
+        SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => game
+            .turn_conspiracy_face_up(player, conspiracy_id)
+            .map_err(|_| ActionError::InvalidTarget),
+        SpecialAction::Companion { card_id } => {
+            perform_companion_action(game, player, card_id)
+        }
     }
+}
+
+fn companion_action_cost() -> ManaCost {
+    ManaCost::from_symbols(vec![ManaSymbol::Generic(3)])
+}
+
+fn can_take_companion_action(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Result<(), ActionError> {
+    has_sorcery_speed_special_action_timing(game, player)?;
+    let player_state = game.player(player).ok_or(ActionError::PlayerNotFound)?;
+    if player_state.companion != Some(card_id) || player_state.companion_special_action_used {
+        return Err(ActionError::InvalidTarget);
+    }
+    let companion = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    if companion.owner != player {
+        return Err(ActionError::InvalidTarget);
+    }
+    if companion.zone != Zone::OutsideGame {
+        return Err(ActionError::WrongZone {
+            expected: Zone::OutsideGame,
+            actual: companion.zone,
+        });
+    }
+    if !game.can_pay_mana_cost_with_reason(
+        player,
+        Some(card_id),
+        &companion_action_cost(),
+        0,
+        crate::costs::PaymentReason::Other,
+    ) {
+        return Err(ActionError::CantPayCost);
+    }
+    Ok(())
+}
+
+fn perform_companion_action(
+    game: &mut GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Result<(), ActionError> {
+    // Stage payment and movement together so an unexpected movement failure
+    // cannot spend mana or consume the once-per-game action.
+    let mut staged = game.clone();
+    if !staged.try_pay_mana_cost_with_reason(
+        player,
+        Some(card_id),
+        &companion_action_cost(),
+        0,
+        crate::costs::PaymentReason::Other,
+    ) {
+        return Err(ActionError::CantPayCost);
+    }
+    let new_id = staged
+        .move_object(
+            card_id,
+            Zone::Hand,
+            EventCause::from_special_action(Some(card_id), player),
+        )
+        .ok_or(ActionError::InvalidTarget)?;
+    let player_state = staged
+        .player_mut(player)
+        .ok_or(ActionError::PlayerNotFound)?;
+    player_state.companion = Some(new_id);
+    player_state.companion_special_action_used = true;
+    *game = staged;
+    Ok(())
+}
+
+fn can_turn_conspiracy_face_up(
+    game: &GameState,
+    player: PlayerId,
+    conspiracy_id: ObjectId,
+) -> Result<(), ActionError> {
+    if !game.team_has_priority(player) {
+        return Err(ActionError::NotYourPriority);
+    }
+    let object = game
+        .object(conspiracy_id)
+        .ok_or(ActionError::ObjectNotFound)?;
+    if object.zone != Zone::Command {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Command,
+            actual: object.zone,
+        });
+    }
+    if object.owner != player || !game.is_face_down_conspiracy(conspiracy_id) {
+        return Err(ActionError::InvalidTarget);
+    }
+    Ok(())
+}
+
+fn planar_die_cost(amount: u32) -> crate::mana::ManaCost {
+    let mut remaining = amount;
+    let mut symbols = Vec::new();
+    while remaining > 0 {
+        let chunk = remaining.min(u8::MAX as u32) as u8;
+        symbols.push(crate::mana::ManaSymbol::Generic(chunk));
+        remaining -= u32::from(chunk);
+    }
+    crate::mana::ManaCost::from_symbols(symbols)
+}
+
+fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionError> {
+    has_sorcery_speed_special_action_timing(game, player)?;
+    if game.planar_controller() != Some(player) || game.face_up_planar_objects().is_empty() {
+        return Err(ActionError::InvalidTiming);
+    }
+    let cost = game
+        .planar_die_roll_cost(player)
+        .ok_or(ActionError::InvalidTiming)?;
+    let player_state = game.player(player).ok_or(ActionError::PlayerNotFound)?;
+    if !player_state.mana_pool.can_pay(&planar_die_cost(cost), 0) {
+        return Err(ActionError::CantPayCost);
+    }
+    Ok(())
+}
+
+fn perform_roll_planar_die(game: &mut GameState, player: PlayerId) -> Result<(), ActionError> {
+    let cost = game
+        .planar_die_roll_cost(player)
+        .ok_or(ActionError::InvalidTiming)?;
+    let player_state = game.player_mut(player).ok_or(ActionError::PlayerNotFound)?;
+    if !player_state.mana_pool.try_pay(&planar_die_cost(cost), 0) {
+        return Err(ActionError::CantPayCost);
+    }
+    player_state.trim_mana_source_provenance_to_pool();
+    game.roll_planar_die(player, true)
+        .map(|_| ())
+        .map_err(|_| ActionError::InvalidTiming)
 }
 
 // === Play Land ===
 
 fn can_play_land(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
     // Must be the active player
-    if game.turn.active_player != player {
+    if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
     }
 
     // Must have priority (or be in a main phase where you would have priority)
-    if game.turn.priority_player != Some(player) {
+    if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
     }
 
@@ -730,7 +888,7 @@ fn validate_turn_face_up_common<'a>(
     permanent_id: ObjectId,
 ) -> Result<&'a crate::object::Object, ActionError> {
     // Must have priority to take a special action.
-    if game.turn.priority_player != Some(player) {
+    if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
     }
 
@@ -781,6 +939,9 @@ fn can_turn_face_up_with_method(
     method: TurnFaceUpMethod,
 ) -> Result<(), ActionError> {
     let object = validate_turn_face_up_common(game, player, permanent_id)?;
+    if !game.can_turn_face_up_permanent(permanent_id) {
+        return Err(ActionError::NoSuchAbility);
+    }
     let Some(spec) = turn_face_up_spec(game, object, method) else {
         return Err(ActionError::NoSuchAbility);
     };
@@ -795,6 +956,9 @@ fn perform_turn_face_up(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     validate_turn_face_up_common(game, player, permanent_id)?;
+    if !game.can_turn_face_up_permanent(permanent_id) {
+        return Err(ActionError::NoSuchAbility);
+    }
     let spec = game
         .object(permanent_id)
         .ok_or(ActionError::ObjectNotFound)
@@ -823,7 +987,15 @@ fn perform_turn_face_up(
     if let Some(object) = game.object_mut(permanent_id) {
         object.end_face_down_cast_overlay();
     }
-    game.set_face_up(permanent_id);
+    if !game.set_face_up(permanent_id) {
+        return Err(ActionError::NoSuchAbility);
+    }
+
+    let _ = game.execute_as_enters_effect_programs_for_turn_face_up(
+        permanent_id,
+        player,
+        decision_maker,
+    );
 
     game.apply_power_toughness_choice_as_enters_or_turns_face_up(
         permanent_id,
@@ -973,7 +1145,7 @@ fn can_suspend(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<
     use crate::costs::{CostCheckContext, can_pay_with_check_context};
 
     // Must have priority
-    if game.turn.priority_player != Some(player) {
+    if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
     }
 
@@ -1070,12 +1242,12 @@ fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result
     use crate::costs::{CostCheckContext, can_pay_with_check_context};
 
     // Must be during your turn
-    if game.turn.active_player != player {
+    if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
     }
 
     // Must have priority
-    if game.turn.priority_player != Some(player) {
+    if !game.team_has_priority(player) {
         return Err(ActionError::NotYourPriority);
     }
 
@@ -1739,7 +1911,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         let object = game
             .object(permanent_id)
             .ok_or(ActionError::ObjectNotFound)?;
-        crate::snapshot::ObjectSnapshot::from_object(object, game)
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
     };
     let ability = game
         .current_ability(permanent_id, ability_index)
@@ -1863,6 +2035,14 @@ pub(crate) fn pay_cost_component_with_choice(
     cost: &crate::costs::Cost,
     ctx: &mut CostContext,
 ) -> Result<(), CostPaymentError> {
+    if !game
+        .player(ctx.payer)
+        .is_some_and(|player| player.is_in_game())
+    {
+        return Err(CostPaymentError::Other(
+            "a player who left the game cannot pay costs".to_string(),
+        ));
+    }
     game.validate_cost_for_payment_reason(ctx.payer, ctx.source, cost, ctx.reason)?;
     match cost.pay(game, ctx)? {
         CostPaymentResult::Paid => Ok(()),
@@ -1939,6 +2119,11 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
     reason: crate::costs::PaymentReason,
     execution_ctx: &mut ExecutionContext<'_>,
 ) -> Result<(), CostPaymentError> {
+    if !game.player(payer).is_some_and(|player| player.is_in_game()) {
+        return Err(CostPaymentError::Other(
+            "a player who left the game cannot pay costs".to_string(),
+        ));
+    }
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
             for component in costs {
@@ -2176,11 +2361,18 @@ fn pay_activation_card_choice_without_execution_context(
             cost,
             filter,
             zone,
+            top_only,
             description,
             choice_tag,
         } => {
-            let candidates =
-                legal_cost_choice_objects(game, cost_ctx.payer, cost_ctx.source, filter, *zone);
+            let candidates = legal_cost_choice_objects(
+                game,
+                cost_ctx.payer,
+                cost_ctx.source,
+                filter,
+                *zone,
+                *top_only,
+            );
             let Some(target_id) = choose_single_cost_object(
                 game,
                 cost_ctx,
@@ -2257,6 +2449,7 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx.source,
                 filter,
                 *source_zone,
+                false,
             );
             let Some(target_id) = choose_single_cost_object(
                 game,
@@ -3143,6 +3336,7 @@ fn legal_cost_choice_objects(
     source: ObjectId,
     filter: &ObjectFilter,
     zone: Zone,
+    top_only: bool,
 ) -> Vec<ObjectId> {
     let ctx = game.filter_context_for(payer, Some(source));
 
@@ -3152,15 +3346,19 @@ fn legal_cost_choice_objects(
             .player(payer)
             .map(|p| p.hand.iter().copied().collect())
             .unwrap_or_default(),
-        Zone::Graveyard => game
-            .player(payer)
-            .map(|p| p.graveyard.iter().copied().collect())
-            .unwrap_or_default(),
+        Zone::Graveyard => game.player(payer).map_or_else(Vec::new, |p| {
+            if top_only {
+                p.graveyard.iter().rev().copied().collect()
+            } else {
+                p.graveyard.to_vec()
+            }
+        }),
         Zone::Exile => game.exile.iter().copied().collect(),
         _ => Vec::new(),
     };
 
-    ids.into_iter()
+    let mut candidates = ids
+        .into_iter()
         .filter(|&id| {
             game.object(id).is_some_and(|obj| {
                 if filter.other && obj.id == source {
@@ -3169,7 +3367,11 @@ fn legal_cost_choice_objects(
                 filter.matches(obj, &ctx, game)
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if top_only {
+        candidates.truncate(1);
+    }
+    candidates
 }
 
 fn normalize_selection(

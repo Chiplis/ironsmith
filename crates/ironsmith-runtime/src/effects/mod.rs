@@ -77,7 +77,8 @@ pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
 pub use executor_trait::{
     CostExecutableEffect, CostValidationError, EffectExecutionCategory, EffectExecutor,
-    ModalEffectSpec, ModalSpec, TargetReusePolicy, TargetSelectionProfile,
+    ModalEffectSpec, ModalSpec, SimultaneousEffectProposal, TargetReusePolicy,
+    TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::ExecutionContext;
@@ -111,15 +112,15 @@ pub use composition::{
     CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect, EmitKeywordActionEffect,
     ExecuteWithSourceEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
     ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect, LifeBidStart,
-    LocalRewriteEffect, ManaRestrictedEffect, ManifestCardFromHandEffect, ManifestDreadEffect,
-    ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
-    ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
-    SecretChoiceEffect, SecretChoiceResult, SequenceEffect, SupportEffect, TagAllEffect,
-    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringBlockersEffect,
-    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
-    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
-    VOTED_OBJECTS_TAG, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult,
-    WithIdEffect,
+    LocalRewriteEffect, ManaRestrictedEffect, ManaRetainedEffect, ManifestCardFromHandEffect,
+    ManifestDreadEffect, ManifestObjectsEffect, ManifestTopCardOfLibraryEffect, MayEffect,
+    OpenAttractionEffect, PopulateEffect, ReflexiveTriggerEffect, RepeatEffectsEffect,
+    RepeatProcessEffect, RepeatProcessPromptEffect, SecretChoiceEffect, SecretChoiceResult,
+    SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
+    TagMatchingObjectsEffect, TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect,
+    TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
+    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
+    VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{
@@ -136,8 +137,8 @@ pub(crate) use counters::{
     remove_any_counters_among_cost_display, remove_any_counters_among_valid_targets_with_tags,
 };
 pub use damage::{
-    ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, PreventNextTimeDamageEffect,
-    PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
+    ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, HealDamageEffect,
+    PreventNextTimeDamageEffect, PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
@@ -147,7 +148,7 @@ pub use delayed::{
     ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
 };
 pub use life::{
-    ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect,
+    ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect, PayLifeEffect,
     SetLifeTotalEffect,
 };
 pub use mana::{
@@ -173,15 +174,16 @@ pub use player::{
     BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChoosePlayerEffect, ControlCombatChoicesThisTurnEffect,
-    ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect, EndTurnEffect, EnergyCountersEffect,
-    ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,
-    ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect,
-    ExtraTurnEffect, FlipCoinEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
-    GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
-    GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
-    IncreaseSpeedEffect, LoseTheGameEffect, MayCastMatchingSpellWithoutPayingManaCostEffect,
-    PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PlayerCountersEffect,
-    PoisonCountersEffect, ReduceSpeedEffect, RestartGameEffect, RingTemptsYouEffect,
+    ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect, DrawTheGameEffect,
+    EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect, ExileInsteadOfGraveyardEffect,
+    ExileThenGrantPlayEffect, ExileUntilMatchCastEffect, ExileUntilMatchGrantPlayEffect,
+    ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FlipCoinEffect,
+    GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect,
+    GrantPlayTaggedDuration, GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+    GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
+    MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayAnyLifeEffect,
+    PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
+    RadiationEffect, ReduceSpeedEffect, RestartGameEffect, RingTemptsYouEffect,
     RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,

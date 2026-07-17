@@ -559,9 +559,8 @@ mod tests {
         let shape = parse_delayed_this_turn_shape(&target_dies).unwrap();
         assert!(parse_delayed_target_dies_subject(shape.trigger_tokens).is_some());
 
-        let target_graveyard = tokens(
-            "When target creature is put into your graveyard this turn, draw a card.",
-        );
+        let target_graveyard =
+            tokens("When target creature is put into your graveyard this turn, draw a card.");
         let shape = parse_delayed_this_turn_shape(&target_graveyard).unwrap();
         assert!(
             parse_delayed_target_put_into_your_graveyard_subject(shape.trigger_tokens).is_some()

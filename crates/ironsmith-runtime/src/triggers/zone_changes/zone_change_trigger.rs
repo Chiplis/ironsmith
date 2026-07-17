@@ -28,12 +28,16 @@ use crate::events::EventKind;
 use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
 use crate::events::zones::ZoneChangeEvent;
 use crate::filter::ObjectFilterExt as _;
-use crate::target::{ObjectFilter, PlayerFilter, PlayerFilterExt as _};
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{
+    TriggerContext, TriggerMatcher, current_turn_matches_player_filter,
+};
 use crate::types::CardType;
 use crate::zone::Zone;
-pub use ironsmith_core::trigger_model::{TriggerSubjectNumber, ZoneChangeOriginCondition};
+pub use ironsmith_core::trigger_model::{
+    GraveyardTriggerSurface, TriggerSubjectNumber, ZoneChangeOriginCondition,
+};
 use std::fmt;
 
 /// Pattern for matching zones in zone change events.
@@ -133,6 +137,8 @@ pub struct ZoneChangeTrigger {
     pub this_object_surface: Option<crate::target::SourceReferenceSurface>,
     /// Authored grammatical number for a named source-object subject.
     pub this_object_subject_number: TriggerSubjectNumber,
+    /// Authored graveyard-event wording. Presentation-only; never read while matching.
+    pub graveyard_surface: Option<GraveyardTriggerSurface>,
 }
 
 impl Default for ZoneChangeTrigger {
@@ -149,6 +155,7 @@ impl Default for ZoneChangeTrigger {
             this_object: false,
             this_object_surface: None,
             this_object_subject_number: TriggerSubjectNumber::Singular,
+            graveyard_surface: None,
         }
     }
 }
@@ -226,6 +233,11 @@ impl ZoneChangeTrigger {
 
     pub fn this_subject_number(mut self, number: TriggerSubjectNumber) -> Self {
         self.this_object_subject_number = number;
+        self
+    }
+
+    pub fn graveyard_surface(mut self, surface: GraveyardTriggerSurface) -> Self {
+        self.graveyard_surface = Some(surface);
         self
     }
 
@@ -373,6 +385,7 @@ impl ZoneChangeTrigger {
                 }
                 ZonePattern::Specific(Zone::Exile) => Some("from exile".to_string()),
                 ZonePattern::Specific(Zone::Command) => Some("from the command zone".to_string()),
+                ZonePattern::Specific(Zone::Ante) => Some("from ante".to_string()),
                 ZonePattern::Specific(Zone::Stack) => Some("from the stack".to_string()),
                 ZonePattern::AnyExcept(zone) => {
                     let excluded = match zone {
@@ -382,6 +395,7 @@ impl ZoneChangeTrigger {
                         Zone::Graveyard => "a graveyard",
                         Zone::Exile => "exile",
                         Zone::Command => "the command zone",
+                        Zone::Ante => "ante",
                         Zone::Stack => "the stack",
                         Zone::OutsideGame => "outside the game",
                     };
@@ -735,7 +749,10 @@ impl ZoneChangeTrigger {
                 (
                     ZonePattern::Specific(Zone::Battlefield),
                     ZonePattern::Specific(Zone::Graveyard),
-                ) if subject_is_always_creature(&self.object_filter) => {
+                ) if self.graveyard_surface == Some(GraveyardTriggerSurface::Dies)
+                    || (self.graveyard_surface.is_none()
+                        && subject_is_always_creature(&self.object_filter)) =>
+                {
                     format!("When {battlefield_subject} dies")
                 }
                 (
@@ -835,8 +852,10 @@ impl ZoneChangeTrigger {
         // Zone change description
         match (&self.from, &self.to) {
             (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard))
-                if subject_is_always_creature(&self.object_filter)
-                    || subject_uses_mixed_death_surface(&self.object_filter) =>
+                if self.graveyard_surface == Some(GraveyardTriggerSurface::Dies)
+                    || (self.graveyard_surface.is_none()
+                        && (subject_is_always_creature(&self.object_filter)
+                            || subject_uses_mixed_death_surface(&self.object_filter))) =>
             {
                 parts.push(
                     if self.count_mode == CountMode::OneOrMore {
@@ -848,7 +867,8 @@ impl ZoneChangeTrigger {
                 );
             }
             (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard))
-                if attached_subject_implies_battlefield(&self.object_filter) =>
+                if self.graveyard_surface.is_none()
+                    && attached_subject_implies_battlefield(&self.object_filter) =>
             {
                 let verb = if self.count_mode == CountMode::OneOrMore {
                     "are"
@@ -963,6 +983,7 @@ impl ZoneChangeTrigger {
                 Zone::Stack => "the stack",
                 Zone::Exile => "exile",
                 Zone::Command => "the command zone",
+                Zone::Ante => "ante",
                 Zone::OutsideGame => "outside the game",
             };
             if self.count_mode == CountMode::OneOrMore {
@@ -1036,9 +1057,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
         };
 
         if let Some(during_turn) = &self.during_turn {
-            let active_player = ctx.game.turn.active_player;
-            let turn_filter_ctx = ctx.filter_ctx.clone().with_active_player(active_player);
-            if !during_turn.matches_player(active_player, &turn_filter_ctx) {
+            if !current_turn_matches_player_filter(during_turn, ctx, None) {
                 return false;
             }
         }
@@ -1874,6 +1893,43 @@ mod tests {
             .to(Zone::Graveyard)
             .count(CountMode::Each);
         assert_eq!(card_to_graveyard_trigger.trigger_count(&event), 2);
+    }
+
+    #[test]
+    fn authored_graveyard_surface_overrides_display_heuristics_only() {
+        let explicit_dies = ZoneChangeTrigger::new()
+            .from(Zone::Battlefield)
+            .to(Zone::Graveyard)
+            .filter(ObjectFilter::planeswalker())
+            .graveyard_surface(GraveyardTriggerSurface::Dies);
+        assert_eq!(explicit_dies.display(), "Whenever a planeswalker dies");
+
+        let base_creature_trigger = ZoneChangeTrigger::dies(ObjectFilter::creature());
+        let explicit_put = base_creature_trigger
+            .clone()
+            .graveyard_surface(GraveyardTriggerSurface::PutIntoGraveyard);
+        assert_eq!(
+            explicit_put.display(),
+            "Whenever a creature is put into a graveyard from the battlefield"
+        );
+
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = ObjectId::from_raw(1);
+        let creature_id = ObjectId::from_raw(2);
+        let event = TriggerEvent::new_with_provenance(
+            ZoneChangeEvent::with_cause(
+                creature_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                EventCause::from_sba(),
+                Some(make_creature_snapshot(creature_id, alice, "Bear")),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(base_creature_trigger.matches(&event, &ctx));
+        assert!(explicit_put.matches(&event, &ctx));
     }
 
     #[test]

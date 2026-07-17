@@ -384,13 +384,77 @@ pub(crate) fn parse_looked_remainder_shape(
         [first, rest @ ..] if first.parser_text() == "they" => rest,
         _ => tail,
     };
-    if !starts_sequence(tail, &[&["put"], &["puts"]]) || !contains_sequence_word(tail, "rest") {
+    let explicit_rest = contains_sequence_word(tail, "rest");
+    let exact_revealed_complement =
+        is_explicit_revealed_cards_not_put_onto_battlefield_complement(tail);
+    if !starts_sequence(tail, &[&["put"], &["puts"]])
+        || (!explicit_rest && !exact_revealed_complement)
+    {
         return None;
     }
     if contains_sequence_word(tail, "bottom") && contains_sequence_word(tail, "library") {
         return parse_consult_remainder_order_tokens(tail).map(LookedRemainderShape::LibraryBottom);
     }
     contains_sequence_word(tail, "graveyard").then_some(LookedRemainderShape::Graveyard)
+}
+
+/// Whether the authored remainder explicitly names the revealed-card
+/// complement rather than using the shorter "the rest" surface.
+pub(crate) fn is_explicit_revealed_cards_not_put_onto_battlefield_complement(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    contains_sequence_phrase(tokens, &[&["all", "cards", "revealed", "this", "way"]])
+        && (contains_sequence_phrase(tokens, &[&["werent", "put", "onto", "the", "battlefield"]])
+            || contains_sequence_phrase(
+                tokens,
+                &[&["weren't", "put", "onto", "the", "battlefield"]],
+            )
+            || contains_sequence_phrase(
+                tokens,
+                &[&["were", "not", "put", "onto", "the", "battlefield"]],
+            ))
+}
+
+/// Recognizes an optional deployment whose legal candidate must share a name
+/// with some permanent on the battlefield.  The comparison set is modeled by
+/// the sequence parser rather than treating the trailing `if` as a gate on an
+/// arbitrary card from the looked pool.
+pub(crate) fn is_looked_same_name_permanent_battlefield_action(tokens: &[OwnedLexToken]) -> bool {
+    starts_sequence(
+        tokens,
+        &[
+            &["you", "may", "put", "one", "of", "those", "cards"],
+            &["you", "may", "put", "one", "of", "them"],
+        ],
+    ) && contains_sequence_phrase(tokens, BATTLEFIELD)
+        && contains_sequence_phrase(
+            tokens,
+            &[
+                &[
+                    "if",
+                    "it",
+                    "has",
+                    "the",
+                    "same",
+                    "name",
+                    "as",
+                    "a",
+                    "permanent",
+                ],
+                &[
+                    "if",
+                    "that",
+                    "card",
+                    "has",
+                    "the",
+                    "same",
+                    "name",
+                    "as",
+                    "a",
+                    "permanent",
+                ],
+            ],
+        )
 }
 
 pub(crate) fn parse_any_number_revealed_choice_shape(
@@ -533,5 +597,30 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn parses_revealed_cards_not_deployed_as_exact_remainder() {
+        let tokens = lex_line(
+            "Then put all cards revealed this way that weren't put onto the battlefield on the bottom of your library in a random order.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_looked_remainder_shape(&tokens),
+            Some(LookedRemainderShape::LibraryBottom(
+                LibraryBottomOrderAst::Random
+            ))
+        );
+    }
+
+    #[test]
+    fn recognizes_same_name_permanent_candidate_restriction() {
+        let tokens = lex_line(
+            "You may put one of those cards onto the battlefield if it has the same name as a permanent.",
+            0,
+        )
+        .unwrap();
+        assert!(is_looked_same_name_permanent_battlefield_action(&tokens));
     }
 }

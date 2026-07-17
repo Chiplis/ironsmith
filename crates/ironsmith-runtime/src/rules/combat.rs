@@ -755,6 +755,8 @@ mod tests {
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,
             base_defense: None,
+            hand_modifier: 0,
+            life_modifier: 0,
             abilities: std::sync::Arc::new(vec![]),
             counters: HashMap::new(),
             attached_to: None,

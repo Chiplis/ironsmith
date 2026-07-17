@@ -92,6 +92,34 @@ impl PayEnergyEffect {
     }
 }
 
+/// A fixed life payment made by a player while an effect resolves.
+///
+/// This is deliberately distinct from [`LoseLifeEffect`]: paying life is only
+/// legal when the player has enough life and no rule or effect forbids the
+/// payment, while ordinary life loss can reduce a player below zero.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayLifeEffect {
+    pub amount: Value,
+    pub player: ChooseSpec,
+}
+
+impl PayLifeEffect {
+    pub fn new(amount: impl Into<Value>, player: ChooseSpec) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+        }
+    }
+
+    pub fn with_filter(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self::new(amount, ChooseSpec::Player(player))
+    }
+
+    pub fn you(amount: impl Into<Value>) -> Self {
+        Self::with_filter(amount, PlayerFilter::You)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayAnyEnergyEffect {
     pub player: ChooseSpec,
@@ -391,6 +419,8 @@ pub struct ExileTopOfLibraryEffect {
     pub player: PlayerFilter,
     pub moved_tags: Vec<crate::tag::TagKey>,
     pub accumulated_tags: Vec<crate::tag::TagKey>,
+    /// Whether the cards are exiled face down without being revealed.
+    pub face_down: bool,
 }
 
 impl ExileTopOfLibraryEffect {
@@ -400,6 +430,7 @@ impl ExileTopOfLibraryEffect {
             player,
             moved_tags: Vec::new(),
             accumulated_tags: Vec::new(),
+            face_down: false,
         }
     }
 
@@ -410,6 +441,11 @@ impl ExileTopOfLibraryEffect {
 
     pub fn append_tagged(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
         self.accumulated_tags.push(tag.into());
+        self
+    }
+
+    pub fn face_down(mut self) -> Self {
+        self.face_down = true;
         self
     }
 }
@@ -626,6 +662,7 @@ pub struct GrantPlayTaggedEffect {
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
+    pub during_turns_counter_put_on_source: Option<CounterType>,
     /// True when the granted pool holds more than one card, selecting plural
     /// "cast spells from among those exiled cards" wording over the singular
     /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
@@ -650,6 +687,7 @@ impl GrantPlayTaggedEffect {
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
+            during_turns_counter_put_on_source: None,
             cast_pool_is_plural: false,
         }
     }
@@ -672,6 +710,11 @@ impl GrantPlayTaggedEffect {
 
     pub fn with_filter(mut self, filter: ObjectFilter) -> Self {
         self.filter = Some(filter);
+        self
+    }
+
+    pub fn during_turns_counter_put_on_source(mut self, counter_type: CounterType) -> Self {
+        self.during_turns_counter_put_on_source = Some(counter_type);
         self
     }
 }
@@ -1263,14 +1306,61 @@ impl ChooseCreatureTypeEffect {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CoinFace {
+    Heads,
+    Tails,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CoinFlipKind {
+    Called,
+    FaceOnly,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlipCoinEffect {
     pub player: PlayerFilter,
+    pub kind: CoinFlipKind,
+    pub forced_face: Option<CoinFace>,
+    pub forced_winner: Option<PlayerFilter>,
+    pub forced_loser: Option<PlayerFilter>,
 }
 
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            kind: CoinFlipKind::Called,
+            forced_face: None,
+            forced_winner: None,
+            forced_loser: None,
+        }
+    }
+
+    pub fn face_only(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            kind: CoinFlipKind::FaceOnly,
+            forced_face: None,
+            forced_winner: None,
+            forced_loser: None,
+        }
+    }
+
+    pub fn with_forced_face(mut self, face: CoinFace) -> Self {
+        self.forced_face = Some(face);
+        self
+    }
+
+    pub fn with_forced_winner(mut self, winner: PlayerFilter) -> Self {
+        self.forced_winner = Some(winner);
+        self
+    }
+
+    pub fn with_forced_loser(mut self, loser: PlayerFilter) -> Self {
+        self.forced_loser = Some(loser);
+        self
     }
 }
 
@@ -1342,6 +1432,16 @@ impl EndTurnEffect {
     }
 }
 
+/// Ends the current combat phase using the ordered CR 724.2 procedure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EndCombatPhaseEffect;
+
+impl EndCombatPhaseEffect {
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
 /// Restarts the game, optionally exempting a set of cards from the restart.
 ///
 /// The exempt set remains in exile while every other physical card involved
@@ -1368,6 +1468,22 @@ impl RestartGameEffect {
     pub fn with_source_surface(mut self, source_surface: SourceReferenceSurface) -> Self {
         self.source_surface = Some(source_surface);
         self
+    }
+}
+
+/// Suspends the current game and creates a completely isolated child game.
+///
+/// `nonwinner_effects` are continuation effects executed in the resumed parent
+/// once for each participant who did not win the child game. They are part of
+/// the creating instruction, rather than effects that exist inside the child.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlaySubgameEffect<E> {
+    pub nonwinner_effects: Vec<E>,
+}
+
+impl<E> PlaySubgameEffect<E> {
+    pub fn new(nonwinner_effects: Vec<E>) -> Self {
+        Self { nonwinner_effects }
     }
 }
 
@@ -1994,11 +2110,17 @@ impl WinTheGameEffect {
     }
 }
 
+/// An effect that states that the game is a draw.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DrawTheGameEffect;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastSourceEffect {
     pub without_paying_mana_cost: bool,
     pub require_exile: bool,
     pub cast_as_suspend: bool,
+    /// Cast the source's linked transform-like face instead of its current face.
+    pub cast_other_face: bool,
 }
 
 impl CastSourceEffect {
@@ -2007,6 +2129,7 @@ impl CastSourceEffect {
             without_paying_mana_cost: false,
             require_exile: false,
             cast_as_suspend: false,
+            cast_other_face: false,
         }
     }
 
@@ -2022,6 +2145,11 @@ impl CastSourceEffect {
 
     pub fn cast_as_suspend(mut self) -> Self {
         self.cast_as_suspend = true;
+        self
+    }
+
+    pub fn other_face(mut self) -> Self {
+        self.cast_other_face = true;
         self
     }
 }
@@ -3168,6 +3296,16 @@ pub enum LibraryBottomOrder {
     ChooserChooses,
 }
 
+/// Authored surface for disposing of the exact complement of a tagged
+/// looked/revealed collection. Execution is identical for both variants, but
+/// retaining the surface lets compiled text distinguish a terse "the rest"
+/// instruction from an explicit revealed-card complement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibraryRemainderSurface {
+    Rest,
+    RevealedCardsNotPutOntoBattlefield,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryConsultMode {
     Reveal,
@@ -3180,6 +3318,7 @@ pub struct PutTaggedRemainderOnLibraryBottomEffect {
     pub keep_tagged: Option<TagKey>,
     pub order: LibraryBottomOrder,
     pub player: PlayerFilter,
+    pub surface: LibraryRemainderSurface,
 }
 
 impl PutTaggedRemainderOnLibraryBottomEffect {
@@ -3194,7 +3333,13 @@ impl PutTaggedRemainderOnLibraryBottomEffect {
             keep_tagged,
             order,
             player,
+            surface: LibraryRemainderSurface::Rest,
         }
+    }
+
+    pub fn with_surface(mut self, surface: LibraryRemainderSurface) -> Self {
+        self.surface = surface;
+        self
     }
 }
 
@@ -3564,15 +3709,44 @@ impl<E> SequenceEffect<E> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManaRestrictedEffect<E> {
     pub effects: Vec<E>,
-    pub restrictions: Vec<crate::ManaUsageRestriction>,
+    pub restrictions: Vec<crate::ManaUsageRestriction<E>>,
 }
 
 impl<E> ManaRestrictedEffect<E> {
-    pub fn new(effects: Vec<E>, restrictions: Vec<crate::ManaUsageRestriction>) -> Self {
+    pub fn new(effects: Vec<E>, restrictions: Vec<crate::ManaUsageRestriction<E>>) -> Self {
         Self {
             effects,
             restrictions,
         }
+    }
+}
+
+/// How long mana produced by a wrapped effect is retained in its owner's mana
+/// pool as steps and phases end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ManaRetentionDuration {
+    EndOfCombat,
+    EndOfTurn,
+}
+
+/// Runs child effects while marking every mana unit they produce with a
+/// retention duration.
+///
+/// Retention is carried by the individual mana units rather than by a player
+/// or color, so unrelated mana in the same pool still empties normally.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaRetainedEffect<E> {
+    pub effects: Vec<E>,
+    pub duration: ManaRetentionDuration,
+}
+
+impl<E> ManaRetainedEffect<E> {
+    pub fn new(effects: Vec<E>, duration: ManaRetentionDuration) -> Self {
+        Self { effects, duration }
+    }
+
+    pub fn until_end_of_combat(effects: Vec<E>) -> Self {
+        Self::new(effects, ManaRetentionDuration::EndOfCombat)
     }
 }
 

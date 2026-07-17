@@ -63,8 +63,9 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
     };
     let tapped = if returned.tapped { " tapped" } else { "" };
 
-    Some(format!(
-        "{chooser} {verb} {selection} {origin} to the battlefield{tapped}{where_x}"
+    Some(append_battlefield_entry_counter_surface(
+        format!("{chooser} {verb} {selection} {origin} to the battlefield{tapped}{where_x}"),
+        &returned.enters_with_counters,
     ))
 }
 

@@ -52,15 +52,22 @@ fn tagged_put_counters(
     if put.distributed || put.target_count.is_some() {
         return None;
     }
+    let is_inline_entry_counter = put
+        .amount
+        .has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
     // A counter placed in a later authored clause happens after the object
     // enters. Folding it into the zone move would change replacement-effect
-    // semantics (and erase the authored sentence/"then" boundary).
-    if put
-        .amount
-        .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
-        || put
+    // semantics (and erase the authored sentence/"then" boundary). A counter
+    // explicitly parsed from the producer's own "with ... on it" entry clause
+    // is already typed as entry-time and may carry a broad sentence-level
+    // follow-up hint from an earlier, unrelated "then".
+    if !is_inline_entry_counter
+        && (put
             .amount
-            .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen)
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
+            || put
+                .amount
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen))
     {
         return None;
     }
@@ -116,7 +123,10 @@ fn producer_effect_id(effect: &Effect) -> Option<EffectId> {
     None
 }
 
-fn result_counter_followup(effect: &Effect, producer_id: Option<EffectId>) -> Option<CounterFollowup> {
+fn result_counter_followup(
+    effect: &Effect,
+    producer_id: Option<EffectId>,
+) -> Option<CounterFollowup> {
     let producer_id = producer_id?;
     let if_effect = effect.downcast_ref::<crate::effects::IfEffect>()?;
     if if_effect.condition != producer_id
@@ -162,10 +172,19 @@ fn entry_producer_tag(effect: &Effect) -> Option<TagKey> {
         return entry_producer_tag(&with_id.effect);
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
-        return schedule
-            .effects
-            .iter()
-            .find_map(entry_producer_tag);
+        return schedule.effects.iter().find_map(entry_producer_tag);
+    }
+    if let Some(return_effect) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+        && let ChooseSpec::Tagged(tag) = return_effect.target.base()
+    {
+        return Some(tag.clone());
+    }
+    if let Some(move_effect) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && move_effect.zone == Zone::Battlefield
+        && let ChooseSpec::Tagged(tag) = move_effect.target.base()
+    {
+        return Some(tag.clone());
     }
     None
 }
@@ -202,8 +221,8 @@ fn producer_characteristic_filter(effect: &Effect, tag: &TagKey) -> Option<Objec
         if &tagged.tag == tag {
             if let Some(return_effect) = tagged
                 .effect
-                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
-            {
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
+            ) {
                 return characteristic_filter_from_choose_spec(&return_effect.target);
             }
             if let Some(move_effect) = tagged
@@ -236,8 +255,8 @@ fn attach_counter_to_producer(
         if &tagged.tag == tag {
             if let Some(return_effect) = tagged
                 .effect
-                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
-            {
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
+            ) {
                 let replacement = return_effect.clone().with_entry_counter(counter.clone());
                 return Some(Effect::new(crate::effects::TaggedEffect::new(
                     tagged.tag.clone(),
@@ -275,6 +294,22 @@ fn attach_counter_to_producer(
             }
         }
     }
+    if let Some(return_effect) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+        && matches!(return_effect.target.base(), ChooseSpec::Tagged(target) if target == tag)
+    {
+        return Some(Effect::new(
+            return_effect.clone().with_entry_counter(counter.clone()),
+        ));
+    }
+    if let Some(move_effect) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && move_effect.zone == Zone::Battlefield
+        && matches!(move_effect.target.base(), ChooseSpec::Tagged(target) if target == tag)
+    {
+        return Some(Effect::new(
+            move_effect.clone().with_entry_counter(counter.clone()),
+        ));
+    }
     None
 }
 
@@ -283,6 +318,17 @@ fn build_counter_spec(
     followup: CounterFollowup,
     result_wrapper: bool,
 ) -> BattlefieldEntryCounterSpec {
+    fn consume_inline_entry_surface(amount: crate::effect::Value) -> crate::effect::Value {
+        if !amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        {
+            return amount;
+        }
+        amount
+            .without_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .without_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen)
+            .without_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
+    }
+
     let tag = followup.tag().clone();
     let inferred_filter = producer_characteristic_filter(producer, &tag);
     match followup {
@@ -292,7 +338,7 @@ fn build_counter_spec(
             ..
         } => BattlefieldEntryCounterSpec::new(
             counter_type,
-            amount,
+            consume_inline_entry_surface(amount),
             BattlefieldEntryCounterSurface::Inline,
         )
         .for_matching_object_optional(inferred_filter),
@@ -309,8 +355,12 @@ fn build_counter_spec(
             } else {
                 BattlefieldEntryCounterSurface::ItEntersIfObject
             };
-            BattlefieldEntryCounterSpec::new(counter_type, amount, surface)
-                .for_matching_object(filter)
+            BattlefieldEntryCounterSpec::new(
+                counter_type,
+                consume_inline_entry_surface(amount),
+                surface,
+            )
+            .for_matching_object(filter)
         }
         CounterFollowup::Conditional {
             counter_type,
@@ -320,7 +370,7 @@ fn build_counter_spec(
         } => {
             let mut spec = BattlefieldEntryCounterSpec::new(
                 counter_type,
-                amount,
+                consume_inline_entry_surface(amount),
                 BattlefieldEntryCounterSurface::ThatObjectEntersIfCondition,
             )
             .with_condition(condition);
@@ -368,6 +418,11 @@ fn rewrite_nested_effect(effect: &Effect) -> Effect {
         fuse_effect_list(&mut replacement.effects);
         return Effect::new(replacement);
     }
+    if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
+        let mut replacement = reflexive.clone();
+        fuse_effect_list(&mut replacement.effects);
+        return Effect::new(replacement);
+    }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
         let mut replacement = choose_mode.clone();
         for mode in &mut replacement.modes {
@@ -377,6 +432,11 @@ fn rewrite_nested_effect(effect: &Effect) -> Effect {
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         let mut replacement = sequence.clone();
+        fuse_effect_list(&mut replacement.effects);
+        return Effect::new(replacement);
+    }
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        let mut replacement = may.clone();
         fuse_effect_list(&mut replacement.effects);
         return Effect::new(replacement);
     }
@@ -395,24 +455,22 @@ fn fuse_effect_list(effects: &mut Vec<Effect>) {
             continue;
         };
         let producer_id = producer_effect_id(&effects[index]);
-        let (followup, result_wrapper) = if let Some(followup) =
-            result_counter_followup(&effects[index + 1], producer_id)
-        {
-            (followup, true)
-        } else if let Some(followup) = counter_followup(&effects[index + 1]) {
-            (followup, false)
-        } else {
-            index += 1;
-            continue;
-        };
+        let (followup, result_wrapper) =
+            if let Some(followup) = result_counter_followup(&effects[index + 1], producer_id) {
+                (followup, true)
+            } else if let Some(followup) = counter_followup(&effects[index + 1]) {
+                (followup, false)
+            } else {
+                index += 1;
+                continue;
+            };
         if followup.tag() != &producer_tag {
             index += 1;
             continue;
         }
 
         let spec = build_counter_spec(&effects[index], followup, result_wrapper);
-        let Some(rewritten) =
-            attach_counter_to_producer(&effects[index], &producer_tag, &spec)
+        let Some(rewritten) = attach_counter_to_producer(&effects[index], &producer_tag, &spec)
         else {
             index += 1;
             continue;

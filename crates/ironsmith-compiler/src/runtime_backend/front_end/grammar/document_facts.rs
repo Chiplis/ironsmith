@@ -1,4 +1,4 @@
-use super::super::ir::{DocumentSemanticFacts, OverloadRewritePayload};
+use super::super::ir::{CleaveRewritePayload, DocumentSemanticFacts, OverloadRewritePayload};
 use super::super::lexer::OwnedLexToken;
 use super::primitives;
 
@@ -10,6 +10,10 @@ fn parse_overload_keyword_tokens(tokens: &[OwnedLexToken]) -> Option<OverloadKey
     Some(OverloadKeywordLine)
 }
 
+fn is_cleave_keyword_tokens(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(tokens, primitives::kw("cleave")).is_some()
+}
+
 /// Builds document-wide facts while the front end still owns the lexed Oracle
 /// text. The overload payload is consumed before preparation and lowering.
 pub(crate) fn parse_document_semantic_facts<'a>(
@@ -17,10 +21,13 @@ pub(crate) fn parse_document_semantic_facts<'a>(
 ) -> DocumentSemanticFacts {
     let mut overload_keyword_line_index = None;
     let mut overload_target_spans = Vec::new();
+    let mut cleave_keyword_line_index = None;
 
     for (index, tokens) in lines {
         if parse_overload_keyword_tokens(tokens).is_some() {
             overload_keyword_line_index.get_or_insert(index);
+        } else if is_cleave_keyword_tokens(tokens) {
+            cleave_keyword_line_index.get_or_insert(index);
         } else {
             overload_target_spans.extend(
                 tokens
@@ -38,6 +45,8 @@ pub(crate) fn parse_document_semantic_facts<'a>(
                 target_spans: overload_target_spans,
             }
         }),
+        cleave_rewrite: cleave_keyword_line_index
+            .map(|keyword_line_index| CleaveRewritePayload { keyword_line_index }),
     }
 }
 
@@ -65,5 +74,27 @@ mod tests {
         assert_eq!(payload.keyword_line_index, 1);
         assert_eq!(payload.target_spans.len(), 1);
         assert_eq!(payload.target_spans[0].line, 0);
+    }
+
+    #[test]
+    fn builds_typed_cleave_rewrite_payload() {
+        let lines = "Cleave {1}{U}\nReturn target permanent [you control] to its owner's hand."
+            .lines()
+            .enumerate()
+            .map(|(index, line)| lex_line(line.trim(), index).expect("document fact fixture"))
+            .collect::<Vec<_>>();
+        let facts = parse_document_semantic_facts(
+            lines
+                .iter()
+                .enumerate()
+                .map(|(index, tokens)| (index, tokens.as_slice())),
+        );
+        assert_eq!(
+            facts
+                .cleave_rewrite
+                .expect("cleave should request a rewrite")
+                .keyword_line_index,
+            0
+        );
     }
 }

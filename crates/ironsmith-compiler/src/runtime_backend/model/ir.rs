@@ -15,6 +15,7 @@ pub(crate) struct RewriteSemanticDocument {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<RewriteSemanticItem>,
     pub(crate) overload_items: Option<Vec<RewriteSemanticItem>>,
+    pub(crate) cleave_items: Option<Vec<RewriteSemanticItem>>,
     pub(crate) allow_unsupported: bool,
 }
 
@@ -24,12 +25,18 @@ pub(crate) struct RewriteSemanticDocument {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct DocumentSemanticFacts {
     pub(crate) overload_rewrite: Option<OverloadRewritePayload>,
+    pub(crate) cleave_rewrite: Option<CleaveRewritePayload>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OverloadRewritePayload {
     pub(crate) keyword_line_index: usize,
     pub(crate) target_spans: Vec<crate::cards::TextSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CleaveRewritePayload {
+    pub(crate) keyword_line_index: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +165,7 @@ pub(crate) struct RewriteModalMode {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) point_cost: Option<u32>,
+    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
     pub(crate) effects_ast: Vec<EffectAst>,
 }
 
@@ -178,6 +186,7 @@ pub(crate) struct RewriteLevelItem {
 pub(crate) struct RewriteSagaChapterLine {
     pub(crate) info: LineInfo,
     pub(crate) chapters: Vec<u32>,
+    pub(crate) presentation_label: Option<PresentationLabel>,
     #[cfg(test)]
     pub(crate) text: String,
     pub(crate) effects_ast: Vec<EffectAst>,

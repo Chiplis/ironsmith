@@ -94,10 +94,10 @@ impl EffectExecutor for BeholdEffect {
         use crate::decisions::context::ViewCardsContext;
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
-        use crate::effects::helpers::resolve_player_filter;
         use crate::zone::Zone;
 
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let required = self.count as usize;
         if required == 0 {
             return Ok(EffectOutcome::resolved());
@@ -158,7 +158,7 @@ impl EffectExecutor for BeholdEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
-        let subtype_name = self.subtype.to_string().to_ascii_lowercase();
+        let subtype_name = self.subtype.to_string();
         if self.count == 1 {
             return Some(format!("Behold a {}", subtype_name));
         }

@@ -5,8 +5,9 @@ use crate::{
     Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType,
     ChoiceCount, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
     DerivedAlternativeCast, GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission,
-    ObjectFilter, PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype,
-    SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Until, Value, Zone,
+    ObjectFilter, PlayerFilter, PresentationLabel, ProtectionFrom, ResolutionProgram, Restriction,
+    StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Until, Value,
+    Zone,
 };
 
 mod grants;
@@ -126,6 +127,119 @@ pub struct PregameRevealFromOpeningHandSpec {
     pub effect_before_timing: bool,
 }
 
+/// A typed predicate for the starting-deck condition of CR 702.139 companion.
+///
+/// The variants describe reusable card/deck properties rather than named
+/// companion cards, so setup validation is independent of a card's identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompanionDeckCondition {
+    OnlyManaValueParity {
+        even: bool,
+        lands_are_exempt: bool,
+    },
+    NoRepeatedManaSymbols,
+    CreatureSubtypes(Vec<Subtype>),
+    NonlandManaValueAtLeast(u32),
+    PermanentManaValueAtMost(u32),
+    UniqueNonlandNames,
+    SharedNonlandCardType,
+    CardsAboveMinimumDeckSize(usize),
+    PermanentsHaveActivatedAbility,
+}
+
+/// Immutable facts used to validate a companion against one starting-deck card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionDeckCardFacts {
+    pub name: String,
+    pub mana_cost: Option<ManaCost>,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub has_all_creature_types: bool,
+    pub has_activated_ability: bool,
+}
+
+impl CompanionDeckCondition {
+    /// Evaluate this condition against the complete starting deck.
+    pub fn is_fulfilled_by(
+        &self,
+        deck: &[CompanionDeckCardFacts],
+        minimum_deck_size: usize,
+    ) -> bool {
+        use std::collections::HashSet;
+
+        let is_land = |card: &CompanionDeckCardFacts| {
+            card.card_types.contains(&CardType::Land)
+        };
+        let is_permanent = |card: &CompanionDeckCardFacts| {
+            card.card_types.iter().any(|card_type| {
+                matches!(
+                    card_type,
+                    CardType::Artifact
+                        | CardType::Battle
+                        | CardType::Creature
+                        | CardType::Enchantment
+                        | CardType::Land
+                        | CardType::Planeswalker
+                )
+            })
+        };
+        let mana_value = |card: &CompanionDeckCardFacts| {
+            card.mana_cost.as_ref().map_or(0, ManaCost::mana_value)
+        };
+
+        match self {
+            Self::OnlyManaValueParity {
+                even,
+                lands_are_exempt,
+            } => deck.iter().all(|card| {
+                (*lands_are_exempt && is_land(card)) || (mana_value(card) % 2 == 0) == *even
+            }),
+            Self::NoRepeatedManaSymbols => deck.iter().all(|card| {
+                let mut symbols = HashSet::new();
+                card.mana_cost.as_ref().is_none_or(|cost| {
+                    cost.pips()
+                        .iter()
+                        .all(|symbol| symbols.insert(symbol.as_slice()))
+                })
+            }),
+            Self::CreatureSubtypes(allowed) => deck.iter().all(|card| {
+                !card.card_types.contains(&CardType::Creature)
+                    || card.has_all_creature_types
+                    || card.subtypes.iter().any(|subtype| allowed.contains(subtype))
+            }),
+            Self::NonlandManaValueAtLeast(minimum) => deck
+                .iter()
+                .all(|card| is_land(card) || mana_value(card) >= *minimum),
+            Self::PermanentManaValueAtMost(maximum) => deck
+                .iter()
+                .all(|card| !is_permanent(card) || mana_value(card) <= *maximum),
+            Self::UniqueNonlandNames => {
+                let mut names = HashSet::new();
+                deck.iter().filter(|card| !is_land(card)).all(|card| {
+                    names.insert(card.name.trim().to_ascii_lowercase())
+                })
+            }
+            Self::SharedNonlandCardType => {
+                let mut nonlands = deck.iter().filter(|card| !is_land(card));
+                let Some(first) = nonlands.next() else {
+                    return true;
+                };
+                first.card_types.iter().any(|shared_type| {
+                    nonlands
+                        .clone()
+                        .all(|card| card.card_types.contains(shared_type))
+                })
+            }
+            Self::CardsAboveMinimumDeckSize(additional) => {
+                deck.len() >= minimum_deck_size.saturating_add(*additional)
+            }
+            Self::PermanentsHaveActivatedAbility => deck
+                .iter()
+                .all(|card| !is_permanent(card) || card.has_activated_ability),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCastRestrictionKind {
     pub label: String,
@@ -230,6 +344,26 @@ pub struct StaticAbility<T, E, C, Cond> {
     pub payload: StaticAbilityPayload<T, E, C, Cond>,
 }
 
+/// How an ability-loss continuous effect treats later attempts to grant the
+/// same ability.
+///
+/// Ordinary "lose" effects remain timestamp ordered in layer 6. The two
+/// prohibition modes additionally prevent the affected object from regaining
+/// the removed ability while the effect applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AbilityLossMode {
+    #[default]
+    Lose,
+    LoseAndCantGain,
+    LoseAndCantHaveOrGain,
+}
+
+impl AbilityLossMode {
+    pub const fn prohibits_gain(self) -> bool {
+        !matches!(self, Self::Lose)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerToughnessChoiceOption<T, E, C, Cond> {
     pub power: i32,
@@ -263,6 +397,7 @@ impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
 pub enum StaticAbilityPayload<T, E, C, Cond> {
     #[default]
     None,
+    Companion(CompanionDeckCondition),
     Anthem(Anthem),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
     AttachedChosenLandwalkGrant(AttachedChosenLandwalkGrant),
@@ -273,6 +408,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     GrantAbility(Box<GrantAbility<T, E, C, Cond>>),
     GrantObjectAbilityForFilter(Box<GrantObjectAbilityForFilter<T, E, C, Cond>>),
     CopyActivatedAbilities(CopyActivatedAbilities),
+    CopyStaticAbilityVariants(CopyStaticAbilityVariants),
     CopyTriggeredAbilities(CopyTriggeredAbilities),
     CostReduction(CostReduction),
     CostReductionManaCost(CostReductionManaCost),
@@ -309,6 +445,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         text: String,
         effects: Vec<E>,
     },
+    BandsWithOther(ObjectFilter),
+    Dredge(u32),
+    CounterLimit {
+        counter_type: CounterType,
+        maximum: u32,
+        display: String,
+    },
     Ward(TotalCost<C>),
     Morph(TotalCost<C>),
     Disguise(TotalCost<C>),
@@ -322,6 +465,16 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes(Vec<CardType>),
     CantAttackUnlessCondition {
         condition: CantAttackUnlessConditionSpec,
+        display: String,
+    },
+    /// A cost that must be paid for a matching creature to block a matching
+    /// attacker. The total cost is locked from this payload when blockers are
+    /// declared (CR 509.1d), rather than recomputed during payment.
+    BlockCost {
+        blockers: ObjectFilter,
+        blocker_is_attached_to_source: bool,
+        attackers: ObjectFilter,
+        cost: TotalCost<C>,
         display: String,
     },
     MayChooseNotToUntapDuringUntapStep(String),
@@ -409,6 +562,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         linked_trigger: Option<TriggeredAbility<T, E>>,
         display: String,
     },
+    EnlistAttack {
+        linked_trigger: TriggeredAbility<T, E>,
+        display: String,
+    },
     EquipmentGrant(Vec<StaticAbility<T, E, C, Cond>>),
     SoulbondSharedPowerToughness {
         power: i32,
@@ -419,6 +576,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     RemoveAbilityForFilter {
         filter: ObjectFilter,
         ability: Box<StaticAbility<T, E, C, Cond>>,
+        mode: AbilityLossMode,
+    },
+    RemoveObjectAbilitiesForFilter {
+        filter: ObjectFilter,
+        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        display: String,
+        mode: AbilityLossMode,
     },
     RemoveAllAbilities(ObjectFilter),
     RemoveAllAbilitiesExceptMana(ObjectFilter),
@@ -523,6 +687,18 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
         display: String,
     },
+    /// A structured resolution program performed as the source enters.
+    ///
+    /// Unlike an ordinary permanent spell effect, this also applies when the
+    /// card enters without being cast. `subject` retains only the authored
+    /// self-kind (for example, "this Vehicle") for canonical rendering.
+    AsEntersEffectProgram {
+        program: ResolutionProgram<E>,
+        subject: String,
+        also_turns_face_up: bool,
+        uses_enters_with_counter_surface: bool,
+        presentation_label: Option<PresentationLabel>,
+    },
     EntersWithCharacteristicsForFilter {
         filter: ObjectFilter,
         card_types: Vec<CardType>,
@@ -618,6 +794,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         replacement_effects: Vec<E>,
         display: String,
     },
+    LoseGameReplacement {
+        replacement_effects: Vec<E>,
+        optional: bool,
+        display: String,
+    },
     DrawReplacementRevealTopMatchingToHandRestBottom {
         count: u32,
         filter: ObjectFilter,
@@ -703,7 +884,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
 pub struct DieRollResultAdjustment {
     pub player: PlayerFilter,
     pub life_cost: u32,
+    pub mana_cost: Option<crate::mana::ManaCost>,
     pub amount: u32,
+    pub reroll: bool,
     pub once_each_turn: bool,
     pub display: String,
 }
@@ -768,14 +951,18 @@ where
         {
             Ok(ActivatedAbility {
                 mana_cost: map_total_cost(activated.mana_cost, map_cost)?,
-                effects: activated.effects.try_map_effects(map_effect)?,
+                effects: activated.effects.try_map_effects(&mut *map_effect)?,
                 choices: activated.choices,
                 timing: activated.timing,
                 additional_restrictions: activated.additional_restrictions,
                 activation_restrictions: activated.activation_restrictions,
                 mana_output: activated.mana_output,
                 activation_condition: activated.activation_condition,
-                mana_usage_restrictions: activated.mana_usage_restrictions,
+                mana_usage_restrictions: activated
+                    .mana_usage_restrictions
+                    .into_iter()
+                    .map(|restriction| restriction.try_map_effects(&mut *map_effect))
+                    .collect::<Result<Vec<_>, Err>>()?,
                 is_loyalty_ability: activated.is_loyalty_ability,
             })
         }
@@ -966,6 +1153,9 @@ where
         {
             let payload = match ability.payload {
             StaticAbilityPayload::None => StaticAbilityPayload::None,
+            StaticAbilityPayload::Companion(condition) => {
+                StaticAbilityPayload::Companion(condition)
+            }
             StaticAbilityPayload::ConditionalSpellKeyword(spec) => {
                 StaticAbilityPayload::ConditionalSpellKeyword(spec)
             }
@@ -991,6 +1181,11 @@ where
                 let grant = *grant;
                 StaticAbilityPayload::AttachedAbilityGrant(Box::new(AttachedAbilityGrant {
                     ability: map_ability(grant.ability, map_trigger, map_effect, map_cost)?,
+                    additional_abilities: grant
+                        .additional_abilities
+                        .into_iter()
+                        .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                        .collect::<Result<Vec<_>, _>>()?,
                     display: grant.display,
                     condition: grant.condition,
                 }))
@@ -1029,6 +1224,11 @@ where
                             map_effect,
                             map_cost,
                         )?,
+                        additional_abilities: grant
+                            .additional_abilities
+                            .into_iter()
+                            .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                            .collect::<Result<Vec<_>, _>>()?,
                         display: grant.display,
                         condition: grant.condition,
                         set_quantifier_surface: grant.set_quantifier_surface,
@@ -1037,6 +1237,9 @@ where
             }
             StaticAbilityPayload::CopyActivatedAbilities(copy) => {
                 StaticAbilityPayload::CopyActivatedAbilities(copy)
+            }
+            StaticAbilityPayload::CopyStaticAbilityVariants(copy) => {
+                StaticAbilityPayload::CopyStaticAbilityVariants(copy)
             }
             StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
                 StaticAbilityPayload::CopyTriggeredAbilities(copy)
@@ -1124,6 +1327,19 @@ where
                     effects: mapped_effects,
                 }
             }
+            StaticAbilityPayload::BandsWithOther(filter) => {
+                StaticAbilityPayload::BandsWithOther(filter)
+            }
+            StaticAbilityPayload::Dredge(amount) => StaticAbilityPayload::Dredge(amount),
+            StaticAbilityPayload::CounterLimit {
+                counter_type,
+                maximum,
+                display,
+            } => StaticAbilityPayload::CounterLimit {
+                counter_type,
+                maximum,
+                display,
+            },
             StaticAbilityPayload::Ward(cost) => {
                 StaticAbilityPayload::Ward(map_total_cost(cost, map_cost)?)
             }
@@ -1162,6 +1378,19 @@ where
             StaticAbilityPayload::CantAttackUnlessCondition { condition, display } => {
                 StaticAbilityPayload::CantAttackUnlessCondition { condition, display }
             }
+            StaticAbilityPayload::BlockCost {
+                blockers,
+                blocker_is_attached_to_source,
+                attackers,
+                cost,
+                display,
+            } => StaticAbilityPayload::BlockCost {
+                blockers,
+                blocker_is_attached_to_source,
+                attackers,
+                cost: map_total_cost(cost, map_cost)?,
+                display,
+            },
             StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject) => {
                 StaticAbilityPayload::MayChooseNotToUntapDuringUntapStep(subject)
             }
@@ -1273,6 +1502,13 @@ where
                     .transpose()?,
                 display,
             },
+            StaticAbilityPayload::EnlistAttack {
+                linked_trigger,
+                display,
+            } => StaticAbilityPayload::EnlistAttack {
+                linked_trigger: map_triggered(linked_trigger, map_trigger, map_effect)?,
+                display,
+            },
             StaticAbilityPayload::EquipmentGrant(abilities) => {
                 let mut mapped = Vec::with_capacity(abilities.len());
                 for ability in abilities {
@@ -1304,7 +1540,11 @@ where
                     map_cost,
                 )?))
             }
-            StaticAbilityPayload::RemoveAbilityForFilter { filter, ability } => {
+            StaticAbilityPayload::RemoveAbilityForFilter {
+                filter,
+                ability,
+                mode,
+            } => {
                 StaticAbilityPayload::RemoveAbilityForFilter {
                     filter,
                     ability: Box::new(map_static_ability(
@@ -1313,8 +1553,23 @@ where
                         map_effect,
                         map_cost,
                     )?),
+                    mode,
                 }
             }
+            StaticAbilityPayload::RemoveObjectAbilitiesForFilter {
+                filter,
+                abilities,
+                display,
+                mode,
+            } => StaticAbilityPayload::RemoveObjectAbilitiesForFilter {
+                filter,
+                abilities: abilities
+                    .into_iter()
+                    .map(|ability| map_ability(ability, map_trigger, map_effect, map_cost))
+                    .collect::<Result<Vec<_>, _>>()?,
+                display,
+                mode,
+            },
             StaticAbilityPayload::RemoveAllAbilities(filter) => {
                 StaticAbilityPayload::RemoveAllAbilities(filter)
             }
@@ -1471,7 +1726,7 @@ where
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
                         })
-                    })
+                })
                     .collect::<Result<Vec<_>, _>>()?,
                 display,
             },
@@ -1507,6 +1762,19 @@ where
                     display,
                 }
             }
+            StaticAbilityPayload::AsEntersEffectProgram {
+                program,
+                subject,
+                also_turns_face_up,
+                uses_enters_with_counter_surface,
+                presentation_label,
+            } => StaticAbilityPayload::AsEntersEffectProgram {
+                program: program.try_map_effects(|effect| map_effect(effect))?,
+                subject,
+                also_turns_face_up,
+                uses_enters_with_counter_surface,
+                presentation_label,
+            },
             StaticAbilityPayload::EntersWithCharacteristicsForFilter {
                 filter,
                 card_types,
@@ -1685,6 +1953,18 @@ where
                     .into_iter()
                     .map(map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
+            StaticAbilityPayload::LoseGameReplacement {
+                replacement_effects,
+                optional,
+                display,
+            } => StaticAbilityPayload::LoseGameReplacement {
+                replacement_effects: replacement_effects
+                    .into_iter()
+                    .map(map_effect)
+                    .collect::<Result<Vec<_>, _>>()?,
+                optional,
                 display,
             },
             StaticAbilityPayload::DrawReplacementRevealTopMatchingToHandRestBottom {
@@ -1922,6 +2202,13 @@ impl<
                 payload: StaticAbilityPayload::CopyActivatedAbilities(payload.clone()),
             };
         }
+        if let Some(payload) = label_any.downcast_ref::<CopyStaticAbilityVariants>() {
+            return Self {
+                id: Some(StaticAbilityId::CopyStaticAbilityVariants),
+                label: payload.display.clone(),
+                payload: StaticAbilityPayload::CopyStaticAbilityVariants(payload.clone()),
+            };
+        }
         if let Some(payload) = label_any.downcast_ref::<CopyTriggeredAbilities>() {
             return Self {
                 id: Some(StaticAbilityId::CopyTriggeredAbilities),
@@ -2050,7 +2337,31 @@ impl<
             payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
                 player,
                 life_cost,
+                mana_cost: None,
                 amount,
+                reroll: false,
+                once_each_turn,
+                display,
+            }),
+        }
+    }
+
+    pub fn die_roll_reroll(
+        player: PlayerFilter,
+        mana_cost: crate::mana::ManaCost,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DieRollResultAdjustment),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
+                player,
+                life_cost: 0,
+                mana_cost: Some(mana_cost),
+                amount: 0,
+                reroll: true,
                 once_each_turn,
                 display,
             }),
@@ -2102,6 +2413,22 @@ impl<
             return ability;
         }
         Self::identified(StaticAbilityId::KeywordMarker, text)
+    }
+
+    pub fn dredge(amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Dredge),
+            label: format!("Dredge {amount}"),
+            payload: StaticAbilityPayload::Dredge(amount),
+        }
+    }
+
+    pub fn bands_with_other(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::BandsWithOther),
+            label: display.into(),
+            payload: StaticAbilityPayload::BandsWithOther(filter),
+        }
     }
 
     pub fn splice(quality: SpliceQuality, cost: TotalCost<C>) -> Self
@@ -2168,8 +2495,24 @@ impl<
         Self::identified(StaticAbilityId::KeywordFallbackText, text)
     }
 
+    pub fn companion(condition: CompanionDeckCondition, text: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Companion),
+            label: text.into(),
+            payload: StaticAbilityPayload::Companion(condition),
+        }
+    }
+
     pub fn draft_rule_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::DraftRuleText, text)
+    }
+
+    pub fn hidden_agenda() -> Self {
+        Self::identified(StaticAbilityId::HiddenAgenda, "Hidden agenda")
+    }
+
+    pub fn double_agenda() -> Self {
+        Self::identified(StaticAbilityId::DoubleAgenda, "Double agenda")
     }
 
     pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
@@ -2225,6 +2568,7 @@ impl<
             "affinity for artifacts" => Self::affinity_for_artifacts(),
             "delve" => Self::delve(),
             "changeling" => Self::changeling(),
+            "space sculptor" => Self::space_sculptor(),
             "this creature can't be blocked" | "can't be blocked" => Self::unblockable(),
             "plainswalk" => Self::landwalk(Subtype::Plains),
             "islandwalk" => Self::landwalk(Subtype::Island),
@@ -2830,6 +3174,9 @@ impl<
     pub fn start_your_engines() -> Self {
         Self::identified(StaticAbilityId::StartYourEngines, "start your engines")
     }
+    pub fn space_sculptor() -> Self {
+        Self::identified(StaticAbilityId::SpaceSculptor, "space sculptor")
+    }
     pub fn assist() -> Self {
         Self::identified(StaticAbilityId::Assist, "assist")
     }
@@ -2904,6 +3251,44 @@ impl<
             id: Some(StaticAbilityId::CantAttackUnlessCondition),
             label: display.clone(),
             payload: StaticAbilityPayload::CantAttackUnlessCondition { condition, display },
+        }
+    }
+    pub fn block_cost(
+        blockers: ObjectFilter,
+        attackers: ObjectFilter,
+        cost: TotalCost<C>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::BlockCost),
+            label: display.clone(),
+            payload: StaticAbilityPayload::BlockCost {
+                blockers,
+                blocker_is_attached_to_source: false,
+                attackers,
+                cost,
+                display,
+            },
+        }
+    }
+    pub fn attached_block_cost(
+        blockers: ObjectFilter,
+        attackers: ObjectFilter,
+        cost: TotalCost<C>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::BlockCost),
+            label: display.clone(),
+            payload: StaticAbilityPayload::BlockCost {
+                blockers,
+                blocker_is_attached_to_source: true,
+                attackers,
+                cost,
+                display,
+            },
         }
     }
     pub fn cant_attack_its_owner() -> Self {
@@ -3257,6 +3642,20 @@ impl<
             },
         }
     }
+    pub fn enlist_attack(
+        linked_trigger: TriggeredAbility<T, E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EnlistAttack),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EnlistAttack {
+                linked_trigger,
+                display,
+            },
+        }
+    }
     pub fn cant_attack_you_unless_controller_pays_per_attacker(cost: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttacker),
@@ -3348,6 +3747,22 @@ impl<
             StaticAbilityId::CantHaveCountersPlaced,
             "cant have counters placed",
         )
+    }
+    pub fn counter_limit(
+        counter_type: CounterType,
+        maximum: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::CounterLimit),
+            label: display.clone(),
+            payload: StaticAbilityPayload::CounterLimit {
+                counter_type,
+                maximum,
+                display,
+            },
+        }
     }
     pub fn cant_be_countered_ability() -> Self {
         Self::identified(
@@ -3746,6 +4161,31 @@ impl<
             payload: StaticAbilityPayload::EnterAsCopyAsEnters { spec, display },
         }
     }
+    pub fn as_enters_effect_program(
+        program: ResolutionProgram<E>,
+        subject: impl Into<String>,
+        also_turns_face_up: bool,
+        uses_enters_with_counter_surface: bool,
+        presentation_label: Option<PresentationLabel>,
+    ) -> Self {
+        let subject = subject.into();
+        let label = if also_turns_face_up {
+            format!("As {subject} enters or is turned face up")
+        } else {
+            format!("As {subject} enters")
+        };
+        Self {
+            id: Some(StaticAbilityId::AsEntersEffectProgram),
+            label,
+            payload: StaticAbilityPayload::AsEntersEffectProgram {
+                program,
+                subject,
+                also_turns_face_up,
+                uses_enters_with_counter_surface,
+                presentation_label,
+            },
+        }
+    }
     pub fn choose_color_as_enters(_excluded: Option<Color>, _display: impl Into<String>) -> Self {
         Self {
             id: Some(StaticAbilityId::ChooseColorAsEnters),
@@ -4077,12 +4517,47 @@ impl<
         }
     }
     pub fn remove_ability(filter: ObjectFilter, ability: StaticAbility<T, E, C, Cond>) -> Self {
+        Self::remove_ability_with_mode(filter, ability, AbilityLossMode::Lose)
+    }
+
+    pub fn remove_ability_with_mode(
+        filter: ObjectFilter,
+        ability: StaticAbility<T, E, C, Cond>,
+        mode: AbilityLossMode,
+    ) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveAbilityForFilter),
             label: format!("remove {}", ability.display()),
             payload: StaticAbilityPayload::RemoveAbilityForFilter {
                 filter,
                 ability: Box::new(ability),
+                mode,
+            },
+        }
+    }
+    pub fn remove_object_abilities(
+        filter: ObjectFilter,
+        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::remove_object_abilities_with_mode(filter, abilities, display, AbilityLossMode::Lose)
+    }
+
+    pub fn remove_object_abilities_with_mode(
+        filter: ObjectFilter,
+        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+        display: impl Into<String>,
+        mode: AbilityLossMode,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RemoveAbilityForFilter),
+            label: format!("remove {display}"),
+            payload: StaticAbilityPayload::RemoveObjectAbilitiesForFilter {
+                filter,
+                abilities,
+                display,
+                mode,
             },
         }
     }
@@ -4226,6 +4701,23 @@ impl<
             payload: StaticAbilityPayload::ConditionalDrawReplacement {
                 condition,
                 replacement_effects,
+                display,
+            },
+        }
+    }
+
+    pub fn lose_game_replacement(
+        replacement_effects: Vec<E>,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::LoseGameReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::LoseGameReplacement {
+                replacement_effects,
+                optional,
                 display,
             },
         }
@@ -4576,6 +5068,13 @@ impl<
             id: Some(StaticAbilityId::CopyActivatedAbilities),
             label: "copy activated abilities".to_string(),
             payload: StaticAbilityPayload::CopyActivatedAbilities(copy),
+        }
+    }
+    pub fn copy_static_ability_variants(copy: CopyStaticAbilityVariants) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CopyStaticAbilityVariants),
+            label: copy.display.clone(),
+            payload: StaticAbilityPayload::CopyStaticAbilityVariants(copy),
         }
     }
     pub fn copy_triggered_abilities(copy: CopyTriggeredAbilities) -> Self {

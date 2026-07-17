@@ -6,6 +6,50 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+use crate::target::ObjectFilter;
+
+#[test]
+pub(super) fn legendary_creatures_gain_typed_bands_with_other_quality() {
+    let tokens = lex_line(
+        "Red legendary creatures have bands with other legendary creatures.",
+        0,
+    )
+    .expect("bands-with-other grant should lex");
+    let parsed = super::super::keyword_static::parse_granted_keyword_static_line(&tokens)
+        .expect("bands-with-other grant should parse")
+        .expect("bands-with-other grant should be recognized");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("BandsWithOther"), "{debug}");
+    assert!(debug.contains("Legendary"), "{debug}");
+}
+
+#[test]
+pub(super) fn loses_all_bands_with_other_lowers_to_typed_ability_removal() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Shelkin Brownie Probe")
+        .parse_text(
+            "{T}: Target creature loses all \"bands with other\" abilities until end of turn.",
+        )
+        .expect("bands-with-other loss should parse");
+    let debug = format!("{definition:?}");
+
+    assert!(debug.contains("RemoveAbility"), "{debug}");
+    assert!(debug.contains("BandsWithOther"), "{debug}");
+}
+
+#[test]
+pub(super) fn wolves_of_the_hunt_token_gets_typed_bands_with_other_quality() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Master of the Hunt Probe")
+        .parse_text(
+            "{2}{G}{G}: Create a 1/1 green Wolf creature token named Wolves of the Hunt. It has \"bands with other creatures named Wolves of the Hunt.\"",
+        )
+        .expect("Wolves of the Hunt token definition should parse");
+    let debug = format!("{definition:?}");
+
+    assert!(debug.contains("BandsWithOther"), "{debug}");
+    assert!(debug.contains("Wolves of the Hunt"), "{debug}");
+    assert!(!debug.contains("KeywordFallbackText"), "{debug}");
+}
 
 #[test]
 pub(super) fn rewrite_anthem_grant_static_parses_miracle_reduction_tail_without_word_view() {
@@ -58,6 +102,52 @@ pub(super) fn rewrite_anthem_static_status_condition_uses_subject_status_capture
 
         assert_eq!(parsed, expected, "{text}");
     }
+}
+
+#[test]
+pub(super) fn rewrite_anthem_static_condition_preserves_attacking_alone_semantics() {
+    let tokens = lex_line("it's attacking alone", 0)
+        .expect("rewrite lexer should classify attacking-alone condition");
+    let parsed = super::super::keyword_static::parse_static_condition_clause(&tokens)
+        .expect("attacking-alone condition should parse");
+    let mut attacking_creatures = ObjectFilter::creature();
+    attacking_creatures.attacking = true;
+
+    assert_eq!(
+        parsed,
+        crate::ConditionExpr::And(
+            Box::new(crate::ConditionExpr::SourceIsAttacking),
+            Box::new(crate::ConditionExpr::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(
+                    attacking_creatures,
+                ),
+                comparison: crate::effect::Comparison::Equal(1),
+                display: Some("no other creatures are attacking".to_string()),
+            }),
+        )
+    );
+}
+
+#[test]
+pub(super) fn rewrite_unblockable_line_keeps_full_attacking_alone_condition() {
+    let tokens = lex_line(
+        "This creature can't be blocked as long as it's attacking alone.",
+        0,
+    )
+    .expect("conditional unblockable line should lex");
+    let parsed =
+        super::super::keyword_static::parse_subject_cant_be_blocked_as_long_as_condition_line(
+            &tokens,
+        )
+        .expect("conditional unblockable line should parse")
+        .expect("conditional unblockable line should be recognized");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("Unblockable"), "{debug}");
+    assert!(debug.contains("SourceIsAttacking"), "{debug}");
+    assert!(debug.contains("CountComparison"), "{debug}");
+    assert!(debug.contains("attacking: true"), "{debug}");
+    assert!(debug.contains("Equal(1)"), "{debug}");
 }
 
 #[test]
@@ -457,6 +547,20 @@ pub(super) fn rewrite_unpreventable_damage_followup_marks_previous_damage() {
 }
 
 #[test]
+pub(super) fn self_replacement_damage_keeps_its_unpreventable_rider() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Replacement Damage Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "This spell deals 3 damage to any target. If this spell was kicked, instead it deals 10 damage to that permanent or player and the damage can't be prevented.",
+        )
+        .expect("replacement damage rider should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("SelfReplacementBranch"), "{debug}");
+    assert!(debug.contains("unpreventable: true"), "{debug}");
+}
+
+#[test]
 pub(super) fn rewrite_conditional_self_damage_prevention_preserves_counter_amount() {
     for (name, text, dynamic_amount) in [
         (
@@ -596,6 +700,50 @@ pub(super) fn rewrite_conditional_self_damage_prevention_can_precede_triggered_f
             .any(|ability| matches!(&ability.kind, AbilityKind::Triggered(_))),
         "expected the counter-removal sentence to remain a triggered ability"
     );
+
+    let triggered = compiled
+        .definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected typed counter-removal trigger");
+    let ironsmith_core::TriggerKind::CounterRemovedFrom(counter_removed) = &triggered.trigger.kind
+    else {
+        panic!(
+            "expected CounterRemovedFrom trigger, got {:#?}",
+            triggered.trigger
+        );
+    };
+    assert!(counter_removed.filter.source);
+    assert!(counter_removed.one_or_more);
+    assert!(counter_removed.caused_by_source);
+    assert_eq!(
+        triggered.trigger.intro_surface,
+        Some(ironsmith_core::trigger_model::TriggerIntroSurface::When)
+    );
+
+    let damage = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+        .expect("expected a real damage effect rather than a target-only placeholder");
+    assert!(matches!(
+        damage.amount.unhinted(),
+        Value::EventValue(crate::effect::EventValueSpec::Amount)
+    ));
+    assert!(
+        damage
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
+    );
+    assert!(matches!(
+        damage.target.base(),
+        crate::target::ChooseSpec::AnyTarget
+    ));
 }
 
 #[test]
@@ -1413,6 +1561,42 @@ pub(super) fn raiding_party_per_player_tapped_count_uses_partitioned_metric_scop
 }
 
 #[test]
+pub(super) fn upkeep_participant_dynamic_choice_survives_full_trigger_parsing() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Upkeep Choice Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's upkeep, that player chooses a permanent for each card in their graveyard, then untaps those permanents.",
+        )
+        .expect("participant choice trigger should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("BeginningOfUpkeepTrigger"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("UntapEffect"), "{debug}");
+    assert!(debug.contains("ForEach"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+    assert!(debug.contains("IteratedPlayer"), "{debug}");
+}
+
+#[test]
+pub(super) fn direct_then_each_other_player_choices_form_one_durable_collection() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Participant Choice Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose a nonland permanent you don't control, then each other player chooses a nonland permanent they don't control that hasn't been chosen this way. Destroy all other nonland permanents.",
+        )
+        .expect("direct and participant choices should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.matches("ChooseObjectsEffect").count() >= 2, "{debug}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("NotYou"), "{debug}");
+    assert!(debug.contains("DestroyEffect"), "{debug}");
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+    assert!(debug.contains("__chosen_objects__"), "{debug}");
+}
+
+#[test]
 pub(super) fn filtered_mill_draw_counts_bind_graveyard_and_concrete_mill_tag() {
     for text in [
         "Target player mills four cards. You draw a card for each creature card put into their graveyard this way.",
@@ -2220,7 +2404,7 @@ pub(super) fn search_filter_and_or_keeps_basic_land_and_gate_as_separate_branche
 
     assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
     assert_eq!(
-        filter.union_surface.connective,
+        filter.union_surface.connective(),
         crate::filter::ObjectFilterUnionConnective::AndOr
     );
     assert!(filter.any_of.iter().any(|branch| {

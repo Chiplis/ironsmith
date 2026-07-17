@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::ConditionExpr;
 use crate::cards::builders::ControlDurationAst;
 use crate::effect::Until;
-use crate::runtime_backend::front_end::grammar::{permission_shapes, primitives};
+use crate::runtime_backend::front_end::grammar::{filters, permission_shapes, primitives};
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
 use crate::runtime_backend::front_end::shared::util::{
     source_reference_surface_for_words, this_source_surface_for_words,
@@ -136,6 +136,71 @@ fn has_all_words(tokens: &[OwnedLexToken], words: &[&'static str]) -> bool {
         .all(|word| primitives::contains_word(tokens, word))
 }
 
+fn counter_duration_type(tokens: &[OwnedLexToken]) -> Option<crate::object::CounterType> {
+    let (has_index, _, after_has) =
+        primitives::find_prefix(tokens, || primitives::kw("has"))?;
+    let _ = has_index;
+    let (counter_index, _, _) = primitives::find_prefix(after_has, || {
+        alt((primitives::kw("counter"), primitives::kw("counters"))).void()
+    })?;
+    let mut counter_tokens = trim_lexed_commas(after_has.get(..counter_index)?);
+    if let Some((_, rest)) = primitives::parse_prefix(
+        counter_tokens,
+        opt(alt((primitives::kw("a"), primitives::kw("an")))).void(),
+    ) {
+        counter_tokens = rest;
+    }
+    filters::parse_counter_type_from_tokens(counter_tokens)
+}
+
+fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Option<Until> {
+    use ironsmith_core::{
+        ContinuousDurationObject as ObjectRef, ContinuousDurationPlayer as PlayerRef,
+        ContinuousDurationPredicate as Predicate,
+    };
+
+    if !permission_shapes::contains_tokens(tokens, &["for", "as", "long", "as"]) {
+        return None;
+    }
+
+    if has_all_words(tokens, &["power", "less", "equal", "tapped"]) {
+        return Some(Until::ForAsLongAs(Predicate::all([
+            Predicate::ObjectTapped(ObjectRef::Source),
+            Predicate::ObjectPowerAtMostObject {
+                lesser: ObjectRef::AffectedObject,
+                greater: ObjectRef::Source,
+            },
+        ])));
+    }
+    if has_all_words(tokens, &["aura", "attached", "to"]) {
+        return Some(Until::ForAsLongAs(Predicate::ObjectAttachedTo {
+            attachment: ObjectRef::Tagged(crate::tag::TagKey::from("triggering")),
+            attached_to: ObjectRef::AffectedObject,
+        }));
+    }
+    if primitives::contains_word(tokens, "enchanted") {
+        return Some(Until::ForAsLongAs(Predicate::ObjectIsEnchanted(
+            ObjectRef::AffectedObject,
+        )));
+    }
+    if primitives::contains_word(tokens, "monarch") {
+        return Some(Until::ForAsLongAs(Predicate::PlayerIsMonarch(
+            PlayerRef::ControllerOf(ObjectRef::AffectedObject),
+        )));
+    }
+    if let Some(counter_type) = counter_duration_type(tokens) {
+        return Some(Until::ForAsLongAs(
+            Predicate::affected_object_has_counter(counter_type),
+        ));
+    }
+    if primitives::contains_word(tokens, "tapped") {
+        return Some(Until::ForAsLongAs(Predicate::ObjectTapped(
+            ObjectRef::Source,
+        )));
+    }
+    None
+}
+
 pub(crate) fn parse_control_duration_shape(tokens: &[OwnedLexToken]) -> Option<ControlDurationAst> {
     let tokens = trim_lexed_commas(tokens);
     if tokens.is_empty() {
@@ -161,6 +226,13 @@ pub(crate) fn parse_control_duration_shape(tokens: &[OwnedLexToken]) -> Option<C
 pub(crate) fn parse_permanent_control_duration_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PermanentControlDurationShape> {
+    if let Some(until) = parse_predicate_control_duration(tokens) {
+        return Some(PermanentControlDurationShape {
+            until,
+            condition: None,
+            source_surface: None,
+        });
+    }
     if permission_shapes::contains_tokens(tokens, &["for", "as", "long", "as"])
         && let Some(surface) = parse_source_remains_tapped(tokens)
     {
@@ -217,7 +289,61 @@ mod tests {
             parse_permanent_control_duration_shape(&tapped)
                 .unwrap()
                 .until,
-            Until::SourceUntaps
+            Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                ironsmith_core::ContinuousDurationObject::Source,
+            ))
+        );
+    }
+
+    #[test]
+    fn parses_typed_latched_control_duration_predicates() {
+        use ironsmith_core::{
+            ContinuousDurationObject as ObjectRef, ContinuousDurationPlayer as PlayerRef,
+            ContinuousDurationPredicate as Predicate,
+        };
+
+        let parse = |text| {
+            let tokens = lex_line(text, 0).unwrap();
+            parse_permanent_control_duration_shape(&tokens)
+                .expect("predicate-bearing duration should parse")
+                .until
+        };
+        assert_eq!(
+            parse("for as long as it has a shield counter on it"),
+            Until::ForAsLongAs(Predicate::affected_object_has_counter(
+                crate::object::CounterType::Shield,
+            ))
+        );
+        assert_eq!(
+            parse("for as long as that creature is enchanted"),
+            Until::ForAsLongAs(Predicate::ObjectIsEnchanted(
+                ObjectRef::AffectedObject,
+            ))
+        );
+        assert_eq!(
+            parse("for as long as they're the monarch"),
+            Until::ForAsLongAs(Predicate::PlayerIsMonarch(
+                PlayerRef::ControllerOf(ObjectRef::AffectedObject),
+            ))
+        );
+        assert_eq!(
+            parse("for as long as that Aura is attached to it"),
+            Until::ForAsLongAs(Predicate::ObjectAttachedTo {
+                attachment: ObjectRef::Tagged(crate::tag::TagKey::from("triggering")),
+                attached_to: ObjectRef::AffectedObject,
+            })
+        );
+        assert_eq!(
+            parse(
+                "for as long as this creature remains tapped and that creature's power remains less than or equal to this creature's power",
+            ),
+            Until::ForAsLongAs(Predicate::all([
+                Predicate::ObjectTapped(ObjectRef::Source),
+                Predicate::ObjectPowerAtMostObject {
+                    lesser: ObjectRef::AffectedObject,
+                    greater: ObjectRef::Source,
+                },
+            ]))
         );
     }
 }

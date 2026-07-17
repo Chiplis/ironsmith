@@ -28,6 +28,23 @@ fn return_graveyard_player_surface(
     Ok(resolve_it_tag(filter, &current_reference_env(ctx))?.owner)
 }
 
+/// Preserve a mandatory complete-set discard after subject/player lowering.
+///
+/// `discard all <matching cards>` is parsed as both an eligible-card filter
+/// and a `Value::Count` over that same filter. Player resolution can turn an
+/// authored target-player reference into a follow-up alias on the eligible
+/// filter. Apply that same canonical filter to the count so the runtime still
+/// discards exactly the complete eligible set.
+fn replace_complete_discard_count_filter(value: &mut Value, filter: &ObjectFilter) {
+    match value {
+        Value::SurfaceHinted { value, .. } => {
+            replace_complete_discard_count_filter(value, filter);
+        }
+        Value::Count(count_filter) => *count_filter = filter.clone(),
+        _ => {}
+    }
+}
+
 pub(super) fn compile_subject_verb_late(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -78,9 +95,13 @@ pub(super) fn compile_subject_verb_late(
                         Effect::deal_damage(resolved_amount.clone(), spec)
                     }
                 })?;
-            if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
-                target
-            {
+            if let TargetAst::Player(filter, explicit_target_span) = target {
+                ctx.last_player_filter = Some(if explicit_target_span.is_some() {
+                    PlayerFilter::Target(Box::new(filter.clone()))
+                } else {
+                    as_followup_player_alias(filter.clone())
+                });
+            } else if let TargetAst::PlayerOrPlaneswalker(filter, _) = target {
                 ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
             } else if target_is_any_damage_target(target) {
                 let tag = ctx.next_tag("damaged");
@@ -140,6 +161,7 @@ pub(super) fn compile_subject_verb_late(
             source,
             amount,
             target,
+            unpreventable,
         } => {
             let (source_spec, mut choices) =
                 resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
@@ -181,13 +203,21 @@ pub(super) fn compile_subject_verb_late(
                 && let ChooseSpec::Object(filter) | ChooseSpec::All(filter) =
                     damage_target_spec.base()
             {
+                let damage = if *unpreventable {
+                    Effect::deal_unpreventable_damage(
+                        bind_source_value_to_damage_source(&amount, &per_target_source_spec),
+                        ChooseSpec::Iterated,
+                    )
+                } else {
+                    Effect::deal_damage(
+                        bind_source_value_to_damage_source(&amount, &per_target_source_spec),
+                        ChooseSpec::Iterated,
+                    )
+                };
                 let mut per_target_damage =
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         per_target_source_spec.clone(),
-                        Effect::deal_damage(
-                            bind_source_value_to_damage_source(&amount, &per_target_source_spec),
-                            ChooseSpec::Iterated,
-                        ),
+                        damage,
                     ));
                 if ctx.auto_tag_object_targets {
                     let tag = ctx.next_tag("damaged");
@@ -196,10 +226,18 @@ pub(super) fn compile_subject_verb_late(
                 }
                 effects.push(Effect::for_each(filter.clone(), vec![per_target_damage]));
             } else {
+                let damage = if *unpreventable {
+                    Effect::deal_unpreventable_damage(
+                        damage_amount.clone(),
+                        damage_target_spec.clone(),
+                    )
+                } else {
+                    Effect::deal_damage(damage_amount.clone(), damage_target_spec.clone())
+                };
                 let damage_effect = tag_object_target_effect(
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         damage_source_spec.clone(),
-                        Effect::deal_damage(damage_amount.clone(), damage_target_spec.clone()),
+                        damage,
                     )),
                     &damage_target_spec,
                     ctx,
@@ -576,7 +614,28 @@ pub(super) fn compile_subject_verb_late(
             prelude.push(target_exile);
             Ok((prelude, choices))
         }
-        SubjectVerbActionAst::Exile { target, face_down } => {
+        SubjectVerbActionAst::Exile {
+            target,
+            face_down,
+            source_top_only,
+        } => {
+            if *source_top_only {
+                let (spec, choices) =
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                let collection_is_plural = !spec.count().is_single();
+                let (choose, chosen_spec) =
+                    lower_source_top_only_choice(&spec, player, ctx, "chosen_top")?;
+                let chosen_tag = match chosen_spec.base() {
+                    ChooseSpec::Tagged(tag) => tag.clone(),
+                    _ => unreachable!("ordered source choice always lowers to a tagged object"),
+                };
+                ctx.last_exiled_collection_tag = Some(chosen_tag.as_str().to_string());
+                ctx.last_exiled_collection_is_plural = collection_is_plural;
+                let exile = Effect::new(
+                    crate::effects::ExileEffect::with_spec(chosen_spec).with_face_down(*face_down),
+                );
+                return Ok(Some((vec![choose, exile], choices)));
+            }
             if let Some(compiled) = lower_hand_exile_target(target, *face_down, ctx)? {
                 return Ok(Some(compiled));
             }
@@ -1153,6 +1212,9 @@ pub(super) fn compile_subject_verb_late(
             filter,
             tag,
         } => {
+            let count_names_complete_discard_set = filter.as_ref().is_some_and(|filter| {
+                matches!(count.unhinted(), Value::Count(count_filter) if count_filter == filter)
+            });
             let discard_references_revealed_hand_choice = filter.as_ref().is_some_and(|filter| {
                 filter.zone == Some(Zone::Hand) && filter_references_tag(filter, IT_TAG)
             });
@@ -1236,6 +1298,9 @@ pub(super) fn compile_subject_verb_late(
             let resolved_filter = resolved_filter
                 .map(|resolved| subject.bind_discard_filter(&resolved, ctx))
                 .transpose()?;
+            if count_names_complete_discard_set && let Some(filter) = resolved_filter.as_ref() {
+                replace_complete_discard_count_filter(&mut resolved_count, filter);
+            }
             let tag = tag
                 .clone()
                 .unwrap_or_else(|| TagKey::from(ctx.next_tag("discarded").as_str()));
@@ -1428,6 +1493,7 @@ pub(super) fn compile_subject_verb_late(
                 Effect::end_turn_player(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::EndCombatPhase => Ok((vec![Effect::end_combat_phase()], Vec::new())),
         SubjectVerbActionAst::SkipTurn => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_turn_player(subject.into_player_filter())
@@ -1566,18 +1632,24 @@ pub(super) fn compile_subject_verb_late(
                     &last_player_filter,
                 );
             }
-            let mut lowered = lower_granted_abilities_ast(std::slice::from_ref(ability))?;
-            let Some(ability) = lowered.pop() else {
+            let lowered =
+                lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(ability))?;
+            if lowered.is_empty() {
                 return Err(CardTextError::ParseError(
-                    "temporary next-spell grant did not lower to a static ability".to_string(),
+                    "temporary next-spell grant did not lower to an object ability".to_string(),
                 ));
-            };
+            }
             Ok((
-                vec![Effect::grant_next_spell_ability_this_turn(
-                    player_filter,
-                    resolved_filter,
-                    ability,
-                )],
+                lowered
+                    .into_iter()
+                    .map(|ability| {
+                        Effect::grant_next_spell_ability_this_turn(
+                            player_filter.clone(),
+                            resolved_filter.clone(),
+                            ability,
+                        )
+                    })
+                    .collect(),
                 subject.into_choices(),
             ))
         }
@@ -1668,6 +1740,7 @@ pub(super) fn compile_subject_verb_late(
                 ctx,
                 "goaded",
             );
+            track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Suspect { target } => {
@@ -1706,6 +1779,12 @@ pub(super) fn compile_subject_verb_late(
                 "no_longer_suspected",
             );
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::HealDamage { target, amount } => {
+            compile_tagged_effect_for_target(target, ctx, "healed", |spec| match amount {
+                Some(amount) => Effect::heal_damage(spec, amount.clone()),
+                None => Effect::heal_all_damage(spec),
+            })
         }
         SubjectVerbActionAst::RemoveFromCombat { target } => {
             let (spec, choices) =
@@ -1762,6 +1841,7 @@ pub(super) fn compile_subject_verb_late(
             filter,
             count,
             target,
+            one_of_referenced_set,
         } => {
             if let Some(target) = target {
                 let (effects, mut choices) =
@@ -1780,14 +1860,15 @@ pub(super) fn compile_subject_verb_late(
             let chooser = subject.clone_player_filter();
             let target_prelude = subject.target_prelude();
             let refs = current_reference_env(ctx);
-            let bare_it_with_source_antecedent = !refs.iterated_object
+            let bare_it_with_source_antecedent = !*one_of_referenced_set
+                && !refs.iterated_object
                 && refs.has_source_object_antecedent()
                 && refs
                     .known_last_object_tag()
                     .is_none_or(|tag| tag.as_str() == IT_TAG && !refs.last_it_choice_is_set)
                 && object_filter_as_tagged_reference(filter)
                     .is_some_and(|tag| tag.as_str() == IT_TAG);
-            let resolved_filter = if bare_it_with_source_antecedent {
+            let mut resolved_filter = if bare_it_with_source_antecedent {
                 ObjectFilter::source()
             } else {
                 match subject.bind_sacrifice_filter(filter, ctx) {
@@ -1817,7 +1898,8 @@ pub(super) fn compile_subject_verb_late(
                 effects.push(Effect::sacrifice_source());
                 return Ok(Some((effects, subject.into_choices())));
             }
-            if *count == 1
+            if !*one_of_referenced_set
+                && *count == 1
                 && let Some(tag) = object_filter_as_tagged_reference(&resolved_filter)
             {
                 let mut effects = target_prelude;
@@ -1827,6 +1909,9 @@ pub(super) fn compile_subject_verb_late(
                 return Ok(Some((effects, subject.into_choices())));
             }
 
+            if *one_of_referenced_set {
+                resolved_filter.set_one_of_tagged_set_surface(true);
+            }
             let tag = ctx.next_tag("sacrificed");
             ctx.last_object_tag = Some(tag.clone());
             let choose = Effect::choose_objects(

@@ -3,7 +3,9 @@
 use crate::events::EventKind;
 use crate::events::life::LifeLossEvent;
 use crate::target::PlayerFilter;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{
+    TriggerContext, TriggerMatcher, current_turn_matches_player_filter,
+};
 use crate::triggers::{TriggerEvent, describe_player_filter_subject};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +68,7 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => e.player != ctx.controller,
             PlayerFilter::Any => true,
+            PlayerFilter::Active => ctx.game.is_active_player(e.player),
             PlayerFilter::Specific(id) => e.player == *id,
             _ => true,
         };
@@ -78,14 +81,7 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
             return false;
         }
         if let Some(during_turn) = &self.during_turn {
-            let active_player = ctx.game.turn.active_player;
-            return match during_turn {
-                PlayerFilter::You => active_player == ctx.controller,
-                PlayerFilter::Opponent => active_player != ctx.controller,
-                PlayerFilter::Any | PlayerFilter::Active => true,
-                PlayerFilter::Specific(id) => active_player == *id,
-                _ => true,
-            };
+            return current_turn_matches_player_filter(during_turn, ctx, None);
         }
         true
     }

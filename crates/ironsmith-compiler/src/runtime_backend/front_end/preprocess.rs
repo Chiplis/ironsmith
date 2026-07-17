@@ -1,6 +1,7 @@
-use super::grammar::structure::MetadataLineKind;
+use super::grammar::effects::optional_companion_shapes::parse_shared_subject_optional_companion_shape;
+use super::grammar::structure::{MetadataLineKind, split_leading_result_prefix_lexed};
 use super::grammar::{line_semantic_facts, preprocess as preprocess_grammar};
-use super::lexer::lex_line;
+use super::lexer::{lex_line, split_lexed_sentences};
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
 };
@@ -107,8 +108,9 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
             && lex_line(second_without_reminder.as_str(), 0)
                 .ok()
                 .is_some_and(|tokens| {
-                super::grammar::abilities::parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
-            })
+                    super::grammar::abilities::parse_mana_spend_bonus_sentence_lexed(&tokens)
+                        .is_some()
+                })
         {
             return vec![line.to_string()];
         }
@@ -162,6 +164,17 @@ fn replace_names_with_map(
 
     fn is_single_word_keyword_verb(name: &str) -> bool {
         preprocess_grammar::parse_single_keyword_verb(name).is_some()
+    }
+
+    fn starts_with_typed_keyword_action_statement(line: &str) -> bool {
+        let Ok(tokens) = lex_line(line, 0) else {
+            return false;
+        };
+        let Some(statement) = split_lexed_sentences(&tokens).into_iter().next() else {
+            return false;
+        };
+        super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(statement)
+            .is_some()
     }
 
     fn is_keyword_ability_name(name: &str) -> bool {
@@ -331,6 +344,42 @@ fn replace_names_with_map(
         }) || apostrophe_s
     }
 
+    fn is_result_optional_companion_short_name_context(
+        bytes: &[u8],
+        idx: usize,
+        len: usize,
+    ) -> bool {
+        let sentence_start = bytes[..idx]
+            .iter()
+            .rposition(|byte| matches!(*byte, b'.' | b';'))
+            .map_or(0, |separator| separator + 1);
+        let sentence_end = bytes[idx + len..]
+            .iter()
+            .position(|byte| matches!(*byte, b'.' | b';'))
+            .map_or(bytes.len(), |separator| idx + len + separator);
+        let Some(sentence) = std::str::from_utf8(&bytes[sentence_start..sentence_end]).ok() else {
+            return false;
+        };
+        let Ok(tokens) = lex_line(sentence, 0) else {
+            return false;
+        };
+        let Some(prefix) = split_leading_result_prefix_lexed(&tokens) else {
+            return false;
+        };
+        let Some(shape) = parse_shared_subject_optional_companion_shape(prefix.trailing_tokens)
+        else {
+            return false;
+        };
+        let Some(first) = shape.first_subject_tokens.first() else {
+            return false;
+        };
+        let Some(last) = shape.first_subject_tokens.last() else {
+            return false;
+        };
+        let local_start = idx - sentence_start;
+        first.span.start == local_start && last.span.end == local_start + len
+    }
+
     fn should_preserve_source_surface_context(bytes: &[u8], idx: usize, len: usize) -> bool {
         let prev = previous_word(bytes, idx);
         let next = next_word(bytes, idx + len);
@@ -427,7 +476,9 @@ fn replace_names_with_map(
         if !full_bytes.is_empty()
             && bytes_start_with(&bytes[idx..], full_bytes)
             && has_word_boundaries_at(bytes, idx, full_bytes.len())
-            && !(idx == 0 && is_single_word_keyword_verb(full_name))
+            && !(idx == 0
+                && (is_single_word_keyword_verb(full_name)
+                    || starts_with_typed_keyword_action_statement(line)))
             && !(is_keyword_ability_name(full_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, full_bytes.len())
@@ -457,12 +508,15 @@ fn replace_names_with_map(
                 && !full_bytes.is_empty()
                 && bytes_start_with(&bytes[idx..], full_bytes)
                 && has_word_boundaries_at(bytes, idx, full_bytes.len()))
-            && !(idx == 0 && is_single_word_keyword_verb(short_name))
+            && !(idx == 0
+                && (is_single_word_keyword_verb(short_name)
+                    || starts_with_typed_keyword_action_statement(line)))
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
             && !preceded_by_named_keyword(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, idx)
-            && is_short_name_self_reference_context(bytes, idx, short_bytes.len())
+            && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
+                || is_result_optional_companion_short_name_context(bytes, idx, short_bytes.len()))
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(bytes, idx, short_bytes.len()))
             && !should_preserve_single_word_keyword_verb_usage(
@@ -1171,6 +1225,28 @@ mod tests {
         let normalized = normalize_line_for_parse("Draw a card as it resolves.", "", "", false)
             .expect("resolution line should normalize");
         assert_eq!(normalized.normalized, "draw a card.");
+    }
+
+    #[test]
+    fn preprocess_preserves_typed_multiword_keyword_action_matching_card_name() {
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Manifest Dread"),
+            "Manifest dread.",
+        )
+        .expect("the keyword action should preprocess without becoming a source reference");
+        let Some(PreprocessedItem::Line(line)) = document.items.first() else {
+            panic!("expected one preprocessed keyword-action line");
+        };
+        assert_eq!(line.info.normalized.normalized, "manifest dread.");
+
+        let reference = normalize_line_for_parse(
+            "When Manifest Dread enters, draw a card.",
+            "manifest dread",
+            "manifest dread",
+            false,
+        )
+        .expect("an ordinary card-name reference should still normalize");
+        assert_eq!(reference.normalized, "when this enters, draw a card.");
     }
 
     #[test]

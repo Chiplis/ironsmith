@@ -223,6 +223,16 @@ pub(crate) fn parse_delayed_timing_marker_shape(
 ) -> Option<DelayedTimingMarkerShape> {
     let patterns: &'static [(&'static [&'static str], DelayedTimingStepShape, PlayerAst)] = &[
         (
+            &["at", "the", "end", "of", "combat"],
+            DelayedTimingStepShape::EndOfCombat,
+            PlayerAst::Any,
+        ),
+        (
+            &["at", "end", "of", "combat"],
+            DelayedTimingStepShape::EndOfCombat,
+            PlayerAst::Any,
+        ),
+        (
             &[
                 "at",
                 "the",

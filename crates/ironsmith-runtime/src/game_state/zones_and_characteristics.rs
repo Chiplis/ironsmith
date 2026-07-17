@@ -1,6 +1,172 @@
 use super::*;
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PreparedEtbChoices {
+    pub(crate) chosen_color: Option<crate::color::Color>,
+    pub(crate) chosen_basic_land_type: Option<crate::types::Subtype>,
+    pub(crate) chosen_land_type: Option<crate::types::Subtype>,
+    pub(crate) chosen_creature_type: Option<crate::types::Subtype>,
+    pub(crate) chosen_card_type: Option<crate::types::CardType>,
+    pub(crate) chosen_player: Option<PlayerId>,
+    pub(crate) chosen_named_option: Option<String>,
+    pub(crate) noted_life_total: Option<i32>,
+    pub(crate) power_toughness_choices:
+        Vec<(i32, i32, Vec<crate::static_abilities::StaticAbility>)>,
+    pub(crate) battle_protector: Option<PlayerId>,
+    pub(crate) discard_hand: bool,
+    pub(crate) as_enters_counters: Vec<(crate::object::CounterType, u32)>,
+    pub(crate) as_enters_tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    pub(crate) transfer_as_enters_source_links: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedEtbEntry {
+    pub(crate) result: crate::events::processing::EtbEventResult,
+    pub(crate) choices: PreparedEtbChoices,
+}
+
+fn as_enters_effect_program_from_ability(
+    ability: &crate::ability::Ability,
+) -> Option<(crate::resolution::ResolutionProgram, bool)> {
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+        program,
+        also_turns_face_up,
+        ..
+    } = &static_ability.compiled_model()?.payload
+    else {
+        return None;
+    };
+    Some((program.clone(), *also_turns_face_up))
+}
+
+#[derive(Debug, Clone, Default)]
+struct AsEntersProgramExecution {
+    ran: bool,
+    tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+}
+
+fn merge_retained_tagged_objects(
+    destination: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    source: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    for (tag, snapshots) in source {
+        let retained = destination.entry(tag.clone()).or_default();
+        for snapshot in snapshots {
+            if retained
+                .iter()
+                .all(|existing| existing.stable_id != snapshot.stable_id)
+            {
+                retained.push(snapshot.clone());
+            }
+        }
+    }
+}
+
 impl GameState {
+    /// CR 400.4a: an instant or sorcery card cannot enter the battlefield.
+    ///
+    /// This is a zone-change rule, not a replacement effect, so callers must
+    /// check it before proposing ETB replacements or collecting entry choices.
+    pub(crate) fn card_cannot_enter_battlefield(&self, object_id: ObjectId) -> bool {
+        self.object(object_id).is_some_and(|object| {
+            object.kind == crate::object::ObjectKind::Card
+                && object
+                    .card_types
+                    .iter()
+                    .any(|card_type| matches!(card_type, CardType::Instant | CardType::Sorcery))
+        })
+    }
+
+    fn execute_as_enters_effect_programs_from_abilities(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        abilities: &[crate::ability::Ability],
+        turns_face_up_only: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
+        let programs = abilities
+            .iter()
+            .filter_map(as_enters_effect_program_from_ability)
+            .filter_map(|(program, also_turns_face_up)| {
+                (!turns_face_up_only || also_turns_face_up).then_some(program)
+            })
+            .collect::<Vec<_>>();
+        if programs.is_empty() {
+            return Ok(AsEntersProgramExecution::default());
+        }
+
+        let mut execution = AsEntersProgramExecution {
+            ran: true,
+            ..AsEntersProgramExecution::default()
+        };
+        let optional_costs_paid = self
+            .object(source)
+            .map(|object| object.optional_costs_paid.clone())
+            .unwrap_or_default();
+        for program in programs {
+            let provenance = self.provenance_graph_mut().alloc_root(
+                crate::provenance::ProvenanceNodeKind::EffectExecution { source, controller },
+            );
+            let mut context =
+                crate::effects::ExecutionContext::new(source, controller, decision_maker)
+                    .with_optional_costs_paid(optional_costs_paid.clone())
+                    .with_cause(crate::events::cause::EventCause::from_effect(
+                        source, controller,
+                    ))
+                    .with_provenance(provenance);
+            let _ = crate::game_loop::execute_resolution_program(
+                self,
+                &mut context,
+                controller,
+                source,
+                &program,
+                None,
+                &[],
+            )?;
+            let awaiting_choice = context.decision_maker.awaiting_choice();
+            merge_retained_tagged_objects(&mut execution.tagged_objects, &context.tagged_objects);
+            if awaiting_choice {
+                return Ok(execution);
+            }
+        }
+        Ok(execution)
+    }
+
+    pub(crate) fn execute_as_enters_effect_programs_for_turn_face_up(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<(), crate::game_loop::GameLoopError> {
+        let abilities = self
+            .object(source)
+            .map(|object| object.abilities_vec())
+            .unwrap_or_default();
+        let execution = self.execute_as_enters_effect_programs_from_abilities(
+            source,
+            controller,
+            &abilities,
+            true,
+            decision_maker,
+        )?;
+        if let Some(object) = self.object_mut(source) {
+            merge_retained_tagged_objects(
+                &mut object.cast_tagged_objects,
+                &execution.tagged_objects,
+            );
+        }
+        Ok(())
+    }
+
     pub fn move_object(
         &mut self,
         old_id: ObjectId,
@@ -41,6 +207,28 @@ impl GameState {
         lki_snapshot: Option<crate::snapshot::ObjectSnapshot>,
         pre_event_lookback_source_snapshots: &[crate::snapshot::ObjectSnapshot],
     ) -> Option<ObjectId> {
+        // CR 311.2/312.2: planar cards remain in the command zone even if an
+        // effect attempts to move them. Turning them face down is handled by
+        // the Planechase procedure because it creates a new command-zone object.
+        if self.is_planar_card(old_id) && new_zone != Zone::Command {
+            return Some(old_id);
+        }
+        if self.is_vanguard_card(old_id) && new_zone != Zone::Command {
+            return Some(old_id);
+        }
+        // CR 314.2: scheme cards remain in the command zone. Setting one in
+        // motion or turning it face down changes its status, not its zone.
+        if self.is_scheme_card(old_id) && new_zone != Zone::Command {
+            return Some(old_id);
+        }
+        // CR 315.3: conspiracy cards remain in command. Turning an agenda
+        // conspiracy face up changes only its status.
+        if self.is_conspiracy_card(old_id) && new_zone != Zone::Command {
+            return Some(old_id);
+        }
+        if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
+            return None;
+        }
         let was_face_down = self.is_face_down(old_id);
         let preserved_exile_viewers = if self
             .objects
@@ -120,6 +308,9 @@ impl GameState {
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
+        self.auxiliary_tracking_mut()
+            .sector_designations
+            .remove(&old_id);
         self.stable_id_index.remove(&old_object.stable_id);
         self.commander_tracking_mut()
             .declined_command_zone_moves
@@ -171,6 +362,61 @@ impl GameState {
             self.exile_tracking_mut()
                 .cast_origin_snapshots
                 .remove(&old_id);
+        }
+
+        if old_zone == Zone::Battlefield
+            && new_zone != Zone::Battlefield
+            && let Some(merged) = self.merged_permanent(old_object.stable_id).cloned()
+        {
+            let component_destinations = self
+                .commander_tracking_mut()
+                .pending_merged_component_destinations
+                .remove(&old_object.stable_id);
+            let mut result_object_ids = Vec::with_capacity(merged.components.len());
+            for (index, component) in merged.components.iter().enumerate() {
+                let component_zone = component_destinations
+                    .as_ref()
+                    .and_then(|destinations| destinations.get(index))
+                    .copied()
+                    .unwrap_or(new_zone);
+                let new_component_id =
+                    self.create_merged_component_object(component, component_zone)?;
+                result_object_ids.push(new_component_id);
+            }
+            self.commander_tracking_mut()
+                .merged_permanents
+                .remove(&old_object.stable_id);
+
+            use crate::events::zones::ZoneChangeEvent;
+            use crate::triggers::TriggerEvent;
+
+            let event = ZoneChangeEvent::with_results(
+                old_id,
+                result_object_ids.clone(),
+                old_zone,
+                new_zone,
+                cause,
+                pre_move_snapshot,
+            );
+            let event_provenance = self
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::ZoneChange);
+            self.queue_trigger_event(
+                event_provenance,
+                TriggerEvent::new_with_provenance(event, event_provenance)
+                    .with_lookback_source_snapshots(pre_event_lookback_source_snapshots.to_vec()),
+            );
+            self.record_zone_change_results(old_id, result_object_ids.clone());
+            if old_zone != new_zone {
+                for result_object_id in &result_object_ids {
+                    self.record_ui_zone_transition(old_id, *result_object_id, old_zone, new_zone);
+                }
+            }
+
+            #[cfg(debug_assertions)]
+            self.debug_assert_zone_consistency();
+            self.reconcile_ring_bearers();
+            return result_object_ids.first().copied();
         }
 
         if old_zone == Zone::Battlefield
@@ -274,6 +520,22 @@ impl GameState {
         }
         if !preserve_optional_costs_paid {
             new_object.optional_costs_paid = crate::cost::OptionalCostsPaid::default();
+        }
+        let ends_stack_text_or_effect_overlay = old_zone == Zone::Stack
+            && new_zone != Zone::Stack
+            && new_object
+                .cast_alternative_method
+                .as_deref()
+                .is_some_and(|method| {
+                    method.overload_effects().is_some()
+                        || method.cleave_effects().is_some()
+                        || method.awaken_effects().is_some()
+                });
+        if ends_stack_text_or_effect_overlay
+            && let Some(card_id) = new_object.card
+            && let Some(handles) = self.object_store.card_shared.get(&card_id)
+        {
+            new_object.restore_printed_spell_effect(handles);
         }
         new_object.cast_alternative_method = None;
 
@@ -437,6 +699,63 @@ impl GameState {
         )
     }
 
+    /// Put an object its owner owns into the ante zone (CR 407.4).
+    ///
+    /// Ante-specific card effects should use this entrypoint so the
+    /// owner-only restriction is enforced centrally.
+    pub fn ante_owned_object(
+        &mut self,
+        owner: PlayerId,
+        object_id: ObjectId,
+    ) -> Result<ObjectId, String> {
+        let Some(object) = self.object(object_id) else {
+            return Err("cannot ante a missing object".to_string());
+        };
+        if object.owner != owner {
+            return Err("a player can ante only an object they own".to_string());
+        }
+        if object.zone == Zone::Ante {
+            return Ok(object_id);
+        }
+        self.move_object_by_game_rule(object_id, Zone::Ante)
+            .ok_or_else(|| "the object could not be moved to ante".to_string())
+    }
+
+    /// Select a random card from a player's library and ante it (CR 407.2).
+    pub fn ante_random_library_card(&mut self, owner: PlayerId) -> Result<ObjectId, String> {
+        let mut candidates = self
+            .player(owner)
+            .ok_or_else(|| "cannot ante for a missing player".to_string())?
+            .library
+            .clone();
+        if candidates.is_empty() {
+            return Err("cannot ante from an empty library".to_string());
+        }
+        self.shuffle_slice(&mut candidates);
+        self.ante_owned_object(owner, candidates[0])
+    }
+
+    /// Transfer ownership of every card in ante to the winning player at the
+    /// end of the game (CR 407.2). Returns the number of changed owners and is
+    /// deliberately idempotent so duplicate terminal-result observations are
+    /// harmless.
+    pub fn finalize_ante_ownership(&mut self, winner: PlayerId) -> usize {
+        if self.player(winner).is_none() {
+            return 0;
+        }
+        let ante_ids = self.ante.clone();
+        let mut changed = 0;
+        for id in ante_ids {
+            if self.object(id).is_some_and(|object| object.owner != winner) {
+                if let Some(object) = self.object_mut(id) {
+                    object.owner = winner;
+                }
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     pub fn move_object_by_sba(&mut self, old_id: ObjectId, new_zone: Zone) -> Option<ObjectId> {
         self.move_object(
             old_id,
@@ -508,6 +827,7 @@ impl GameState {
             true,
             Vec::new(),
             None,
+            None,
         )
     }
 
@@ -525,6 +845,7 @@ impl GameState {
             decision_maker,
             true,
             initial_enters_with_counters,
+            None,
             None,
         )
     }
@@ -545,6 +866,7 @@ impl GameState {
             true,
             initial_enters_with_counters,
             entering_controller,
+            None,
         )
     }
 
@@ -562,6 +884,555 @@ impl GameState {
             false,
             Vec::new(),
             None,
+            None,
+        )
+    }
+
+    /// Resolve every choice and action that forms part of an object's entry
+    /// before the destination object is created.
+    ///
+    /// The returned record is independent of the source-zone object ID and can
+    /// therefore be collected for every member of a simultaneous-entry batch
+    /// before any member is committed.
+    pub(crate) fn prepare_etb_entry_with_controller_and_dm(
+        &mut self,
+        old_id: ObjectId,
+        mut result: crate::events::processing::EtbEventResult,
+        entering_controller: Option<PlayerId>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<PreparedEtbEntry> {
+        if result.prevented {
+            return Some(PreparedEtbEntry {
+                result,
+                choices: PreparedEtbChoices::default(),
+            });
+        }
+        if let Some(choices) = result.prepared_choices.clone() {
+            return Some(PreparedEtbEntry { result, choices });
+        }
+
+        let prospective_source = result
+            .enters_as_copy_of
+            .and_then(|copy_source| self.object(copy_source))
+            .or_else(|| self.object(old_id));
+        let prospective_controller = entering_controller
+            .or(result.controller_override)
+            .or_else(|| self.current_controller(old_id))
+            .or_else(|| self.object(old_id).map(|object| object.owner))?;
+        let mut prospective_card_types = prospective_source
+            .map(|object| object.card_types.clone())
+            .unwrap_or_default();
+        for card_type in &result.added_card_types {
+            if !prospective_card_types.contains(card_type) {
+                prospective_card_types.push(*card_type);
+            }
+        }
+        let mut prospective_subtypes = prospective_source
+            .map(|object| object.subtypes.clone())
+            .unwrap_or_default();
+        for subtype in &result.added_subtypes {
+            if !prospective_subtypes.contains(subtype) {
+                prospective_subtypes.push(*subtype);
+            }
+        }
+        let mut prospective_abilities = prospective_source
+            .map(|object| object.abilities_vec())
+            .unwrap_or_default();
+        for ability in &result.added_abilities {
+            if !prospective_abilities.contains(ability) {
+                prospective_abilities.push(ability.clone());
+            }
+        }
+
+        // Execute arbitrary as-enters setup in the same transactional clone
+        // used by the rest of ETB preparation. Effects aimed at the source's
+        // counters act on the source-zone object, so convert only their net
+        // additions into counters on the prospective battlefield object.
+        let counters_before = self
+            .object(old_id)
+            .map(|object| object.counters.clone())
+            .unwrap_or_default();
+        let as_enters_execution = self
+            .execute_as_enters_effect_programs_from_abilities(
+                old_id,
+                prospective_controller,
+                &prospective_abilities,
+                false,
+                decision_maker,
+            )
+            .ok()?;
+        if decision_maker.awaiting_choice() {
+            return None;
+        }
+        let counters_after = self
+            .object(old_id)
+            .map(|object| object.counters.clone())
+            .unwrap_or_default();
+        let mut as_enters_counters = Vec::new();
+        for (counter_type, after) in &counters_after {
+            let before = counters_before.get(counter_type).copied().unwrap_or(0);
+            if *after > before {
+                as_enters_counters.push((*counter_type, *after - before));
+            }
+        }
+        if let Some(source) = self.object_mut(old_id) {
+            source.counters = counters_before;
+        }
+
+        let battle_protector = if prospective_card_types.contains(&crate::types::CardType::Battle) {
+            let legal = self.legal_battle_protectors_for(
+                prospective_controller,
+                prospective_subtypes.contains(&Subtype::Siege),
+            );
+            if legal.len() <= 1 {
+                legal.first().copied()
+            } else {
+                let options = legal
+                    .iter()
+                    .enumerate()
+                    .map(|(index, player)| {
+                        crate::decisions::context::SelectableOption::new(
+                            index,
+                            self.player(*player)
+                                .map(|player| player.name.clone())
+                                .unwrap_or_else(|| format!("Player {}", player.0)),
+                        )
+                    })
+                    .collect();
+                let context = crate::decisions::context::SelectOptionsContext::new(
+                    prospective_controller,
+                    Some(old_id),
+                    "Choose a player to protect this battle",
+                    options,
+                    1,
+                    1,
+                );
+                let selected = decision_maker
+                    .decide_options(self, &context)
+                    .into_iter()
+                    .find_map(|index| legal.get(index).copied());
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                selected.or_else(|| legal.first().copied())
+            }
+        } else {
+            None
+        };
+
+        let mut choices = PreparedEtbChoices {
+            battle_protector,
+            as_enters_counters,
+            as_enters_tagged_objects: as_enters_execution.tagged_objects,
+            transfer_as_enters_source_links: as_enters_execution.ran,
+            ..PreparedEtbChoices::default()
+        };
+        for ability in prospective_abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if let Some(spec) = static_ability.color_choice_as_enters() {
+                let mut options = vec![
+                    crate::color::Color::White,
+                    crate::color::Color::Blue,
+                    crate::color::Color::Black,
+                    crate::color::Color::Red,
+                    crate::color::Color::Green,
+                ];
+                if let Some(excluded) = spec.excluded {
+                    options.retain(|color| *color != excluded);
+                }
+                if !options.is_empty() {
+                    let choice_spec = crate::decisions::specs::ManaColorsSpec::restricted(
+                        old_id,
+                        1,
+                        true,
+                        options.clone(),
+                    );
+                    let mut chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        prospective_controller,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return None;
+                    }
+                    choices.chosen_color = chosen.pop().filter(|color| options.contains(color));
+                }
+            }
+            if static_ability.basic_land_type_choice_as_enters().is_some() {
+                let options = [
+                    crate::types::Subtype::Plains,
+                    crate::types::Subtype::Island,
+                    crate::types::Subtype::Swamp,
+                    crate::types::Subtype::Mountain,
+                    crate::types::Subtype::Forest,
+                ];
+                let display_options = options
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, subtype)| {
+                        crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
+                    })
+                    .collect::<Vec<_>>();
+                let choice_spec =
+                    crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                let mut chosen = crate::decisions::make_decision(
+                    self,
+                    decision_maker,
+                    prospective_controller,
+                    Some(old_id),
+                    choice_spec,
+                );
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                choices.chosen_basic_land_type = chosen
+                    .pop()
+                    .filter(|idx| *idx < options.len())
+                    .map(|idx| options[idx]);
+            }
+            if static_ability.land_type_choice_as_enters().is_some() {
+                let options = crate::types::Subtype::all_land_types();
+                let display_options = options
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, subtype)| {
+                        crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
+                    })
+                    .collect::<Vec<_>>();
+                let choice_spec =
+                    crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                let mut chosen = crate::decisions::make_decision(
+                    self,
+                    decision_maker,
+                    prospective_controller,
+                    Some(old_id),
+                    choice_spec,
+                );
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                choices.chosen_land_type = chosen
+                    .pop()
+                    .filter(|idx| *idx < options.len())
+                    .map(|idx| options[idx]);
+            }
+            if static_ability.creature_type_choice_as_enters().is_some() {
+                let options = crate::effects::BecomeCreatureTypeChoiceEffect::all_creature_types();
+                let display_options = options
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, subtype)| {
+                        crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
+                    })
+                    .collect::<Vec<_>>();
+                let choice_spec =
+                    crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                let mut chosen = crate::decisions::make_decision(
+                    self,
+                    decision_maker,
+                    prospective_controller,
+                    Some(old_id),
+                    choice_spec,
+                );
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                choices.chosen_creature_type = chosen
+                    .pop()
+                    .filter(|idx| *idx < options.len())
+                    .map(|idx| options[idx]);
+            }
+            if static_ability.player_choice_as_enters().is_some() {
+                let options = self
+                    .players
+                    .iter()
+                    .filter(|player| player.is_in_game())
+                    .map(|player| player.id)
+                    .collect::<Vec<_>>();
+                if !options.is_empty() {
+                    let display_options = options
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(idx, player_id)| {
+                            self.player(*player_id).map(|player| {
+                                crate::decisions::spec::DisplayOption::new(
+                                    idx,
+                                    player.name.to_string(),
+                                )
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    let choice_spec =
+                        crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                    let mut chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        prospective_controller,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return None;
+                    }
+                    choices.chosen_player = chosen
+                        .pop()
+                        .filter(|idx| *idx < options.len())
+                        .map(|idx| options[idx]);
+                }
+            }
+            if let Some(spec) = static_ability.reveal_from_hand_choice_as_enters() {
+                let filter_ctx = self.filter_context_for(prospective_controller, Some(old_id));
+                let candidates = self
+                    .player(prospective_controller)
+                    .map(|player| player.hand.clone())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|candidate_id| {
+                        self.object(candidate_id)
+                            .filter(|object| spec.filter.matches(object, &filter_ctx, self))
+                            .map(|object| {
+                                crate::decisions::context::SelectableObject::new(
+                                    candidate_id,
+                                    object.name.to_string(),
+                                )
+                            })
+                    })
+                    .collect::<Vec<_>>();
+                if !candidates.is_empty() {
+                    let min = if spec.optional {
+                        0
+                    } else {
+                        spec.count.min.min(candidates.len())
+                    };
+                    let max = spec
+                        .count
+                        .max
+                        .unwrap_or(candidates.len())
+                        .min(candidates.len());
+                    let context = crate::decisions::context::SelectObjectsContext::new(
+                        prospective_controller,
+                        Some(old_id),
+                        "Reveal cards from your hand",
+                        candidates.clone(),
+                        min,
+                        Some(max),
+                    );
+                    let candidate_ids = candidates
+                        .iter()
+                        .map(|candidate| candidate.id)
+                        .collect::<Vec<_>>();
+                    let selected = if min == candidates.len() && max == candidates.len() {
+                        candidate_ids.clone()
+                    } else {
+                        decision_maker.decide_objects(self, &context)
+                    };
+                    if decision_maker.awaiting_choice() {
+                        return None;
+                    }
+                    let revealed = selected
+                        .into_iter()
+                        .filter(|selected| candidate_ids.contains(selected))
+                        .take(max)
+                        .collect::<Vec<_>>();
+                    if revealed.len() >= min && !revealed.is_empty() {
+                        for viewer_idx in 0..self.players.len() {
+                            let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+                            let view_ctx = crate::decisions::context::ViewCardsContext::new(
+                                viewer,
+                                prospective_controller,
+                                Some(old_id),
+                                Zone::Hand,
+                                "Reveal cards from hand",
+                            )
+                            .with_public(true);
+                            decision_maker.view_cards(self, viewer, &revealed, &view_ctx);
+                        }
+                    }
+                }
+            }
+            if let Some(spec) = static_ability.card_name_choice_as_enters() {
+                if spec.reveal_opponents_hands {
+                    let opponent_ids = self
+                        .players
+                        .iter()
+                        .filter(|player| player.is_in_game() && player.id != prospective_controller)
+                        .map(|player| player.id)
+                        .collect::<Vec<_>>();
+                    for opponent_id in opponent_ids {
+                        let cards = self
+                            .player(opponent_id)
+                            .map(|player| player.hand.clone())
+                            .unwrap_or_default();
+                        for viewer_idx in 0..self.players.len() {
+                            let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+                            let mut view_ctx =
+                                crate::decisions::context::ViewCardsContext::look_at_hand(
+                                    viewer,
+                                    opponent_id,
+                                    Some(old_id),
+                                );
+                            view_ctx.description = "Reveal that player's hand".to_string();
+                            view_ctx.public = true;
+                            decision_maker.view_cards(self, viewer, &cards, &view_ctx);
+                        }
+                    }
+                }
+                let choice_ctx = crate::decisions::context::TextInputContext::new(
+                    prospective_controller,
+                    Some(old_id),
+                    "Choose a card name",
+                )
+                .with_placeholder("Enter a card name")
+                .require_known_value(true);
+                let chosen_name = decision_maker.decide_text(self, &choice_ctx);
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                let chosen_name = chosen_name.trim();
+                if !chosen_name.is_empty() {
+                    let mut registry = CardRegistry::new();
+                    registry.ensure_cards_loaded([chosen_name]);
+                    let canonical_name = registry
+                        .get(chosen_name)
+                        .map(|definition| definition.name().to_string())
+                        .unwrap_or_else(|| chosen_name.to_string());
+                    let legal = !spec.require_nonland_from_revealed_opponents
+                        || self
+                            .players
+                            .iter()
+                            .filter(|player| {
+                                player.is_in_game() && player.id != prospective_controller
+                            })
+                            .flat_map(|player| player.hand.iter().copied())
+                            .filter_map(|object_id| self.object(object_id))
+                            .any(|object| {
+                                !object.is_land()
+                                    && object.name.eq_ignore_ascii_case(&canonical_name)
+                            });
+                    if legal {
+                        choices.chosen_named_option = Some(canonical_name);
+                    }
+                }
+            }
+            if let Some(spec) = static_ability.named_option_choice_as_enters()
+                && !spec.options.is_empty()
+            {
+                let display_options = spec
+                    .options
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, option)| {
+                        crate::decisions::spec::DisplayOption::new(idx, option.clone())
+                    })
+                    .collect::<Vec<_>>();
+                let choice_spec =
+                    crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                let mut chosen = crate::decisions::make_decision(
+                    self,
+                    decision_maker,
+                    prospective_controller,
+                    Some(old_id),
+                    choice_spec,
+                );
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                if let Some(option) = chosen
+                    .pop()
+                    .filter(|idx| *idx < spec.options.len())
+                    .map(|idx| spec.options[idx].clone())
+                {
+                    choices.chosen_card_type = match option.as_str() {
+                        "artifact" => Some(crate::types::CardType::Artifact),
+                        "creature" => Some(crate::types::CardType::Creature),
+                        "enchantment" => Some(crate::types::CardType::Enchantment),
+                        "instant" => Some(crate::types::CardType::Instant),
+                        "sorcery" => Some(crate::types::CardType::Sorcery),
+                        "planeswalker" => Some(crate::types::CardType::Planeswalker),
+                        "land" => Some(crate::types::CardType::Land),
+                        _ => None,
+                    };
+                    choices.chosen_named_option = Some(option);
+                }
+            }
+            if static_ability.life_total_note_as_enters().is_some() {
+                choices.noted_life_total = self
+                    .player(prospective_controller)
+                    .map(|player| player.life);
+            }
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::DiscardHandAsEnters
+            {
+                choices.discard_hand = true;
+            }
+            if let Some(spec) = static_ability.power_toughness_choice_as_enters_or_turns_face_up()
+                && !spec.options.is_empty()
+            {
+                let display_options = spec
+                    .options
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, option)| {
+                        crate::decisions::spec::DisplayOption::new(
+                            idx,
+                            format!("{}/{}", option.power, option.toughness),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let choice_spec =
+                    crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                let mut chosen = crate::decisions::make_decision(
+                    self,
+                    decision_maker,
+                    prospective_controller,
+                    Some(old_id),
+                    choice_spec,
+                );
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+                if let Some(option) = chosen
+                    .pop()
+                    .filter(|idx| *idx < spec.options.len())
+                    .map(|idx| spec.options[idx].clone())
+                {
+                    choices.power_toughness_choices.push((
+                        option.power,
+                        option.toughness,
+                        option.abilities,
+                    ));
+                }
+            }
+        }
+
+        result.prepared_choices = Some(choices.clone());
+        Some(PreparedEtbEntry { result, choices })
+    }
+
+    /// Commit an ETB proposal whose replacement choices were already resolved.
+    ///
+    /// Batch-entry callers use this after every entrant's immutable proposal has
+    /// been collected, so no entrant can make another entrant's replacement
+    /// effects visible before the simultaneous event is committed.
+    pub(crate) fn commit_prepared_etb_with_controller_and_dm(
+        &mut self,
+        old_id: ObjectId,
+        prepared_entry: PreparedEtbEntry,
+        entering_controller: Option<PlayerId>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            true,
+            Vec::new(),
+            entering_controller,
+            Some(prepared_entry),
         )
     }
 
@@ -574,6 +1445,52 @@ impl GameState {
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
         entering_controller: Option<PlayerId>,
+        prepared_entry: Option<PreparedEtbEntry>,
+    ) -> Option<EntersResult> {
+        if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
+            return None;
+        }
+        if new_zone == Zone::Battlefield {
+            let mut working = self.clone();
+            let outcome = working.move_object_with_etb_processing_with_dm_and_cause_body(
+                old_id,
+                new_zone,
+                cause,
+                decision_maker,
+                choose_aura_attachment,
+                initial_enters_with_counters,
+                entering_controller,
+                prepared_entry,
+            );
+            if decision_maker.awaiting_choice() {
+                return None;
+            }
+            *self = working;
+            return outcome;
+        }
+
+        self.move_object_with_etb_processing_with_dm_and_cause_body(
+            old_id,
+            new_zone,
+            cause,
+            decision_maker,
+            choose_aura_attachment,
+            initial_enters_with_counters,
+            entering_controller,
+            prepared_entry,
+        )
+    }
+
+    fn move_object_with_etb_processing_with_dm_and_cause_body(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        cause: crate::events::cause::EventCause,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+        choose_aura_attachment: bool,
+        initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
+        entering_controller: Option<PlayerId>,
+        prepared_entry: Option<PreparedEtbEntry>,
     ) -> Option<EntersResult> {
         let old_zone = self.object(old_id)?.zone;
 
@@ -587,13 +1504,25 @@ impl GameState {
         }
 
         // Process through ETB replacement effects
-        let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters(
-            self,
-            old_id,
-            old_zone,
-            decision_maker,
-            initial_enters_with_counters,
-        );
+        let prepared_entry = if let Some(prepared_entry) = prepared_entry {
+            prepared_entry
+        } else {
+            let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
+                self,
+                old_id,
+                old_zone,
+                decision_maker,
+                initial_enters_with_counters,
+                entering_controller,
+            );
+            self.prepare_etb_entry_with_controller_and_dm(
+                old_id,
+                result,
+                entering_controller,
+                decision_maker,
+            )?
+        };
+        let PreparedEtbEntry { result, choices } = prepared_entry;
 
         // If ETB was prevented or redirected to a different zone
         if result.prevented {
@@ -622,8 +1551,53 @@ impl GameState {
         // impossible, restore this exact pre-entry state.
         let aura_entry_checkpoint = prospective_aura_entry.then(|| self.clone());
 
+        if choices.discard_hand {
+            let controller = entering_controller
+                .or(result.controller_override)
+                .or_else(|| self.current_controller(old_id))
+                .or_else(|| self.object(old_id).map(|object| object.owner))?;
+            let hand = self
+                .player(controller)
+                .map(|player| player.hand.clone())
+                .unwrap_or_default();
+            for card_id in hand {
+                if card_id == old_id {
+                    continue;
+                }
+                let provenance = self
+                    .provenance_graph_mut()
+                    .alloc_root_event(crate::events::EventKind::Discard);
+                crate::events::processing::execute_discard(
+                    self,
+                    card_id,
+                    controller,
+                    cause.clone(),
+                    false,
+                    provenance,
+                    decision_maker,
+                );
+                if decision_maker.awaiting_choice() {
+                    return None;
+                }
+            }
+        }
+
         // Proceed with normal battlefield entry
         let new_id = self.move_object(old_id, Zone::Battlefield, cause.clone())?;
+        if let Some(object) = self.object_mut(new_id) {
+            merge_retained_tagged_objects(
+                &mut object.cast_tagged_objects,
+                &choices.as_enters_tagged_objects,
+            );
+        }
+        if choices.transfer_as_enters_source_links {
+            self.transfer_exiled_with_source_links(old_id, new_id);
+            let imprinted_cards = self.get_imprinted_cards(old_id).to_vec();
+            self.clear_imprinted_cards(old_id);
+            for imprinted_card in imprinted_cards {
+                self.imprint_card(new_id, imprinted_card);
+            }
+        }
         if let Some(controller) = entering_controller.or(result.controller_override) {
             self.set_current_controller(new_id, controller);
         }
@@ -708,8 +1682,20 @@ impl GameState {
                 }
             } else {
                 let copy_source = self.object(copy_source_id).cloned();
+                let effects = self.all_continuous_effects();
+                let copiable_values = crate::continuous::copiable_values_with_effects(
+                    copy_source_id,
+                    self.objects_map(),
+                    &effects,
+                    &self.battlefield,
+                    self.commander_objects(),
+                    self,
+                );
                 if let (Some(source_obj), Some(new_obj)) = (copy_source, self.object_mut(new_id)) {
                     new_obj.copy_copiable_values_from(&source_obj);
+                    if let Some(values) = copiable_values.as_ref() {
+                        new_obj.copy_copiable_values_from_values(values);
+                    }
                     if let Some(name) = &result.copy_name_override {
                         new_obj.name = name.clone().into();
                     }
@@ -759,16 +1745,68 @@ impl GameState {
             }
         }
 
+        // Publish the choices collected against the prospective permanent only
+        // after the destination object exists. No decision is made in this
+        // section, so neither synchronous nor suspended callers can observe a
+        // battlefield permanent whose mandatory entry choice is unresolved.
+        if let Some(color) = choices.chosen_color {
+            self.set_chosen_color(new_id, color);
+        }
+        if let Some(subtype) = choices.chosen_basic_land_type {
+            self.set_chosen_basic_land_type(new_id, subtype);
+        }
+        if let Some(subtype) = choices.chosen_land_type {
+            self.set_chosen_land_type(new_id, subtype);
+        }
+        if let Some(subtype) = choices.chosen_creature_type {
+            self.set_chosen_creature_type(new_id, subtype);
+        }
+        if let Some(card_type) = choices.chosen_card_type {
+            self.set_chosen_card_type(new_id, card_type);
+        }
+        if let Some(player) = choices.chosen_player {
+            self.set_chosen_player(new_id, player);
+        }
+        if let Some(option) = choices.chosen_named_option.clone() {
+            self.set_chosen_named_option(new_id, option);
+        }
+        if let Some(life_total) = choices.noted_life_total {
+            self.object_annotations_mut()
+                .noted_life_totals
+                .insert(new_id, life_total);
+        }
+        for (power, toughness, abilities) in &choices.power_toughness_choices {
+            if let Some(object) = self.object_mut(new_id) {
+                object.base_power = Some(crate::card::PtValue::Fixed(*power));
+                object.base_toughness = Some(crate::card::PtValue::Fixed(*toughness));
+                for granted in abilities {
+                    let ability = crate::ability::Ability::static_ability(granted.clone());
+                    if !object.abilities.contains(&ability) {
+                        object.abilities_mut().push(ability);
+                    }
+                }
+                self.mark_continuous_state_dirty();
+            }
+        }
+
         // Apply enters tapped
         if result.enters_tapped {
             self.tap(new_id);
         }
 
         // Apply enters with counters
-        for (counter_type, count) in &result.enters_with_counters {
+        for (counter_type, count) in result
+            .enters_with_counters
+            .iter()
+            .chain(&choices.as_enters_counters)
+        {
             if let Some(obj) = self.object_mut(new_id) {
                 *obj.counters.entry(*counter_type).or_insert(0) += count;
             }
+        }
+
+        if let Some(protector) = choices.battle_protector {
+            let _ = self.set_battle_protector(new_id, protector);
         }
 
         if !result.paid_labels.is_empty() {
@@ -789,302 +1827,6 @@ impl GameState {
             };
             self.add_exiled_with_source_link(new_id, exiled_id);
             self.record_zone_change_results(*linked_old_id, vec![exiled_id]);
-        }
-
-        // Apply "as this enters, choose a color" selections.
-        let choose_color_abilities = self
-            .object(new_id)
-            .map(|obj| (self.controller_of(obj), obj.abilities_vec()));
-        if let Some((controller, abilities)) = choose_color_abilities {
-            for ability in abilities {
-                if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
-                    if let Some(spec) = static_ability.color_choice_as_enters() {
-                        let mut options = vec![
-                            crate::color::Color::White,
-                            crate::color::Color::Blue,
-                            crate::color::Color::Black,
-                            crate::color::Color::Red,
-                            crate::color::Color::Green,
-                        ];
-                        if let Some(excluded) = spec.excluded {
-                            options.retain(|color| *color != excluded);
-                        }
-                        if options.is_empty() {
-                            continue;
-                        }
-                        let choice_spec = crate::decisions::specs::ManaColorsSpec::restricted(
-                            new_id,
-                            1,
-                            true,
-                            options.clone(),
-                        );
-                        let mut chosen = crate::decisions::make_decision(
-                            self,
-                            decision_maker,
-                            controller,
-                            Some(new_id),
-                            choice_spec,
-                        );
-                        if let Some(chosen_color) =
-                            chosen.pop().filter(|color| options.contains(color))
-                        {
-                            self.set_chosen_color(new_id, chosen_color);
-                        }
-                    }
-                    if static_ability.basic_land_type_choice_as_enters().is_some() {
-                        let options = [
-                            crate::types::Subtype::Plains,
-                            crate::types::Subtype::Island,
-                            crate::types::Subtype::Swamp,
-                            crate::types::Subtype::Mountain,
-                            crate::types::Subtype::Forest,
-                        ];
-                        let display_options = options
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, subtype)| {
-                                crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
-                            })
-                            .collect::<Vec<_>>();
-                        let choice_spec =
-                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
-                        let mut chosen = crate::decisions::make_decision(
-                            self,
-                            decision_maker,
-                            controller,
-                            Some(new_id),
-                            choice_spec,
-                        );
-                        if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < options.len()) {
-                            self.set_chosen_basic_land_type(new_id, options[chosen_idx]);
-                        }
-                    }
-                    if static_ability.land_type_choice_as_enters().is_some() {
-                        let options = crate::types::Subtype::all_land_types();
-                        let display_options = options
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, subtype)| {
-                                crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
-                            })
-                            .collect::<Vec<_>>();
-                        let choice_spec =
-                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
-                        let mut chosen = crate::decisions::make_decision(
-                            self,
-                            decision_maker,
-                            controller,
-                            Some(new_id),
-                            choice_spec,
-                        );
-                        if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < options.len()) {
-                            self.set_chosen_land_type(new_id, options[chosen_idx]);
-                        }
-                    }
-                    if static_ability.creature_type_choice_as_enters().is_some() {
-                        let options =
-                            crate::effects::BecomeCreatureTypeChoiceEffect::all_creature_types();
-                        let display_options = options
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, subtype)| {
-                                crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
-                            })
-                            .collect::<Vec<_>>();
-                        let choice_spec =
-                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
-                        let mut chosen = crate::decisions::make_decision(
-                            self,
-                            decision_maker,
-                            controller,
-                            Some(new_id),
-                            choice_spec,
-                        );
-                        if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < options.len()) {
-                            self.set_chosen_creature_type(new_id, options[chosen_idx]);
-                        }
-                    }
-                    if static_ability.player_choice_as_enters().is_some() {
-                        let options = self
-                            .players
-                            .iter()
-                            .filter(|player| player.is_in_game())
-                            .map(|player| player.id)
-                            .collect::<Vec<_>>();
-                        if options.is_empty() {
-                            continue;
-                        }
-                        let display_options = options
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(idx, player_id)| {
-                                self.player(*player_id).map(|player| {
-                                    crate::decisions::spec::DisplayOption::new(
-                                        idx,
-                                        player.name.to_string(),
-                                    )
-                                })
-                            })
-                            .collect::<Vec<_>>();
-                        let choice_spec =
-                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
-                        let mut chosen = crate::decisions::make_decision(
-                            self,
-                            decision_maker,
-                            controller,
-                            Some(new_id),
-                            choice_spec,
-                        );
-                        if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < options.len()) {
-                            self.set_chosen_player(new_id, options[chosen_idx]);
-                        }
-                    }
-                    if let Some(spec) = static_ability.card_name_choice_as_enters() {
-                        if spec.reveal_opponents_hands {
-                            let opponent_ids = self
-                                .players
-                                .iter()
-                                .filter(|player| player.is_in_game() && player.id != controller)
-                                .map(|player| player.id)
-                                .collect::<Vec<_>>();
-                            for opponent_id in opponent_ids {
-                                let cards = self
-                                    .player(opponent_id)
-                                    .map(|player| player.hand.clone())
-                                    .unwrap_or_default();
-                                for viewer_idx in 0..self.players.len() {
-                                    let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-                                    let mut view_ctx =
-                                        crate::decisions::context::ViewCardsContext::look_at_hand(
-                                            viewer,
-                                            opponent_id,
-                                            Some(new_id),
-                                        );
-                                    view_ctx.description = "Reveal that player's hand".to_string();
-                                    view_ctx.public = true;
-                                    decision_maker.view_cards(self, viewer, &cards, &view_ctx);
-                                }
-                            }
-                        }
-                        let choice_ctx = crate::decisions::context::TextInputContext::new(
-                            controller,
-                            Some(new_id),
-                            "Choose a card name",
-                        )
-                        .with_placeholder("Enter a card name")
-                        .require_known_value(true);
-                        let chosen_name = decision_maker.decide_text(self, &choice_ctx);
-                        if decision_maker.awaiting_choice() {
-                            continue;
-                        }
-                        let chosen_name = chosen_name.trim();
-                        if chosen_name.is_empty() {
-                            continue;
-                        }
-                        let mut registry = CardRegistry::new();
-                        registry.ensure_cards_loaded([chosen_name]);
-                        let canonical_name = registry
-                            .get(chosen_name)
-                            .map(|definition| definition.name().to_string())
-                            .unwrap_or_else(|| chosen_name.to_string());
-                        if spec.require_nonland_from_revealed_opponents
-                            && !self
-                                .players
-                                .iter()
-                                .filter(|player| player.is_in_game() && player.id != controller)
-                                .flat_map(|player| player.hand.iter().copied())
-                                .filter_map(|object_id| self.object(object_id))
-                                .any(|object| {
-                                    !object.is_land()
-                                        && object.name.eq_ignore_ascii_case(&canonical_name)
-                                })
-                        {
-                            continue;
-                        }
-                        self.set_chosen_named_option(new_id, canonical_name);
-                    }
-                    if let Some(spec) = static_ability.named_option_choice_as_enters() {
-                        if spec.options.is_empty() {
-                            continue;
-                        }
-                        let display_options = spec
-                            .options
-                            .iter()
-                            .enumerate()
-                            .map(|(idx, option)| {
-                                crate::decisions::spec::DisplayOption::new(idx, option.clone())
-                            })
-                            .collect::<Vec<_>>();
-                        let choice_spec =
-                            crate::decisions::specs::ChoiceSpec::single(new_id, display_options);
-                        let mut chosen = crate::decisions::make_decision(
-                            self,
-                            decision_maker,
-                            controller,
-                            Some(new_id),
-                            choice_spec,
-                        );
-                        if let Some(chosen_idx) =
-                            chosen.pop().filter(|idx| *idx < spec.options.len())
-                        {
-                            let option = spec.options[chosen_idx].clone();
-                            match option.as_str() {
-                                "artifact" => self
-                                    .set_chosen_card_type(new_id, crate::types::CardType::Artifact),
-                                "creature" => self
-                                    .set_chosen_card_type(new_id, crate::types::CardType::Creature),
-                                "enchantment" => self.set_chosen_card_type(
-                                    new_id,
-                                    crate::types::CardType::Enchantment,
-                                ),
-                                "instant" => self
-                                    .set_chosen_card_type(new_id, crate::types::CardType::Instant),
-                                "sorcery" => self
-                                    .set_chosen_card_type(new_id, crate::types::CardType::Sorcery),
-                                "planeswalker" => self.set_chosen_card_type(
-                                    new_id,
-                                    crate::types::CardType::Planeswalker,
-                                ),
-                                "land" => {
-                                    self.set_chosen_card_type(new_id, crate::types::CardType::Land)
-                                }
-                                _ => {}
-                            }
-                            self.set_chosen_named_option(new_id, option);
-                        }
-                    }
-                    if static_ability.life_total_note_as_enters().is_some() {
-                        self.note_life_total_for_source(new_id, controller);
-                    }
-                    if static_ability.id()
-                        == crate::static_abilities::StaticAbilityId::DiscardHandAsEnters
-                    {
-                        let hand = self
-                            .player(controller)
-                            .map(|player| player.hand.clone())
-                            .unwrap_or_default();
-                        for card_id in hand {
-                            let provenance = self
-                                .provenance_graph_mut()
-                                .alloc_root_event(crate::events::EventKind::Discard);
-                            crate::events::processing::execute_discard(
-                                self,
-                                card_id,
-                                controller,
-                                cause.clone(),
-                                false,
-                                provenance,
-                                decision_maker,
-                            );
-                        }
-                    }
-                }
-            }
-            self.apply_power_toughness_choice_as_enters_or_turns_face_up(
-                new_id,
-                controller,
-                decision_maker,
-            );
         }
 
         // If this is an Aura entering from a non-stack zone, choose what to attach to
@@ -1222,9 +1964,16 @@ impl GameState {
                 }
             }
             self.stable_id_index.remove(&obj.stable_id);
+            self.auxiliary_tracking_mut()
+                .sector_designations
+                .remove(&id);
             {
                 let commander_tracking = self.commander_tracking_mut();
                 commander_tracking.melded_permanents.remove(&obj.stable_id);
+                commander_tracking.merged_permanents.remove(&obj.stable_id);
+                commander_tracking
+                    .pending_merged_component_destinations
+                    .remove(&obj.stable_id);
                 commander_tracking.declined_command_zone_moves.remove(&id);
             }
             self.remove_from_zone_index(id, obj.zone, obj.owner);
@@ -1249,6 +1998,11 @@ impl GameState {
                 let before = self.exile.len();
                 self.exile.retain(|&x| x != id);
                 removed = self.exile.len() != before;
+            }
+            Zone::Ante => {
+                let before = self.ante.len();
+                self.ante.retain(|&x| x != id);
+                removed = self.ante.len() != before;
             }
             Zone::Library => {
                 let was_top = self
@@ -1376,6 +2130,30 @@ impl GameState {
                 None => {
                     return Err(format!(
                         "Object #{} in command zone index doesn't exist in objects",
+                        id.0
+                    ));
+                }
+            }
+        }
+
+        // Check ante
+        for &id in &self.ante {
+            if seen_ids.contains(&id) {
+                return Err(format!("Object #{} appears in multiple zone indexes", id.0));
+            }
+            seen_ids.insert(id);
+
+            match self.objects.get(&id) {
+                Some(obj) if obj.zone == Zone::Ante => {}
+                Some(obj) => {
+                    return Err(format!(
+                        "Object #{} in ante index has zone {}",
+                        id.0, obj.zone
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "Object #{} in ante index doesn't exist in objects",
                         id.0
                     ));
                 }
@@ -1677,8 +2455,14 @@ impl GameState {
         source_controller: Option<PlayerId>,
     ) -> Option<(u32, crate::triggers::TriggerEvent)> {
         self.mark_continuous_state_dirty();
+        let location_snapshot = self.object(id).map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, self,
+            )
+        });
         let obj = self.object_mut(id)?;
         let removed = obj.remove_counters(counter_type, amount);
+        let count_after = obj.counters.get(&counter_type).copied().unwrap_or(0);
 
         if removed == 0 {
             return None;
@@ -1688,16 +2472,20 @@ impl GameState {
         let event_provenance = self
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::MarkersChanged);
-        let event = crate::triggers::TriggerEvent::new_with_provenance(
+        let mut event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::MarkersChangedEvent::removed(
                 counter_type,
                 id,
                 removed,
                 source,
                 source_controller,
-            ),
+            )
+            .with_count_after(count_after),
             event_provenance,
         );
+        if let Some(snapshot) = location_snapshot {
+            event = event.with_lookback_source_snapshots(vec![snapshot]);
+        }
 
         Some((removed, event))
     }
@@ -1791,10 +2579,7 @@ impl GameState {
         }
 
         if matches!(counter_type, crate::object::CounterType::Poison)
-            && !self
-                .effect_store
-                .cant_effects
-                .can_get_poison_counters(player_id)
+            && !self.can_get_poison_counters(player_id)
         {
             return None;
         }
@@ -1816,8 +2601,13 @@ impl GameState {
             return None;
         }
 
-        self.player_mut(player_id)?
-            .add_counters(counter_type, amount);
+        if matches!(counter_type, crate::object::CounterType::Poison) {
+            let current = self.player(player_id)?.poison_counters;
+            self.write_shared_poison(player_id, current.saturating_add(amount));
+        } else {
+            self.player_mut(player_id)?
+                .add_counters(counter_type, amount);
+        }
 
         let event_provenance = self
             .provenance_graph_mut()
@@ -1849,9 +2639,15 @@ impl GameState {
             return None;
         }
 
-        let removed = self
-            .player_mut(player_id)?
-            .remove_counters(counter_type, amount);
+        let removed = if matches!(counter_type, crate::object::CounterType::Poison) {
+            let current = self.player(player_id)?.poison_counters;
+            let removed = current.min(amount);
+            self.write_shared_poison(player_id, current.saturating_sub(removed));
+            removed
+        } else {
+            self.player_mut(player_id)?
+                .remove_counters(counter_type, amount)
+        };
 
         if removed == 0 {
             return None;
@@ -1954,6 +2750,9 @@ impl GameState {
         id: ObjectId,
         effects: &[ContinuousEffect],
     ) -> Option<crate::continuous::CalculatedCharacteristics> {
+        if let Some(chars) = self.face_down_conspiracy_characteristics(id) {
+            return Some(chars);
+        }
         if let Some(chars) = crate::continuous::in_progress_characteristics(id) {
             return Some(chars);
         }
@@ -1972,14 +2771,20 @@ impl GameState {
         ids: &[ObjectId],
         effects: &[ContinuousEffect],
     ) -> HashMap<ObjectId, crate::continuous::CalculatedCharacteristics> {
-        crate::continuous::calculate_characteristics_batch_with_effects(
+        let mut calculated = crate::continuous::calculate_characteristics_batch_with_effects(
             ids,
             &self.objects,
             effects,
             &self.battlefield,
             self.commander_objects(),
             self,
-        )
+        );
+        for id in ids {
+            if let Some(chars) = self.face_down_conspiracy_characteristics(*id) {
+                calculated.insert(*id, chars);
+            }
+        }
+        calculated
     }
 
     /// Precompute calculated characteristics for a set of objects in one batch.
@@ -2138,13 +2943,19 @@ impl GameState {
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
                     name: object.name.clone(),
+                    mana_cost: object.mana_cost_owned(),
                     compiled_card_text: object.compiled_card_text.clone(),
                     power: object.power(),
                     toughness: object.toughness(),
                     card_types: object.card_types.clone(),
                     subtypes: object.subtypes.clone(),
                     supertypes: object.supertypes.clone(),
+                    world_supertype_since: object
+                        .supertypes
+                        .contains(&crate::types::Supertype::World)
+                        .then_some(0),
                     colors: object.colors(),
+                    loyalty: object.base_loyalty,
                     abilities: object.abilities.clone().into(),
                     static_abilities: object
                         .abilities
@@ -2163,6 +2974,7 @@ impl GameState {
                         )
                         .collect::<Vec<_>>()
                         .into(),
+                    ability_gain_prohibitions: Vec::new(),
                     aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),
                 });
@@ -2207,6 +3019,22 @@ impl GameState {
         skipped_effect: Option<ContinuousEffectId>,
     ) -> Option<PlayerId> {
         let object = self.object(id)?;
+        if self.is_face_up_planar_object(id) {
+            return if self.grand_melee().is_some() {
+                self.planar_controller_of_face(id)
+            } else {
+                self.planar_controller()
+            };
+        }
+        if self.is_vanguard_card(id) {
+            return Some(object.owner);
+        }
+        if self.is_face_up_scheme(id) {
+            return Some(object.owner);
+        }
+        if self.is_conspiracy_card(id) {
+            return Some(object.owner);
+        }
         if skipped_effect.is_none()
             && self.continuous_state_is_clean()
             && let Some(controller) = self.cached_current_controller(id, object)
@@ -2619,8 +3447,18 @@ impl GameState {
             .mana_spend_effects
             .retain_effect_permissions(self.turn.turn_number);
         self.battlefield_flags_mut().damage_persists.clear();
+        let vanguard_hand_modifiers = self
+            .vanguard
+            .as_ref()
+            .map(|state| state.hand_modifiers.clone())
+            .unwrap_or_default();
         for player in &mut self.players {
-            player.max_hand_size = 7;
+            player.max_hand_size = 7_i32.saturating_add(
+                vanguard_hand_modifiers
+                    .get(&player.id)
+                    .copied()
+                    .unwrap_or(0),
+            );
             player.land_plays_per_turn = 1;
         }
 
@@ -2644,7 +3482,6 @@ impl GameState {
             if !effects_can_change_cant_abilities {
                 self.objects
                     .iter()
-                    .filter(|(_, object)| matches!(object.zone, Zone::Battlefield | Zone::Stack))
                     .flat_map(|(&object_id, object)| {
                         let zone = object.zone;
                         let controller = self.controller_of(object);
@@ -2735,7 +3572,7 @@ impl GameState {
                                 })
                                 .unwrap_or_default(),
                             ),
-                            Zone::Stack => Some(
+                            _ => Some(
                                 object
                                     .abilities
                                     .iter()
@@ -2758,7 +3595,6 @@ impl GameState {
                                     })
                                     .collect::<Vec<_>>(),
                             ),
-                            _ => None,
                         }
                     })
                     .flatten()
@@ -2842,9 +3678,6 @@ impl GameState {
         }
 
         self.objects.values().all(|object| {
-            if !matches!(object.zone, Zone::Battlefield | Zone::Stack) {
-                return true;
-            }
             let printed_abilities_are_irrelevant = object.abilities.iter().all(|ability| {
                 if !ability.functions_in(&object.zone) {
                     return true;
@@ -2887,6 +3720,7 @@ impl GameState {
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::SetTextBox(_)
+            | Modification::CopyStaticAbilityVariants { .. }
             // Restriction modifications materialize as cant-relevant static
             // abilities in calculated characteristics.
             | Modification::CantBeBlocked
@@ -2896,7 +3730,7 @@ impl GameState {
             // Removals can strip cant-relevant statics granted by other
             // effects; rerun the scan rather than reason about ordering.
             | Modification::RemoveAbility(_)
-            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbility(static_ability) => {

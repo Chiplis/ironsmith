@@ -246,12 +246,14 @@ impl CardDefinitionBuilder {
             KeywordAction::Hexproof => self.hexproof(),
             KeywordAction::Indestructible => self.indestructible(),
             KeywordAction::Toxic(amount) => self.toxic(amount),
+            KeywordAction::Poisonous(amount) => self.poisonous(amount),
             KeywordAction::Afterlife(amount) => self.afterlife(amount),
             KeywordAction::Fabricate(amount) => self.fabricate(amount),
             KeywordAction::FirstStrike => self.first_strike(),
             KeywordAction::DoubleStrike => self.double_strike(),
             KeywordAction::Exalted => self.exalted(),
             KeywordAction::Storm => self.storm(),
+            KeywordAction::Gravestorm => self.gravestorm(),
             KeywordAction::BattleCry => self.battle_cry(),
             KeywordAction::Dethrone => self.dethrone(),
             KeywordAction::Evolve => self.evolve(),
@@ -298,6 +300,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Cipher => self.cipher(),
             KeywordAction::Suspend { time, cost } => self.suspend(time, cost),
             KeywordAction::Overload(cost) => self.overload(cost),
+            KeywordAction::Cleave(cost) => self.cleave(cost),
             KeywordAction::Awaken { amount, cost } => self.awaken(amount, cost),
             KeywordAction::Echo { total_cost, .. } => self.echo(total_cost),
             KeywordAction::CumulativeUpkeep { total_cost, .. } => {
@@ -338,12 +341,9 @@ impl CardDefinitionBuilder {
             KeywordAction::Rebound => self.rebound(),
             KeywordAction::Sunburst => self.sunburst(),
             KeywordAction::ReadAhead => self.read_ahead(),
-            KeywordAction::Firebending(amount) => {
-                self.with_ability(crate::ability::Ability::static_ability(
-                    crate::static_abilities::StaticAbility::keyword_marker(format!(
-                        "firebending {amount}"
-                    )),
-                ))
+            KeywordAction::Firebending(amount) => self.firebending(amount),
+            KeywordAction::FirebendingValue { amount, surface } => {
+                self.firebending_with_surface(amount, surface)
             }
             KeywordAction::Fading(amount) => self.fading(amount),
             KeywordAction::Modular(amount) => self.modular(amount),
@@ -351,6 +351,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Graft(amount) => self.graft(amount),
             KeywordAction::Rampage(amount) => self.rampage(amount),
             KeywordAction::Bushido(amount) => self.bushido(amount),
+            KeywordAction::Frenzy(amount) => self.frenzy(amount),
             KeywordAction::ProtectionFrom(colors) => self.protection_from(colors),
             KeywordAction::ProtectionFromAllColors => {
                 self.with_ability(crate::ability::Ability::static_ability(
@@ -633,6 +634,27 @@ impl CardDefinitionBuilder {
         })
     }
 
+    pub fn poisonous(self, amount: u32) -> Self {
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    crate::target::PlayerFilter::Any,
+                ),
+                effects: vec![crate::effect::Effect::poison_counters_player(
+                    amount as i32,
+                    crate::target::PlayerFilter::DamagedPlayer,
+                )]
+                .into(),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(PresentationLabel::Keyword(
+                    PresentationKeyword::Poisonous(amount),
+                )),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
+    }
+
     pub fn ward_generic(self, amount: u32) -> Self {
         let mana = ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(amount as u8)]);
         self.with_ability(crate::ability::Ability::static_ability(
@@ -790,6 +812,34 @@ impl CardDefinitionBuilder {
         })
     }
 
+    pub fn gravestorm(self) -> Self {
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::with_id(
+                        0,
+                        crate::effect::Effect::new(crate::effects::CopySpellEffect::new(
+                            crate::target::ChooseSpec::Source,
+                            crate::effect::Value::TurnHistoryCount(
+                                ironsmith_core::TurnHistoryCount::Died(
+                                    crate::target::ObjectFilter::default(),
+                                ),
+                            ),
+                        )),
+                    ),
+                    crate::effect::Effect::new(crate::effects::ChooseNewTargetsEffect::may(
+                        crate::effect::EffectId(0),
+                    )),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Stack],
+        })
+    }
+
     pub fn battle_cry(self) -> Self {
         let mut filter = crate::target::ObjectFilter::creature()
             .you_control()
@@ -807,6 +857,39 @@ impl CardDefinitionBuilder {
                 )],
             )],
         ))
+    }
+
+    pub fn firebending(self, amount: u32) -> Self {
+        self.firebending_with_surface(
+            crate::effect::Value::Fixed(amount as i32),
+            amount.to_string(),
+        )
+    }
+
+    fn firebending_with_surface(self, amount: crate::effect::Value, presentation: String) -> Self {
+        let add_mana = crate::effect::Effect::new(crate::effects::mana::AddScaledManaEffect::new(
+            vec![crate::mana::ManaSymbol::Red],
+            amount,
+            crate::target::PlayerFilter::You,
+        ));
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_attacks(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::mana_retained_until_end_of_combat(vec![add_mana]),
+                    crate::effect::Effect::emit_keyword_action(
+                        crate::events::KeywordActionKind::Firebend,
+                        1,
+                    ),
+                ]),
+                choices: Vec::new(),
+                intervening_if: None,
+                presentation_label: Some(PresentationLabel::Keyword(
+                    PresentationKeyword::Firebending(presentation),
+                )),
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
     }
 
     pub fn dethrone(self) -> Self {
@@ -889,33 +972,25 @@ impl CardDefinitionBuilder {
     }
 
     pub fn enlist(self) -> Self {
-        let tag = "enlisted_creature";
-        let mut filter = crate::target::ObjectFilter::creature()
-            .you_control()
-            .other();
-        filter.untapped = true;
-        filter.nonattacking = true;
-        filter.enlist_eligible = true;
-        let effects = vec![
-            crate::effect::Effect::tag_triggering_object("enlist_attacker"),
-            crate::effect::Effect::choose_objects(filter, 1, crate::target::PlayerFilter::You, tag),
-            crate::effect::Effect::tap(crate::target::ChooseSpec::Tagged(tag.into())),
-            crate::effect::Effect::pump_for_each(
-                crate::target::ChooseSpec::Tagged("enlist_attacker".into()),
-                1,
-                0,
-                crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
-                    tag.into(),
-                ))),
-                crate::effect::Until::EndOfTurn,
-            ),
-        ];
-        self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_attacks(),
-            vec![crate::effect::Effect::may_player(
-                crate::target::PlayerFilter::You,
-                effects,
-            )],
+        let linked_trigger = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_attacks(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::pump_for_each(
+                    crate::target::ChooseSpec::Source,
+                    1,
+                    0,
+                    crate::effect::Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(
+                        "enlisted_creature".into(),
+                    ))),
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+        self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::enlist_attack(linked_trigger, "Enlist"),
         ))
     }
 
@@ -1394,6 +1469,15 @@ impl CardDefinitionBuilder {
                 effects: Vec::new(),
             },
         );
+        self
+    }
+
+    pub fn cleave(mut self, cost: ManaCost) -> Self {
+        self.alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Cleave {
+                cost,
+                effects: Vec::new(),
+            });
         self
     }
 
@@ -2166,6 +2250,18 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn frenzy(self, amount: u32) -> Self {
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_attacks_and_isnt_blocked(),
+            vec![crate::effect::Effect::pump(
+                amount as i32,
+                0,
+                crate::target::ChooseSpec::Source,
+                crate::effect::Until::EndOfTurn,
+            )],
+        ))
+    }
+
     pub fn protection_from(self, colors: ColorSet) -> Self {
         let protection = crate::static_abilities::StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
@@ -2389,6 +2485,11 @@ impl CardDefinitionBuilder {
     }
 
     pub fn build(self) -> CardDefinition {
+        let refers_to_ante = self
+            .card_builder
+            .oracle_text_ref()
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .any(|word| word.eq_ignore_ascii_case("ante"));
         CardDefinition {
             card: self.card_builder.build(),
             abilities: self.abilities,
@@ -2398,11 +2499,20 @@ impl CardDefinitionBuilder {
             has_fuse: self.has_fuse,
             optional_costs: self.optional_costs,
             additional_cost: self.additional_cost,
+            refers_to_ante,
         }
     }
 }
 
 pub const IT_TAG: &str = crate::host::IT_TAG;
+pub const ADDITIONAL_COST_OBJECT_TAG: &str = crate::host::ADDITIONAL_COST_OBJECT_TAG;
 pub const THIS_WAY_SACRIFICED_TAG: &str = crate::host::THIS_WAY_SACRIFICED_TAG;
 pub const CHOSEN_OBJECTS_TAG: &str = crate::host::CHOSEN_OBJECTS_TAG;
 pub const COPIED_STACK_OBJECT_TAG: &str = crate::host::COPIED_STACK_OBJECT_TAG;
+/// Parse-time alias for an authored target selected by the ability's
+/// controller (for example, "the creature you chose").
+pub(crate) const ABILITY_CONTROLLER_TARGET_CHOICE_TAG: &str =
+    "__ability_controller_target_choice_0";
+/// Parse-time alias for an authored target selected by the opponent tied to a
+/// prior target (for example, "the creature your opponent chose").
+pub(crate) const OPPONENT_TARGET_CHOICE_TAG: &str = "__opponent_target_choice_1";

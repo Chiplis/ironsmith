@@ -24,15 +24,21 @@ impl EffectExecutor for SkipMainPhasesThisTurnEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        if player_id == game.turn.active_player
+        if game.is_active_player(player_id)
             && matches!(
                 game.turn.phase,
                 Phase::Beginning | Phase::FirstMain | Phase::Combat
             )
+            && ctx.claim_shared_team_structure_operation(
+                game,
+                player_id,
+                "skip_main_phases_this_turn",
+            )
         {
+            let turn_player = game.team_turn_representative(player_id);
             game.turn_store
                 .skip_current_turn_main_phases
-                .insert(player_id);
+                .insert(turn_player);
         }
         Ok(EffectOutcome::resolved())
     }

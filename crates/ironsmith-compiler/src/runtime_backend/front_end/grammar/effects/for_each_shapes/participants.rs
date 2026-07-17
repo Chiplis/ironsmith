@@ -16,6 +16,7 @@ pub(crate) enum ForEachParticipantScope {
     OpponentExceptDefending,
     Player,
     PlayerExceptYou,
+    PlayerExceptTarget,
     PlayerExceptItsController,
     PlayerOnYourTeam,
 }
@@ -213,6 +214,13 @@ pub(crate) fn parse_participant_clause_shape(
         primitives::phrase(&["other", "than", "its", "controller"]),
     ) {
         scope = ForEachParticipantScope::PlayerExceptItsController;
+        inner_tokens = trim(rest);
+    }
+    if let Some((_, rest)) = primitives::parse_prefix(
+        inner_tokens,
+        primitives::phrase(&["other", "than", "target", "player"]),
+    ) {
+        scope = ForEachParticipantScope::PlayerExceptTarget;
         inner_tokens = trim(rest);
     }
     if let Some((_, rest)) =

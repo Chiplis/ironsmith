@@ -241,6 +241,7 @@ pub(crate) struct ParsedModalAst {
 pub(crate) struct ParsedModalHeader {
     pub(crate) min: Value,
     pub(crate) max: Option<Value>,
+    pub(crate) spree: bool,
     pub(crate) weighted_mode_points: bool,
     pub(crate) random: bool,
     pub(crate) same_mode_more_than_once: bool,
@@ -274,6 +275,7 @@ pub(crate) struct ParsedModalModeAst {
     pub(crate) info: LineInfo,
     pub(crate) description: String,
     pub(crate) point_cost: Option<u32>,
+    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
     pub(crate) effects_ast: Vec<EffectAst>,
 }
 

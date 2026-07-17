@@ -17,6 +17,7 @@ use super::grammar::keyword_dispatch::{
     KeywordPrefixShape, KeywordSpecialFormShape, parse_keyword_prefix_shape_tokens,
     parse_keyword_special_form_shape_tokens,
 };
+use super::grammar::keyword_special_lines::parse_behold_and_exile_additional_cost_tokens;
 use super::grammar::splice_keyword_lines::parse_splice_keyword_line_tokens;
 use super::ir::RewriteKeywordLine;
 use super::keyword_static::{
@@ -43,8 +44,8 @@ use super::util::{
     parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_offspring_line_lexed,
     parse_prowl_line_lexed, parse_reinforce_line_lexed, parse_replicate_line_lexed,
     parse_retrace_line_lexed, parse_self_free_cast_alternative_cost_line_lexed,
-    parse_squad_line_lexed, parse_transmute_line_lexed, parse_warp_line_lexed,
-    parse_you_may_rather_than_spell_cost_line_lexed,
+    parse_squad_line_lexed, parse_transfigure_line_lexed, parse_transmute_line_lexed,
+    parse_warp_line_lexed, parse_you_may_rather_than_spell_cost_line_lexed,
 };
 
 type KeywordParseResult = Result<Option<KeywordLinePayloadCst>, CardTextError>;
@@ -126,6 +127,17 @@ pub(super) fn parse_additional_cost(
     tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
+    if let Some(shape) = parse_behold_and_exile_additional_cost_tokens(tokens) {
+        let tag = crate::TagKey::from("beheld_cost_0");
+        let effects = vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_behold(shape.subtype, 1)),
+                tag: tag.clone(),
+            },
+            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+        ];
+        return Ok(ast(LineAst::AdditionalCost { effects }));
+    }
     let context = rewrite_context(
         line,
         tokens,
@@ -418,6 +430,7 @@ ability_parser!(parse_equip, parse_equip_line_lexed);
 ability_parser!(parse_reconfigure, parse_reconfigure_line_lexed);
 ability_parser!(parse_morph, parse_morph_keyword_line_lexed);
 ability_parser!(parse_transmute, parse_transmute_line_lexed);
+ability_parser!(parse_transfigure, parse_transfigure_line_lexed);
 
 pub(super) fn parse_blitz(
     _line: &PreprocessedLine,
@@ -440,7 +453,7 @@ pub(super) fn parse_kicker(
 }
 
 pub(super) fn parse_mutate(
-    line: &PreprocessedLine,
+    _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
     _full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
@@ -450,13 +463,8 @@ pub(super) fn parse_mutate(
     let Some((cost, _)) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default()) else {
         return Ok(None);
     };
-    let _ = line;
-    Ok(ast(LineAst::StaticAbility(
-        crate::static_abilities::StaticAbility::keyword_marker(format!(
-            "Mutate {}",
-            cost.to_oracle()
-        ))
-        .into(),
+    Ok(ast(LineAst::AlternativeCastingMethod(
+        crate::alternative_cast::AlternativeCastingMethod::Mutate { cost }.into(),
     )))
 }
 

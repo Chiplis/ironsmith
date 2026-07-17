@@ -108,6 +108,10 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
         let life1 = game.player(player1_id).map(|p| p.life).unwrap_or(0);
         let life2 = game.player(player2_id).map(|p| p.life).unwrap_or(0);
 
+        if game.are_teammates(player1_id, player2_id) {
+            return Ok(EffectOutcome::prevented());
+        }
+
         if life1 == life2 {
             return Ok(EffectOutcome::resolved());
         }
@@ -131,10 +135,8 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
 
         if life2 > life1 {
             let gained = process_life_gain_with_event(game, player1_id, (life2 - life1) as u32);
-            if gained > 0
-                && let Some(player) = game.player_mut(player1_id)
-            {
-                player.gain_life(gained);
+            if gained > 0 {
+                game.gain_life(player1_id, gained);
             }
             if gained > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
@@ -144,9 +146,7 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
             }
         } else if life1 > life2 {
             let lost = (life1 - life2) as u32;
-            if let Some(player) = game.player_mut(player1_id) {
-                player.lose_life(lost);
-            }
+            game.lose_life(player1_id, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     crate::events::LifeLossEvent::from_effect(player1_id, lost),
@@ -157,10 +157,8 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
 
         if life1 > life2 {
             let gained = process_life_gain_with_event(game, player2_id, (life1 - life2) as u32);
-            if gained > 0
-                && let Some(player) = game.player_mut(player2_id)
-            {
-                player.gain_life(gained);
+            if gained > 0 {
+                game.gain_life(player2_id, gained);
             }
             if gained > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
@@ -170,9 +168,7 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
             }
         } else if life2 > life1 {
             let lost = (life2 - life1) as u32;
-            if let Some(player) = game.player_mut(player2_id) {
-                player.lose_life(lost);
-            }
+            game.lose_life(player2_id, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     crate::events::LifeLossEvent::from_effect(player2_id, lost),

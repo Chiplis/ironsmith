@@ -10,16 +10,20 @@ use crate::decision::{
 };
 use crate::decisions::context::{BooleanContext, DecisionContext};
 use crate::game_loop::{
-    AttackDeclarationTransaction, GameLoopError, apply_attack_mana_ability_window_response,
-    apply_attacker_declarations_with_dm, apply_multiplayer_blocker_declarations,
-    attack_mana_ability_window_context, begin_attack_declaration_transaction,
-    drain_pending_trigger_events, finish_attack_declaration_transaction,
+    AttackDeclarationTransaction, BlockDeclarationTransaction, GameLoopError,
+    apply_attack_mana_ability_window_response, apply_attacker_declarations_with_dm,
+    apply_blocker_mana_ability_window_response, attack_mana_ability_window_context,
+    begin_attack_declaration_transaction, begin_blocker_declaration_transaction,
+    blocker_mana_ability_window_context, drain_pending_trigger_events,
+    finish_attack_declaration_transaction, finish_blocker_declaration_transaction,
     generate_and_queue_step_triggers, get_declare_attackers_decision,
     get_declare_blockers_decision, preview_optional_attack_cost_prompts,
     preview_required_attack_mana_cost, put_triggers_on_stack, queue_combat_damage_triggers,
     try_execute_combat_damage_step, try_execute_combat_damage_step_with_first_step_snapshot,
 };
-use crate::game_state::{GameState, Phase, Step};
+use crate::game_state::{
+    AddedStepPlacement, GameState, Phase, ScheduledStep, Step, TurnScheduleDestination,
+};
 use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::deals_first_strike_damage_with_game;
 use crate::rules::state_based::check_state_based_actions;
@@ -76,6 +80,7 @@ pub enum TurnState {
     CombatDamageRegularPriority,
     EndCombat,
     EndCombatPriority,
+    EndCombatPhaseSbas,
 
     // === Second Main Phase ===
     NextMain,
@@ -84,6 +89,7 @@ pub enum TurnState {
     // === Ending Phase ===
     EndStep,
     EndStepPriority,
+    EndTurnSbas,
     CleanupDiscard,
     CleanupApply,
     CleanupRecursiveCheck,
@@ -122,10 +128,12 @@ impl TurnState {
             Self::CombatDamageRegularPriority => "combat_damage_regular_priority",
             Self::EndCombat => "end_combat",
             Self::EndCombatPriority => "end_combat_priority",
+            Self::EndCombatPhaseSbas => "end_combat_phase_sbas",
             Self::NextMain => "next_main",
             Self::NextMainPriority => "next_main_priority",
             Self::EndStep => "end_step",
             Self::EndStepPriority => "end_step_priority",
+            Self::EndTurnSbas => "end_turn_sbas",
             Self::CleanupDiscard => "cleanup_discard",
             Self::CleanupApply => "cleanup_apply",
             Self::CleanupRecursiveCheck => "cleanup_recursive_check",
@@ -162,10 +170,12 @@ impl TurnState {
             "combat_damage_regular_priority" => Self::CombatDamageRegularPriority,
             "end_combat" => Self::EndCombat,
             "end_combat_priority" => Self::EndCombatPriority,
+            "end_combat_phase_sbas" => Self::EndCombatPhaseSbas,
             "next_main" => Self::NextMain,
             "next_main_priority" => Self::NextMainPriority,
             "end_step" => Self::EndStep,
             "end_step_priority" => Self::EndStepPriority,
+            "end_turn_sbas" => Self::EndTurnSbas,
             "cleanup_discard" => Self::CleanupDiscard,
             "cleanup_apply" => Self::CleanupApply,
             "cleanup_recursive_check" => Self::CleanupRecursiveCheck,
@@ -191,11 +201,55 @@ struct PendingLegendRuleChoice {
     legends: Vec<ObjectId>,
 }
 
+/// A CR 704.5u assignment batch paused between asynchronous sector choices.
+/// Choices remain private here and are committed together after the final one.
 #[derive(Debug, Clone)]
-struct PendingDredgeChoice {
+struct PendingSectorDesignationChoices {
+    source: ObjectId,
+    creatures: Vec<(PlayerId, ObjectId)>,
+    choices: Vec<crate::marker::SectorDesignation>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingDrawReplacementChoice {
     player: PlayerId,
-    object_id: ObjectId,
-    amount: usize,
+    applicable_effects: Vec<crate::replacement::ReplacementEffectId>,
+    event: crate::events::Event,
+    applied_effects: std::collections::HashSet<crate::replacement::ReplacementEffectId>,
+    applied_effect_keys: std::collections::HashSet<crate::replacement::ReplacementEffectKey>,
+}
+
+fn draw_replacement_choice_context(
+    game: &GameState,
+    pending: &PendingDrawReplacementChoice,
+) -> DecisionContext {
+    let options = pending
+        .applicable_effects
+        .iter()
+        .enumerate()
+        .filter_map(|(index, effect_id)| {
+            game.effect_store
+                .replacement_effects
+                .get_effect(*effect_id)
+                .map(|effect| {
+                    crate::decisions::context::SelectableOption::new(
+                        index,
+                        crate::events::processing::replacement_effect_choice_description(
+                            game, effect,
+                        ),
+                    )
+                    .with_object(effect.source)
+                })
+        })
+        .collect();
+    DecisionContext::SelectOptions(crate::decisions::context::SelectOptionsContext::new(
+        pending.player,
+        None,
+        "Choose a draw replacement effect to apply",
+        options,
+        1,
+        1,
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -212,8 +266,8 @@ struct PendingDrawRevealChoice {
 #[derive(Debug, Clone)]
 struct PendingAttackerOptionalCosts {
     transaction: AttackDeclarationTransaction,
-    prompts: Vec<BooleanContext>,
-    answers: Vec<bool>,
+    prompts: Vec<DecisionContext>,
+    answers: Vec<AttackCostAnswer>,
     required_mana_cost: u32,
     declaration_source: ObjectId,
 }
@@ -221,8 +275,31 @@ struct PendingAttackerOptionalCosts {
 #[derive(Debug, Clone)]
 struct PendingAttackerManaWindow {
     transaction: AttackDeclarationTransaction,
-    optional_cost_answers: Vec<bool>,
+    optional_cost_answers: Vec<AttackCostAnswer>,
     declaration_source: ObjectId,
+}
+
+#[derive(Debug, Clone)]
+struct PendingBlockerManaWindow {
+    transaction: BlockDeclarationTransaction,
+    payers: Vec<PlayerId>,
+    next_payer: usize,
+    declaration_source: ObjectId,
+}
+
+fn next_blocker_mana_window_context(
+    game: &GameState,
+    pending: &mut PendingBlockerManaWindow,
+) -> Option<crate::decisions::context::SelectOptionsContext> {
+    while let Some(&payer) = pending.payers.get(pending.next_payer) {
+        if let Some(context) =
+            blocker_mana_ability_window_context(game, payer, pending.declaration_source)
+        {
+            return Some(context);
+        }
+        pending.next_payer += 1;
+    }
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -239,6 +316,18 @@ enum RunnerProgress<T> {
 #[derive(Debug, Clone)]
 struct QueuedBooleanDecisionMaker {
     answers: Vec<bool>,
+    next: usize,
+}
+
+#[derive(Debug, Clone)]
+enum AttackCostAnswer {
+    Boolean(bool),
+    Objects(Vec<ObjectId>),
+}
+
+#[derive(Debug, Clone)]
+struct QueuedAttackCostDecisionMaker {
+    answers: Vec<AttackCostAnswer>,
     next: usize,
 }
 
@@ -272,6 +361,69 @@ impl DecisionMaker for QueuedBooleanDecisionMaker {
     }
 }
 
+impl QueuedAttackCostDecisionMaker {
+    fn new(answers: Vec<AttackCostAnswer>) -> Self {
+        Self { answers, next: 0 }
+    }
+
+    fn next_answer(&mut self) -> Option<AttackCostAnswer> {
+        let answer = self.answers.get(self.next).cloned();
+        self.next += 1;
+        answer
+    }
+}
+
+impl DecisionMaker for QueuedAttackCostDecisionMaker {
+    fn decide_boolean(&mut self, _game: &GameState, _ctx: &BooleanContext) -> bool {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Boolean(answer)) => answer,
+            _ => false,
+        }
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        match self.next_answer() {
+            Some(AttackCostAnswer::Objects(objects)) => objects,
+            _ => Vec::new(),
+        }
+    }
+}
+
+fn validate_declared_attacking_bands(
+    game: &GameState,
+    declarations: &[AttackerDeclaration],
+    bands: &[Vec<ObjectId>],
+) -> Result<(), GameLoopError> {
+    let mut proposed = CombatState::default();
+    proposed.attackers = declarations
+        .iter()
+        .map(|declaration| crate::combat_state::AttackerInfo {
+            creature: declaration.creature,
+            target: declaration.target.clone(),
+        })
+        .collect();
+    for band in bands {
+        crate::combat_state::set_attacking_band(game, &mut proposed, band.clone())?;
+    }
+    Ok(())
+}
+
+fn record_declared_attacking_bands(combat: &mut CombatState, bands: Vec<Vec<ObjectId>>) {
+    for band in bands {
+        let survivors = band
+            .into_iter()
+            .filter(|member| crate::combat_state::is_attacking(combat, *member))
+            .collect::<Vec<_>>();
+        if survivors.len() > 1 {
+            combat.attacking_bands.push(survivors);
+        }
+    }
+}
+
 /// Drives a single turn as a state machine.
 #[derive(Debug, Clone)]
 pub struct TurnRunner {
@@ -285,12 +437,16 @@ pub struct TurnRunner {
     first_step_strikers: std::collections::HashSet<ObjectId>,
     /// Pending attacker declarations from the caller.
     pending_attackers: Option<Vec<AttackerDeclaration>>,
+    /// Bands announced as part of the pending attacker declaration.
+    pending_attacking_bands: Option<Vec<Vec<ObjectId>>>,
     /// Mandatory choices for permanents that may remain tapped this untap step.
     pending_untap_choices: Option<PendingUntapChoices>,
     /// Pending attacker-cost prompts and their collected answers.
     pending_attacker_optional_costs: Option<PendingAttackerOptionalCosts>,
     /// Attack declaration paused after CR 508.1f tapping and before costs.
     pending_attacker_mana_window: Option<PendingAttackerManaWindow>,
+    /// Block declaration paused after CR 509.1d cost locking and before payment.
+    pending_blocker_mana_window: Option<PendingBlockerManaWindow>,
     /// Pending single-option response for a runner-driven SelectOptions decision.
     pending_option: Option<usize>,
     /// Pending blocker declarations from the caller.
@@ -299,20 +455,24 @@ pub struct TurnRunner {
     pending_discard: Option<Vec<ObjectId>>,
     /// Pending yes/no response for runner-driven boolean decisions.
     pending_boolean: Option<bool>,
-    /// Pending draw-step dredge replacement choice.
-    pending_dredge: Option<PendingDredgeChoice>,
+    /// Pending CR 616 choice among draw replacement effects.
+    pending_draw_replacement: Option<PendingDrawReplacementChoice>,
     /// Pending first-draw reveal decisions that pause the draw step.
     pending_draw_reveal: Option<PendingDrawRevealChoice>,
+    /// Active teammates whose turn-based draw is still pending this draw step.
+    remaining_draw_players: Vec<PlayerId>,
+    /// Draw events accumulated while shared-team draw choices pause and resume.
+    shared_draw_events: Vec<crate::triggers::TriggerEvent>,
     /// Commander-specific choice that paused the runner.
     pending_commander_choice: Option<PendingCommanderChoice>,
     /// Legend-rule keep choice that paused the runner.
     pending_legend_choice: Option<PendingLegendRuleChoice>,
+    /// Space-sculptor sector choices collected without partial state writes.
+    pending_sector_designations: Option<PendingSectorDesignationChoices>,
     /// Defending player for the current combat.
     defending_player: Option<PlayerId>,
     /// Defending players who still need to declare blockers, in APNAP order.
     remaining_defending_players: Vec<PlayerId>,
-    /// Blocker declarations collected before the complete configuration is published.
-    collected_blocker_declarations: Vec<BlockerDeclaration>,
 }
 
 impl TurnRunner {
@@ -324,20 +484,24 @@ impl TurnRunner {
             has_first_strike: false,
             first_step_strikers: std::collections::HashSet::new(),
             pending_attackers: None,
+            pending_attacking_bands: None,
             pending_untap_choices: None,
             pending_attacker_optional_costs: None,
             pending_attacker_mana_window: None,
+            pending_blocker_mana_window: None,
             pending_option: None,
             pending_blockers: None,
             pending_discard: None,
             pending_boolean: None,
-            pending_dredge: None,
+            pending_draw_replacement: None,
             pending_draw_reveal: None,
+            remaining_draw_players: Vec::new(),
+            shared_draw_events: Vec::new(),
             pending_commander_choice: None,
             pending_legend_choice: None,
+            pending_sector_designations: None,
             defending_player: None,
             remaining_defending_players: Vec::new(),
-            collected_blocker_declarations: Vec::new(),
         }
     }
 
@@ -373,17 +537,100 @@ impl TurnRunner {
         game: &mut GameState,
         tq: &mut TriggerQueue,
     ) -> Result<TurnAction, GameLoopError> {
+        if game.turn_store.end_combat_phase_procedure_pending {
+            // CR 724.2a: external entries triggered before the procedure cease
+            // to exist. Events produced during stack exile remain staged in
+            // GameState until the following phase's priority window.
+            *tq = TriggerQueue::new();
+            game.turn_store.end_combat_phase_procedure_pending = false;
+            self.state = TurnState::EndCombatPhaseSbas;
+        }
+        if game.turn_store.end_turn_procedure_pending {
+            // CR 724.1a: entries already in the external queue triggered
+            // before the procedure. Events created by stack exile remain in
+            // GameState and are discovered during the cleanup trigger check.
+            *tq = TriggerQueue::new();
+            game.turn_store.end_turn_procedure_pending = false;
+            self.state = TurnState::EndTurnSbas;
+        }
+        let active_player = game.turn.active_player;
+        let skipped_state = match self.state {
+            TurnState::Untap => Some((Step::Untap, false)),
+            TurnState::Upkeep => Some((Step::Upkeep, false)),
+            TurnState::Draw => Some((Step::Draw, true)),
+            TurnState::BeginCombat => Some((Step::BeginCombat, false)),
+            TurnState::DeclareAttackersDecision => Some((Step::DeclareAttackers, false)),
+            TurnState::DeclareBlockersCheck => Some((Step::DeclareBlockers, false)),
+            TurnState::CombatDamageFirstStrike | TurnState::CombatDamageRegular => {
+                Some((Step::CombatDamage, false))
+            }
+            TurnState::EndCombat => Some((Step::EndCombat, true)),
+            TurnState::EndStep => Some((Step::End, false)),
+            TurnState::CleanupDiscard => Some((Step::Cleanup, true)),
+            _ => None,
+        };
+        if let Some((step, ends_phase)) = skipped_state
+            && game.consume_step_skip(active_player, step)
+        {
+            let ends_phase = ends_phase
+                || game
+                    .turn_store
+                    .active_added_step
+                    .is_some_and(|scheduled| scheduled.isolated_phase);
+            if matches!(self.state, TurnState::DeclareBlockersCheck) {
+                self.first_step_strikers = first_step_strikers(game, &self.combat);
+                self.has_first_strike = !self.first_step_strikers.is_empty();
+            }
+            let normal_next = match self.state {
+                TurnState::Untap => TurnScheduleDestination::Step(Step::Upkeep),
+                TurnState::Upkeep => TurnScheduleDestination::Step(Step::Draw),
+                TurnState::Draw => TurnScheduleDestination::Phase(Phase::FirstMain),
+                TurnState::BeginCombat => TurnScheduleDestination::Step(Step::DeclareAttackers),
+                TurnState::DeclareAttackersDecision => {
+                    TurnScheduleDestination::Step(Step::DeclareBlockers)
+                }
+                TurnState::DeclareBlockersCheck if self.has_first_strike => {
+                    TurnScheduleDestination::CombatDamageFirstStrike
+                }
+                TurnState::DeclareBlockersCheck => TurnScheduleDestination::CombatDamageRegular,
+                TurnState::CombatDamageFirstStrike => TurnScheduleDestination::CombatDamageRegular,
+                TurnState::CombatDamageRegular => TurnScheduleDestination::Step(Step::EndCombat),
+                TurnState::EndCombat => TurnScheduleDestination::Phase(Phase::NextMain),
+                TurnState::EndStep => TurnScheduleDestination::Step(Step::Cleanup),
+                TurnState::CleanupDiscard => TurnScheduleDestination::Complete,
+                _ => TurnScheduleDestination::Complete,
+            };
+            self.state = if ends_phase {
+                let phase = game.turn.phase;
+                finish_step_and_phase(game, step, phase, normal_next)
+            } else {
+                finish_step(game, step, normal_next)
+            };
+            return Ok(TurnAction::Continue);
+        }
+
         match self.state {
             // ================================================================
             // Beginning Phase
             // ================================================================
             TurnState::BeginTurn => {
                 game.record_turn_start_hand_sizes();
-                game.activate_pending_player_control(game.turn.active_player);
+                for player in game.turn_players() {
+                    game.activate_pending_player_control(player);
+                }
 
                 // Untap step — no priority
                 game.turn.phase = Phase::Beginning;
                 game.turn.step = Some(Step::Untap);
+
+                if game.consume_step_skip(game.turn.active_player, Step::Untap) {
+                    self.state = finish_step(
+                        game,
+                        Step::Untap,
+                        TurnScheduleDestination::Step(Step::Upkeep),
+                    );
+                    return Ok(TurnAction::Continue);
+                }
 
                 let mut hypothetical = game.clone();
                 let mut collector = BooleanPromptCollector::default();
@@ -400,7 +647,11 @@ impl TurnRunner {
 
                 execute_untap_step(game);
 
-                self.state = TurnState::Upkeep;
+                self.state = finish_step(
+                    game,
+                    Step::Untap,
+                    TurnScheduleDestination::Step(Step::Upkeep),
+                );
                 Ok(TurnAction::Continue)
             }
 
@@ -433,19 +684,31 @@ impl TurnRunner {
                     .expect("untap choices remain initialized");
                 let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
                 execute_untap_step_with(game, &mut dm);
-                self.state = TurnState::Upkeep;
+                self.state = finish_step(
+                    game,
+                    Step::Untap,
+                    TurnScheduleDestination::Step(Step::Upkeep),
+                );
                 Ok(TurnAction::Continue)
             }
 
             TurnState::Upkeep => {
-                if game.player_skips_upkeep_step(game.turn.active_player) {
+                if game
+                    .turn_players()
+                    .into_iter()
+                    .any(|player| game.player_skips_upkeep_step(player))
+                {
                     game.turn.step = Some(Step::Upkeep);
-                    game.turn.priority_player = Some(game.turn.active_player);
-                    self.state = TurnState::Draw;
+                    game.reset_priority_for_new_window();
+                    self.state = finish_step(
+                        game,
+                        Step::Upkeep,
+                        TurnScheduleDestination::Step(Step::Draw),
+                    );
                     return Ok(TurnAction::Continue);
                 }
                 game.turn.step = Some(Step::Upkeep);
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 drain_pending_trigger_events(game, tq);
                 generate_and_queue_step_triggers(game, tq);
 
@@ -455,7 +718,11 @@ impl TurnRunner {
 
             TurnState::UpkeepPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::Draw;
+                self.state = finish_step(
+                    game,
+                    Step::Upkeep,
+                    TurnScheduleDestination::Step(Step::Draw),
+                );
                 Ok(TurnAction::Continue)
             }
 
@@ -485,7 +752,12 @@ impl TurnRunner {
 
             TurnState::DrawPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::FirstMain;
+                self.state = finish_step_and_phase(
+                    game,
+                    Step::Draw,
+                    Phase::Beginning,
+                    TurnScheduleDestination::Phase(Phase::FirstMain),
+                );
                 Ok(TurnAction::Continue)
             }
 
@@ -498,13 +770,28 @@ impl TurnRunner {
                     .skip_current_turn_main_phases
                     .contains(&game.turn.active_player)
                 {
-                    self.state = TurnState::BeginCombat;
+                    game.turn.phase = Phase::FirstMain;
+                    self.state = finish_phase(
+                        game,
+                        Phase::FirstMain,
+                        TurnScheduleDestination::Phase(Phase::Combat),
+                    );
                     return Ok(TurnAction::Continue);
                 }
                 game.turn.phase = Phase::FirstMain;
                 game.turn.step = None;
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
+                // CR 505.3: an archenemy sets the top scheme in motion as a
+                // turn-based action before Saga lore counters are added.
+                if game.is_archenemy(game.turn.active_player)
+                    && game
+                        .scheme_deck(game.turn.active_player)
+                        .is_some_and(|deck| !deck.is_empty())
+                {
+                    game.set_scheme_in_motion(game.turn.active_player)
+                        .map_err(GameLoopError::InvalidState)?;
+                }
                 crate::game_loop::add_saga_lore_counters(game, tq);
 
                 self.state = TurnState::FirstMainPriority;
@@ -530,13 +817,37 @@ impl TurnRunner {
                         .skip_next_combat_phases
                         .remove(&game.turn.active_player)
                 {
-                    self.state = TurnState::NextMain;
+                    game.turn.phase = Phase::Combat;
+                    self.state = if game
+                        .turn_store
+                        .active_added_step
+                        .is_some_and(|scheduled| scheduled.isolated_phase)
+                    {
+                        finish_step_and_phase(
+                            game,
+                            Step::BeginCombat,
+                            Phase::Combat,
+                            TurnScheduleDestination::Phase(Phase::NextMain),
+                        )
+                    } else if game.turn_store.active_added_step.is_some() {
+                        finish_step(
+                            game,
+                            Step::BeginCombat,
+                            TurnScheduleDestination::Step(Step::DeclareAttackers),
+                        )
+                    } else {
+                        finish_phase(
+                            game,
+                            Phase::Combat,
+                            TurnScheduleDestination::Phase(Phase::NextMain),
+                        )
+                    };
                     return Ok(TurnAction::Continue);
                 }
                 game.turn.phase = Phase::Combat;
                 game.mark_combat_phase_started();
                 game.turn.step = Some(Step::BeginCombat);
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
 
                 self.state = TurnState::BeginCombatPriority;
@@ -545,18 +856,23 @@ impl TurnRunner {
 
             TurnState::BeginCombatPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::DeclareAttackersDecision;
+                self.state = finish_step(
+                    game,
+                    Step::BeginCombat,
+                    TurnScheduleDestination::Step(Step::DeclareAttackers),
+                );
                 Ok(TurnAction::Continue)
             }
 
             TurnState::DeclareAttackersDecision => {
                 game.turn.step = Some(Step::DeclareAttackers);
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 self.pending_attacker_optional_costs = None;
                 self.pending_attacker_mana_window = None;
                 self.pending_option = None;
                 self.pending_boolean = None;
-                self.pending_dredge = None;
+                self.pending_discard = None;
+                self.pending_draw_replacement = None;
 
                 let ctx = get_declare_attackers_decision(game, &self.combat);
                 self.state = TurnState::DeclareAttackersApply;
@@ -592,7 +908,7 @@ impl TurnRunner {
                         return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
                     }
 
-                    let mut dm = QueuedBooleanDecisionMaker::new(pending.optional_cost_answers);
+                    let mut dm = QueuedAttackCostDecisionMaker::new(pending.optional_cost_answers);
                     finish_attack_declaration_transaction(
                         pending.transaction,
                         game,
@@ -601,13 +917,29 @@ impl TurnRunner {
                         &mut dm,
                     )?;
                 } else if let Some(pending) = self.pending_attacker_optional_costs.as_mut() {
-                    if let Some(answer) = self.pending_boolean.take() {
+                    if let Some(prompt) = pending.prompts.get(pending.answers.len()).cloned() {
+                        let answer = match &prompt {
+                            DecisionContext::Boolean(_) => {
+                                self.pending_boolean.take().map(AttackCostAnswer::Boolean)
+                            }
+                            DecisionContext::SelectObjects(_) => {
+                                self.pending_discard.take().map(AttackCostAnswer::Objects)
+                            }
+                            _ => {
+                                return Err(GameLoopError::InvalidState(
+                                    "unsupported optional attack-cost decision".to_string(),
+                                ));
+                            }
+                        };
+                        let Some(answer) = answer else {
+                            return Ok(TurnAction::Decision(prompt));
+                        };
                         pending.answers.push(answer);
-                    }
-                    if pending.answers.len() < pending.prompts.len() {
-                        return Ok(TurnAction::Decision(DecisionContext::Boolean(
-                            pending.prompts[pending.answers.len()].clone(),
-                        )));
+                        if pending.answers.len() < pending.prompts.len() {
+                            return Ok(TurnAction::Decision(
+                                pending.prompts[pending.answers.len()].clone(),
+                            ));
+                        }
                     }
 
                     let pending = self
@@ -629,7 +961,7 @@ impl TurnRunner {
                             return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
                         }
                         let mut dm =
-                            QueuedBooleanDecisionMaker::new(mana_pending.optional_cost_answers);
+                            QueuedAttackCostDecisionMaker::new(mana_pending.optional_cost_answers);
                         finish_attack_declaration_transaction(
                             mana_pending.transaction,
                             game,
@@ -638,7 +970,7 @@ impl TurnRunner {
                             &mut dm,
                         )?;
                     } else {
-                        let mut dm = QueuedBooleanDecisionMaker::new(pending.answers);
+                        let mut dm = QueuedAttackCostDecisionMaker::new(pending.answers);
                         finish_attack_declaration_transaction(
                             pending.transaction,
                             game,
@@ -649,6 +981,11 @@ impl TurnRunner {
                     }
                 } else {
                     let declarations = self.pending_attackers.take().unwrap_or_default();
+                    validate_declared_attacking_bands(
+                        game,
+                        &declarations,
+                        self.pending_attacking_bands.as_deref().unwrap_or_default(),
+                    )?;
                     let prompts =
                         preview_optional_attack_cost_prompts(game, &self.combat, &declarations)?;
                     let required_mana_cost =
@@ -678,9 +1015,7 @@ impl TurnRunner {
                                     required_mana_cost,
                                     declaration_source,
                                 });
-                            return Ok(TurnAction::Decision(DecisionContext::Boolean(
-                                first_prompt,
-                            )));
+                            return Ok(TurnAction::Decision(first_prompt));
                         }
 
                         let pending = PendingAttackerManaWindow {
@@ -696,7 +1031,7 @@ impl TurnRunner {
                             self.pending_attacker_mana_window = Some(pending);
                             return Ok(TurnAction::Decision(DecisionContext::SelectOptions(ctx)));
                         }
-                        let mut dm = QueuedBooleanDecisionMaker::new(Vec::new());
+                        let mut dm = QueuedAttackCostDecisionMaker::new(Vec::new());
                         finish_attack_declaration_transaction(
                             pending.transaction,
                             game,
@@ -705,7 +1040,7 @@ impl TurnRunner {
                             &mut dm,
                         )?;
                     } else {
-                        let mut dm = QueuedBooleanDecisionMaker::new(Vec::new());
+                        let mut dm = QueuedAttackCostDecisionMaker::new(Vec::new());
                         apply_attacker_declarations_with_dm(
                             game,
                             &mut self.combat,
@@ -714,6 +1049,9 @@ impl TurnRunner {
                             &mut dm,
                         )?;
                     }
+                }
+                if let Some(bands) = self.pending_attacking_bands.take() {
+                    record_declared_attacking_bands(&mut self.combat, bands);
                 }
                 crate::game_loop::drain_pending_trigger_events(game, tq);
                 put_triggers_on_stack(game, tq)?;
@@ -727,19 +1065,29 @@ impl TurnRunner {
 
             TurnState::DeclareAttackersPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::DeclareBlockersCheck;
+                self.sync_combat_from_game(game);
+                self.state = finish_step(
+                    game,
+                    Step::DeclareAttackers,
+                    TurnScheduleDestination::Step(Step::DeclareBlockers),
+                );
                 Ok(TurnAction::Continue)
             }
 
             TurnState::DeclareBlockersCheck => {
+                self.pending_blocker_mana_window = None;
+                self.pending_option = None;
                 if self.combat.attackers.is_empty() {
                     // Skip blockers and combat damage
-                    self.state = TurnState::EndCombat;
+                    self.state = finish_step(
+                        game,
+                        Step::DeclareBlockers,
+                        TurnScheduleDestination::Step(Step::EndCombat),
+                    );
                     Ok(TurnAction::Continue)
                 } else {
                     self.remaining_defending_players =
                         attacked_defending_players_in_apnap_order(game, &self.combat);
-                    self.collected_blocker_declarations.clear();
                     self.state = TurnState::DeclareBlockersDecision;
                     Ok(TurnAction::Continue)
                 }
@@ -763,6 +1111,66 @@ impl TurnRunner {
             }
 
             TurnState::DeclareBlockersApply => {
+                if let Some(mut pending) = self.pending_blocker_mana_window.take() {
+                    if let Some(choice) = self.pending_option.take() {
+                        let payer =
+                            pending
+                                .payers
+                                .get(pending.next_payer)
+                                .copied()
+                                .ok_or_else(|| {
+                                    GameLoopError::InvalidState(
+                                        "blocking-cost mana window has no current payer"
+                                            .to_string(),
+                                    )
+                                })?;
+                        match apply_blocker_mana_ability_window_response(game, tq, payer, choice) {
+                            Ok(true) => pending.next_payer += 1,
+                            Ok(false) => {}
+                            Err(error) => {
+                                self.pending_blocker_mana_window = Some(pending);
+                                return Err(error);
+                            }
+                        }
+                    }
+                    if let Some(context) = next_blocker_mana_window_context(game, &mut pending) {
+                        self.pending_blocker_mana_window = Some(pending);
+                        return Ok(TurnAction::Decision(DecisionContext::SelectOptions(
+                            context,
+                        )));
+                    }
+                    let defending_player =
+                        pending.transaction.defending_player().ok_or_else(|| {
+                            GameLoopError::InvalidState(
+                                "blocking-cost transaction has no defending player".to_string(),
+                            )
+                        })?;
+                    let mut decision_maker = AutoPassDecisionMaker;
+                    if let Err(error) = finish_blocker_declaration_transaction(
+                        pending.transaction,
+                        game,
+                        &mut self.combat,
+                        tq,
+                        &mut decision_maker,
+                    ) {
+                        self.state = TurnState::DeclareBlockersDecision;
+                        return Err(error);
+                    }
+                    if self.remaining_defending_players.first().copied() == Some(defending_player) {
+                        self.remaining_defending_players.remove(0);
+                    }
+                    self.defending_player = None;
+                    if !self.remaining_defending_players.is_empty() {
+                        self.state = TurnState::DeclareBlockersDecision;
+                        return Ok(TurnAction::Continue);
+                    }
+                    put_triggers_on_stack(game, tq)?;
+                    game.combat = Some(self.combat.clone());
+                    game.reset_priority_for_new_window();
+                    self.state = TurnState::DeclareBlockersPriority;
+                    return Ok(TurnAction::RunPriority);
+                }
+
                 let (declarations, defending_player) =
                     self.pending_blockers.take().unwrap_or_else(|| {
                         (
@@ -777,32 +1185,74 @@ impl TurnRunner {
                     )
                     .into());
                 }
-                self.collected_blocker_declarations.extend(declarations);
-                if self.remaining_defending_players.first().copied() == Some(defending_player) {
-                    self.remaining_defending_players.remove(0);
-                }
-                if !self.remaining_defending_players.is_empty() {
-                    self.state = TurnState::DeclareBlockersDecision;
-                    return Ok(TurnAction::Continue);
-                }
-                if let Err(error) = apply_multiplayer_blocker_declarations(
+                let mut decision_maker = AutoPassDecisionMaker;
+                let transaction = match begin_blocker_declaration_transaction(
+                    game,
+                    &self.combat,
+                    tq,
+                    &declarations,
+                    defending_player,
+                    &mut decision_maker,
+                ) {
+                    Ok(transaction) => transaction,
+                    Err(error) => {
+                        self.state = TurnState::DeclareBlockersDecision;
+                        return Err(error);
+                    }
+                };
+                transaction.stage_proposed_combat_for_payment(game);
+                let payers = transaction.mana_cost_payers();
+                if !payers.is_empty() {
+                    let declaration_source = transaction.declaration_source().ok_or_else(|| {
+                        GameLoopError::InvalidState(
+                            "blocking costs exist without a declaration source".to_string(),
+                        )
+                    })?;
+                    let mut pending = PendingBlockerManaWindow {
+                        transaction,
+                        payers,
+                        next_payer: 0,
+                        declaration_source,
+                    };
+                    if let Some(context) = next_blocker_mana_window_context(game, &mut pending) {
+                        self.pending_blocker_mana_window = Some(pending);
+                        return Ok(TurnAction::Decision(DecisionContext::SelectOptions(
+                            context,
+                        )));
+                    }
+                    if let Err(error) = finish_blocker_declaration_transaction(
+                        pending.transaction,
+                        game,
+                        &mut self.combat,
+                        tq,
+                        &mut decision_maker,
+                    ) {
+                        self.state = TurnState::DeclareBlockersDecision;
+                        return Err(error);
+                    }
+                } else if let Err(error) = finish_blocker_declaration_transaction(
+                    transaction,
                     game,
                     &mut self.combat,
                     tq,
-                    &self.collected_blocker_declarations,
+                    &mut decision_maker,
                 ) {
-                    self.remaining_defending_players =
-                        attacked_defending_players_in_apnap_order(game, &self.combat);
-                    self.collected_blocker_declarations.clear();
-                    self.defending_player = None;
                     self.state = TurnState::DeclareBlockersDecision;
                     return Err(error);
+                }
+                if self.remaining_defending_players.first().copied() == Some(defending_player) {
+                    self.remaining_defending_players.remove(0);
+                }
+                self.defending_player = None;
+                if !self.remaining_defending_players.is_empty() {
+                    self.state = TurnState::DeclareBlockersDecision;
+                    return Ok(TurnAction::Continue);
                 }
                 put_triggers_on_stack(game, tq)?;
 
                 // Sync game.combat
                 game.combat = Some(self.combat.clone());
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
 
                 self.state = TurnState::DeclareBlockersPriority;
                 Ok(TurnAction::RunPriority)
@@ -810,15 +1260,24 @@ impl TurnRunner {
 
             TurnState::DeclareBlockersPriority => {
                 game.empty_mana_pools();
+                self.sync_combat_from_game(game);
 
                 // Check for first strike
                 self.first_step_strikers = first_step_strikers(game, &self.combat);
                 self.has_first_strike = !self.first_step_strikers.is_empty();
 
                 if self.has_first_strike {
-                    self.state = TurnState::CombatDamageFirstStrike;
+                    self.state = finish_step(
+                        game,
+                        Step::DeclareBlockers,
+                        TurnScheduleDestination::CombatDamageFirstStrike,
+                    );
                 } else {
-                    self.state = TurnState::CombatDamageRegular;
+                    self.state = finish_step(
+                        game,
+                        Step::DeclareBlockers,
+                        TurnScheduleDestination::CombatDamageRegular,
+                    );
                 }
                 Ok(TurnAction::Continue)
             }
@@ -845,7 +1304,12 @@ impl TurnRunner {
 
             TurnState::CombatDamageFirstStrikePriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::CombatDamageRegular;
+                self.sync_combat_from_game(game);
+                self.state = finish_step(
+                    game,
+                    Step::CombatDamage,
+                    TurnScheduleDestination::CombatDamageRegular,
+                );
                 Ok(TurnAction::Continue)
             }
 
@@ -876,13 +1340,18 @@ impl TurnRunner {
 
             TurnState::CombatDamageRegularPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::EndCombat;
+                self.sync_combat_from_game(game);
+                self.state = finish_step(
+                    game,
+                    Step::CombatDamage,
+                    TurnScheduleDestination::Step(Step::EndCombat),
+                );
                 Ok(TurnAction::Continue)
             }
 
             TurnState::EndCombat => {
                 game.turn.step = Some(Step::EndCombat);
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
                 game.combat = Some(self.combat.clone());
 
@@ -894,8 +1363,41 @@ impl TurnRunner {
                 game.empty_mana_pools();
                 crate::combat_state::end_combat(&mut self.combat);
                 game.combat = Some(self.combat.clone());
-                self.state = next_runner_state_after_phase(game, TurnState::NextMain);
+                game.cleanup_effects_end_of_combat();
+                self.state = finish_step_and_phase(
+                    game,
+                    Step::EndCombat,
+                    Phase::Combat,
+                    TurnScheduleDestination::Phase(Phase::NextMain),
+                );
                 Ok(TurnAction::Continue)
+            }
+
+            TurnState::EndCombatPhaseSbas => {
+                // CR 724.2c: perform SBAs to a fixed point without granting
+                // priority or putting any resulting triggers on the stack.
+                match self.apply_sbas_until_commander_choice(game, tq)? {
+                    RunnerProgress::NeedsDecision(ctx) => Ok(TurnAction::Decision(ctx)),
+                    RunnerProgress::Complete(()) => {
+                        // CR 724.2d-e: end combat, expire its effects, and skip
+                        // the end-of-combat step entirely. Temporarily naming
+                        // that step lets mana-retention cleanup recognize the
+                        // combat boundary without generating its trigger event.
+                        game.turn.phase = Phase::Combat;
+                        game.turn.step = Some(Step::EndCombat);
+                        game.empty_mana_pools();
+                        crate::combat_state::end_combat(&mut self.combat);
+                        game.combat = Some(self.combat.clone());
+                        game.cleanup_effects_end_of_combat();
+                        game.turn.priority_player = None;
+                        self.state = finish_phase(
+                            game,
+                            Phase::Combat,
+                            TurnScheduleDestination::Phase(Phase::NextMain),
+                        );
+                        Ok(TurnAction::Continue)
+                    }
+                }
             }
 
             // ================================================================
@@ -907,12 +1409,17 @@ impl TurnRunner {
                     .skip_current_turn_main_phases
                     .contains(&game.turn.active_player)
                 {
-                    self.state = TurnState::EndStep;
+                    game.turn.phase = Phase::NextMain;
+                    self.state = finish_phase(
+                        game,
+                        Phase::NextMain,
+                        TurnScheduleDestination::Phase(Phase::Ending),
+                    );
                     return Ok(TurnAction::Continue);
                 }
                 game.turn.phase = Phase::NextMain;
                 game.turn.step = None;
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
 
                 self.state = TurnState::NextMainPriority;
@@ -931,7 +1438,7 @@ impl TurnRunner {
             TurnState::EndStep => {
                 game.turn.phase = Phase::Ending;
                 game.turn.step = Some(Step::End);
-                game.turn.priority_player = Some(game.turn.active_player);
+                game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
 
                 self.state = TurnState::EndStepPriority;
@@ -940,8 +1447,34 @@ impl TurnRunner {
 
             TurnState::EndStepPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::CleanupDiscard;
+                self.state = finish_step(
+                    game,
+                    Step::End,
+                    TurnScheduleDestination::Step(Step::Cleanup),
+                );
                 Ok(TurnAction::Continue)
+            }
+
+            TurnState::EndTurnSbas => {
+                // CR 724.1c: check SBAs to a fixed point without granting
+                // priority or putting the resulting triggers on the stack.
+                match self.apply_sbas_until_commander_choice(game, tq)? {
+                    RunnerProgress::NeedsDecision(ctx) => Ok(TurnAction::Decision(ctx)),
+                    RunnerProgress::Complete(()) => {
+                        // CR 724.1d-f: end combat, skip the end step, and enter
+                        // the ordinary resumable cleanup procedure directly.
+                        game.empty_mana_pools();
+                        crate::combat_state::end_combat(&mut self.combat);
+                        if let Some(combat) = game.combat.as_mut() {
+                            crate::combat_state::end_combat(combat);
+                        }
+                        game.turn.phase = Phase::Ending;
+                        game.turn.step = Some(Step::Cleanup);
+                        game.turn.priority_player = None;
+                        self.state = TurnState::CleanupDiscard;
+                        Ok(TurnAction::Continue)
+                    }
+                }
             }
 
             TurnState::CleanupDiscard => {
@@ -966,15 +1499,19 @@ impl TurnRunner {
                         RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
                     }
                     put_triggers_on_stack(game, tq)?;
-                    if !game.stack_is_empty() {
-                        self.state = TurnState::CleanupRecursivePriority;
-                        Ok(TurnAction::RunPriority)
-                    } else {
-                        self.state = TurnState::CleanupRecursiveDiscard;
-                        Ok(TurnAction::Continue)
-                    }
+                    // CR 514.3a grants the active player priority after either
+                    // state-based actions or waiting triggers, even if those
+                    // actions left the stack empty.
+                    game.reset_priority_for_new_window();
+                    self.state = TurnState::CleanupRecursivePriority;
+                    Ok(TurnAction::RunPriority)
                 } else {
-                    self.state = TurnState::Complete;
+                    self.state = finish_step_and_phase(
+                        game,
+                        Step::Cleanup,
+                        Phase::Ending,
+                        TurnScheduleDestination::Complete,
+                    );
                     Ok(TurnAction::Continue)
                 }
             }
@@ -993,12 +1530,22 @@ impl TurnRunner {
 
     /// Provide attacker declarations in response to a `Decision(Attackers(...))`.
     pub fn respond_attackers(&mut self, declarations: Vec<AttackerDeclaration>) {
+        self.respond_attackers_with_bands(declarations, Vec::new());
+    }
+
+    /// Provide attacker declarations and the bands announced with them.
+    pub fn respond_attackers_with_bands(
+        &mut self,
+        declarations: Vec<AttackerDeclaration>,
+        bands: Vec<Vec<ObjectId>>,
+    ) {
         self.pending_attackers = Some(declarations);
+        self.pending_attacking_bands = Some(bands);
         self.pending_attacker_optional_costs = None;
         self.pending_attacker_mana_window = None;
         self.pending_option = None;
         self.pending_boolean = None;
-        self.pending_dredge = None;
+        self.pending_draw_replacement = None;
     }
 
     /// Provide blocker declarations in response to a `Decision(Blockers(...))`.
@@ -1034,6 +1581,12 @@ impl TurnRunner {
     // ------------------------------------------------------------------
     // Private helpers
     // ------------------------------------------------------------------
+
+    fn sync_combat_from_game(&mut self, game: &GameState) {
+        if let Some(combat) = &game.combat {
+            self.combat = combat.clone();
+        }
+    }
 
     /// Handle the first cleanup discard check.
     fn advance_cleanup_discard(
@@ -1091,21 +1644,58 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
     ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
-        let active_player = game.turn.active_player;
+        if self.remaining_draw_players.is_empty() {
+            let active_players = game.turn_players();
+            if active_players
+                .iter()
+                .any(|player| game.player_skips_draw_step(*player))
+            {
+                game.reset_priority_for_new_window();
+                return RunnerProgress::Complete(Vec::new());
+            }
+            self.remaining_draw_players = active_players;
+            self.shared_draw_events.clear();
+        }
+
+        loop {
+            let Some(active_player) = self.remaining_draw_players.first().copied() else {
+                game.turn_store.tracked_draw_step_player = None;
+                game.turn_store.cards_drawn_this_draw_step = 0;
+                game.reset_priority_for_new_window();
+                return RunnerProgress::Complete(std::mem::take(&mut self.shared_draw_events));
+            };
+            match self.execute_draw_step_for_player_with_choices(game, active_player) {
+                RunnerProgress::NeedsDecision(ctx) => return RunnerProgress::NeedsDecision(ctx),
+                RunnerProgress::Complete(events) => {
+                    self.shared_draw_events.extend(events);
+                    self.remaining_draw_players.remove(0);
+                }
+            }
+        }
+    }
+
+    fn execute_draw_step_for_player_with_choices(
+        &mut self,
+        game: &mut GameState,
+        active_player: PlayerId,
+    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
         game.sync_draw_step_tracking();
         if let Some(pending) = self.pending_draw_reveal.take() {
             return self.finish_pending_draw_reveal_choices(game, pending);
         }
-        if game.player_skips_draw_step(active_player) {
-            game.turn.priority_player = Some(active_player);
+        if !game
+            .player(active_player)
+            .is_some_and(|player| player.is_in_game())
+        {
+            game.reset_priority_for_new_window();
             return RunnerProgress::Complete(Vec::new());
         }
-        if game.turn_store.skip_next_draw_step.remove(&active_player) {
-            game.turn.priority_player = Some(active_player);
+        if game.player_skips_draw_step(active_player) {
+            game.reset_priority_for_new_window();
             return RunnerProgress::Complete(Vec::new());
         }
         if game.should_skip_first_turn_draw(active_player) {
-            game.turn.priority_player = Some(active_player);
+            game.reset_priority_for_new_window();
             return RunnerProgress::Complete(Vec::new());
         }
 
@@ -1122,67 +1712,130 @@ impl TurnRunner {
 
         let mut drawn = Vec::new();
         if can_draw {
-            let mut dredge_declined = false;
-            match self.pending_dredge.take() {
-                Some(pending) if pending.player == active_player => {
-                    let use_dredge = self.pending_boolean.take().unwrap_or(false);
-                    if use_dredge {
+            use crate::events::processing::{
+                TraitEventResult, process_event_with_chosen_replacement_trait_and_applied_effects,
+                process_trait_event,
+            };
+
+            let mut final_draw_count = 1;
+            let replacement_result = if self.pending_commander_choice.is_some() {
+                None
+            } else if let Some(pending) = self.pending_draw_replacement.take() {
+                if pending.player != active_player {
+                    self.pending_draw_replacement = Some(pending);
+                    None
+                } else if let Some(chosen_index) = self.pending_option.take() {
+                    let chosen_effect = pending
+                        .applicable_effects
+                        .get(chosen_index)
+                        .copied()
+                        .or_else(|| pending.applicable_effects.first().copied());
+                    chosen_effect.map(|chosen_effect| {
+                        process_event_with_chosen_replacement_trait_and_applied_effects(
+                            game,
+                            pending.event,
+                            chosen_effect,
+                            &pending.applied_effects,
+                            &pending.applied_effect_keys,
+                        )
+                    })
+                } else {
+                    let context = draw_replacement_choice_context(game, &pending);
+                    self.pending_draw_replacement = Some(pending);
+                    return RunnerProgress::NeedsDecision(context);
+                }
+            } else {
+                game.update_replacement_effects();
+                Some(process_trait_event(
+                    game,
+                    crate::events::Event::draw(active_player, 1, is_first_draw),
+                ))
+            };
+
+            if let Some(result) = replacement_result {
+                match result {
+                    TraitEventResult::NeedsChoice {
+                        player,
+                        applicable_effects,
+                        event,
+                        applied_effects,
+                        applied_effect_keys,
+                    } => {
+                        let pending = PendingDrawReplacementChoice {
+                            player,
+                            applicable_effects,
+                            event: *event,
+                            applied_effects,
+                            applied_effect_keys,
+                        };
+                        let context = draw_replacement_choice_context(game, &pending);
+                        self.pending_draw_replacement = Some(pending);
+                        return RunnerProgress::NeedsDecision(context);
+                    }
+                    TraitEventResult::Replaced {
+                        effects,
+                        source,
+                        controller,
+                        ..
+                    } => {
                         let mut dm = AutoPassDecisionMaker;
-                        let _ = game.replace_draw_with_dredge(
-                            active_player,
-                            pending.object_id,
-                            pending.amount,
-                            &mut dm,
-                        );
-                        game.turn.priority_player = Some(active_player);
+                        let mut ctx =
+                            crate::effects::ExecutionContext::new(source, controller, &mut dm);
+                        ctx.iteration.iterated_player = Some(active_player);
+                        for effect in effects {
+                            let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
+                        }
+                        game.reset_priority_for_new_window();
                         return RunnerProgress::Complete(Vec::new());
                     }
-                    dredge_declined = true;
-                }
-                Some(pending) => {
-                    self.pending_dredge = Some(pending);
-                }
-                None => {}
-            }
-
-            if !dredge_declined
-                && let Some((object_id, amount)) = game.dredge_replacement_candidate(active_player)
-            {
-                self.pending_dredge = Some(PendingDredgeChoice {
-                    player: active_player,
-                    object_id,
-                    amount,
-                });
-                return RunnerProgress::NeedsDecision(DecisionContext::Boolean(
-                    game.dredge_replacement_context(active_player, object_id, amount),
-                ));
-            }
-
-            match self.pending_commander_choice.take() {
-                Some(PendingCommanderChoice::DrawToHand { object_id }) => {
-                    let send_to_command = self.pending_boolean.take().unwrap_or(false);
-                    let final_zone = if send_to_command {
-                        crate::zone::Zone::Command
-                    } else {
-                        crate::zone::Zone::Hand
-                    };
-                    if let Some(new_id) = game.move_object_by_effect(object_id, final_zone)
-                        && final_zone == crate::zone::Zone::Hand
-                    {
-                        drawn.push(new_id);
+                    TraitEventResult::Prevented => {
+                        game.reset_priority_for_new_window();
+                        return RunnerProgress::Complete(Vec::new());
                     }
+                    TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
+                        final_draw_count = crate::events::downcast_event::<
+                            crate::events::cards::DrawEvent,
+                        >(event.inner())
+                        .map(|draw| draw.count)
+                        .unwrap_or(1);
+                    }
+                    TraitEventResult::NeedsInteraction { .. } => {}
                 }
-                Some(other) => {
-                    self.pending_commander_choice = Some(other);
-                }
-                None => {
-                    if let Some(card_id) = game
-                        .player(active_player)
-                        .and_then(|player| player.library.last().copied())
-                    {
-                        if game.is_commander(card_id) {
-                            if let Some(obj) = game.object(card_id) {
-                                let ctx = DecisionContext::Boolean(
+            }
+
+            if final_draw_count != 1 {
+                let mut dm = AutoPassDecisionMaker;
+                drawn.extend(game.draw_cards_with_dm(
+                    active_player,
+                    final_draw_count as usize,
+                    &mut dm,
+                ));
+            } else {
+                match self.pending_commander_choice.take() {
+                    Some(PendingCommanderChoice::DrawToHand { object_id }) => {
+                        let send_to_command = self.pending_boolean.take().unwrap_or(false);
+                        let final_zone = if send_to_command {
+                            crate::zone::Zone::Command
+                        } else {
+                            crate::zone::Zone::Hand
+                        };
+                        if let Some(new_id) = game.move_object_by_effect(object_id, final_zone)
+                            && final_zone == crate::zone::Zone::Hand
+                        {
+                            drawn.push(new_id);
+                        }
+                    }
+                    Some(other) => {
+                        self.pending_commander_choice = Some(other);
+                    }
+                    None => {
+                        if let Some(card_id) = game
+                            .player(active_player)
+                            .and_then(|player| player.library.last().copied())
+                        {
+                            if game.is_commander(card_id) {
+                                if let Some(obj) = game.object(card_id) {
+                                    let ctx = DecisionContext::Boolean(
                                     BooleanContext::new(
                                         obj.owner,
                                         Some(card_id),
@@ -1190,17 +1843,20 @@ impl TurnRunner {
                                     )
                                     .with_source_name(obj.name.to_string()),
                                 );
-                                self.pending_commander_choice =
-                                    Some(PendingCommanderChoice::DrawToHand { object_id: card_id });
-                                return RunnerProgress::NeedsDecision(ctx);
+                                    self.pending_commander_choice =
+                                        Some(PendingCommanderChoice::DrawToHand {
+                                            object_id: card_id,
+                                        });
+                                    return RunnerProgress::NeedsDecision(ctx);
+                                }
+                            } else if let Some(new_id) =
+                                game.move_object_by_effect(card_id, crate::zone::Zone::Hand)
+                            {
+                                drawn.push(new_id);
                             }
-                        } else if let Some(new_id) =
-                            game.move_object_by_effect(card_id, crate::zone::Zone::Hand)
-                        {
-                            drawn.push(new_id);
+                        } else {
+                            game.record_empty_library_draw_attempt(active_player);
                         }
-                    } else {
-                        game.record_empty_library_draw_attempt(active_player);
                     }
                 }
             }
@@ -1230,7 +1886,7 @@ impl TurnRunner {
             );
         }
 
-        game.turn.priority_player = Some(active_player);
+        game.reset_priority_for_new_window();
         RunnerProgress::Complete(Vec::new())
     }
 
@@ -1300,7 +1956,7 @@ impl TurnRunner {
             draw_events.push(reveal_event);
         }
 
-        game.turn.priority_player = Some(pending.active_player);
+        game.reset_priority_for_new_window();
         RunnerProgress::Complete(draw_events)
     }
 
@@ -1310,8 +1966,9 @@ impl TurnRunner {
         tq: &mut TriggerQueue,
     ) -> Result<RunnerProgress<()>, GameLoopError> {
         use crate::rules::state_based::{
-            StateBasedAction, StateBasedActionContext, apply_state_based_actions_from_actions_with,
-            check_state_based_actions_with_context, legend_rule_specs_from_actions,
+            StateBasedAction, StateBasedActionContext, apply_sector_designation_choices_from_group,
+            apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
+            legend_rule_specs_from_actions,
         };
 
         loop {
@@ -1327,9 +1984,82 @@ impl TurnRunner {
                 game.clear_empty_library_draw_attempts_since_sba();
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
-                self.pending_dredge = None;
+                self.pending_draw_replacement = None;
                 self.pending_legend_choice = None;
+                self.pending_sector_designations = None;
                 return Ok(RunnerProgress::Complete(()));
+            }
+
+            let sector_action = actions.iter().find_map(|action| match action {
+                StateBasedAction::SectorDesignationChoices { source, creatures } => {
+                    Some((*source, creatures.clone()))
+                }
+                _ => None,
+            });
+            if let Some((source, creatures)) = sector_action {
+                let mut pending = match self.pending_sector_designations.take() {
+                    Some(pending) if pending.source == source && pending.creatures == creatures => {
+                        pending
+                    }
+                    Some(_) | None => {
+                        self.pending_option = None;
+                        PendingSectorDesignationChoices {
+                            source,
+                            creatures,
+                            choices: Vec::new(),
+                        }
+                    }
+                };
+
+                if pending.choices.len() < pending.creatures.len()
+                    && let Some(index) = self.pending_option.take()
+                {
+                    pending.choices.push(
+                        crate::marker::SectorDesignation::from_option_index(index)
+                            .unwrap_or(crate::marker::SectorDesignation::Alpha),
+                    );
+                }
+
+                if pending.choices.len() == pending.creatures.len() {
+                    apply_sector_designation_choices_from_group(
+                        game,
+                        pending.source,
+                        &pending.creatures,
+                        &pending.choices,
+                    );
+                    crate::game_loop::drain_pending_trigger_events(game, tq);
+                    continue;
+                }
+
+                let (player, creature) = pending.creatures[pending.choices.len()];
+                let name = game
+                    .object(creature)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| "this creature".to_string());
+                let options = crate::marker::SectorDesignation::ALL
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, sector)| {
+                        crate::decisions::context::SelectableOption::new(
+                            index,
+                            sector.description(),
+                        )
+                    })
+                    .collect();
+                let context = crate::decisions::context::SelectOptionsContext::new(
+                    player,
+                    Some(pending.source),
+                    format!("Choose a sector for {name}"),
+                    options,
+                    1,
+                    1,
+                );
+                self.pending_sector_designations = Some(pending);
+                return Ok(RunnerProgress::NeedsDecision(
+                    DecisionContext::SelectOptions(context),
+                ));
+            } else if self.pending_sector_designations.take().is_some() {
+                self.pending_option = None;
             }
 
             // Handle one legend-rule violation per pass: applying a keep choice
@@ -1393,8 +2123,9 @@ impl TurnRunner {
                 if !applied {
                     self.pending_boolean = None;
                     self.pending_commander_choice = None;
-                    self.pending_dredge = None;
+                    self.pending_draw_replacement = None;
                     self.pending_legend_choice = None;
+                    self.pending_sector_designations = None;
                     return Ok(RunnerProgress::Complete(()));
                 }
                 continue;
@@ -1404,8 +2135,9 @@ impl TurnRunner {
                 game.clear_empty_library_draw_attempts_since_sba();
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
-                self.pending_dredge = None;
+                self.pending_draw_replacement = None;
                 self.pending_legend_choice = None;
+                self.pending_sector_designations = None;
                 return Ok(RunnerProgress::Complete(()));
             };
 
@@ -1479,6 +2211,29 @@ fn attacked_defending_players_in_apnap_order(
         })
         .collect::<std::collections::HashSet<_>>();
 
+    if game.shared_team_turns_enabled() {
+        let attacked_teams = attacked
+            .iter()
+            .filter_map(|player| game.team_index_for(*player))
+            .collect::<std::collections::HashSet<_>>();
+        return game
+            .team_apnap_player_order()
+            .into_iter()
+            .filter_map(|player| {
+                let team = game.team_index_for(player)?;
+                attacked_teams
+                    .contains(&team)
+                    .then(|| game.primary_player_for_team(team))
+                    .flatten()
+            })
+            .fold(Vec::new(), |mut players, player| {
+                if !players.contains(&player) {
+                    players.push(player);
+                }
+                players
+            });
+    }
+
     let turn_order = &game.turn_store.turn_order;
     let mut ordered = Vec::new();
     if !turn_order.is_empty() {
@@ -1510,28 +2265,222 @@ fn attacked_defending_players_in_apnap_order(
     ordered
 }
 
+fn runner_state_for_destination(destination: TurnScheduleDestination) -> TurnState {
+    match destination {
+        TurnScheduleDestination::Step(Step::Untap) => TurnState::Untap,
+        TurnScheduleDestination::Step(Step::Upkeep) => TurnState::Upkeep,
+        TurnScheduleDestination::Step(Step::Draw) => TurnState::Draw,
+        TurnScheduleDestination::Step(Step::BeginCombat) => TurnState::BeginCombat,
+        TurnScheduleDestination::Step(Step::DeclareAttackers) => {
+            TurnState::DeclareAttackersDecision
+        }
+        TurnScheduleDestination::Step(Step::DeclareBlockers) => TurnState::DeclareBlockersCheck,
+        TurnScheduleDestination::Step(Step::CombatDamage)
+        | TurnScheduleDestination::CombatDamageRegular => TurnState::CombatDamageRegular,
+        TurnScheduleDestination::CombatDamageFirstStrike => TurnState::CombatDamageFirstStrike,
+        TurnScheduleDestination::Step(Step::EndCombat) => TurnState::EndCombat,
+        TurnScheduleDestination::Step(Step::End) => TurnState::EndStep,
+        TurnScheduleDestination::Step(Step::Cleanup) => TurnState::CleanupDiscard,
+        TurnScheduleDestination::Phase(Phase::Beginning) => TurnState::Untap,
+        TurnScheduleDestination::Phase(Phase::FirstMain) => TurnState::FirstMain,
+        TurnScheduleDestination::Phase(Phase::Combat) => TurnState::BeginCombat,
+        TurnScheduleDestination::Phase(Phase::NextMain) => TurnState::NextMain,
+        TurnScheduleDestination::Phase(Phase::Ending) => TurnState::EndStep,
+        TurnScheduleDestination::ResumePhaseSchedule => {
+            unreachable!("phase-schedule continuations are resolved before state conversion")
+        }
+        TurnScheduleDestination::Complete => TurnState::Complete,
+    }
+}
+
+fn prepend_scheduled_steps(game: &mut GameState, mut steps: Vec<ScheduledStep>) {
+    if steps.is_empty() {
+        return;
+    }
+    steps.append(&mut game.turn_store.pending_added_steps);
+    game.turn_store.pending_added_steps = steps;
+}
+
+fn activate_next_scheduled_step(game: &mut GameState) -> TurnState {
+    loop {
+        let Some(next) = game.turn_store.pending_added_steps.first().copied() else {
+            game.turn_store.active_added_step = None;
+            let continuation = game
+                .turn_store
+                .added_step_continuation
+                .take()
+                .unwrap_or(TurnScheduleDestination::Complete);
+            return resolve_schedule_destination(game, continuation);
+        };
+        game.turn_store.pending_added_steps.remove(0);
+
+        let before = game.take_added_steps(AddedStepPlacement::BeforeStep(next.step));
+        if !before.is_empty() {
+            let mut sequence = before;
+            sequence.push(next);
+            prepend_scheduled_steps(game, sequence);
+            continue;
+        }
+
+        game.turn_store.active_added_step = Some(next);
+        game.turn.phase = next.phase;
+        game.turn.step = Some(next.step);
+        return runner_state_for_destination(TurnScheduleDestination::Step(next.step));
+    }
+}
+
+fn start_scheduled_steps(
+    game: &mut GameState,
+    steps: Vec<ScheduledStep>,
+    continuation: TurnScheduleDestination,
+) -> TurnState {
+    game.turn_store.pending_added_steps = steps;
+    game.turn_store.active_added_step = None;
+    game.turn_store.added_step_continuation = Some(continuation);
+    activate_next_scheduled_step(game)
+}
+
+fn resolve_schedule_destination(
+    game: &mut GameState,
+    destination: TurnScheduleDestination,
+) -> TurnState {
+    if matches!(destination, TurnScheduleDestination::ResumePhaseSchedule) {
+        return resume_phase_schedule(game);
+    }
+    let first_step = match destination {
+        TurnScheduleDestination::Step(step) => Some(step),
+        TurnScheduleDestination::Phase(phase) => crate::turn::first_step_of_phase(phase),
+        TurnScheduleDestination::CombatDamageFirstStrike
+        | TurnScheduleDestination::CombatDamageRegular => Some(Step::CombatDamage),
+        _ => None,
+    };
+    if let Some(step) = first_step {
+        let before = game.take_added_steps(AddedStepPlacement::BeforeStep(step));
+        if !before.is_empty() {
+            return start_scheduled_steps(game, before, destination);
+        }
+    }
+    runner_state_for_destination(destination)
+}
+
+fn prepare_phase_schedule(game: &mut GameState, normal_next: TurnScheduleDestination) {
+    if game.turn_store.phase_schedule_continuation.is_none() {
+        game.turn_store.phase_schedule_continuation = Some(
+            game.turn_store
+                .additional_phase_continuation
+                .take()
+                .map(TurnScheduleDestination::Phase)
+                .unwrap_or(normal_next),
+        );
+    }
+}
+
+fn resume_phase_schedule(game: &mut GameState) -> TurnState {
+    if let Some((phase, only_step)) = game.pop_additional_phase() {
+        if let Some(step) = only_step {
+            return start_scheduled_steps(
+                game,
+                vec![ScheduledStep {
+                    phase,
+                    step,
+                    isolated_phase: true,
+                }],
+                TurnScheduleDestination::ResumePhaseSchedule,
+            );
+        }
+        return resolve_schedule_destination(game, TurnScheduleDestination::Phase(phase));
+    }
+    let continuation = game
+        .turn_store
+        .phase_schedule_continuation
+        .take()
+        .unwrap_or(TurnScheduleDestination::Complete);
+    resolve_schedule_destination(game, continuation)
+}
+
+fn begin_phase_schedule(
+    game: &mut GameState,
+    phase: Phase,
+    normal_next: TurnScheduleDestination,
+) -> TurnState {
+    game.queue_added_step_phases_after(phase);
+    prepare_phase_schedule(game, normal_next);
+    resume_phase_schedule(game)
+}
+
+fn finish_step(
+    game: &mut GameState,
+    step: Step,
+    normal_next: TurnScheduleDestination,
+) -> TurnState {
+    let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
+    let active = game.turn_store.active_added_step.take();
+    if let Some(scheduled) = active {
+        if scheduled.isolated_phase {
+            game.queue_added_step_phases_after(scheduled.phase);
+        }
+        prepend_scheduled_steps(game, additions);
+        return activate_next_scheduled_step(game);
+    }
+    if additions.is_empty() {
+        resolve_schedule_destination(game, normal_next)
+    } else {
+        start_scheduled_steps(game, additions, normal_next)
+    }
+}
+
+fn finish_step_and_phase(
+    game: &mut GameState,
+    step: Step,
+    phase: Phase,
+    normal_next: TurnScheduleDestination,
+) -> TurnState {
+    let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
+    let active = game.turn_store.active_added_step.take();
+    if active.is_none() || active.is_some_and(|scheduled| scheduled.isolated_phase) {
+        game.queue_added_step_phases_after(phase);
+    }
+
+    if active.is_some() {
+        prepend_scheduled_steps(game, additions);
+        return activate_next_scheduled_step(game);
+    }
+
+    prepare_phase_schedule(game, normal_next);
+    if additions.is_empty() {
+        resume_phase_schedule(game)
+    } else {
+        start_scheduled_steps(
+            game,
+            additions,
+            TurnScheduleDestination::ResumePhaseSchedule,
+        )
+    }
+}
+
+fn finish_phase(
+    game: &mut GameState,
+    phase: Phase,
+    normal_next: TurnScheduleDestination,
+) -> TurnState {
+    begin_phase_schedule(game, phase, normal_next)
+}
+
 fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -> TurnState {
     if matches!(game.turn.phase, Phase::Combat) {
-        game.cleanup_restrictions_end_of_combat();
-        game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
+        game.cleanup_effects_end_of_combat();
     }
 
-    let next_phase = if !game.turn_store.additional_phases.is_empty() {
-        Some(game.turn_store.additional_phases.remove(0))
-    } else if game.turn_store.additional_phase_continuation.is_some() {
-        game.turn_store.additional_phase_continuation.take()
-    } else {
-        None
+    let normal_destination = match normal_next {
+        TurnState::FirstMain => TurnScheduleDestination::Phase(Phase::FirstMain),
+        TurnState::BeginCombat => TurnScheduleDestination::Phase(Phase::Combat),
+        TurnState::NextMain => TurnScheduleDestination::Phase(Phase::NextMain),
+        TurnState::EndStep => TurnScheduleDestination::Phase(Phase::Ending),
+        TurnState::Complete => TurnScheduleDestination::Complete,
+        _ => return normal_next,
     };
-
-    match next_phase {
-        Some(Phase::Beginning) => TurnState::BeginTurn,
-        Some(Phase::FirstMain) => TurnState::FirstMain,
-        Some(Phase::Combat) => TurnState::BeginCombat,
-        Some(Phase::NextMain) => TurnState::NextMain,
-        Some(Phase::Ending) => TurnState::EndStep,
-        None => normal_next,
-    }
+    let phase = game.turn.phase;
+    finish_phase(game, phase, normal_destination)
 }
 
 #[cfg(test)]
@@ -1725,7 +2674,7 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .with_ability(
                 crate::ability::Ability::static_ability(
-                    crate::static_abilities::StaticAbility::keyword_marker("Dredge 2"),
+                    crate::static_abilities::StaticAbility::dredge(2),
                 )
                 .in_zones(vec![Zone::Graveyard]),
             )
@@ -1745,14 +2694,24 @@ mod tests {
         let action = runner
             .advance(&mut game, &mut tq)
             .expect("draw step should request dredge choice");
-        let TurnAction::Decision(DecisionContext::Boolean(ctx)) = action else {
-            panic!("expected dredge boolean decision, got {action:?}");
+        let TurnAction::Decision(DecisionContext::SelectOptions(ctx)) = action else {
+            panic!("expected shared replacement choice, got {action:?}");
         };
         assert_eq!(ctx.player, alice);
-        assert_eq!(ctx.source, Some(dredger_id));
-        assert!(ctx.description.contains("mill 2 cards instead of drawing"));
+        let dredge_index = ctx
+            .options
+            .iter()
+            .find(|option| {
+                option.object_id == Some(dredger_id)
+                    && !option.description.starts_with("Do not apply")
+            })
+            .map(|option| option.index)
+            .expect("the typed dredge replacement should be selectable");
+        assert!(ctx.options.iter().any(|option| {
+            option.object_id == Some(dredger_id) && option.description.starts_with("Do not apply")
+        }));
 
-        runner.respond_boolean(true);
+        runner.respond_options(vec![dredge_index]);
         let action = runner
             .advance(&mut game, &mut tq)
             .expect("accepted dredge should finish the draw step");
@@ -1765,6 +2724,176 @@ mod tests {
                 .as_deref(),
             Some("Dredge Probe")
         );
+    }
+
+    #[test]
+    fn duplicate_skip_next_draw_step_effects_are_consumed_one_per_extra_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        for index in 0..2 {
+            let card = CardBuilder::new(CardId::new(), &format!("Skip Probe {index}"))
+                .card_types(vec![CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Library);
+        }
+
+        // Two independently created effects must each replace one future draw
+        // step. A set collapses them and incorrectly consumes both at once.
+        game.skip_next_step(alice, Step::Draw);
+        game.skip_next_step(alice, Step::Draw);
+        game.turn_store.extra_turns.push(alice);
+
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Draw);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("first skipped draw"),
+            TurnAction::Continue
+        ));
+        assert!(game.player(alice).expect("alice").hand.is_empty());
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, alice);
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Draw);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("second independently skipped draw"),
+            TurnAction::Continue
+        ));
+        assert!(
+            game.player(alice).expect("alice").hand.is_empty(),
+            "the second skip must survive for the extra turn's draw step"
+        );
+    }
+
+    #[test]
+    fn draw_step_declining_one_dredge_still_offers_another() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+
+        let dredger = |name: &str, amount| {
+            CardDefinitionBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Creature])
+                .with_ability(
+                    crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::dredge(amount),
+                    )
+                    .in_zones(vec![Zone::Graveyard]),
+                )
+                .build()
+        };
+        let first_id = game.create_object_from_definition(
+            &dredger("First Dredger", 2),
+            alice,
+            Zone::Graveyard,
+        );
+        let second_id = game.create_object_from_definition(
+            &dredger("Second Dredger", 3),
+            alice,
+            Zone::Graveyard,
+        );
+        for idx in 0..4 {
+            let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
+                .card_types(vec![CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Library);
+        }
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Draw);
+        let mut tq = TriggerQueue::new();
+        let first_action = runner.advance(&mut game, &mut tq).expect("first choice");
+        let TurnAction::Decision(DecisionContext::SelectOptions(first_ctx)) = first_action else {
+            panic!("expected all eligible draw replacements");
+        };
+        assert_eq!(first_ctx.options.len(), 4);
+        let decline_first = first_ctx
+            .options
+            .iter()
+            .find(|option| {
+                option.object_id == Some(first_id) && option.description.starts_with("Do not apply")
+            })
+            .map(|option| option.index)
+            .expect("first dredge must have an explicit decline choice");
+
+        runner.respond_options(vec![decline_first]);
+        let second_action = runner.advance(&mut game, &mut tq).expect("second choice");
+        let TurnAction::Decision(DecisionContext::SelectOptions(second_ctx)) = second_action else {
+            panic!("declining one dredge must leave the other pair available");
+        };
+        assert_eq!(second_ctx.options.len(), 2);
+        assert!(
+            second_ctx
+                .options
+                .iter()
+                .all(|option| option.object_id == Some(second_id))
+        );
+        let choose_second = second_ctx
+            .options
+            .iter()
+            .find(|option| !option.description.starts_with("Do not apply"))
+            .map(|option| option.index)
+            .expect("second dredge should remain selectable");
+
+        runner.respond_options(vec![choose_second]);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("finish draw step"),
+            TurnAction::RunPriority
+        ));
+        let player = game.player(alice).expect("alice");
+        assert_eq!(player.library.len(), 1);
+        assert_eq!(player.graveyard.len(), 4);
+        assert!(player.graveyard.contains(&first_id));
+        assert_eq!(
+            game.current_name(player.hand[0]).as_deref(),
+            Some("Second Dredger")
+        );
+    }
+
+    #[test]
+    fn draw_step_dredge_is_ineligible_without_enough_library_cards() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+        let dredger = CardDefinitionBuilder::new(CardId::new(), "Too Large Dredger")
+            .card_types(vec![CardType::Creature])
+            .with_ability(
+                crate::ability::Ability::static_ability(
+                    crate::static_abilities::StaticAbility::dredge(3),
+                )
+                .in_zones(vec![Zone::Graveyard]),
+            )
+            .build();
+        let dredger_id = game.create_object_from_definition(&dredger, alice, Zone::Graveyard);
+        for idx in 0..2 {
+            let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
+                .card_types(vec![CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Library);
+        }
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Draw);
+        let mut tq = TriggerQueue::new();
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("ordinary draw"),
+            TurnAction::RunPriority
+        ));
+        let player = game.player(alice).expect("alice");
+        assert_eq!(player.hand.len(), 1);
+        assert_eq!(player.library.len(), 1);
+        assert!(player.graveyard.contains(&dredger_id));
     }
 
     #[test]
@@ -1800,6 +2929,54 @@ mod tests {
                     } if *player == alice
                 ))
         );
+    }
+
+    #[test]
+    fn draw_step_empty_library_win_replacement_preempts_the_failed_draw() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Draw);
+
+        let laboratory_maniac = CardBuilder::new(CardId::new(), "Laboratory Maniac")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&laboratory_maniac, alice, Zone::Battlefield);
+        game.object_mut(source)
+            .expect("Laboratory Maniac exists")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                StaticAbility::conditional_draw_replacement(
+                    crate::effect::Condition::ValueComparison {
+                        left: crate::effect::Value::CardsInLibrary(
+                            crate::target::PlayerFilter::You,
+                        ),
+                        operator: crate::effect::ValueComparisonOperator::Equal,
+                        right: crate::effect::Value::Fixed(0),
+                    },
+                    vec![crate::effect::Effect::win_the_game()],
+                    "If you would draw a card while your library has no cards in it, you win the game instead.",
+                ),
+            ));
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Draw);
+        let mut tq = TriggerQueue::new();
+        let action = runner
+            .advance(&mut game, &mut tq)
+            .expect("the draw-step replacement should resolve");
+
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert!(
+            !game
+                .player(alice)
+                .expect("alice exists")
+                .attempted_draw_from_empty_library,
+            "the replaced draw must not create an empty-library loss observation"
+        );
+        assert!(!game.player(bob).expect("bob exists").is_in_game());
     }
 
     #[test]
@@ -1996,6 +3173,12 @@ mod tests {
                 .expect("collect Bob's blocks"),
             TurnAction::Continue
         ));
+        assert_eq!(
+            runner.combat.blockers.get(&attacks_bob),
+            Some(&vec![bob_blocker]),
+            "Bob's complete CR 509.1 declaration must publish before Charlie starts"
+        );
+        assert!(runner.combat.blockers.get(&attacks_charlie).is_none());
 
         let TurnAction::Decision(DecisionContext::Blockers(charlie_context)) = runner
             .advance(&mut game, &mut tq)
@@ -2036,6 +3219,180 @@ mod tests {
             Some(&vec![charlie_blocker])
         );
         assert_eq!(game.turn.priority_player, Some(alice));
+    }
+
+    #[test]
+    fn multiplayer_defenders_finish_each_block_cost_transaction_before_the_next_defender() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let attacks_bob = create_battlefield_creature(&mut game, alice, "Attacks Bob");
+        let attacks_charlie = create_battlefield_creature(&mut game, alice, "Attacks Charlie");
+        let bob_blocker = create_battlefield_creature(&mut game, bob, "Bob Blocker");
+        let charlie_blocker = create_battlefield_creature(&mut game, charlie, "Charlie Blocker");
+        let bob_mountain = create_mountain(&mut game, bob);
+        let charlie_mountain = create_mountain(&mut game, charlie);
+        let tax = CardBuilder::new(CardId::new(), "Multiplayer Blocking Tax")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let tax = game.create_object_from_card(&tax, alice, Zone::Battlefield);
+        game.object_mut(tax)
+            .expect("blocking tax exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::block_cost(
+                crate::target::ObjectFilter::default(),
+                crate::target::ObjectFilter::default(),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Generic(1),
+                ]])),
+                "Creatures can't block unless their controller pays {1} for each blocking creature.",
+            )));
+        game.refresh_continuous_state();
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareBlockers);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareBlockersCheck);
+        runner.combat.attackers = vec![
+            AttackerInfo {
+                creature: attacks_charlie,
+                target: AttackTarget::Player(charlie),
+            },
+            AttackerInfo {
+                creature: attacks_bob,
+                target: AttackTarget::Player(bob),
+            },
+        ];
+        let mut tq = TriggerQueue::new();
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("start blockers"),
+            TurnAction::Continue
+        ));
+        let TurnAction::Decision(DecisionContext::Blockers(bob_context)) = runner
+            .advance(&mut game, &mut tq)
+            .expect("Bob declares first")
+        else {
+            panic!("expected Bob's blocker declaration");
+        };
+        runner.respond_blockers(
+            vec![BlockerDeclaration {
+                blocker: bob_blocker,
+                blocking: attacks_bob,
+            }],
+            bob_context.player,
+        );
+        let bob_window = match runner
+            .advance(&mut game, &mut tq)
+            .expect("Bob enters the blocking-cost mana window")
+        {
+            TurnAction::Decision(DecisionContext::SelectOptions(context)) => context,
+            other => panic!("expected Bob's mana window before Charlie, got {other:?}"),
+        };
+        assert_eq!(bob_window.player, bob);
+        assert!(runner.combat.blockers.is_empty());
+        let bob_mana_choice = bob_window
+            .options
+            .iter()
+            .find(|option| option.object_id == Some(bob_mountain))
+            .map(|option| option.index)
+            .expect("Bob's Mountain should be offered");
+        runner.respond_options(vec![bob_mana_choice]);
+        let bob_finish_window = match runner
+            .advance(&mut game, &mut tq)
+            .expect("Bob may keep activating mana abilities")
+        {
+            TurnAction::Decision(DecisionContext::SelectOptions(context)) => context,
+            other => panic!("Bob's mana window should remain open, got {other:?}"),
+        };
+        let bob_finish = bob_finish_window
+            .options
+            .iter()
+            .find(|option| option.description.starts_with("Finish"))
+            .map(|option| option.index)
+            .expect("Bob should be able to close the mana window");
+        runner.respond_options(vec![bob_finish]);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("Bob pays before Charlie declares"),
+            TurnAction::Continue
+        ));
+        assert_eq!(
+            runner.combat.blockers.get(&attacks_bob),
+            Some(&vec![bob_blocker])
+        );
+        assert!(runner.combat.blockers.get(&attacks_charlie).is_none());
+        assert_eq!(game.player(bob).expect("Bob exists").mana_pool.total(), 0);
+
+        let TurnAction::Decision(DecisionContext::Blockers(charlie_context)) = runner
+            .advance(&mut game, &mut tq)
+            .expect("Charlie declares only after Bob completed payment")
+        else {
+            panic!("expected Charlie's blocker declaration");
+        };
+        assert_eq!(charlie_context.player, charlie);
+        runner.respond_blockers(
+            vec![BlockerDeclaration {
+                blocker: charlie_blocker,
+                blocking: attacks_charlie,
+            }],
+            charlie,
+        );
+        let charlie_window = match runner
+            .advance(&mut game, &mut tq)
+            .expect("Charlie enters a separate mana window")
+        {
+            TurnAction::Decision(DecisionContext::SelectOptions(context)) => context,
+            other => panic!("expected Charlie's mana window, got {other:?}"),
+        };
+        assert_eq!(charlie_window.player, charlie);
+        let charlie_mana_choice = charlie_window
+            .options
+            .iter()
+            .find(|option| option.object_id == Some(charlie_mountain))
+            .map(|option| option.index)
+            .expect("Charlie's Mountain should be offered");
+        runner.respond_options(vec![charlie_mana_choice]);
+        let charlie_finish_window = match runner
+            .advance(&mut game, &mut tq)
+            .expect("Charlie's mana window remains repeatable")
+        {
+            TurnAction::Decision(DecisionContext::SelectOptions(context)) => context,
+            other => panic!("Charlie's mana window should remain open, got {other:?}"),
+        };
+        let charlie_finish = charlie_finish_window
+            .options
+            .iter()
+            .find(|option| option.description.starts_with("Finish"))
+            .map(|option| option.index)
+            .expect("Charlie should be able to close the mana window");
+        runner.respond_options(vec![charlie_finish]);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("publish the completed blocker declarations"),
+            TurnAction::RunPriority
+        ));
+        assert_eq!(
+            runner.combat.blockers.get(&attacks_charlie),
+            Some(&vec![charlie_blocker])
+        );
+        assert_eq!(
+            game.player(charlie)
+                .expect("Charlie exists")
+                .mana_pool
+                .total(),
+            0
+        );
     }
 
     #[test]
@@ -2171,6 +3528,87 @@ mod tests {
         assert_eq!(runner.combat.attackers.len(), 1);
         assert_eq!(runner.combat.attackers[0].creature, attacker);
         assert!(!game.is_tapped(second_mountain));
+    }
+
+    #[test]
+    fn blocking_cost_locks_then_offers_repeatable_mana_window_before_publication() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_battlefield_creature(&mut game, alice, "Taxed Attack");
+        let blocker = create_battlefield_creature(&mut game, bob, "Paying Blocker");
+        let mountain = create_mountain(&mut game, bob);
+        let tax = CardBuilder::new(CardId::new(), "Runner Blocking Tax")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let tax = game.create_object_from_card(&tax, alice, Zone::Battlefield);
+        game.object_mut(tax)
+            .expect("blocking tax exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::block_cost(
+                crate::target::ObjectFilter::default(),
+                crate::target::ObjectFilter::default(),
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Generic(1),
+                ]])),
+                "Creatures can't block unless their controller pays {1} for each blocking creature.",
+            )));
+        game.refresh_continuous_state();
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareBlockers);
+        game.turn.active_player = alice;
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareBlockersApply);
+        runner.combat.attackers.push(AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        runner.pending_blockers = Some((
+            vec![BlockerDeclaration {
+                blocker,
+                blocking: attacker,
+            }],
+            bob,
+        ));
+        runner.defending_player = Some(bob);
+        game.combat = Some(runner.combat.clone());
+
+        let first_window = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectOptions(context)) => context,
+            other => panic!("expected the blocking-cost mana window, got {other:?}"),
+        };
+        assert!(runner.combat.blockers.is_empty());
+        assert!(!game.is_tapped(mountain));
+        let mana_choice = first_window
+            .options
+            .iter()
+            .find(|option| option.object_id == Some(mountain))
+            .map(|option| option.index)
+            .expect("the defending player's Mountain should be offered");
+        runner.respond_options(vec![mana_choice]);
+
+        let second_window = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectOptions(context)) => context,
+            other => panic!("the blocking mana window should remain open, got {other:?}"),
+        };
+        assert!(game.is_tapped(mountain));
+        assert_eq!(game.player(bob).expect("Bob exists").mana_pool.total(), 1);
+        assert!(runner.combat.blockers.is_empty());
+        let finish_choice = second_window
+            .options
+            .iter()
+            .find(|option| option.description.starts_with("Finish"))
+            .map(|option| option.index)
+            .expect("the blocking mana window should have a finish option");
+        runner.respond_options(vec![finish_choice]);
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).unwrap(),
+            TurnAction::RunPriority
+        ));
+        assert_eq!(runner.combat.blockers.get(&attacker), Some(&vec![blocker]));
+        assert_eq!(game.player(bob).expect("Bob exists").mana_pool.total(), 0);
     }
 
     #[test]
@@ -2347,8 +3785,8 @@ mod tests {
         assert!(matches!(runner.state(), TurnState::BeginCombat));
         assert!(game.turn_store.additional_phases.is_empty());
         assert_eq!(
-            game.turn_store.additional_phase_continuation,
-            Some(Phase::NextMain)
+            game.turn_store.phase_schedule_continuation,
+            Some(TurnScheduleDestination::Phase(Phase::NextMain))
         );
 
         let action = runner.advance(&mut game, &mut tq).unwrap();
@@ -2362,6 +3800,252 @@ mod tests {
         assert!(matches!(action, TurnAction::Continue));
         assert!(matches!(runner.state(), TurnState::NextMain));
         assert_eq!(game.turn_store.additional_phase_continuation, None);
+        assert_eq!(game.turn_store.phase_schedule_continuation, None);
+    }
+
+    #[test]
+    fn full_and_synthetic_phase_additions_share_creation_order() {
+        let mut newer_full_phase = setup_game();
+        newer_full_phase.turn.turn_number = 2;
+        newer_full_phase.turn.phase = Phase::FirstMain;
+        newer_full_phase.turn.step = None;
+        newer_full_phase.add_step_after_phase(Step::Draw, Phase::FirstMain);
+        newer_full_phase.add_additional_phase_group([Phase::Combat]);
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::FirstMainPriority);
+        let mut tq = TriggerQueue::new();
+
+        runner
+            .advance(&mut newer_full_phase, &mut tq)
+            .expect("leave first main");
+        assert!(matches!(runner.state(), TurnState::BeginCombat));
+
+        let mut newer_synthetic_phase = setup_game();
+        newer_synthetic_phase.turn.turn_number = 2;
+        newer_synthetic_phase.turn.phase = Phase::FirstMain;
+        newer_synthetic_phase.turn.step = None;
+        newer_synthetic_phase.add_additional_phase_group([Phase::Combat]);
+        newer_synthetic_phase.add_step_after_phase(Step::Draw, Phase::FirstMain);
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::FirstMainPriority);
+        let mut tq = TriggerQueue::new();
+
+        runner
+            .advance(&mut newer_synthetic_phase, &mut tq)
+            .expect("leave first main");
+        assert!(matches!(runner.state(), TurnState::Draw));
+        assert!(
+            newer_synthetic_phase
+                .turn_store
+                .active_added_step
+                .is_some_and(|scheduled| scheduled.isolated_phase)
+        );
+    }
+
+    #[test]
+    fn added_steps_after_phase_use_isolated_phases_newest_first() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        let draw = CardBuilder::new(CardId::new(), "Synthetic Draw").build();
+        game.create_object_from_card(&draw, alice, Zone::Library);
+
+        game.add_step_after_phase(Step::Upkeep, Phase::FirstMain);
+        game.add_step_after_phase(Step::Draw, Phase::FirstMain);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::FirstMainPriority);
+        let mut tq = TriggerQueue::new();
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("leave first main"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Draw));
+        assert_eq!(
+            game.turn_store.active_added_step,
+            Some(ScheduledStep {
+                phase: Phase::Beginning,
+                step: Step::Draw,
+                isolated_phase: true,
+            })
+        );
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("additional draw"),
+            TurnAction::RunPriority
+        ));
+        assert_eq!(game.player(alice).expect("alice").hand.len(), 1);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("finish additional draw"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Upkeep));
+
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("additional upkeep"),
+            TurnAction::RunPriority
+        ));
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("finish additional upkeep"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::BeginCombat));
+    }
+
+    #[test]
+    fn added_steps_after_same_step_are_newest_first_before_normal_continuation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        for index in 0..2 {
+            let draw = CardBuilder::new(CardId::new(), &format!("Ordered Draw {index}")).build();
+            game.create_object_from_card(&draw, alice, Zone::Library);
+        }
+
+        game.add_step_after(Step::Upkeep, Step::Upkeep);
+        game.add_step_after(Step::Draw, Step::Upkeep);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::UpkeepPriority);
+        let mut tq = TriggerQueue::new();
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("finish upkeep"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Draw));
+        assert_eq!(
+            game.turn_store
+                .pending_added_steps
+                .first()
+                .map(|scheduled| scheduled.step),
+            Some(Step::Upkeep)
+        );
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("newest draw"),
+            TurnAction::RunPriority
+        ));
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("finish newest draw"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Upkeep));
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("older upkeep"),
+            TurnAction::RunPriority
+        ));
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("finish older upkeep"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Draw));
+    }
+
+    #[test]
+    fn added_step_before_named_step_runs_before_that_normal_step() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        game.add_step_before(Step::Upkeep, Step::Draw);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::UpkeepPriority);
+        let mut tq = TriggerQueue::new();
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("finish upkeep"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Upkeep));
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("additional upkeep before draw"),
+            TurnAction::RunPriority
+        ));
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("finish additional upkeep"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Draw));
+    }
+
+    #[test]
+    fn added_step_before_combat_damage_precedes_the_first_damage_step() {
+        let mut game = setup_game();
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareBlockers);
+        game.add_step_before(Step::Upkeep, Step::CombatDamage);
+
+        let state = resolve_schedule_destination(
+            &mut game,
+            TurnScheduleDestination::CombatDamageFirstStrike,
+        );
+        assert!(matches!(state, TurnState::Upkeep));
+        assert_eq!(game.turn.step, Some(Step::Upkeep));
+
+        let state = finish_step(
+            &mut game,
+            Step::Upkeep,
+            TurnScheduleDestination::Step(Step::Draw),
+        );
+        assert!(matches!(state, TurnState::CombatDamageFirstStrike));
+    }
+
+    #[test]
+    fn you_get_gate_and_step_skip_apply_to_added_steps() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        assert!(!game.add_step_after_phase_for_controller(bob, Step::Upkeep, Phase::FirstMain));
+        assert!(game.add_step_after_phase_for_controller(alice, Step::Upkeep, Phase::FirstMain));
+        game.add_step_after_phase(Step::Upkeep, Phase::FirstMain);
+        game.skip_next_step(alice, Step::Upkeep);
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::FirstMainPriority);
+        let mut tq = TriggerQueue::new();
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("leave first main"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Upkeep));
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).expect("skip one upkeep"),
+            TurnAction::Continue
+        ));
+        assert!(matches!(runner.state(), TurnState::Upkeep));
+        assert_eq!(game.pending_step_skips(alice, Step::Upkeep), 0);
+        assert!(matches!(
+            runner
+                .advance(&mut game, &mut tq)
+                .expect("run second upkeep"),
+            TurnAction::RunPriority
+        ));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -2422,6 +4106,62 @@ mod tests {
             game.stack.len(),
             1,
             "accepting exert should queue the linked trigger onto the stack"
+        );
+    }
+
+    #[test]
+    fn turn_runner_collects_enlist_creature_before_committing_attackers() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let enlist_probe = CardDefinitionBuilder::new(CardId::new(), "Runner Enlist Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .enlist()
+            .build();
+        let attacker = game.create_object_from_definition(&enlist_probe, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker);
+        let support = create_battlefield_creature(&mut game, alice, "Enlist Support");
+        game.remove_summoning_sickness(support);
+        game.refresh_continuous_state();
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        runner.state = TurnState::DeclareAttackersApply;
+        runner.pending_attackers = Some(vec![AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }]);
+
+        let prompt = match runner.advance(&mut game, &mut tq).unwrap() {
+            TurnAction::Decision(DecisionContext::SelectObjects(prompt)) => prompt,
+            other => panic!("expected the 508.1g enlist selection, got {other:?}"),
+        };
+        assert!(game.is_tapped(attacker), "508.1f occurs before enlist");
+        assert!(!game.is_tapped(support));
+        assert!(runner.combat.attackers.is_empty());
+        assert_eq!(
+            prompt
+                .candidates
+                .iter()
+                .map(|candidate| candidate.id)
+                .collect::<Vec<_>>(),
+            vec![support]
+        );
+
+        runner.respond_discard(vec![support]);
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert!(game.is_tapped(support));
+        assert_eq!(runner.combat.attackers.len(), 1);
+        assert_eq!(
+            game.stack.len(),
+            1,
+            "the linked enlist trigger uses the stack"
         );
     }
 
@@ -2535,6 +4275,78 @@ mod tests {
     }
 
     #[test]
+    fn u036_turn_runner_collects_every_sector_choice_before_atomic_commit() {
+        use crate::marker::SectorDesignation::{Alpha, Beta, Gamma};
+
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Dana".into(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let dana = PlayerId::from_index(3);
+        game.turn.active_player = alice;
+        let sculptor = |name: &str| {
+            CardDefinitionBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Artifact])
+                .with_ability(Ability::static_ability(StaticAbility::space_sculptor()))
+                .build()
+        };
+        game.create_object_from_definition(&sculptor("Alice Sculptor"), alice, Zone::Battlefield);
+        game.create_object_from_definition(
+            &sculptor("Charlie Sculptor"),
+            charlie,
+            Zone::Battlefield,
+        );
+        let alice_creature = create_battlefield_creature(&mut game, alice, "Alice Creature");
+        let bob_creature = create_battlefield_creature(&mut game, bob, "Bob Creature");
+        let charlie_creature = create_battlefield_creature(&mut game, charlie, "Charlie Creature");
+        let dana_creature = create_battlefield_creature(&mut game, dana, "Dana Creature");
+
+        let mut runner = TurnRunner::new();
+        let mut tq = TriggerQueue::new();
+        for (expected_player, answer) in [(bob, 1), (dana, 2), (alice, 0), (charlie, 1)] {
+            let progress = runner
+                .apply_sbas_until_commander_choice(&mut game, &mut tq)
+                .expect("sector prompt");
+            let RunnerProgress::NeedsDecision(DecisionContext::SelectOptions(context)) = progress
+            else {
+                panic!("expected sector decision")
+            };
+            assert_eq!(context.player, expected_player);
+            assert!(
+                [
+                    alice_creature,
+                    bob_creature,
+                    charlie_creature,
+                    dana_creature
+                ]
+                .into_iter()
+                .all(|creature| game.sector_designation(creature).is_none()),
+                "no designation may be committed before the final answer"
+            );
+            runner.respond_options(vec![answer]);
+        }
+
+        assert!(matches!(
+            runner
+                .apply_sbas_until_commander_choice(&mut game, &mut tq)
+                .expect("commit assignment batch"),
+            RunnerProgress::Complete(())
+        ));
+        assert_eq!(game.sector_designation(bob_creature), Some(Beta));
+        assert_eq!(game.sector_designation(dana_creature), Some(Gamma));
+        assert_eq!(game.sector_designation(alice_creature), Some(Alpha));
+        assert_eq!(game.sector_designation(charlie_creature), Some(Beta));
+    }
+
+    #[test]
     fn test_turn_runner_skips_starting_players_first_draw_in_non_commander_game() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -2586,5 +4398,90 @@ mod tests {
             1
         );
         assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+    }
+
+    #[test]
+    fn test_turn_runner_keeps_starting_players_first_draw_in_normal_multiplayer_game() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(
+            crate::ids::CardId::from_raw(9105),
+            "Runner Multiplayer Draw",
+        )
+        .card_types(vec![crate::types::CardType::Creature])
+        .build();
+        game.create_object_from_card(&card, alice, crate::zone::Zone::Library);
+
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+        runner.state = TurnState::Draw;
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(
+            game.player(alice).expect("alice should exist").hand.len(),
+            1
+        );
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+    }
+
+    #[test]
+    fn attacker_response_records_announced_band_before_blockers() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        let bander = create_battlefield_creature(&mut game, alice, "Bander");
+        let companion = create_battlefield_creature(&mut game, alice, "Companion");
+        game.object_mut(bander)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::banding()));
+        game.remove_summoning_sickness(bander);
+        game.remove_summoning_sickness(companion);
+
+        let declarations = vec![
+            AttackerDeclaration {
+                creature: bander,
+                target: AttackTarget::Player(bob),
+            },
+            AttackerDeclaration {
+                creature: companion,
+                target: AttackTarget::Player(bob),
+            },
+        ];
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareAttackersApply);
+        runner.respond_attackers_with_bands(declarations, vec![vec![bander, companion]]);
+        let mut tq = TriggerQueue::new();
+
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).unwrap(),
+            TurnAction::RunPriority
+        ));
+        assert_eq!(runner.combat.attacking_bands, vec![vec![bander, companion]]);
+        assert_eq!(
+            game.combat.as_ref().unwrap().attacking_bands,
+            vec![vec![bander, companion]]
+        );
+
+        let game_combat = game.combat.as_mut().unwrap();
+        game_combat
+            .attackers
+            .retain(|attacker| attacker.creature != bander);
+        game_combat.attacking_bands[0].retain(|member| *member != bander);
+        assert!(matches!(
+            runner.advance(&mut game, &mut tq).unwrap(),
+            TurnAction::Continue
+        ));
+        assert_eq!(runner.combat.attacking_bands, vec![vec![companion]]);
     }
 }

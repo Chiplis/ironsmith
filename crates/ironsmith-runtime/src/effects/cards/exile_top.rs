@@ -24,6 +24,8 @@ pub struct ExileTopOfLibraryEffect {
     pub moved_tags: Vec<TagKey>,
     /// Optional tags that accumulate all cards moved across repeated executions.
     pub accumulated_tags: Vec<TagKey>,
+    /// Whether the cards are exiled face down without being revealed.
+    pub face_down: bool,
 }
 
 impl ExileTopOfLibraryEffect {
@@ -34,6 +36,7 @@ impl ExileTopOfLibraryEffect {
             player,
             moved_tags: Vec::new(),
             accumulated_tags: Vec::new(),
+            face_down: false,
         }
     }
 
@@ -44,6 +47,11 @@ impl ExileTopOfLibraryEffect {
 
     pub fn append_tagged(mut self, tag: impl Into<TagKey>) -> Self {
         self.accumulated_tags.push(tag.into());
+        self
+    }
+
+    pub fn face_down(mut self) -> Self {
+        self.face_down = true;
         self
     }
 }
@@ -76,6 +84,9 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         let mut moved_ids = Vec::new();
         for card_id in top_cards {
             if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
+                if self.face_down {
+                    game.set_face_down(exiled_id);
+                }
                 if (!self.moved_tags.is_empty() || !self.accumulated_tags.is_empty())
                     && let Some(obj) = game.object(exiled_id)
                 {
@@ -91,14 +102,16 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
             }
         }
 
-        view_hidden_candidate_objects(
-            game,
-            ctx,
-            player_id,
-            &moved_ids,
-            "Reveal exiled library cards",
-            true,
-        );
+        if !self.face_down {
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                player_id,
+                &moved_ids,
+                "Reveal exiled library cards",
+                true,
+            );
+        }
 
         Ok(EffectOutcome::with_objects(moved_ids.clone())
             .with_affected_objects_from_game(game, moved_ids))
@@ -202,5 +215,61 @@ mod tests {
             }),
             "exiling a hidden library card face up should create a public view before later prompts"
         );
+    }
+
+    #[test]
+    fn exiling_top_cards_face_down_keeps_them_hidden_and_appends_the_collection_tag() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            0,
+            "alice-slot-0".to_string(),
+        );
+        let second = game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            1,
+            "alice-slot-1".to_string(),
+        );
+        let source = ObjectId::from_raw(9002);
+        let mut dm = CaptureViewsDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let preexisting = ObjectSnapshot::from_object(
+            game.object(first).expect("first library card should exist"),
+            &game,
+        );
+        ctx.tag_object("pile", preexisting);
+
+        let outcome = ExileTopOfLibraryEffect::new(Value::Fixed(2), PlayerFilter::You)
+            .append_tagged("pile")
+            .face_down()
+            .execute(&mut game, &mut ctx)
+            .expect("face-down exile-top should resolve");
+        let exiled = outcome
+            .affected_objects()
+            .expect("both hidden cards should be exiled");
+
+        assert_eq!(exiled.len(), 2);
+        assert!(exiled.iter().all(|id| game.is_face_down(*id)));
+        assert!(exiled.iter().all(|id| game.hidden_card_info(*id).is_some()));
+        assert!(exiled.iter().all(|id| {
+            !game.can_player_look_at_face_down_exiled_card(*id, alice)
+                && !game.can_player_look_at_face_down_exiled_card(*id, bob)
+        }));
+        let pile_len = ctx.get_tagged_all("pile").map(Vec::len);
+        drop(ctx);
+        assert!(
+            dm.views.is_empty(),
+            "face-down exile must not reveal the pile"
+        );
+        assert_eq!(
+            pile_len,
+            Some(3),
+            "append_tagged must retain the existing collection and append both moved cards"
+        );
+        assert!(exiled.iter().all(|id| *id != first && *id != second));
     }
 }

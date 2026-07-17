@@ -3,7 +3,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::ask_may_choice;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact};
-use crate::effects::helpers::resolve_player_filter;
+use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
@@ -133,7 +133,7 @@ impl EffectExecutor for MayEffect {
         // Use explicit decider when present ("that player may ..."), otherwise
         // preserve established behavior: iterated player if set, then controller.
         let deciding_player = if let Some(decider) = &self.decider {
-            resolve_player_filter(game, decider, ctx)?
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
         } else {
             ctx.iteration.iterated_player.unwrap_or(ctx.controller)
         };
@@ -198,6 +198,16 @@ impl MayEffect {
     ) -> Result<bool, ExecutionError> {
         if self.effects.len() != 1 {
             return Ok(false);
+        }
+
+        if let Some(pay_life) = self.effects[0].downcast_ref::<crate::effects::PayLifeEffect>() {
+            let player = resolve_player_from_spec(game, &pay_life.player, ctx)?;
+            let amount = resolve_value(game, &pay_life.amount, ctx)?.max(0) as u32;
+            return Ok(!game.can_pay_life_with_reason(
+                player,
+                amount,
+                crate::costs::PaymentReason::Effect,
+            ));
         }
 
         let Some(conditional) = self.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()

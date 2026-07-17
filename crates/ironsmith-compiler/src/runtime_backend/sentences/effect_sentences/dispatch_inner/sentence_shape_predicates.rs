@@ -836,6 +836,40 @@ fn has_unrecognized_leading_effect_label(tokens: &[OwnedLexToken]) -> bool {
     )
 }
 
+fn parse_manifest_dread_graveyard_card_to_hand(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words
+        != [
+            "put",
+            "a",
+            "card",
+            "you",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "this",
+            "way",
+            "into",
+            "your",
+            "hand",
+        ]
+    {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::tagged(TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG));
+    filter.zone = Some(Zone::Graveyard);
+    Some(vec![EffectAst::subject_verb_move_to_zone(
+        TargetAst::Object(filter, None, None),
+        Zone::Hand,
+        false,
+        ReturnControllerAst::Preserve,
+        false,
+        None,
+    )])
+}
+
 fn parse_effect_sentence_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -879,6 +913,10 @@ fn parse_effect_sentence_lexed_inner(
                 }
             }
         }
+    }
+
+    if let Some(effects) = parse_manifest_dread_graveyard_card_to_hand(tokens) {
+        return Ok(effects);
     }
 
     if let Some(schedule) =
@@ -1561,6 +1599,11 @@ fn parse_effect_sentence_with_where_x_lexed(
                 )
             });
         let number_of_filter_value = specific_where_value
+            .or_else(|| {
+                crate::runtime_backend::families::keyword_static::parse_where_x_is_colored_mana_symbols_value(
+                    primary_where_tokens,
+                )
+            })
             .or_else(|| {
                 crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
                     primary_where_tokens,

@@ -3,6 +3,26 @@ use crate::effects::ApplyContinuousEffect;
 use crate::filter::ObjectFilter;
 use crate::target::ChooseSpec;
 
+/// Stable internal attribution carried by authored target choices. These tags
+/// distinguish two targets chosen by different players after both choices have
+/// been made, so later clauses can still say which player chose which object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetChoiceAttribution {
+    AbilityController,
+    Opponent,
+}
+
+pub const ABILITY_CONTROLLER_TARGET_CHOICE_TAG: &str = "__ability_controller_target_choice_0";
+pub const OPPONENT_TARGET_CHOICE_TAG: &str = "__opponent_target_choice_1";
+
+pub fn target_choice_attribution(tag: &str) -> Option<TargetChoiceAttribution> {
+    match tag {
+        ABILITY_CONTROLLER_TARGET_CHOICE_TAG => Some(TargetChoiceAttribution::AbilityController),
+        OPPONENT_TARGET_CHOICE_TAG => Some(TargetChoiceAttribution::Opponent),
+        _ => None,
+    }
+}
+
 pub fn is_generated_internal_tag(tag: &str) -> bool {
     if let Some(rest) = tag.strip_prefix("__sentence_helper_") {
         let mut parts = rest.split("_l");
@@ -48,6 +68,7 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
             | "triggering_source"
             | "damaged"
             | "__it__"
+            | crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG
             | crate::tag::SOURCE_EXILED_TAG
             | "other_attacker"
             | "blocking"

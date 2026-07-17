@@ -2,6 +2,7 @@
 pub enum Supertype {
     Basic,
     Legendary,
+    Ongoing,
     Snow,
     World,
 }
@@ -11,6 +12,7 @@ impl Supertype {
         match self {
             Supertype::Basic => "basic",
             Supertype::Legendary => "legendary",
+            Supertype::Ongoing => "ongoing",
             Supertype::Snow => "snow",
             Supertype::World => "world",
         }
@@ -33,6 +35,11 @@ pub enum CardType {
     Instant,
     Sorcery,
     Battle,
+    Plane,
+    Phenomenon,
+    Vanguard,
+    Scheme,
+    Conspiracy,
     Kindred, // Formerly Tribal
 }
 
@@ -47,6 +54,11 @@ impl CardType {
             CardType::Instant => "instant",
             CardType::Sorcery => "sorcery",
             CardType::Battle => "battle",
+            CardType::Plane => "plane",
+            CardType::Phenomenon => "phenomenon",
+            CardType::Vanguard => "vanguard",
+            CardType::Scheme => "scheme",
+            CardType::Conspiracy => "conspiracy",
             CardType::Kindred => "kindred",
         }
     }
@@ -61,6 +73,11 @@ impl CardType {
             CardType::Instant => "instant card",
             CardType::Sorcery => "sorcery card",
             CardType::Battle => "battle card",
+            CardType::Plane => "plane card",
+            CardType::Phenomenon => "phenomenon card",
+            CardType::Vanguard => "vanguard card",
+            CardType::Scheme => "scheme card",
+            CardType::Conspiracy => "conspiracy card",
             CardType::Kindred => "kindred card",
         }
     }
@@ -75,6 +92,11 @@ impl CardType {
             CardType::Instant => "instants",
             CardType::Sorcery => "sorceries",
             CardType::Battle => "battles",
+            CardType::Plane => "planes",
+            CardType::Phenomenon => "phenomena",
+            CardType::Vanguard => "vanguards",
+            CardType::Scheme => "schemes",
+            CardType::Conspiracy => "conspiracies",
             CardType::Kindred => "kindred cards",
         }
     }
@@ -314,6 +336,7 @@ pub enum Subtype {
     Reflection,
     Rebel,
     Rhino,
+    Rigger,
     Rogue,
     Robot,
     Salamander,
@@ -620,6 +643,7 @@ impl Subtype {
             Subtype::Reflection,
             Subtype::Rebel,
             Subtype::Rhino,
+            Subtype::Rigger,
             Subtype::Rogue,
             Subtype::Robot,
             Subtype::Salamander,
@@ -967,6 +991,7 @@ impl Subtype {
                 | Subtype::Reflection
                 | Subtype::Rebel
                 | Subtype::Rhino
+                | Subtype::Rigger
                 | Subtype::Rogue
                 | Subtype::Robot
                 | Subtype::Salamander

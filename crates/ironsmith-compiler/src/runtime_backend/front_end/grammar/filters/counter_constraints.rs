@@ -22,6 +22,7 @@ pub(crate) struct CounterTypeWordsSpec {
 pub(crate) struct FilterCounterConstraintSpec {
     pub(crate) constraint: CounterConstraint,
     pub(crate) consumed: usize,
+    pub(crate) one_or_more: bool,
     pub(crate) plural_counter_noun: bool,
     pub(crate) plural_subject: bool,
 }
@@ -81,6 +82,7 @@ fn parse_known_counter_type_word_slice(
         "stun" => CounterType::Stun,
         "void" => CounterType::Void,
         "depletion" => CounterType::Depletion,
+        "dream" => CounterType::Dream,
         "storage" => CounterType::Storage,
         "ki" => CounterType::Ki,
         "energy" => CounterType::Energy,
@@ -101,6 +103,7 @@ fn parse_known_counter_type_word_slice(
         "pressure" => CounterType::Named(intern_counter_name("pressure")),
         "quest" => CounterType::Quest,
         "rad" => CounterType::Rad,
+        "shield" => CounterType::Shield,
         _ => {
             return Err(primitives::backtrack_err(
                 "counter type",
@@ -206,6 +209,9 @@ fn parse_filter_counter_constraint_word_slice(
     Ok(FilterCounterConstraintSpec {
         constraint,
         consumed: initial_len.saturating_sub(input.len()),
+        one_or_more: descriptor
+            .windows(3)
+            .any(|words| words == ["one", "or", "more"]),
         plural_counter_noun: counter_noun == "counters",
         plural_subject: subject == "them",
     })
@@ -271,7 +277,11 @@ fn apply_filter_counter_constraint_surface(
     spec: FilterCounterConstraintSpec,
 ) {
     if filter.with_counter == Some(spec.constraint) {
-        filter.set_counter_requirement_surface(spec.plural_counter_noun, spec.plural_subject);
+        filter.set_counter_requirement_surface(
+            spec.one_or_more,
+            spec.plural_counter_noun,
+            spec.plural_subject,
+        );
     }
     if filter.without_counter == Some(spec.constraint) {
         filter.set_counter_exclusion_surface(spec.plural_counter_noun, spec.plural_subject);
@@ -376,12 +386,26 @@ mod tests {
         assert_eq!(plural.consumed, 4);
         assert!(plural.plural_counter_noun);
         assert!(plural.plural_subject);
+        assert!(!plural.one_or_more);
+
+        let one_or_more = parse_filter_counter_constraint_spec_words(&[
+            "one", "or", "more", "loyalty", "counters", "on", "it",
+        ])
+        .expect("one-or-more filter counter surface");
+        assert_eq!(
+            one_or_more.constraint,
+            CounterConstraint::Typed(CounterType::Loyalty)
+        );
+        assert!(one_or_more.one_or_more);
+        assert!(one_or_more.plural_counter_noun);
+        assert!(!one_or_more.plural_subject);
 
         let singular =
             parse_filter_counter_constraint_spec_words(&["a", "+1/+1", "counter", "on", "it"])
                 .expect("singular filter counter surface");
         assert!(!singular.plural_counter_noun);
         assert!(!singular.plural_subject);
+        assert!(!singular.one_or_more);
     }
 
     #[test]

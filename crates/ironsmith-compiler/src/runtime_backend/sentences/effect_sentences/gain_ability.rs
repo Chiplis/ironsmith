@@ -6,6 +6,7 @@ use super::super::clause_support::{
 use super::super::compile_support::compile_statement_effects;
 use super::super::grammar::primitives::{
     TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_comma,
+    split_lexed_slices_on_list_conjunction,
 };
 use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
 use super::super::lexer::{
@@ -20,10 +21,10 @@ use super::super::object_filters::{parse_object_filter, parse_object_filter_lexe
 use super::super::token_primitives::str_contains as string_contains;
 use super::super::token_primitives::strip_leading_if_you_do_lexed;
 use super::super::util::{
-    is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    preferred_source_reference_self_surface, source_reference_surface_for_possessive_words,
-    source_reference_surface_for_words, span_from_tokens, strip_leading_token_words_any,
-    this_source_surface_for_words, trim_commas,
+    is_source_reference_words, parse_card_type, parse_mana_symbol, parse_subtype_flexible,
+    parse_target_phrase, preferred_source_reference_self_surface,
+    source_reference_surface_for_possessive_words, source_reference_surface_for_words,
+    span_from_tokens, strip_leading_token_words_any, this_source_surface_for_words, trim_commas,
 };
 use super::clause_dispatch::parse_become_clause;
 use super::dispatch_inner::trim_edge_punctuation;
@@ -330,22 +331,22 @@ fn parse_shared_subject_pump_from_get_tail(
     let modifier_tokens = modifier_tokens
         .get(head.modifier_token_offset..)
         .unwrap_or_default();
-    let for_each =
-        if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness) {
-            parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?
-                .map(|count| {
-                    let count = if additional_modifier {
-                        count.with_surface_hint(
-                            ironsmith_core::ValueSurfaceHint::AdditionalPowerToughnessModifier,
-                        )
-                    } else {
-                        count
-                    };
-                    (*power_per, *toughness_per, count)
-                })
-        } else {
-            None
-        };
+    let for_each = if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) =
+        (&power, &toughness)
+    {
+        parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?.map(|count| {
+            let count = if additional_modifier {
+                count.with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::AdditionalPowerToughnessModifier,
+                )
+            } else {
+                count
+            };
+            (*power_per, *toughness_per, count)
+        })
+    } else {
+        None
+    };
     let has_local_duration = head.has_local_duration;
     let (power, toughness, local_duration, condition) =
         parse_get_modifier_values_with_tail(&modifier_tokens, power, toughness)?;
@@ -489,6 +490,17 @@ fn parse_granted_ability_component_for_gain(
     if ability_tokens.is_empty() {
         return Ok(None);
     }
+    let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+    if ability_words == ["all", "bands", "with", "other", "abilities"]
+        || ability_words == ["bands", "with", "other"]
+    {
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(
+            StaticAbility::bands_with_other(
+                ObjectFilter::default(),
+                "all \"bands with other\" abilities",
+            ),
+        )]));
+    }
     match gain_shapes::classify_granted_ability_surface(&ability_tokens) {
         gain_shapes::GrantedAbilitySurface::CantBeBlockedExceptByHaste => {
             let restriction = crate::effect::Restriction::block_specific_attacker(
@@ -553,34 +565,98 @@ fn parse_granted_ability_component_for_gain(
     Ok(None)
 }
 
+fn parse_granted_ability_conjunction_for_gain(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    let segments = split_lexed_slices_on_and(ability_tokens);
+    if segments.len() <= 1 {
+        return Ok(None);
+    }
+
+    let mut abilities = Vec::new();
+    for segment in segments {
+        let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)? else {
+            return Ok(None);
+        };
+        abilities.extend(parsed);
+    }
+
+    Ok((!abilities.is_empty()).then_some(abilities))
+}
+
+fn granted_ability_conjunction_is_keyword_list(abilities: &[GrantedAbilityAst]) -> bool {
+    !abilities.is_empty()
+        && abilities
+            .iter()
+            .all(|ability| matches!(ability, GrantedAbilityAst::KeywordAction(_)))
+}
+
 pub(crate) fn parse_granted_abilities_for_gain_clause(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
     allow_choice: bool,
 ) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
-    let segments = split_lexed_slices_on_and(ability_tokens);
-    if contains_token_kind(ability_tokens, TokenKind::Quote) {
-        // Oracle can coordinate unlike ability forms as a comma-delimited
-        // list, with a quoted rules sentence as one item. Split commas first
-        // and conjunctions second so conjunctions and punctuation inside the
-        // quoted sentence remain part of that ability.
-        let comma_segments = split_lexed_slices_on_comma(ability_tokens);
-        let mixed_segments: Vec<_> = comma_segments
-            .iter()
-            .flat_map(|segment| split_lexed_slices_on_and(segment))
-            .collect();
+    let comma_segments = split_lexed_slices_on_comma(ability_tokens);
+    if comma_segments.len() > 1 {
+        // Parse every comma-delimited item independently before trying the
+        // whole surface. This keeps an executable keyword in the middle of a
+        // mixed list from greedily consuming the list and dropping a later
+        // static keyword.
         let mut abilities = Vec::new();
-        for segment in &mixed_segments {
-            let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)?
-            else {
-                abilities.clear();
-                break;
-            };
-            abilities.extend(parsed);
+        for comma_segment in &comma_segments {
+            // In an Oxford-comma list the final comma-delimited item starts
+            // with the coordinating conjunction (`..., annihilator 2, and
+            // haste`).  That conjunction is list syntax, not part of the
+            // granted ability.  Remove it before dispatching the item so a
+            // later keyword cannot be lost when the whole list falls back to
+            // a greedier executable-keyword parser.
+            let comma_segment = strip_leading_token_words_any(comma_segment, &["and", "and/or"]);
+
+            // Effect-chain normalization can remove the Oxford comma while
+            // retaining the final conjunction, producing an item such as
+            // `annihilator 2 and haste`. Prefer a fully successful
+            // decomposition before the whole-item parser: count keywords are
+            // prefix-tolerant and would otherwise accept only `annihilator 2`
+            // and silently discard the final keyword. If either arm is not an
+            // independent ability (for example, `hexproof from red and
+            // green`), fall back to parsing the compound phrase as a whole.
+            let conjunction =
+                parse_granted_ability_conjunction_for_gain(comma_segment, clause_words)?;
+            if let Some(parsed) = conjunction
+                .as_ref()
+                .filter(|parsed| granted_ability_conjunction_is_keyword_list(parsed))
+            {
+                abilities.extend(parsed.iter().cloned());
+                continue;
+            }
+
+            if let Some(parsed) =
+                parse_granted_ability_component_for_gain(comma_segment, clause_words)?
+            {
+                abilities.extend(parsed);
+                continue;
+            }
+
+            if let Some(parsed) = conjunction {
+                abilities.extend(parsed);
+                continue;
+            }
+
+            abilities.clear();
+            break;
         }
-        if mixed_segments.len() > 1 && !abilities.is_empty() {
+        if !abilities.is_empty() {
             return Ok((abilities, false));
         }
+    }
+
+    let conjunction = parse_granted_ability_conjunction_for_gain(ability_tokens, clause_words)?;
+    if let Some(abilities) = conjunction
+        .as_ref()
+        .filter(|abilities| granted_ability_conjunction_is_keyword_list(abilities))
+    {
+        return Ok((abilities.clone(), false));
     }
 
     if let Some(abilities) = parse_granted_ability_component_for_gain(ability_tokens, clause_words)?
@@ -596,19 +672,11 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
         ));
     }
 
-    if segments.len() <= 1 {
-        return Ok((Vec::new(), false));
+    if let Some(abilities) = conjunction {
+        return Ok((abilities, false));
     }
 
-    let mut abilities = Vec::new();
-    for segment in segments {
-        let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)? else {
-            return Ok((Vec::new(), false));
-        };
-        abilities.extend(parsed);
-    }
-
-    Ok((abilities, false))
+    Ok((Vec::new(), false))
 }
 
 fn token_definition_source_identity(
@@ -726,6 +794,29 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
         &card_types,
         &subtypes,
         || {
+            // A quoted token rule is one ability even when its trigger or
+            // activation uses a comma. The general grant-list parser tries
+            // comma-delimited items first, which would otherwise feed an
+            // incomplete trigger (for example, `Whenever this token blocks a
+            // creature`) to triggered-line parsing and discard the rule.
+            let starts_triggered_rule = ability_tokens.first().is_some_and(|token| {
+                token.as_word().is_some_and(|word| {
+                    gain_shapes::gain_word_is_when_intro(word)
+                        || (gain_shapes::gain_word_is_trigger_intro(word)
+                            && ability_tokens
+                                .get(1)
+                                .is_some_and(|next| next.parser_text() == THE_WORD))
+                })
+            });
+            if (starts_triggered_rule || contains_token_kind(ability_tokens, TokenKind::Colon))
+                && let Some(ability) = parse_granted_activated_or_triggered_ability_for_gain(
+                    ability_tokens,
+                    &clause_words,
+                )?
+            {
+                return Ok(vec![ability]);
+            }
+
             let (abilities, is_choice) =
                 parse_granted_abilities_for_gain_clause(ability_tokens, &clause_words, false)?;
             Ok(if is_choice { Vec::new() } else { abilities })
@@ -850,6 +941,68 @@ fn subject_verb_grant_abilities_all_with_optional_condition(
     }
 }
 
+fn subject_verb_remove_abilities_all_with_optional_condition(
+    filter: ObjectFilter,
+    abilities: Vec<GrantedAbilityAst>,
+    duration: Until,
+    condition: &Option<crate::ConditionExpr>,
+) -> EffectAst {
+    if let Some(condition) = condition {
+        EffectAst::subject_verb_remove_abilities_all_with_condition(
+            filter,
+            abilities,
+            duration,
+            condition.clone(),
+        )
+    } else {
+        EffectAst::subject_verb_remove_abilities_all(filter, abilities, duration)
+    }
+}
+
+/// A conjunction of bare object classes denotes a set union even when one
+/// class is a card type and another is a subtype (`creatures and Vehicles`).
+/// The ordinary flattened filter representation would make that pair an
+/// intersection, so retain independently parsed branches in `any_of`.
+fn parse_bare_card_type_subtype_union_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let segments = split_lexed_slices_on_list_conjunction(tokens);
+    if segments.len() < 2 {
+        return None;
+    }
+
+    let mut branches = Vec::with_capacity(segments.len());
+    let mut saw_card_type = false;
+    let mut saw_subtype = false;
+    for segment in segments {
+        let words = GainAbilityWordView::new(segment).to_word_refs();
+        let bare_words = words
+            .iter()
+            .copied()
+            .skip_while(|word| matches!(*word, "a" | "an" | "all" | "each" | "the"))
+            .collect::<Vec<_>>();
+        let [kind_word] = bare_words.as_slice() else {
+            return None;
+        };
+        if parse_card_type(kind_word).is_some() {
+            saw_card_type = true;
+        } else if parse_subtype_flexible(kind_word).is_some() {
+            saw_subtype = true;
+        } else {
+            return None;
+        }
+
+        let branch = parse_object_filter(segment, false).ok()?;
+        if !branch.any_of.is_empty() {
+            return None;
+        }
+        branches.push(branch);
+    }
+
+    (saw_card_type && saw_subtype).then_some(ObjectFilter {
+        any_of: branches,
+        ..ObjectFilter::default()
+    })
+}
+
 fn words_start_nested_triggered_ability(words_after_verb: &[&str]) -> bool {
     gain_shapes::starts_nested_triggered_ability(words_after_verb)
 }
@@ -901,6 +1054,12 @@ fn trim_trailing_also(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 
 fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
+    if subject_words == ["the", "creature", "that", "attacked"] {
+        return Some(TargetAst::Tagged(
+            TagKey::from("triggering"),
+            span_from_lexed_tokens(tokens),
+        ));
+    }
     if let Some(surface) = source_reference_surface_for_possessive_words(&subject_words) {
         return Some(TargetAst::Object(
             ObjectFilter::source().with_source_surface(surface),
@@ -1238,10 +1397,20 @@ fn parse_gain_ability_sentence_with_subject(
     if gain_shapes::gain_clause_is_defender_as_if_attack(&word_list) {
         return Ok(None);
     }
-    let Some((gain_idx, gain_verb)) = gain_shapes::find_primary_gain_ability_verb(&word_list)
+    let leading_duration_phrase =
+        gain_shapes::parse_leading_affected_object_counter_duration_shape(tokens)
+            .or_else(|| gain_shapes::parse_leading_gain_duration_shape(&word_list))
+            .map(|shape| (shape.consumed_words, shape.duration));
+    let subject_start_word_idx = leading_duration_phrase
+        .as_ref()
+        .map(|(len, _)| *len)
+        .unwrap_or(0);
+    let Some((relative_gain_idx, gain_verb)) =
+        gain_shapes::find_primary_gain_ability_verb(&word_list[subject_start_word_idx..])
     else {
         return Ok(None);
     };
+    let gain_idx = subject_start_word_idx + relative_gain_idx;
     let Some(gain_token_idx) = word_view.token_boundary_for_word_or_end(gain_idx) else {
         return Ok(None);
     };
@@ -1264,12 +1433,6 @@ fn parse_gain_ability_sentence_with_subject(
         }
     }
 
-    let leading_duration_phrase = gain_shapes::parse_leading_gain_duration_shape(&word_list)
-        .map(|shape| (shape.consumed_words, shape.duration));
-    let subject_start_word_idx = leading_duration_phrase
-        .as_ref()
-        .map(|(len, _)| *len)
-        .unwrap_or(0);
     let subject_start_token_idx = if subject_start_word_idx == 0 {
         0usize
     } else if let Some(idx) = word_view.token_boundary_for_word_or_end(subject_start_word_idx) {
@@ -1543,8 +1706,8 @@ fn parse_gain_ability_sentence_with_subject(
             let for_each = if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) =
                 (&power, &toughness)
             {
-                parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?
-                    .map(|count| {
+                parse_get_for_each_count_value(modifier_tokens.get(1..).unwrap_or_default())?.map(
+                    |count| {
                         let count = if additional_modifier {
                             count.with_surface_hint(
                                 ironsmith_core::ValueSurfaceHint::AdditionalPowerToughnessModifier,
@@ -1553,7 +1716,8 @@ fn parse_gain_ability_sentence_with_subject(
                             count
                         };
                         (*power_per, *toughness_per, count)
-                    })
+                    },
+                )
             } else {
                 None
             };
@@ -1910,13 +2074,18 @@ fn parse_gain_ability_sentence_with_subject(
         return Ok(Some(effects));
     }
 
-    let filter = parse_object_filter(&real_subject_tokens, false).map_err(|_| {
-        CardTextError::ParseError(format!(
-            "unsupported subject in {}-ability clause (clause: '{}')",
-            if losing { "lose" } else { "gain" },
-            word_list.join(" ")
-        ))
-    })?;
+    let filter =
+        if let Some(filter) = parse_bare_card_type_subtype_union_filter(&real_subject_tokens) {
+            filter
+        } else {
+            parse_object_filter(&real_subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported subject in {}-ability clause (clause: '{}')",
+                    if losing { "lose" } else { "gain" },
+                    word_list.join(" ")
+                ))
+            })?
+        };
 
     if let Some(become_effect) = &leading_become_effect {
         effects.push(become_effect.clone());
@@ -1938,10 +2107,11 @@ fn parse_gain_ability_sentence_with_subject(
         ));
     }
     if losing {
-        effects.push(EffectAst::subject_verb_remove_abilities_all(
+        effects.push(subject_verb_remove_abilities_all_with_optional_condition(
             filter.clone(),
             abilities,
             duration.clone(),
+            &duration_condition,
         ));
     } else if grant_is_choice {
         effects.push(EffectAst::subject_verb_grant_abilities_choice_all(
@@ -2359,6 +2529,64 @@ mod tests {
     }
 
     #[test]
+    fn mixed_keyword_list_keeps_static_keyword_after_executable_keyword() {
+        let ability_tokens = lex_line("trample, annihilator 2, and haste", 0)
+            .expect("mixed keyword grant should lex");
+        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let (abilities, is_choice) =
+            parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)
+                .expect("mixed keyword grant should parse");
+
+        assert!(!is_choice);
+        assert_eq!(abilities.len(), 3, "{abilities:#?}");
+        assert!(
+            matches!(
+                abilities[0],
+                GrantedAbilityAst::KeywordAction(KeywordAction::Trample)
+            ),
+            "{abilities:#?}"
+        );
+        assert!(
+            matches!(
+                abilities[1],
+                GrantedAbilityAst::KeywordAction(KeywordAction::Annihilator(2))
+            ),
+            "{abilities:#?}"
+        );
+        assert!(
+            matches!(
+                abilities[2],
+                GrantedAbilityAst::KeywordAction(KeywordAction::Haste)
+            ),
+            "{abilities:#?}"
+        );
+    }
+
+    #[test]
+    fn effect_chain_keeps_keyword_after_oxford_comma_normalization() {
+        let tokens = lex_line(
+            "Until end of turn, it has base power and toughness 10/10 and gains trample, annihilator 2, and haste.",
+            0,
+        )
+        .expect("leading-duration mixed grant should lex");
+        let effects = parse_effect_chain(&tokens)
+            .expect("leading-duration mixed grant should parse through the effect chain");
+
+        let ast_debug = format!("{effects:#?}");
+        assert!(ast_debug.contains("SetBasePowerToughness"), "{ast_debug}");
+        assert!(ast_debug.contains("Trample"), "{ast_debug}");
+        assert!(ast_debug.contains("Annihilator"), "{ast_debug}");
+        assert!(ast_debug.contains("Haste"), "{ast_debug}");
+
+        let compiled = compile_statement_effects(&effects)
+            .expect("leading-duration mixed grant should lower to runtime effects");
+        let compiled_debug = format!("{compiled:#?}");
+        assert!(compiled_debug.contains("Trample"), "{compiled_debug}");
+        assert!(compiled_debug.contains("Annihilator"), "{compiled_debug}");
+        assert!(compiled_debug.contains("Haste"), "{compiled_debug}");
+    }
+
+    #[test]
     fn gain_ability_to_source_keeps_parsed_ability_until_lowering() {
         let tokens = tokenize_line("This creature gains {T}: Draw a card.", 0);
         let effect = parse_gain_ability_to_source_sentence(&tokens)
@@ -2754,6 +2982,77 @@ mod tests {
     }
 
     #[test]
+    fn mass_ability_loss_keeps_spent_mana_condition_through_lowering() {
+        let tokens = tokenize_line(
+            "Creatures your opponents control lose flying until end of turn if {G} was spent to cast this spell.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("conditional mass ability loss should parse")
+            .expect("conditional mass ability loss should produce effects");
+
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::RemoveAbilitiesAll {
+                        condition:
+                            Some(crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
+                                amount: 1,
+                                symbol: Some(crate::mana::ManaSymbol::Green),
+                            }),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected condition on the mass ability-removal AST, got {effects:#?}");
+        };
+
+        let compiled = compile_statement_effects(&effects)
+            .expect("conditional mass ability loss should lower");
+        let debug = format!("{compiled:#?}");
+        assert!(debug.contains("ManaSpentToCastThisSpellAtLeast"), "{debug}");
+        assert!(debug.contains("Green"), "{debug}");
+    }
+
+    #[test]
+    fn bare_card_type_and_subtype_mass_loss_uses_union_filter() {
+        let tokens = tokenize_line(
+            "All creatures and Vehicles lose indestructible until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("cross-kind mass ability loss should parse")
+            .expect("cross-kind mass ability loss should produce effects");
+
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one mass ability-removal AST, got {effects:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| branch.card_types == [CardType::Creature]),
+            "{filter:#?}"
+        );
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| branch.subtypes == [crate::types::Subtype::Vehicle]),
+            "{filter:#?}"
+        );
+    }
+
+    #[test]
     fn dawns_truce_gift_line_compiles_promised_and_not_promised_branches() {
         let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dawn's Truce")
             .parse_text(
@@ -2943,6 +3242,35 @@ mod tests {
                 || string_contains(&debug, "ThisDealsDamageTrigger"),
             "granted trigger should constrain damage-to-player semantics: {debug}"
         );
+    }
+
+    #[test]
+    fn counter_linked_leading_duration_keeps_quoted_trigger_as_a_grant() {
+        for (text, counter_name) in [
+            (
+                "For as long as that land has a blaze counter on it, it has \"At the beginning of your upkeep, this land deals 1 damage to you.\"",
+                "blaze",
+            ),
+            (
+                "For as long as that creature has a bounty counter on it, it has \"When this creature dies, each opponent draws a card and gains 2 life.\"",
+                "bounty",
+            ),
+        ] {
+            let tokens = tokenize_line(text, 0);
+            let effects = parse_gain_ability_sentence(&tokens)
+                .expect("counter-linked quoted grant should parse")
+                .expect("counter-linked quoted grant should produce an effect");
+            let debug = format!("{effects:#?}");
+            let normalized_debug = debug.to_ascii_lowercase();
+
+            assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+            assert!(debug.contains("ParsedObjectAbility"), "{debug}");
+            assert!(
+                debug.contains("ForAsLongAs")
+                    && normalized_debug.contains(counter_name),
+                "{debug}"
+            );
+        }
     }
 
     #[test]

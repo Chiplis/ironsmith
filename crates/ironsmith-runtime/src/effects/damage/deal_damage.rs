@@ -6,7 +6,7 @@
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
-    resolve_objects_for_effect, resolve_player_from_spec, resolve_value,
+    resolve_objects_for_effect, resolve_player_from_spec, resolve_players_from_spec, resolve_value,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
@@ -98,6 +98,7 @@ pub(crate) fn apply_processed_damage_outcome_opts(
         source,
         source_snapshot,
         std::iter::once(processed),
+        None,
         source_is_combat,
         provenance,
         cause,
@@ -130,12 +131,15 @@ fn apply_simultaneous_damage_outcome_opts(
         })
         .collect::<Vec<_>>();
     let processed = process_simultaneous_damage_assignments_with_event_with_dm(game, &events, dm);
+    let simultaneous_batch =
+        game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage);
 
     apply_processed_damage_results(
         game,
         source,
         source_snapshot,
         processed,
+        Some(simultaneous_batch),
         source_is_combat,
         provenance,
         cause,
@@ -148,6 +152,7 @@ fn apply_processed_damage_results(
     source: crate::ids::ObjectId,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     processed_results: impl IntoIterator<Item = ProcessedDamageResult>,
+    simultaneous_batch: Option<crate::provenance::ProvNodeId>,
     source_is_combat: bool,
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
@@ -212,6 +217,9 @@ fn apply_processed_damage_results(
                     damage_event = damage_event.with_target_snapshot(snapshot);
                 }
                 let mut event = TriggerEvent::new_with_provenance(damage_event, provenance);
+                if let Some(batch) = simultaneous_batch {
+                    event = event.with_simultaneous_batch(batch);
+                }
                 if game.object(source).is_none()
                     && let Some(snapshot) = source_snapshot
                 {
@@ -223,10 +231,14 @@ fn apply_processed_damage_results(
             if let DamageTarget::Player(player_id) = assignment.target
                 && applied.life_lost > 0
             {
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
+                let mut event = TriggerEvent::new_with_provenance(
                     LifeLossEvent::new(player_id, applied.life_lost, true),
                     provenance,
-                ));
+                );
+                if let Some(batch) = simultaneous_batch {
+                    event = event.with_simultaneous_batch(batch);
+                }
+                outcome = outcome.with_event(event);
             }
 
             outcomes.push(outcome);
@@ -242,10 +254,8 @@ fn apply_processed_damage_results(
             controller,
             total_damage_dealt,
         );
-        if life_to_gain > 0
-            && let Some(player) = game.player_mut(controller)
-        {
-            player.gain_life(life_to_gain);
+        if life_to_gain > 0 {
+            game.gain_life(controller, life_to_gain);
         }
     }
 
@@ -403,6 +413,26 @@ impl EffectExecutor for DealDamageEffect {
                         &mut *ctx.decision_maker,
                     ));
                 }
+                AttackEventTarget::Battle(object_id) => {
+                    if !game
+                        .object(object_id)
+                        .is_some_and(|obj| obj.has_card_type(CardType::Battle))
+                    {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+                    return Ok(apply_processed_damage_outcome_opts(
+                        game,
+                        ctx.source,
+                        ctx.source_snapshot.as_ref(),
+                        DamageTarget::Object(object_id),
+                        amount,
+                        self.source_is_combat,
+                        self.unpreventable,
+                        ctx.provenance,
+                        ctx.cause.clone(),
+                        &mut *ctx.decision_maker,
+                    ));
+                }
             }
         }
 
@@ -414,6 +444,31 @@ impl EffectExecutor for DealDamageEffect {
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Player(controller),
+                amount,
+                self.source_is_combat,
+                self.unpreventable,
+                ctx.provenance,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+            ));
+        }
+
+        // "Each player" is one simultaneous damage event per matching player,
+        // not a request to resolve the player filter to a single representative.
+        // This distinction is observable in shared-life variants (CR 810.9).
+        if matches!(self.target.base(), ChooseSpec::EachPlayer(_)) {
+            let damage_targets = resolve_players_from_spec(game, &self.target, ctx)?
+                .into_iter()
+                .map(DamageTarget::Player)
+                .collect::<Vec<_>>();
+            if damage_targets.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+            return Ok(apply_simultaneous_damage_outcome_opts(
+                game,
+                ctx.source,
+                ctx.source_snapshot.as_ref(),
+                damage_targets,
                 amount,
                 self.source_is_combat,
                 self.unpreventable,

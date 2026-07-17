@@ -52,6 +52,12 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
         cost: ManaCost,
         effects: Vec<E>,
     },
+    /// CR 702.148: an alternative cost whose stack text omits every
+    /// square-bracketed segment before modes and targets are announced.
+    Cleave {
+        cost: ManaCost,
+        effects: Vec<E>,
+    },
     Awaken {
         amount: u32,
         cost: ManaCost,
@@ -112,6 +118,11 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Bestow {
         total_cost: TotalCost<C>,
     },
+    /// CR 702.140a: cast this creature spell for an alternative cost as a
+    /// mutating creature spell with its method-specific target requirement.
+    Mutate {
+        cost: ManaCost,
+    },
 }
 
 impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond>
@@ -135,10 +146,12 @@ where
             Self::Miracle { .. }
             | Self::FlashWithAdditionalCost { .. }
             | Self::Overload { .. }
+            | Self::Cleave { .. }
             | Self::Awaken { .. }
             | Self::Composed { .. }
             | Self::Trap { .. }
-            | Self::Bestow { .. } => Zone::Hand,
+            | Self::Bestow { .. }
+            | Self::Mutate { .. } => Zone::Hand,
             Self::FromZone { zone, .. } => *zone,
         }
     }
@@ -168,6 +181,7 @@ where
             Self::Suspend { cost, .. } => Some(cost),
             Self::Disturb { cost } => Some(cost),
             Self::Overload { cost, .. } => Some(cost),
+            Self::Cleave { cost, .. } => Some(cost),
             Self::Awaken { cost, .. } => Some(cost),
             Self::Flashback { total_cost } => total_cost.mana_cost(),
             Self::Harmonize { total_cost } => total_cost.mana_cost(),
@@ -182,6 +196,7 @@ where
             Self::Composed { total_cost, .. } => total_cost.mana_cost(),
             Self::FromZone { total_cost, .. } => total_cost.mana_cost(),
             Self::Bestow { total_cost } => total_cost.mana_cost(),
+            Self::Mutate { cost } => Some(cost),
         }
     }
 
@@ -280,6 +295,7 @@ where
             Self::Suspend { .. } => "Suspend",
             Self::Disturb { .. } => "Disturb",
             Self::Overload { .. } => "Overload",
+            Self::Cleave { .. } => "Cleave",
             Self::Awaken { .. } => "Awaken",
             Self::Flashback { .. } => "Flashback",
             Self::Harmonize { .. } => "Harmonize",
@@ -294,6 +310,7 @@ where
             Self::Trap { name, .. } => name,
             Self::FromZone { name, .. } => name,
             Self::Bestow { .. } => "Bestow",
+            Self::Mutate { .. } => "Mutate",
         }
     }
 
@@ -431,6 +448,13 @@ where
         }
     }
 
+    pub fn cleave_effects(&self) -> Option<&[E]> {
+        match self {
+            Self::Cleave { effects, .. } => Some(effects.as_slice()),
+            _ => None,
+        }
+    }
+
     pub fn awaken_effects(&self) -> Option<&[E]> {
         match self {
             Self::Awaken { effects, .. } => Some(effects.as_slice()),
@@ -458,6 +482,17 @@ where
 
     pub fn is_bestow(&self) -> bool {
         matches!(self, Self::Bestow { .. })
+    }
+
+    pub fn is_mutate(&self) -> bool {
+        matches!(self, Self::Mutate { .. })
+    }
+
+    pub fn mutate_cost(&self) -> Option<&ManaCost> {
+        match self {
+            Self::Mutate { cost } => Some(cost),
+            _ => None,
+        }
     }
 }
 
@@ -492,6 +527,16 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Suspend { cost, time } => AlternativeCastingMethod::Suspend { cost, time },
             Self::Disturb { cost } => AlternativeCastingMethod::Disturb { cost },
             Self::Overload { cost, effects } => AlternativeCastingMethod::Overload {
+                cost,
+                effects: {
+                    let mut mapped = Vec::with_capacity(effects.len());
+                    for effect in effects {
+                        mapped.push(map_effect(effect)?);
+                    }
+                    mapped
+                },
+            },
+            Self::Cleave { cost, effects } => AlternativeCastingMethod::Cleave {
                 cost,
                 effects: {
                     let mut mapped = Vec::with_capacity(effects.len());
@@ -583,6 +628,7 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
             Self::Bestow { total_cost } => AlternativeCastingMethod::Bestow {
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
             },
+            Self::Mutate { cost } => AlternativeCastingMethod::Mutate { cost },
         })
     }
 }
@@ -594,6 +640,20 @@ mod tests {
 
     fn generic_two() -> ManaCost {
         ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])
+    }
+
+    #[test]
+    fn mutate_is_a_typed_hand_alternative_with_its_own_cost() {
+        let cost = generic_two();
+        let method: AlternativeCastingMethod<(), Cost<&'static str>, ()> =
+            AlternativeCastingMethod::Mutate { cost: cost.clone() };
+
+        assert_eq!(method.cast_from_zone(), Zone::Hand);
+        assert_eq!(method.name(), "Mutate");
+        assert_eq!(method.mana_cost(), Some(&cost));
+        assert_eq!(method.mutate_cost(), Some(&cost));
+        assert!(method.is_mutate());
+        assert!(!method.exiles_after_resolution());
     }
 
     #[test]

@@ -402,6 +402,88 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls
     Ok(Some(ability))
 }
 
+fn parse_filtered_object_animation_static_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let (condition_tokens, animation_tokens) =
+        if let Some(prefix) = split_as_long_as_condition_prefix_lexed(tokens) {
+            (Some(prefix.condition_tokens), prefix.remainder_tokens)
+        } else {
+            (None, tokens)
+        };
+    let Some(shape) =
+        crate::runtime_backend::grammar::effects::become_shapes::parse_filtered_object_animation_tokens(
+            animation_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+
+    let attached_subject_filter =
+        condition_tokens.and_then(infer_attached_subject_filter_from_condition_tokens);
+    let mut subject = if shape.dependent_subject {
+        let Some(filter) = attached_subject_filter else {
+            return Ok(None);
+        };
+        AnthemSubjectAst::Filter(filter)
+    } else {
+        match parse_anthem_subject(shape.subject_tokens) {
+            Ok(subject) => subject,
+            Err(_) => return Ok(None),
+        }
+    };
+    let condition = condition_tokens
+        .map(parse_static_condition_clause)
+        .transpose()?
+        .map(|condition| bind_attachment_condition_to_subject(condition, &subject));
+
+    if let AnthemSubjectAst::Filter(filter) = &mut subject {
+        filter.set_set_quantifier_surface(leading_set_quantifier_surface(shape.subject_tokens));
+    }
+    let filter = anthem_subject_filter(&subject);
+    let abilities = filtered_object_animation_abilities(filter, shape);
+    Ok(Some(
+        abilities
+            .into_iter()
+            .map(|ability| conditional_static_ability(ability, condition.clone()))
+            .collect(),
+    ))
+}
+
+fn filtered_object_animation_abilities(
+    filter: ObjectFilter,
+    shape: crate::runtime_backend::grammar::effects::become_shapes::FilteredObjectAnimationShape<
+        '_,
+    >,
+) -> Vec<StaticAbility> {
+    let mut abilities = Vec::new();
+    if shape.removes_all_abilities {
+        abilities.push(StaticAbility::remove_all_abilities(filter.clone()));
+    }
+    if !shape.descriptor.card_types.is_empty() {
+        abilities.push(StaticAbility::set_card_types(
+            filter.clone(),
+            shape.descriptor.card_types,
+        ));
+    }
+    if !shape.descriptor.subtypes.is_empty() {
+        abilities.push(StaticAbility::set_creature_subtypes(
+            filter.clone(),
+            shape.descriptor.subtypes,
+        ));
+    }
+    if let Some(colors) = shape.descriptor.colors {
+        abilities.push(StaticAbility::set_colors(filter.clone(), colors));
+    }
+    abilities.push(StaticAbility::set_base_power_toughness_value(
+        filter,
+        shape.power,
+        shape.toughness,
+    ));
+
+    abilities
+}
+
 pub(crate) fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -540,6 +622,10 @@ pub(crate) fn parse_granted_keyword_static_line(
             };
         }
         Ok(Some(vec![ability]))
+    }
+
+    if let Some(abilities) = parse_filtered_object_animation_static_line(tokens)? {
+        return Ok(Some(abilities));
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -693,6 +779,32 @@ pub(crate) fn parse_granted_keyword_static_line(
         })?;
     let condition =
         condition.map(|condition| bind_attachment_condition_to_subject(condition, &subject));
+
+    let keyword_words = crate::runtime_backend::token_word_refs(&keyword_tokens);
+    if keyword_words == ["bands", "with", "other", "legendary", "creatures"] {
+        let ability = StaticAbilityAst::Static(StaticAbility::bands_with_other(
+            ObjectFilter::creature().with_supertype(Supertype::Legendary),
+            "bands with other legendary creatures",
+        ));
+        let compiled = match &subject {
+            AnthemSubjectAst::Source => match condition {
+                Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                    ability: Box::new(ability),
+                    condition,
+                },
+                None => ability,
+            },
+            AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+                filter: filter.clone(),
+                ability: Box::new(ability),
+                condition,
+            },
+        };
+        return Ok(Some(vec![with_leading_set_quantifier_surface(
+            compiled,
+            &subject_tokens,
+        )]));
+    }
 
     if let Some((actions, subtypes)) = parse_keyword_and_subtype_addition_tail(&keyword_tokens)? {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
@@ -872,6 +984,7 @@ pub(crate) fn parse_all_creatures_lose_flying_line(
         return Ok(Some(StaticAbilityAst::RemoveKeywordAction {
             filter: ObjectFilter::creature(),
             action: KeywordAction::Flying,
+            mode: ironsmith_core::AbilityLossMode::Lose,
         }));
     }
     Ok(None)
@@ -893,12 +1006,16 @@ pub(crate) fn parse_subject_loses_keywords_line(
         return Ok(None);
     };
 
-    let mut actions = loss_actions;
+    let actions = loss_actions;
     if let Some(gain_tokens) = parsed.additional_gain_tokens {
         let Some(gain_actions) = parse_ability_line(gain_tokens) else {
             return Ok(None);
         };
-        actions.extend(gain_actions);
+        if actions.len() != gain_actions.len()
+            || actions.iter().any(|action| !gain_actions.contains(action))
+        {
+            return Ok(None);
+        }
     }
 
     let clause_text = crate::runtime_backend::token_word_refs(tokens).join(" ");
@@ -915,6 +1032,7 @@ pub(crate) fn parse_subject_loses_keywords_line(
                 StaticAbilityAst::RemoveKeywordAction {
                     filter: existing_filter,
                     action: existing_action,
+                    ..
                 } if existing_filter == &filter && existing_action == &action
             )
         }) {
@@ -923,6 +1041,7 @@ pub(crate) fn parse_subject_loses_keywords_line(
         result.push(StaticAbilityAst::RemoveKeywordAction {
             filter: filter.clone(),
             action,
+            mode: parsed.loss_mode,
         });
     }
 
@@ -1178,18 +1297,112 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
 pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.word_refs();
+    if let Some(animation) =
+        crate::runtime_backend::grammar::effects::become_shapes::parse_filtered_object_animation_tokens(
+            tokens,
+        )
+        && animation.removes_all_abilities
+        && !animation.dependent_subject
+    {
+        let mut filter = parse_object_filter(animation.subject_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported subject in lose-all-abilities animation clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+        filter.set_set_quantifier_surface(leading_set_quantifier_surface(animation.subject_tokens));
+        return Ok(Some(filtered_object_animation_abilities(filter, animation)));
+    }
+
     let Some(shape) = anthem_grant_grammar::parse_lose_all_abilities_shape(tokens) else {
         return Ok(None);
     };
     if shape.becomes {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported lose-all-abilities static becomes clause (clause: '{}')",
-            words.join(" ")
-        )));
+        let Some(becomes_word) = words.iter().position(|word| *word == "becomes") else {
+            return Ok(None);
+        };
+        let Some(power_toughness) =
+            crate::runtime_backend::grammar::effects::become_shapes::parse_become_base_pt_words(
+                words.get(becomes_word + 1..).unwrap_or_default(),
+            )
+        else {
+            return Ok(None);
+        };
+        let Some(descriptor) = crate::runtime_backend::grammar::effects::become_shapes::parse_become_creature_descriptor_words(
+            power_toughness.descriptor_words,
+        ) else {
+            return Ok(None);
+        };
+
+        let subject_token_end = word_view
+            .token_index_after_words(shape.subject_word_end)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "invalid subject span in lose-all-abilities becomes clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+        let subject_tokens = trim_commas(tokens.get(..subject_token_end).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "invalid subject token span in lose-all-abilities becomes clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?);
+        let mut filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported subject in lose-all-abilities becomes clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+        filter.set_set_quantifier_surface(leading_set_quantifier_surface(&subject_tokens));
+
+        let mut abilities = vec![if shape.except_mana_abilities {
+            StaticAbility::remove_all_abilities_except_mana(filter.clone())
+        } else {
+            StaticAbility::remove_all_abilities(filter.clone())
+        }];
+        if !descriptor.card_types.is_empty() {
+            abilities.push(StaticAbility::set_card_types(
+                filter.clone(),
+                descriptor.card_types,
+            ));
+        }
+        if !descriptor.subtypes.is_empty() {
+            abilities.push(StaticAbility::set_creature_subtypes(
+                filter.clone(),
+                descriptor.subtypes,
+            ));
+        }
+        if let Some(colors) = descriptor.colors {
+            abilities.push(StaticAbility::set_colors(filter.clone(), colors));
+        }
+        abilities.push(match (power_toughness.power, power_toughness.toughness) {
+            (Value::Fixed(power), Value::Fixed(toughness)) => {
+                StaticAbility::set_base_power_toughness(filter, power, toughness)
+            }
+            (power, toughness) => {
+                StaticAbility::set_base_power_toughness_value(filter, power, toughness)
+            }
+        });
+        return Ok(Some(abilities));
     }
 
-    let subject_tokens = &tokens[..shape.subject_word_end];
+    let subject_token_end = word_view
+        .token_index_after_words(shape.subject_word_end)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "invalid subject span in lose-all-abilities clause (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+    let subject_tokens = tokens.get(..subject_token_end).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "invalid subject token span in lose-all-abilities clause (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
     let filter = parse_object_filter(subject_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported subject in lose-all-abilities clause (clause: '{}')",
@@ -1736,6 +1949,50 @@ pub(crate) fn parse_permanent_card_count_filter(tokens: &[OwnedLexToken]) -> Opt
     Some(filter)
 }
 
+fn parse_negated_subject_descriptor_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
+    let positions = crate::runtime_backend::lexer::parser_token_word_positions(tokens);
+    let mut copula = None;
+    for (word_idx, (token_idx, word)) in positions.iter().enumerate() {
+        let replacement = match *word {
+            "isnt" | "isn't" => Some("is"),
+            "arent" | "aren't" => Some("are"),
+            "is" | "are"
+                if positions
+                    .get(word_idx + 1)
+                    .is_some_and(|(_, next)| *next == "not") =>
+            {
+                Some(*word)
+            }
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            let remove_not = positions
+                .get(word_idx + 1)
+                .filter(|(_, next)| *next == "not")
+                .map(|(token_idx, _)| *token_idx);
+            copula = Some((*token_idx, replacement, remove_not));
+            break;
+        }
+    }
+    let (copula_token, replacement, remove_not) = copula?;
+
+    let mut positive = tokens.to_vec();
+    if !positive.get_mut(copula_token)?.replace_word(replacement) {
+        return None;
+    }
+    if let Some(not_token) = remove_not {
+        positive.remove(not_token);
+    }
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_subject_descriptor_condition(&positive)?;
+    let positive_display = crate::runtime_backend::token_word_refs(&positive).join(" ");
+    Some(crate::ConditionExpr::Not(Box::new(
+        condition.condition_expr(positive_display),
+    )))
+}
+
 pub(crate) fn parse_static_condition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<crate::ConditionExpr, CardTextError> {
@@ -1748,6 +2005,10 @@ pub(crate) fn parse_static_condition_clause(
         ));
     }
     let display = clause_words.join(" ");
+
+    if let Some(condition) = parse_negated_subject_descriptor_condition(&tokens) {
+        return Ok(condition);
+    }
 
     if let Some(condition) = parse_cards_in_hand_static_condition(&tokens) {
         return Ok(condition);
@@ -2602,8 +2863,7 @@ pub(crate) fn parse_anthem_clause(
         })?;
     let modifier_token = modifier_shape.modifier_word;
     let tail_tokens = trim_edge_punctuation(modifier_shape.tail_tokens);
-    let trailing_condition =
-        anthem_grant_grammar::split_trailing_as_long_as_clause(&tail_tokens);
+    let trailing_condition = anthem_grant_grammar::split_trailing_as_long_as_clause(&tail_tokens);
     let anthem_tail_tokens = trailing_condition
         .map(|split| split.keyword_tokens)
         .unwrap_or(&tail_tokens);
@@ -2611,8 +2871,7 @@ pub(crate) fn parse_anthem_clause(
     let (raw_power, raw_toughness) = match parse_pt_modifier_values(modifier_token) {
         Ok(values) => values,
         Err(_) => {
-            if let Some(values) =
-                parse_dynamic_xy_anthem_values(modifier_token, anthem_tail_tokens)
+            if let Some(values) = parse_dynamic_xy_anthem_values(modifier_token, anthem_tail_tokens)
             {
                 explicit_values = Some(values);
                 (Value::Fixed(0), Value::Fixed(0))
@@ -2958,6 +3217,32 @@ pub(crate) fn parse_type_color_addition_clause(
         return Ok(None);
     };
     let words = crate::runtime_backend::token_word_refs(tokens);
+    // An unscoped copular tail ("and is black") replaces colors. Scoped
+    // tails ("in addition to its other colors/types") retain the additive
+    // behavior handled below. Reject non-color unscoped descriptors here so
+    // the dedicated type-changing parsers can keep their layer semantics.
+    if shape.scopes.is_empty() {
+        let descriptor_word_storage =
+            crate::runtime_backend::token_word_refs(shape.descriptor_tokens);
+        let descriptor_words = non_article_word_refs_except(&descriptor_word_storage, &["and"]);
+        if descriptor_words.is_empty() {
+            return Ok(None);
+        }
+        let mut set_colors = ColorSet::new();
+        for descriptor in descriptor_words {
+            let Some(color) = parse_color(descriptor) else {
+                return Ok(None);
+            };
+            set_colors = set_colors.union(color);
+        }
+        return Ok(Some(TypeColorAdditionClause {
+            added_colors: ColorSet::new(),
+            set_colors,
+            card_types: Vec::new(),
+            subtypes: Vec::new(),
+        }));
+    }
+
     let mut allow_colors = false;
     let mut allow_types = false;
     for scope in shape.scopes {
@@ -3388,7 +3673,10 @@ mod dynamic_anthem_tests {
             count: AnthemCountExpression::MatchingFilter(filter),
         } = &clause.power
         else {
-            panic!("expected a matching-filter anthem count, got {:?}", clause.power);
+            panic!(
+                "expected a matching-filter anthem count, got {:?}",
+                clause.power
+            );
         };
         assert!(matches!(filter.zone, None | Some(Zone::Battlefield)));
         assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
@@ -3432,10 +3720,12 @@ mod dynamic_anthem_tests {
             .expect("conditional keyword fixture should parse")
             .expect("conditional keyword parser should match");
 
-        let [StaticAbilityAst::ConditionalKeywordAction {
-            action: KeywordAction::Indestructible,
-            condition: crate::ConditionExpr::SourceMatches(filter),
-        }] = abilities.as_slice()
+        let [
+            StaticAbilityAst::ConditionalKeywordAction {
+                action: KeywordAction::Indestructible,
+                condition: crate::ConditionExpr::SourceMatches(filter),
+            },
+        ] = abilities.as_slice()
         else {
             panic!("unexpected conditional keyword AST: {abilities:#?}");
         };

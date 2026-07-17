@@ -21,6 +21,7 @@ use crate::game_state::TurnCounterTracker;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::provenance::{ProvNodeId, ProvenanceGraph};
 use crate::snapshot::ObjectSnapshot;
+use crate::static_abilities::StaticAbilityInstanceId;
 use crate::triggers::TriggerEvent;
 use crate::triggers::TriggerIdentity;
 use crate::types::{CardType, Subtype};
@@ -33,6 +34,27 @@ pub struct TurnEventRecord {
     pub event: TriggerEvent,
     pub object_snapshot: Option<ObjectSnapshot>,
     pub source_snapshot: Option<ObjectSnapshot>,
+}
+
+impl TurnEventRecord {
+    /// Whether this event record contains rules-relevant information about a
+    /// player's action or its result.
+    ///
+    /// The event envelope identifies direct actors/affected players, while the
+    /// captured object/source snapshots retain controller and owner identity
+    /// after the object itself changes zones or leaves the game.
+    pub fn involves_player(&self, player: PlayerId) -> bool {
+        self.event.player() == Some(player)
+            || self.event.controller() == Some(player)
+            || self
+                .object_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.controller == player || snapshot.owner == player)
+            || self
+                .source_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.controller == player || snapshot.owner == player)
+    }
 }
 
 /// Unified owner for turn-scoped bookkeeping and history.
@@ -50,7 +72,7 @@ pub struct TurnHistory {
     pub players_attacked_this_turn: HashSet<PlayerId>,
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
     pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
-    pub die_roll_result_adjustments_this_turn: HashSet<ObjectId>,
+    pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -870,12 +892,28 @@ impl TurnHistory {
             .push(result);
     }
 
-    pub fn record_die_roll_result_adjustment(&mut self, source: ObjectId) {
-        self.die_roll_result_adjustments_this_turn.insert(source);
+    pub fn record_die_roll_result_adjustment(
+        &mut self,
+        source: ObjectId,
+        ability: StaticAbilityInstanceId,
+    ) {
+        self.die_roll_result_adjustments_this_turn
+            .insert((source, ability));
+    }
+
+    pub fn die_roll_modifier_used_this_turn(
+        &self,
+        source: ObjectId,
+        ability: StaticAbilityInstanceId,
+    ) -> bool {
+        self.die_roll_result_adjustments_this_turn
+            .contains(&(source, ability))
     }
 
     pub fn die_roll_result_adjusted_this_turn(&self, source: ObjectId) -> bool {
-        self.die_roll_result_adjustments_this_turn.contains(&source)
+        self.die_roll_result_adjustments_this_turn
+            .iter()
+            .any(|(used_source, _)| *used_source == source)
     }
 
     pub fn player_rolled_result_this_turn(&self, player: PlayerId, result: u32) -> bool {

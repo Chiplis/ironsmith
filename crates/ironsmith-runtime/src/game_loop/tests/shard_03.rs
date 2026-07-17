@@ -2018,9 +2018,33 @@ pub(super) fn all_hallows_eve_sees_creatures_put_into_opponents_graveyard_by_sba
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
-    struct AcceptMayDecisionMaker;
+    #[derive(Debug)]
+    struct OathDecisionMaker {
+        expected_chooser: PlayerId,
+        expected_target: PlayerId,
+        target_context: Option<crate::decisions::context::TargetsContext>,
+    }
 
-    impl DecisionMaker for AcceptMayDecisionMaker {
+    impl DecisionMaker for OathDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.target_context = Some(ctx.clone());
+            assert_eq!(
+                ctx.player, self.expected_chooser,
+                "the active player must choose Oath of Druids' target"
+            );
+            let target = Target::Player(self.expected_target);
+            ctx.requirements
+                .first()
+                .is_some_and(|requirement| requirement.legal_targets.contains(&target))
+                .then_some(target)
+                .into_iter()
+                .collect()
+        }
+
         fn decide_boolean(
             &mut self,
             _game: &GameState,
@@ -2030,10 +2054,18 @@ pub(super) fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefi
         }
     }
 
-    let mut game = setup_game();
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
     let mut trigger_queue = TriggerQueue::new();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
 
     let oath = CardDefinitionBuilder::new(CardId::from_raw(99_100), "Oath of Druids")
         .card_types(vec![CardType::Enchantment])
@@ -2046,6 +2078,7 @@ pub(super) fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefi
     create_creature(&mut game, "Alice Bear", alice, 2, 2);
     create_creature(&mut game, "Alice Wolf", alice, 2, 2);
     create_creature(&mut game, "Bob Scout", bob, 1, 1);
+    create_creature(&mut game, "Charlie Scout", charlie, 1, 1);
 
     let bottom_library_id = game.create_object_from_card(
         &CardBuilder::new(CardId::from_raw(99_101), "Bottom Forest")
@@ -2083,10 +2116,34 @@ pub(super) fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefi
         "Oath of Druids should trigger on the upkeep where an opponent has more creatures"
     );
 
-    put_triggers_on_stack(&mut game, &mut trigger_queue)
+    let mut dm = OathDecisionMaker {
+        expected_chooser: bob,
+        expected_target: alice,
+        target_context: None,
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Oath of Druids trigger should go on the stack");
 
-    let mut dm = AcceptMayDecisionMaker;
+    let target_context = dm.target_context.as_ref().expect("Oath target prompt");
+    let legal_targets = &target_context.requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Player(alice)),
+        "Alice is Bob's opponent and controls more creatures than Bob"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Player(bob)),
+        "the active player can't target themselves"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Player(charlie)),
+        "an opponent with an equal creature count isn't legal"
+    );
+    assert_eq!(
+        game.stack.last().map(|entry| entry.targets.as_slice()),
+        Some(&[Target::Player(alice)][..]),
+        "the active player's chosen opponent must be retained on the stack"
+    );
+
     resolve_stack_entry_with(&mut game, &mut dm)
         .expect("Oath of Druids trigger should resolve when accepted");
 

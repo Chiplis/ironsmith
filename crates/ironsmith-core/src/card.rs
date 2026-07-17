@@ -87,6 +87,10 @@ pub struct Card {
     pub loyalty: Option<u32>,
     /// Defense value for battles
     pub defense: Option<u32>,
+    /// Printed Vanguard hand modifier (zero for ordinary cards).
+    pub hand_modifier: i32,
+    /// Printed Vanguard life modifier (zero for ordinary cards).
+    pub life_modifier: i32,
     /// Reference to other face for DFCs/MDFCs
     pub other_face: Option<CardId>,
     /// Linked face name for on-demand compilation without a global registry preload.
@@ -266,6 +270,8 @@ pub struct CardBuilder {
     power_toughness: Option<PowerToughness>,
     loyalty: Option<u32>,
     defense: Option<u32>,
+    hand_modifier: i32,
+    life_modifier: i32,
     other_face: Option<CardId>,
     other_face_name: Option<String>,
     linked_face_layout: LinkedFaceLayout,
@@ -371,6 +377,13 @@ impl CardBuilder {
         self
     }
 
+    /// Set the printed signed modifiers of a Vanguard card.
+    pub fn vanguard_modifiers(mut self, hand_modifier: i32, life_modifier: i32) -> Self {
+        self.hand_modifier = hand_modifier;
+        self.life_modifier = life_modifier;
+        self
+    }
+
     pub fn other_face(mut self, face: CardId) -> Self {
         self.other_face = Some(face);
         self
@@ -406,6 +419,8 @@ impl CardBuilder {
             power_toughness: self.power_toughness,
             loyalty: self.loyalty,
             defense: self.defense,
+            hand_modifier: self.hand_modifier,
+            life_modifier: self.life_modifier,
             other_face: self.other_face,
             other_face_name: self.other_face_name,
             linked_face_layout: self.linked_face_layout,

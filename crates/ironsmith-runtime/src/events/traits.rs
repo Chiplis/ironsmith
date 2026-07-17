@@ -19,6 +19,8 @@ use super::context::EventContext;
 pub enum EventKind {
     /// Damage being dealt
     Damage,
+    /// A prevention effect prevented some or all damage
+    DamagePrevented,
     /// Object changing zones
     ZoneChange,
     /// Player drawing cards
@@ -65,8 +67,12 @@ pub enum EventKind {
     LandPlayed,
     /// An activated or mana ability was activated
     AbilityActivated,
+    /// A triggered ability triggered and became pending
+    AbilityTriggered,
     /// Mana was added to a player's mana pool
     ManaAdded,
+    /// One concrete mana unit was committed to a payment transaction.
+    ManaSpent,
     /// A permanent became the target of a spell or ability
     BecomesTargeted,
     /// A creature attacked
@@ -109,6 +115,8 @@ pub enum EventKind {
     KeywordAction,
     /// A player rolled a die.
     DieRolled,
+    /// A player flipped a coin.
+    CoinFlipped,
     /// The day/night designation changed from day to night or night to day.
     DayNightChanged,
     /// Players finished voting (for council's dilemma, etc.)
@@ -342,6 +350,17 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone {
     ///
     /// `true` if this replacement effect should apply to the event.
     fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool;
+
+    /// Whether this matcher applies only because a token merged permanent has
+    /// a nontoken card component. CR 730.3e uses this to partition the
+    /// replacement between card and token components.
+    fn matches_merged_card_component_only(
+        &self,
+        _event: &crate::events::zones::ZoneChangeEvent,
+        _ctx: &EventContext,
+    ) -> bool {
+        false
+    }
 
     /// Get the priority of this replacement effect per Rule 616.1.
     fn priority(&self) -> ReplacementPriority {

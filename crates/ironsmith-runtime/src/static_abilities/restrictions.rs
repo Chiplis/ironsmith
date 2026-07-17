@@ -493,6 +493,38 @@ impl StaticAbilityKind for CantHaveCountersPlaced {
     }
 }
 
+/// A permanent "can't have more than N [kind] counters on it" (CR 704.5r).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CounterLimit {
+    pub counter_type: CounterType,
+    pub maximum: u32,
+    pub display: String,
+}
+
+impl CounterLimit {
+    pub fn new(counter_type: CounterType, maximum: u32, display: impl Into<String>) -> Self {
+        Self {
+            counter_type,
+            maximum,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for CounterLimit {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CounterLimit
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn counter_limit(&self) -> Option<(CounterType, u32)> {
+        Some((self.counter_type, self.maximum))
+    }
+}
+
 /// "This spell can't be countered"
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CantBeCountered;

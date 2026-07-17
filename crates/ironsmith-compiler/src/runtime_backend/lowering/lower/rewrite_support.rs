@@ -287,11 +287,155 @@ fn is_haunt_placeholder_ability(ability: &Ability) -> bool {
     })
 }
 
+fn looked_collection_prelude(
+    default_effects: &[crate::effect::Effect],
+) -> Option<(TagKey, Vec<crate::effect::Effect>)> {
+    let look = default_effects
+        .first()?
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let mut prelude = vec![default_effects[0].clone()];
+    if let Some(reveal) = default_effects
+        .get(1)
+        .and_then(|effect| effect.downcast_ref::<crate::effects::RevealTaggedEffect>())
+        && reveal.tag == look.tag
+    {
+        prelude.push(default_effects[1].clone());
+    }
+    Some((look.tag.clone(), prelude))
+}
+
+fn looked_partition_source_tag(replacement_effects: &[crate::effect::Effect]) -> Option<TagKey> {
+    let mut source = None;
+    for choose in replacement_effects
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+    {
+        if choose.zone != Some(Zone::Library) || choose.filter.zone != Some(Zone::Library) {
+            continue;
+        }
+        let mut membership = choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .filter(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+            .map(|constraint| constraint.tag.clone());
+        let Some(tag) = membership.next() else {
+            continue;
+        };
+        if membership.next().is_some() {
+            return None;
+        }
+        if source.as_ref().is_some_and(|existing| existing != &tag) {
+            return None;
+        }
+        source = Some(tag);
+    }
+    source
+}
+
+fn has_looked_partition_remainder(
+    replacement_effects: &[crate::effect::Effect],
+    source_tag: &TagKey,
+) -> bool {
+    replacement_effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            .is_some_and(|remainder| &remainder.tag == source_tag)
+            || effect
+                .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+                .is_some_and(|for_each| &for_each.tag == source_tag)
+    })
+}
+
+fn rebind_looked_partition_source_tag(
+    effect: crate::effect::Effect,
+    old_tag: &TagKey,
+    new_tag: &TagKey,
+) -> crate::effect::Effect {
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        let mut choose = choose.clone();
+        replace_filter_tag(&mut choose.filter, old_tag.as_str(), new_tag);
+        return crate::effect::Effect::new(choose);
+    }
+    if let Some(remainder) =
+        effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+    {
+        let mut remainder = remainder.clone();
+        if remainder.tag == *old_tag {
+            remainder.tag = new_tag.clone();
+        }
+        return crate::effect::Effect::new(remainder);
+    }
+    if let Some(for_each) =
+        effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+    {
+        let mut for_each = for_each.clone();
+        if for_each.tag == *old_tag {
+            for_each.tag = new_tag.clone();
+        }
+        return crate::effect::Effect::new(for_each);
+    }
+    effect
+}
+
+/// A self-replacement substitutes the whole resolution segment. When both
+/// branches partition one looked/revealed collection, the replacement branch
+/// therefore needs the same collection-producing prelude as the default
+/// branch. Reconcile independently generated helper tags at the same time.
+fn preserve_looked_collection_self_replacement_preludes(program: &mut ResolutionProgram) {
+    for segment in &mut program.segments {
+        let Some((default_tag, prelude)) = looked_collection_prelude(&segment.default_effects)
+        else {
+            continue;
+        };
+        for branch in &mut segment.self_replacements {
+            if branch.replacement_effects.iter().any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+                    .is_some()
+            }) {
+                continue;
+            }
+            let Some(source_tag) = looked_partition_source_tag(&branch.replacement_effects) else {
+                continue;
+            };
+            if !has_looked_partition_remainder(&branch.replacement_effects, &source_tag) {
+                continue;
+            }
+
+            let mut replacement_effects = std::mem::take(&mut branch.replacement_effects)
+                .into_iter()
+                .map(|effect| rebind_looked_partition_source_tag(effect, &source_tag, &default_tag))
+                .collect::<Vec<_>>();
+            let mut with_prelude = prelude.clone();
+            with_prelude.append(&mut replacement_effects);
+            branch.replacement_effects = with_prelude;
+        }
+    }
+}
+
 pub(super) fn rewrite_finalize_lowered_card(
     mut builder: CardDefinitionBuilder,
     state: &mut RewriteLoweredCardState,
 ) -> CardDefinitionBuilder {
     builder = rewrite_apply_pending_mechanic_linkages(builder, state);
     builder = rewrite_apply_pending_backup_abilities(builder, state);
-    rewrite_apply_pending_cipher_effect(builder, state)
+    builder = rewrite_apply_pending_cipher_effect(builder, state);
+    if let Some(spell_effect) = &mut builder.spell_effect {
+        preserve_looked_collection_self_replacement_preludes(spell_effect);
+    }
+    for ability in &mut builder.abilities {
+        match &mut ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                preserve_looked_collection_self_replacement_preludes(&mut triggered.effects);
+            }
+            AbilityKind::Activated(activated) => {
+                preserve_looked_collection_self_replacement_preludes(&mut activated.effects);
+            }
+            _ => {}
+        }
+    }
+    builder
 }

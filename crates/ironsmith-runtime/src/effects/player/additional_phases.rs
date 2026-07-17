@@ -10,16 +10,22 @@ impl EffectExecutor for AdditionalPhasesEffect {
     fn execute(
         &self,
         game: &mut GameState,
-        _ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if game.turn_store.additional_phase_continuation.is_none() {
+        let player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        if !ctx.claim_shared_team_structure_operation(game, player, "additional_phases") {
+            return Ok(EffectOutcome::resolved());
+        }
+        if game.turn_store.additional_phase_continuation.is_none()
+            && game.turn_store.phase_schedule_continuation.is_none()
+        {
             game.turn_store.additional_phase_continuation = next_phase(game.turn.phase);
         }
         let phases = self.phases.iter().map(|phase| match phase {
             AdditionalPhase::Combat => Phase::Combat,
             AdditionalPhase::Main => Phase::NextMain,
         });
-        game.turn_store.additional_phases.splice(0..0, phases);
+        game.add_additional_phase_group(phases);
         Ok(EffectOutcome::resolved())
     }
 }

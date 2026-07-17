@@ -133,10 +133,25 @@ fn normalize_rewrite_line_chunk(
             }
         }
         LineAst::Statement { effects } => {
-            let prepared = rewrite_prepare_effects_for_lowering(
-                &effects,
-                state.statement_reference_imports(),
-            )?;
+            let mut imports = state.statement_reference_imports();
+            if let Some(cost_tag) = imports.last_object_tag.as_ref()
+                && effects
+                    .iter()
+                    .any(|effect| effect_references_tag(effect, ADDITIONAL_COST_OBJECT_TAG))
+            {
+                // Bind the cost export before annotating any body effect. The
+                // ordinary last-object reference is intentionally free to
+                // advance through damage, destroy, create, and return effects;
+                // this alias must remain attached to the paid cost object.
+                imports
+                    .snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != ADDITIONAL_COST_OBJECT_TAG);
+                imports.snapshot_tag_aliases.push((
+                    ADDITIONAL_COST_OBJECT_TAG.to_string(),
+                    cost_tag.as_str().to_string(),
+                ));
+            }
+            let prepared = rewrite_prepare_effects_for_lowering(&effects, imports)?;
             state.latest_spell_exports = prepared.exports.clone();
             NormalizedLineChunk::Statement {
                 effects_ast: effects,
@@ -243,6 +258,7 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
             info: mode.info,
             description: mode.description,
             point_cost: mode.point_cost,
+            additional_mana_cost: mode.additional_mana_cost,
             prepared,
         });
     }
@@ -280,6 +296,7 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         annotations,
         items,
         overload_branch,
+        cleave_branch,
         allow_unsupported,
     } = ast;
     let overload_branch = if let Some(branch) = overload_branch {
@@ -289,6 +306,16 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
             items.push(prepare_parsed_item_to_normalized_item(item, &mut state)?);
         }
         Some(NormalizedOverloadBranch { items })
+    } else {
+        None
+    };
+    let cleave_branch = if let Some(branch) = cleave_branch {
+        let mut state = RewriteNormalizationState::default();
+        let mut items = Vec::new();
+        for item in branch.items {
+            items.push(prepare_parsed_item_to_normalized_item(item, &mut state)?);
+        }
+        Some(NormalizedCleaveBranch { items })
     } else {
         None
     };
@@ -303,6 +330,7 @@ pub(crate) fn prepare_parsed_card_ast_for_lowering(
         annotations,
         items: normalized_items,
         overload_branch,
+        cleave_branch,
         allow_unsupported,
     })
 }

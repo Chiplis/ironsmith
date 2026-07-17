@@ -14,6 +14,7 @@ use crate::grant::{
     DerivedAlternativeCast, DerivedAlternativeCastRuntimeExt, GrantUsageLimit, Grantable,
 };
 use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::object::CounterType;
 use crate::object_query::for_each_candidate_id_for_zone;
 use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
@@ -30,6 +31,15 @@ pub enum GrantSource {
         /// Turn number when this grant expires (at end of that turn).
         expires_end_of_turn: u32,
     },
+    /// From a one-shot effect whose duration is measured through the end of a
+    /// particular player's next turn. The numeric boundary is retained for
+    /// ordinary cleanup, while the player identity lets CR 800.4m clamp the
+    /// duration if that player leaves before the turn can happen.
+    EffectUntilPlayerNextTurnEnd {
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        expires_end_of_turn: u32,
+    },
     /// From a resolving effect that lasts while the source remains controlled by a player.
     EffectWhileControlled {
         source_id: ObjectId,
@@ -43,6 +53,12 @@ pub enum GrantSource {
         stable_id: StableId,
         player: PlayerId,
         library_top_revision: u64,
+    },
+    /// A persistent zone grant whose permission is active only during turns
+    /// in which the specified counter was put on its source object.
+    EffectDuringTurnsCounterPutOnSource {
+        source_id: ObjectId,
+        counter_type: CounterType,
     },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
@@ -61,12 +77,27 @@ impl GrantSource {
         }
     }
 
+    /// Create a grant that lasts through the end of `duration_player`'s next turn.
+    pub fn until_player_next_turn_end(
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        turn: u32,
+    ) -> Self {
+        GrantSource::EffectUntilPlayerNextTurnEnd {
+            source_id,
+            duration_player,
+            expires_end_of_turn: turn,
+        }
+    }
+
     /// Source object that provided this grant.
     pub fn source_id(&self) -> ObjectId {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
+            GrantSource::EffectUntilPlayerNextTurnEnd { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
+            GrantSource::EffectDuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id } => *source_id,
         }
     }
@@ -75,6 +106,10 @@ impl GrantSource {
     pub fn is_valid(&self, game: &crate::game_state::GameState) -> bool {
         match self {
             GrantSource::Effect {
+                expires_end_of_turn,
+                ..
+            }
+            | GrantSource::EffectUntilPlayerNextTurnEnd {
                 expires_end_of_turn,
                 ..
             } => {
@@ -106,6 +141,21 @@ impl GrantSource {
                         *library_top_revision,
                     )
             }
+            GrantSource::EffectDuringTurnsCounterPutOnSource {
+                source_id,
+                counter_type,
+            } => game
+                .turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::other::CounterPlacedEvent>()
+                        .is_some_and(|event| {
+                            event.permanent == *source_id && event.counter_type == *counter_type
+                        })
+                }),
         }
     }
 
@@ -113,6 +163,10 @@ impl GrantSource {
     pub fn is_valid_raw(&self, turn_number: u32, battlefield: &[ObjectId]) -> bool {
         match self {
             GrantSource::Effect {
+                expires_end_of_turn,
+                ..
+            }
+            | GrantSource::EffectUntilPlayerNextTurnEnd {
                 expires_end_of_turn,
                 ..
             } => {
@@ -128,6 +182,7 @@ impl GrantSource {
                 expires_end_of_turn,
                 ..
             } => turn_number <= *expires_end_of_turn,
+            GrantSource::EffectDuringTurnsCounterPutOnSource { .. } => true,
         }
     }
 }
@@ -150,6 +205,10 @@ pub enum GrantLifetime {
         turn: u32,
         library_top_revision: u64,
     },
+    DuringTurnsCounterPutOnSource {
+        source_id: ObjectId,
+        counter_type: CounterType,
+    },
 }
 
 impl GrantLifetime {
@@ -159,6 +218,7 @@ impl GrantLifetime {
             GrantLifetime::WhileSourceOnBattlefield(source_id) => *source_id,
             GrantLifetime::WhileSourceControlledBy { source_id, .. } => *source_id,
             GrantLifetime::WhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
+            GrantLifetime::DuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
         }
     }
 }
@@ -169,6 +229,14 @@ impl GrantSource {
             GrantSource::Effect {
                 expires_end_of_turn,
                 source_id,
+            } => GrantLifetime::UntilEndOfTurn {
+                source_id: *source_id,
+                turn: *expires_end_of_turn,
+            },
+            GrantSource::EffectUntilPlayerNextTurnEnd {
+                source_id,
+                expires_end_of_turn,
+                ..
             } => GrantLifetime::UntilEndOfTurn {
                 source_id: *source_id,
                 turn: *expires_end_of_turn,
@@ -195,6 +263,13 @@ impl GrantSource {
                 player: *player,
                 turn: *expires_end_of_turn,
                 library_top_revision: *library_top_revision,
+            },
+            GrantSource::EffectDuringTurnsCounterPutOnSource {
+                source_id,
+                counter_type,
+            } => GrantLifetime::DuringTurnsCounterPutOnSource {
+                source_id: *source_id,
+                counter_type: *counter_type,
             },
         }
     }
@@ -611,12 +686,32 @@ impl GrantRegistry {
         self.grants.retain(|grant| {
             !matches!(&grant.source,
                 GrantSource::Effect { source_id: sid, .. } |
+                GrantSource::EffectUntilPlayerNextTurnEnd { source_id: sid, .. } |
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
+                GrantSource::EffectDuringTurnsCounterPutOnSource { source_id: sid, .. } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
             )
         });
+    }
+
+    /// Clamp turn-relative grants when their duration player leaves the game.
+    /// CR 800.4m makes these effects last until that player's next turn would
+    /// have begun, rather than allowing the precomputed turn number to drift to
+    /// a later surviving player's turn.
+    pub fn prepare_for_departing_player(&mut self, player: PlayerId, expires_end_of_turn: u32) {
+        for grant in &mut self.grants {
+            if let GrantSource::EffectUntilPlayerNextTurnEnd {
+                duration_player,
+                expires_end_of_turn: grant_expiry,
+                ..
+            } = &mut grant.source
+                && *duration_player == player
+            {
+                *grant_expiry = (*grant_expiry).min(expires_end_of_turn);
+            }
+        }
     }
 
     /// Remove grants tied to a physical card's continuous presence in a zone.

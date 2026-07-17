@@ -18,11 +18,13 @@ pub type ActivatedAbility =
     ironsmith_core::ActivatedAbility<crate::effect::Effect, crate::costs::Cost>;
 pub type LevelAbility = ironsmith_core::LevelAbility<NewStaticAbility>;
 pub use ironsmith_core::{
-    ActivatedPresentationLabel, ActivationTiming, ManaSpendAbilityGrantDuration,
-    ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaUsageRestriction,
-    ManaUsageSubtypeRequirement, PresentationKeyword, PresentationLabel, ProtectionFrom,
-    RestrictedManaUnit,
+    ActivatedPresentationLabel, ActivationTiming, ManaPaymentPredicate, ManaPaymentPurpose,
+    ManaSpendAbilityGrantDuration, ManaSpendBonusCondition, ManaSpendGrantedKeyword,
+    ManaSpendPayload, ManaUsageSubtypeRequirement, PresentationKeyword, PresentationLabel,
+    ProtectionFrom,
 };
+pub type ManaUsageRestriction = ironsmith_core::ManaUsageRestriction<crate::effect::Effect>;
+pub type RestrictedManaUnit = ironsmith_core::RestrictedManaUnit<crate::effect::Effect>;
 
 pub fn extract_static_abilities(abilities: &[Ability]) -> Vec<NewStaticAbility> {
     abilities

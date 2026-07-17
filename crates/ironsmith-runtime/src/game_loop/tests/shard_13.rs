@@ -321,6 +321,539 @@ pub(super) fn test_overload_cast_swaps_in_rewritten_effects_and_hits_all_matches
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cleave_swaps_text_before_target_requirements_are_derived() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let spell_def = CardDefinitionBuilder::new(CardId::new(), "Cleave Runtime Probe")
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+            crate::mana::ManaSymbol::Blue,
+        ]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Cleave {0}\nReturn target nonland permanent [you control] to its owner's hand.",
+        )
+        .expect("Cleave runtime probe should parse");
+
+    let spell_id = game.create_object_from_definition(&spell_def, alice, Zone::Hand);
+    let spell_stable_id = game.object(spell_id).expect("spell exists").stable_id;
+    let friendly = create_creature(&mut game, "Friendly Permanent", alice, 2, 2);
+    let opposing = create_creature(&mut game, "Opposing Permanent", bob, 3, 3);
+    let remaining_opposing = create_creature(&mut game, "Remaining Opposing", bob, 4, 4);
+
+    let normal_requirements = super::targeting::extract_target_requirements(
+        &game,
+        game.object(spell_id)
+            .and_then(|spell| spell.spell_effect.as_deref())
+            .map_or(&[][..], |program| program.flattened_default_effects()),
+        alice,
+        Some(spell_id),
+    );
+    assert_eq!(normal_requirements.len(), 1);
+    assert!(
+        normal_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(friendly))
+    );
+    assert!(
+        !normal_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(opposing)),
+        "the bracketed controller restriction applies to a normal cast"
+    );
+
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: found,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Alternative(0),
+                } if *found == spell_id
+            )),
+        "the Cleave alternative cost should be available from hand"
+    );
+
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Alternative(0),
+    )
+    .expect("Cleave cast should move to the stack");
+    let cleave_requirements = super::targeting::extract_target_requirements(
+        &game,
+        game.object(stack_id)
+            .and_then(|spell| spell.spell_effect.as_deref())
+            .map_or(&[][..], |program| program.flattened_default_effects()),
+        alice,
+        Some(stack_id),
+    );
+    assert_eq!(cleave_requirements.len(), 1);
+    assert!(
+        cleave_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(opposing)),
+        "Cleave must remove the controller restriction before targets are chosen"
+    );
+
+    let mut entry =
+        StackEntry::new(stack_id, alice).with_casting_method(CastingMethod::Alternative(0));
+    entry.targets = vec![Target::Object(opposing)];
+    game.stack.push(entry);
+    resolve_stack_entry(&mut game).expect("cleaved spell should resolve");
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .hand
+            .iter()
+            .any(|&id| {
+                game.object(id)
+                    .is_some_and(|object| object.name == "Opposing Permanent")
+            })
+    );
+
+    let graveyard_spell = game
+        .find_object_by_stable_id(spell_stable_id)
+        .expect("the resolved instant should remain tracked");
+    assert_eq!(
+        game.object(graveyard_spell)
+            .expect("resolved spell exists")
+            .zone,
+        Zone::Graveyard
+    );
+    let restored_requirements = super::targeting::extract_target_requirements(
+        &game,
+        game.object(graveyard_spell)
+            .and_then(|spell| spell.spell_effect.as_deref())
+            .map_or(&[][..], |program| program.flattened_default_effects()),
+        alice,
+        Some(graveyard_spell),
+    );
+    assert_eq!(restored_requirements.len(), 1);
+    assert!(
+        !restored_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(remaining_opposing)),
+        "the bracketed normal-cast restriction must return after the spell leaves the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn spree_requires_a_payable_mode_and_charges_every_selected_mode() {
+    struct ChooseBothModes;
+
+    impl DecisionMaker for ChooseBothModes {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description.starts_with("Choose mode for") {
+                return vec![0, 1];
+            }
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Spree Runtime Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Spree (Choose one or more additional costs.)\n\
+             + {1} — You gain 1 life.\n\
+             + {2} — You gain 2 life.",
+        )
+        .expect("Spree runtime probe should parse");
+    let spell_id = game.create_object_from_definition(&definition, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: found,
+                    casting_method: CastingMethod::Normal,
+                    ..
+                } if *found == spell_id
+            )),
+        "the printed mana cost alone cannot begin a Spree cast"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: found,
+                    casting_method: CastingMethod::Normal,
+                    ..
+                } if *found == spell_id
+            )),
+        "a payable Spree mode should expose the cast action"
+    );
+
+    let life_before = game.player(alice).expect("Alice exists").life;
+    let mut decision_maker = ChooseBothModes;
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut decision_maker,
+    )
+    .expect("Spree proposal should run")
+    .expect("paying the base and both mode costs should commit");
+
+    let entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == stack_id)
+        .expect("Spree spell should be on the stack");
+    assert_eq!(entry.chosen_modes.as_deref(), Some(&[0, 1][..]));
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0,
+        "the cast should pay {{R}} + {{1}} + {{2}}"
+    );
+
+    resolve_stack_entry(&mut game).expect("Spree spell should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        life_before + 3
+    );
+}
+
+#[test]
+pub(super) fn assist_gives_the_chosen_player_the_first_mana_window_and_only_pays_generic() {
+    struct AssistDecisionMaker {
+        bob: PlayerId,
+        alice: PlayerId,
+        mana_window_players: Vec<PlayerId>,
+    }
+
+    impl DecisionMaker for AssistDecisionMaker {
+        fn decide_number(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            2
+        }
+
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            ctx.requirements
+                .iter()
+                .filter_map(|requirement| requirement.legal_targets.first().copied())
+                .collect()
+        }
+
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx
+                .description
+                .starts_with("Choose another player to assist")
+            {
+                return vec![1];
+            }
+            if ctx
+                .description
+                .starts_with("Activate mana abilities before paying costs")
+            {
+                self.mana_window_players.push(ctx.player);
+                if ctx.player == self.bob || ctx.player == self.alice {
+                    return vec![0];
+                }
+            }
+            if ctx.description.starts_with("Choose how much generic mana") {
+                return vec![2];
+            }
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let assist_spell = CardDefinitionBuilder::new(CardId::new(), "Assist Runtime Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Assist\nDestroy target creature with power X or less.")
+        .expect("Assist X target probe should parse");
+    let spell_id = game.create_object_from_definition(&assist_spell, alice, Zone::Hand);
+    let _target = create_creature(&mut game, "Power-Two Target", charlie, 2, 2);
+
+    let alice_land = CardDefinitionBuilder::new(CardId::new(), "Alice Blue Source")
+        .card_types(vec![CardType::Land])
+        .with_ability(Ability::mana(
+            crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
+            vec![ManaSymbol::Blue],
+        ))
+        .build();
+    let alice_land = game.create_object_from_definition(&alice_land, alice, Zone::Battlefield);
+    let bob_land = CardDefinitionBuilder::new(CardId::new(), "Bob Double Source")
+        .card_types(vec![CardType::Land])
+        .with_ability(Ability::mana(
+            crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
+            vec![ManaSymbol::Colorless, ManaSymbol::Colorless],
+        ))
+        .build();
+    let bob_land = game.create_object_from_definition(&bob_land, bob, Zone::Battlefield);
+    game.player_mut(charlie)
+        .expect("Charlie exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: found,
+                    casting_method: CastingMethod::Normal,
+                    ..
+                } if *found == spell_id
+            )),
+        "Assist should make the X=2 targetable cast legal when one other player can cover X"
+    );
+
+    let mut decision_maker = AssistDecisionMaker {
+        bob,
+        alice,
+        mana_window_players: Vec::new(),
+    };
+    let stack_id = super::cast_spell_from_resolving_effect(
+        &mut game,
+        spell_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut decision_maker,
+    )
+    .expect("Assist proposal should run")
+    .expect("the chosen player and caster should jointly pay the spell");
+
+    assert!(game.stack.iter().any(|entry| entry.object_id == stack_id));
+    assert!(game.is_tapped(bob_land), "Bob should activate mana first");
+    assert!(
+        game.is_tapped(alice_land),
+        "Alice should receive the caster mana window after Bob"
+    );
+    assert_eq!(decision_maker.mana_window_players, vec![bob, alice]);
+    assert_eq!(
+        game.player(bob).expect("Bob exists").mana_pool.total(),
+        0,
+        "Bob should spend exactly the two generic mana he announced"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0,
+        "Alice should pay the blue component"
+    );
+    assert_eq!(
+        game.player(charlie)
+            .expect("Charlie exists")
+            .mana_pool
+            .total(),
+        2,
+        "an unchosen player cannot contribute mana"
+    );
+    let spent = &game
+        .object(stack_id)
+        .expect("Assist spell remains on the stack")
+        .mana_spent_to_cast;
+    assert_eq!(spent.blue, 1);
+    assert_eq!(spent.colorless, 2);
+    let turn_spending = &game
+        .turn_store
+        .turn_history
+        .mana_spent_to_cast_spells_this_turn;
+    assert_eq!(turn_spending.get(&alice), Some(&1));
+    assert_eq!(turn_spending.get(&bob), Some(&2));
+    assert_eq!(turn_spending.get(&charlie), None);
+}
+
+#[test]
+pub(super) fn assist_cannot_cover_colored_mana_and_the_chosen_player_may_pay_zero() {
+    struct DeclineAssist;
+
+    impl DecisionMaker for DeclineAssist {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx
+                .description
+                .starts_with("Choose another player to assist")
+            {
+                return vec![1];
+            }
+            if ctx.description.starts_with("Choose how much generic mana") {
+                return vec![0];
+            }
+            ctx.options
+                .iter()
+                .find(|option| option.legal)
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut colored_game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    colored_game.turn.phase = Phase::FirstMain;
+    colored_game.turn.step = None;
+    colored_game.turn.active_player = alice;
+    colored_game.turn.priority_player = Some(alice);
+    let colored_spell = CardDefinitionBuilder::new(CardId::new(), "Colored Assist Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+        .card_types(vec![CardType::Sorcery])
+        .with_ability(Ability::static_ability(StaticAbility::assist()))
+        .build();
+    let colored_spell =
+        colored_game.create_object_from_definition(&colored_spell, alice, Zone::Hand);
+    colored_game
+        .player_mut(bob)
+        .expect("Bob exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    assert!(
+        !crate::decision::compute_legal_actions(&colored_game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::CastSpell { spell_id, .. } if *spell_id == colored_spell
+            )),
+        "Assist cannot let another player pay a colored mana symbol"
+    );
+
+    let mut decline_game = setup_three_player_game();
+    decline_game.turn.phase = Phase::FirstMain;
+    decline_game.turn.step = None;
+    decline_game.turn.active_player = alice;
+    decline_game.turn.priority_player = Some(alice);
+    let generic_spell = CardDefinitionBuilder::new(CardId::new(), "Declined Assist Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .with_ability(Ability::static_ability(StaticAbility::assist()))
+        .build();
+    let generic_spell =
+        decline_game.create_object_from_definition(&generic_spell, alice, Zone::Hand);
+    decline_game
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    decline_game
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    decline_game
+        .player_mut(bob)
+        .expect("Bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    let mut decision_maker = DeclineAssist;
+    super::cast_spell_from_resolving_effect(
+        &mut decline_game,
+        generic_spell,
+        Zone::Hand,
+        alice,
+        &CastingMethod::Normal,
+        false,
+        None,
+        crate::provenance::ProvNodeId::default(),
+        &mut decision_maker,
+    )
+    .expect("declined Assist proposal should run")
+    .expect("the caster should pay after the chosen player contributes zero");
+    assert_eq!(
+        decline_game
+            .player(bob)
+            .expect("Bob exists")
+            .mana_pool
+            .total(),
+        2,
+        "the chosen player may decline to contribute mana"
+    );
+    assert_eq!(
+        decline_game
+            .player(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .total(),
+        0
+    );
+}
+
 pub(super) fn test_adventure_pair_definitions()
 -> (crate::cards::CardDefinition, crate::cards::CardDefinition) {
     let front_id = CardId::from_raw(88_100);

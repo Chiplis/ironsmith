@@ -239,6 +239,103 @@ fn apply_split_result_order(
     }
 }
 
+/// Collect CR 404.3 ordering choices for one simultaneous graveyard batch.
+///
+/// `decision_view` is the immutable state from before the event. `game` is a
+/// staged transaction containing the proposed zone changes. Every owner choice
+/// is collected in APNAP order before any graveyard index is reordered, so a
+/// deferred choice can discard the staged transaction without exposing a
+/// partially committed event.
+pub(crate) fn order_simultaneous_graveyard_batch(
+    decision_view: &GameState,
+    game: &mut GameState,
+    decision_maker: &mut dyn DecisionMaker,
+    source: Option<ObjectId>,
+    moved_object_ids: &[ObjectId],
+) -> bool {
+    let mut by_owner = std::collections::HashMap::<PlayerId, Vec<ObjectId>>::new();
+    for object_id in moved_object_ids.iter().copied() {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        if object.zone != Zone::Graveyard {
+            continue;
+        }
+        let owner = object.owner;
+        let ids = by_owner.entry(owner).or_default();
+        if !ids.contains(&object_id) {
+            ids.push(object_id);
+        }
+    }
+
+    let mut owners = decision_view.team_apnap_player_order();
+    let mut remaining = by_owner.keys().copied().collect::<Vec<_>>();
+    remaining.sort_by_key(|player| player.0);
+    for owner in remaining {
+        if !owners.contains(&owner) {
+            owners.push(owner);
+        }
+    }
+
+    let mut choices = Vec::new();
+    for owner in owners {
+        let Some(batch_ids) = by_owner.get(&owner) else {
+            continue;
+        };
+        let batch_set = batch_ids.iter().copied().collect::<HashSet<_>>();
+        let current_order = game
+            .player(owner)
+            .map(|player| {
+                player
+                    .graveyard
+                    .iter()
+                    .filter(|object_id| batch_set.contains(object_id))
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if current_order.len() <= 1 {
+            continue;
+        }
+
+        let items = current_order
+            .iter()
+            .map(|object_id| {
+                let name = game
+                    .object(*object_id)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                (*object_id, name)
+            })
+            .collect();
+        let context = OrderContext::new(
+            owner,
+            source,
+            "Order cards put into your graveyard simultaneously. The last item becomes the top card.",
+            items,
+        );
+        let response = decision_maker.decide_order(decision_view, &context);
+        if decision_maker.awaiting_choice() {
+            return false;
+        }
+        choices.push((
+            owner,
+            current_order.clone(),
+            normalize_order_response(response, &current_order),
+        ));
+    }
+
+    for (owner, current_order, ordered) in choices {
+        if ordered == current_order {
+            continue;
+        }
+        if let Some(player) = game.player_mut(owner) {
+            reorder_zone_subset_in_place(&mut player.graveyard, &current_order, &ordered);
+        }
+    }
+    true
+}
+
 pub(crate) fn maybe_prompt_for_split_result_order(
     game: &mut GameState,
     decision_maker: &mut dyn DecisionMaker,
@@ -246,11 +343,20 @@ pub(crate) fn maybe_prompt_for_split_result_order(
     cause: &crate::events::cause::EventCause,
     result: &mut AppliedZoneChange,
 ) {
-    if result.new_object_ids.len() <= 1 {
+    let zone_result_ids = result
+        .new_object_ids
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.zone == final_zone)
+        })
+        .collect::<Vec<_>>();
+    if zone_result_ids.len() <= 1 {
         return;
     }
 
-    let Some(chooser) = split_result_order_chooser(game, final_zone, cause, &result.new_object_ids)
+    let Some(chooser) = split_result_order_chooser(game, final_zone, cause, &zone_result_ids)
     else {
         return;
     };
@@ -258,7 +364,7 @@ pub(crate) fn maybe_prompt_for_split_result_order(
         return;
     };
 
-    let current_order = current_split_result_order(game, final_zone, &result.new_object_ids);
+    let current_order = current_split_result_order(game, final_zone, &zone_result_ids);
     if current_order.len() <= 1 {
         return;
     }
@@ -282,14 +388,29 @@ pub(crate) fn maybe_prompt_for_split_result_order(
         decision_maker.decide_order(game, &order_ctx),
         &current_order,
     );
-    if ordered == current_order {
-        result.new_object_ids = ordered;
-        result.new_object_id = result.new_object_ids.first().copied();
-        return;
+    if final_zone == Zone::Exile {
+        // CR 730.3b / 613.7m: the exiling player chooses the relative
+        // timestamps of cards entering exile simultaneously. Earlier entries
+        // in the chosen order receive earlier timestamps.
+        for object_id in &ordered {
+            game.effect_store
+                .continuous_effects
+                .record_entry(*object_id);
+        }
+    }
+    if ordered != current_order {
+        apply_split_result_order(game, final_zone, &zone_result_ids, &ordered);
     }
 
-    apply_split_result_order(game, final_zone, &result.new_object_ids, &ordered);
-    result.new_object_ids = ordered;
+    let ordered_set = zone_result_ids.iter().copied().collect::<HashSet<_>>();
+    let mut ordered_iter = ordered.into_iter();
+    for object_id in &mut result.new_object_ids {
+        if ordered_set.contains(object_id)
+            && let Some(next_id) = ordered_iter.next()
+        {
+            *object_id = next_id;
+        }
+    }
     result.new_object_id = result.new_object_ids.first().copied();
 }
 
@@ -345,8 +466,8 @@ pub(crate) fn apply_zone_change_with_additional_effects(
 }
 
 pub(crate) use battlefield_entry::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
-    resolve_battlefield_entry_counters,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
+    move_to_battlefield_with_options, resolve_battlefield_entry_counters,
 };
 
 pub use destroy::DestroyEffect;

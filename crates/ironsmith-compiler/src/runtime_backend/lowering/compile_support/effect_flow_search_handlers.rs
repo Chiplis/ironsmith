@@ -1,5 +1,46 @@
 use super::*;
 
+fn bind_relative_attachment_count_player(value: &mut Value, player: &PlayerFilter) {
+    match value {
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => bind_relative_attachment_count_player(value, player),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            bind_relative_attachment_count_player(left, player);
+            bind_relative_attachment_count_player(right, player);
+        }
+        Value::Count(filter) | Value::CountScaled(filter, _) => {
+            if matches!(
+                filter.attached_to_player.as_ref(),
+                Some(PlayerFilter::AliasedTarget(inner))
+                    if matches!(inner.as_ref(), PlayerFilter::Any)
+            ) {
+                filter.attached_to_player = Some(player.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
+fn bind_target_iteration_exclusion_in_attachment_counts(
+    effects: &mut [EffectAst],
+    excluded: &PlayerFilter,
+) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) = effect
+        {
+            bind_relative_attachment_count_player(count, excluded);
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            bind_target_iteration_exclusion_in_attachment_counts(nested, excluded);
+        });
+    }
+}
+
 fn sacrifice_all_tag_relation(effects: &[EffectAst]) -> Option<(String, TaggedOpbjectRelation)> {
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -518,7 +559,19 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;
             let effect = try_compile_simultaneous_each_player_scry(filter.clone(), &inner_effects)
                 .unwrap_or_else(|| Effect::for_players(filter.clone(), inner_effects));
-            (vec![effect], inner_choices)
+            let mut target_choices = Vec::new();
+            collect_targeted_player_specs_from_player_filter(filter, &mut target_choices);
+            let mut compiled = target_choices
+                .iter()
+                .cloned()
+                .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
+                .collect::<Vec<_>>();
+            compiled.push(effect);
+            let mut choices = target_choices;
+            for choice in inner_choices {
+                push_choice(&mut choices, choice);
+            }
+            (compiled, choices)
         }
         EffectAst::ForEachPlayer { effects } => {
             if let [
@@ -573,18 +626,32 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             ));
             (vec![effect], Vec::new())
         }
-        EffectAst::ForEachTargetPlayers { count, effects } => {
+        EffectAst::ForEachTargetPlayers {
+            count,
+            filter,
+            effects,
+        } => {
+            let target_spec = resolve_choose_spec_it_tag(
+                &ChooseSpec::target(ChooseSpec::Player(filter.clone())).with_count(*count),
+                &current_reference_env(ctx),
+            )?;
+            let ChooseSpec::Player(resolved_filter) = target_spec.base() else {
+                return Err(CardTextError::ParseError(
+                    "target-player iterator resolved to a non-player target".to_string(),
+                ));
+            };
+            let mut scoped_effects = effects.clone();
+            if let PlayerFilter::Excluding { excluded, .. } = resolved_filter {
+                bind_target_iteration_exclusion_in_attachment_counts(&mut scoped_effects, excluded);
+            }
             let (inner_effects, inner_choices) =
-                compile_effects_in_iterated_player_context(effects, ctx, None)?;
-            let target_spec =
-                ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)).with_count(*count);
+                compile_effects_in_iterated_player_context(&scoped_effects, ctx, None)?;
             let choose_targets =
                 Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()));
-            let effect = try_compile_simultaneous_each_player_scry(
-                PlayerFilter::target_player(),
-                &inner_effects,
-            )
-            .unwrap_or_else(|| Effect::for_players(PlayerFilter::target_player(), inner_effects));
+            let iteration_filter = PlayerFilter::Target(Box::new(resolved_filter.clone()));
+            let effect =
+                try_compile_simultaneous_each_player_scry(iteration_filter.clone(), &inner_effects)
+                    .unwrap_or_else(|| Effect::for_players(iteration_filter, inner_effects));
             let mut choices = vec![target_spec];
             for choice in inner_choices {
                 push_choice(&mut choices, choice);

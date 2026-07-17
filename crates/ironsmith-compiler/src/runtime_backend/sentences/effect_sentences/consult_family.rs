@@ -449,3 +449,47 @@ pub(crate) fn parse_if_you_cant_sentence(
     }
     Ok(Some(effects))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Subtype;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn active_consult_preserves_explicit_repeated_card_union() {
+        let tokens = lex_line(
+            "Reveal cards from the top of your library until you reveal a Doctor card, a card with doctor's companion, or a Vehicle card",
+            0,
+        )
+        .expect("consult sentence should lex");
+        let parsed = parse_consult_traversal_sentence(&tokens)
+            .expect("consult sentence should parse")
+            .expect("consult traversal shape");
+        let EffectAst::SubjectVerb(subject_verb) = &parsed.effects[0] else {
+            panic!(
+                "expected consult subject-verb effect: {:#?}",
+                parsed.effects
+            );
+        };
+        let crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } =
+            &subject_verb.action
+        else {
+            panic!("expected consult action: {subject_verb:#?}");
+        };
+
+        assert!(filter.has_explicit_union_branch_articles(), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert_eq!(filter.any_of[0].subtypes, [Subtype::Doctor]);
+        assert!(filter.any_of[1].subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.any_of[1].ability_markers,
+            ["doctor's companion".to_string()]
+        );
+        assert_eq!(filter.any_of[2].subtypes, [Subtype::Vehicle]);
+        assert_eq!(
+            filter.description(),
+            "a Doctor card, a card with doctor's companion, or a Vehicle card"
+        );
+    }
+}

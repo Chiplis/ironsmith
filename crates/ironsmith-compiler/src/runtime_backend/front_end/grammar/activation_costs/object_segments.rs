@@ -254,15 +254,62 @@ pub(crate) fn parse_tap_chosen_segment_tokens(
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     let shape = primitives::parse_all(tokens, parse_tap_chosen_shape_lexed, "tap-chosen-cost")
         .map_err(|_| unsupported(tokens, "tap chosen"))?;
-    let mut filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
-        shape.filter_tokens,
-        shape.other,
-    )?;
+    let (filter_tokens, exclude_declared_combatants) =
+        strip_not_declared_as_attacking_or_blocking_suffix(shape.filter_tokens);
+    let mut filter =
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, shape.other)?;
     filter.untapped = true;
+    if exclude_declared_combatants {
+        filter.nonattacking = true;
+        filter.nonblocking = true;
+    }
     Ok(ActivationCostSegmentCst::TapChosen {
         count: shape.count,
         filter,
     })
+}
+
+fn strip_not_declared_as_attacking_or_blocking_suffix(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], bool) {
+    const SUFFIXES: &[&[&str]] = &[
+        &[
+            "not",
+            "declared",
+            "as",
+            "an",
+            "attacking",
+            "or",
+            "blocking",
+            "creature",
+            "this",
+            "combat",
+        ],
+        &[
+            "not",
+            "declared",
+            "as",
+            "attacking",
+            "or",
+            "blocking",
+            "this",
+            "combat",
+        ],
+    ];
+
+    for start in 0..tokens.len() {
+        let suffix_words = primitives::TokenWordView::new(&tokens[start..]).word_refs();
+        if SUFFIXES
+            .iter()
+            .any(|expected| suffix_words.as_slice() == *expected)
+        {
+            let filter_tokens = &tokens[..start];
+            if !filter_tokens.is_empty() {
+                return (filter_tokens, true);
+            }
+        }
+    }
+    (tokens, false)
 }
 
 fn unsupported(tokens: &[OwnedLexToken], label: &str) -> CardTextError {

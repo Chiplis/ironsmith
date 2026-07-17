@@ -1,14 +1,50 @@
 use crate::runtime_backend::shared_types::{
-    InsteadFollowupFacts, LineSemanticFacts, StatementConditionIntro, StatementLineSemanticFacts,
-    StaticLineSemanticFacts, ThisSpellCostFacts, TriggerFrequencyFacts, TriggerFunctionalZoneFacts,
-    TriggeredLineSemanticFacts,
+    AsEntersEffectProgramFacts, InsteadFollowupFacts, LineSemanticFacts, StatementConditionIntro,
+    StatementLineSemanticFacts, StaticLineSemanticFacts, ThisSpellCostFacts, TriggerFrequencyFacts,
+    TriggerFunctionalZoneFacts, TriggeredLineSemanticFacts,
 };
 
 use super::super::lexer::OwnedLexToken;
 use super::{
-    activated_lines, effects, functional_zones, leaf, lowering_surfaces, primitives, structure,
-    trigger_surface,
+    activated_lines, document_shapes, effects, functional_zones, leaf, lowering_surfaces,
+    primitives, structure, trigger_surface,
 };
+
+fn parse_as_enters_effect_program_facts(
+    tokens: &[OwnedLexToken],
+) -> Option<AsEntersEffectProgramFacts> {
+    let tokens = document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    if !tokens.first().is_some_and(|token| token.is_word("as"))
+        || !tokens.get(1).is_some_and(|token| token.is_word("this"))
+    {
+        return None;
+    }
+    let enters_idx = tokens.iter().position(|token| token.is_word("enters"))?;
+    if enters_idx <= 1 {
+        return None;
+    }
+    let comma_idx = tokens
+        .iter()
+        .enumerate()
+        .skip(enters_idx + 1)
+        .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
+    if comma_idx + 1 >= tokens.len() {
+        return None;
+    }
+    let also_turns_face_up = tokens[enters_idx + 1..comma_idx]
+        .iter()
+        .filter(|token| token.kind == super::super::lexer::TokenKind::Word)
+        .map(|token| token.parser_text.as_str())
+        .eq(["or", "is", "turned", "face", "up"]);
+    let uses_enters_with_counter_surface = tokens[comma_idx + 1..]
+        .windows(2)
+        .any(|pair| pair[0].is_word("enters") && pair[1].is_word("with"));
+    Some(AsEntersEffectProgramFacts {
+        subject: super::super::lexer::render_token_slice(&tokens[1..enters_idx]),
+        also_turns_face_up,
+        uses_enters_with_counter_surface,
+    })
+}
 
 fn parse_trailing_instead_if_predicate(
     tokens: &[OwnedLexToken],
@@ -39,6 +75,7 @@ fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSema
         },
         trailing_instead_if_predicate: parse_trailing_instead_if_predicate(tokens),
         replacement_surfaces,
+        as_enters_effect_program: parse_as_enters_effect_program_facts(tokens),
         presentation_label: None,
         creature_type_choice_buff: lowering_surfaces::parse_creature_type_choice_buff_tokens(
             tokens,
@@ -67,6 +104,7 @@ pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> Line
         statement: parse_statement_semantic_facts(tokens),
         triggered_ability: TriggeredLineSemanticFacts {
             intro_surface: trigger_surface::parse_trigger_intro_surface_tokens(tokens),
+            presentation_label: None,
             functional_zones: TriggerFunctionalZoneFacts {
                 explicit_zone: trigger_zones.explicit_zone,
                 returns_self_from_graveyard: trigger_zones.returns_self_from_graveyard,
@@ -154,6 +192,29 @@ mod tests {
             Some(StatementConditionIntro::If)
         );
         assert!(parsed.statement.trailing_instead_if_predicate.is_some());
+    }
+
+    #[test]
+    fn collects_as_enters_program_timing_after_an_ability_word_label() {
+        let parsed = facts(
+            "Imprint — As this Vehicle enters or is turned face up, exile a creature card from a graveyard.",
+        );
+        let as_enters = parsed
+            .statement
+            .as_enters_effect_program
+            .expect("as-enters timing should be retained as typed semantic facts");
+
+        assert_eq!(as_enters.subject, "this Vehicle");
+        assert!(as_enters.also_turns_face_up);
+        assert!(!as_enters.uses_enters_with_counter_surface);
+
+        let counter_surface = facts(
+            "As this creature enters, remove all counters from all permanents. This creature enters with a +1/+1 counter on it for each counter removed this way.",
+        )
+        .statement
+        .as_enters_effect_program
+        .expect("entry-counter wording should retain the enclosing as-enters timing");
+        assert!(counter_surface.uses_enters_with_counter_surface);
     }
 
     #[test]

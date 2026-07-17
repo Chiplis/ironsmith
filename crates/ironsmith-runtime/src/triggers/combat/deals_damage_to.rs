@@ -6,7 +6,7 @@ use crate::events::EventKind;
 use crate::filter::ObjectFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{SimultaneousTriggerKey, TriggerContext, TriggerMatcher};
 use ironsmith_core::trigger_model::DamageSourceSurface;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +43,24 @@ impl DealsDamageToTrigger {
             source_surface: DamageSourceSurface::Filter,
         }
     }
+
+    fn cardinality_key(
+        &self,
+        source: crate::ids::ObjectId,
+        target: crate::ids::ObjectId,
+    ) -> Option<SimultaneousTriggerKey> {
+        match (
+            self.source_filter.union_is_one_or_more(),
+            self.target_filter.union_is_one_or_more(),
+        ) {
+            (false, false) => None,
+            (false, true) => Some(SimultaneousTriggerKey::DamageSource(source)),
+            (true, false) => Some(SimultaneousTriggerKey::DamageTarget(DamageTarget::Object(
+                target,
+            ))),
+            (true, true) => Some(SimultaneousTriggerKey::DamageBatch),
+        }
+    }
 }
 
 impl TriggerMatcher for DealsDamageToTrigger {
@@ -71,8 +89,48 @@ impl TriggerMatcher for DealsDamageToTrigger {
         let Some(target_obj) = ctx.game.object(target_id) else {
             return false;
         };
-        self.target_filter
+        if !self
+            .target_filter
             .matches(target_obj, &ctx.filter_ctx, ctx.game)
+        {
+            return false;
+        }
+        if self.combat_only
+            && let Some(current_key) = self.cardinality_key(damage.source, target_id)
+        {
+            let already_matched = ctx.game.combat_damage_object_batch_hits().iter().any(
+                |(prior_source, prior_target)| {
+                    if self.cardinality_key(*prior_source, *prior_target) != Some(current_key) {
+                        return false;
+                    }
+                    let Some(prior_source_object) = ctx.game.object(*prior_source) else {
+                        return false;
+                    };
+                    let Some(prior_target_object) = ctx.game.object(*prior_target) else {
+                        return false;
+                    };
+                    self.source_filter
+                        .matches(prior_source_object, &ctx.filter_ctx, ctx.game)
+                        && self.target_filter.matches(
+                            prior_target_object,
+                            &ctx.filter_ctx,
+                            ctx.game,
+                        )
+                },
+            );
+            if already_matched {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
+        let damage = event.downcast::<DamageEvent>()?;
+        let DamageTarget::Object(target) = damage.target else {
+            return None;
+        };
+        self.cardinality_key(damage.source, target)
     }
 
     fn display(&self) -> String {
@@ -91,12 +149,37 @@ impl TriggerMatcher for DealsDamageToTrigger {
 }
 
 fn damage_target_description(filter: &ObjectFilter) -> String {
-    let description = filter.description();
+    let one_or_more = filter.union_is_one_or_more();
+    let mut surface_filter = filter.clone();
+    surface_filter.set_union_one_or_more(false);
+    let description = surface_filter.description();
+    if one_or_more {
+        return format!("one or more {}", pluralize_damage_recipient(&description));
+    }
     match description.as_str() {
         "artifact" | "enchantment" => format!("an {description}"),
         "creature" | "land" | "permanent" | "planeswalker" | "battle" => format!("a {description}"),
         description => description.to_string(),
     }
+}
+
+fn pluralize_damage_recipient(description: &str) -> String {
+    let description = description
+        .strip_prefix("a ")
+        .or_else(|| description.strip_prefix("an "))
+        .unwrap_or(description);
+    if description.ends_with('s') {
+        return description.to_string();
+    }
+    if let Some(stem) = description.strip_suffix('y')
+        && !stem
+            .chars()
+            .last()
+            .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        return format!("{stem}ies");
+    }
+    format!("{description}s")
 }
 
 #[cfg(test)]

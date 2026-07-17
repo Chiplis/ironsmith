@@ -190,6 +190,7 @@ fn parse_status_state(input: &mut LexStream<'_>) -> WResult<StatusConditionState
         primitives::kw("enchanted").value(StatusConditionStateAst::Enchanted),
         primitives::kw("tapped").value(StatusConditionStateAst::Tapped),
         primitives::kw("untapped").value(StatusConditionStateAst::Untapped),
+        primitives::phrase(&["attacking", "alone"]).value(StatusConditionStateAst::AttackingAlone),
         primitives::kw("attacking").value(StatusConditionStateAst::Attacking),
         primitives::kw("monstrous").value(StatusConditionStateAst::Monstrous),
     ))

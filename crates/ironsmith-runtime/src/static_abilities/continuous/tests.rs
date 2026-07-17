@@ -6,6 +6,7 @@ use crate::filter::StackObjectKind;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::AttachmentTarget;
+use crate::static_abilities::LandwalkKind;
 use crate::target::PlayerFilter;
 use crate::types::{Subtype, Supertype};
 use crate::zone::Zone;
@@ -33,6 +34,24 @@ fn anthem_scales_per_affected_objects_controller_hand() {
     assert_eq!(
         anthem.display(),
         "this creature gets +1/+1 for each card in its controller's hand"
+    );
+}
+
+#[test]
+fn anthem_scales_per_card_in_your_hand() {
+    let count = AnthemCountExpression::MatchingFilter(ObjectFilter {
+        zone: Some(Zone::Hand),
+        owner: Some(PlayerFilter::You),
+        ..Default::default()
+    });
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(1, count.clone()),
+        AnthemValue::scaled(1, count),
+    );
+
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +1/+1 for each card in your hand"
     );
 }
 
@@ -92,6 +111,89 @@ fn source_only_conditions_use_same_source_pronouns() {
     let effects = grant.generate_effects(ObjectId::from_raw(1), PlayerId::from_index(0), &game);
     assert_eq!(effects.len(), 1);
     assert_eq!(effects[0].condition, Some(condition));
+}
+
+#[test]
+fn attacking_alone_condition_counts_every_attacking_creature() {
+    let mut attacking_creatures = ObjectFilter::creature();
+    attacking_creatures.attacking = true;
+    let condition = crate::ConditionExpr::And(
+        Box::new(crate::ConditionExpr::SourceIsAttacking),
+        Box::new(crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(attacking_creatures),
+            comparison: Comparison::Equal(1),
+            display: Some("no other creatures are attacking".to_string()),
+        }),
+    );
+
+    assert_eq!(
+        describe_static_condition(&condition),
+        "as long as this creature is attacking alone"
+    );
+    assert_eq!(
+        describe_same_source_static_condition(&condition),
+        "as long as it's attacking alone"
+    );
+    assert_eq!(
+        GrantObjectAbilityForFilter::new(
+            ObjectFilter::source(),
+            Ability::static_ability(StaticAbility::unblockable()),
+            "This creature can't be blocked".to_string(),
+        )
+        .with_condition(condition.clone())
+        .display(),
+        "this creature can't be blocked as long as it's attacking alone"
+    );
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Solo Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let other = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Other Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: source,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+        ..Default::default()
+    });
+    assert!(static_condition_is_active(&condition, &game, source, alice));
+
+    game.combat
+        .as_mut()
+        .expect("combat should exist")
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: other,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        });
+    assert!(!static_condition_is_active(
+        &condition, &game, source, alice
+    ));
+
+    game.combat
+        .as_mut()
+        .expect("combat should exist")
+        .attackers
+        .remove(0);
+    assert!(!static_condition_is_active(
+        &condition, &game, source, alice
+    ));
 }
 
 #[test]
@@ -677,11 +779,212 @@ fn exact_one_matching_filter_displays_that_creature() {
         "that creature gets +3/+1 as long as you control exactly one creature"
     );
     assert_eq!(
-        GrantAbility::new(filter, StaticAbility::lifelink())
-            .with_condition(condition)
+        GrantAbility::new(filter.clone(), StaticAbility::lifelink())
+            .with_condition(condition.clone())
             .display(),
         "as long as you control exactly one creature, that creature has lifelink"
     );
+    assert_eq!(
+        GrantObjectAbilityForFilter::new(
+            filter,
+            Ability::static_ability(StaticAbility::lifelink()),
+            "Lifelink".to_string(),
+        )
+        .with_condition(condition)
+        .display(),
+        "as long as you control exactly one creature, that creature has lifelink"
+    );
+}
+
+#[test]
+fn object_unblockable_grant_renders_as_a_restriction() {
+    assert_eq!(
+        GrantObjectAbilityForFilter::new(
+            ObjectFilter::source(),
+            Ability::static_ability(StaticAbility::unblockable()),
+            "This can't be blocked".to_string(),
+        )
+        .with_condition(crate::ConditionExpr::SourceIsEnchanted)
+        .display(),
+        "this creature can't be blocked as long as it's enchanted"
+    );
+}
+
+#[test]
+fn citys_blessing_condition_has_oracle_surface() {
+    assert_eq!(
+        describe_static_condition(&crate::ConditionExpr::PlayerHasCitysBlessing {
+            player: crate::target::PlayerFilter::You,
+        }),
+        "as long as you have the city's blessing"
+    );
+}
+
+#[test]
+fn multi_object_ability_grants_are_executable_copyable_removable_and_expire() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let attack_trigger = Ability::triggered(
+        crate::triggers::Trigger::this_attacks(),
+        vec![crate::effect::Effect::draw(1)],
+    );
+    let activated = Ability::activated(
+        crate::cost::TotalCost::free(),
+        vec![crate::effect::Effect::put_counters(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            crate::target::ChooseSpec::Source,
+        )],
+    );
+
+    let grant_source = CardDefinitionBuilder::new(CardId::new(), "Grant Source")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            GrantObjectAbilityForFilter::new(
+                ObjectFilter::creature().named("Grant Target"),
+                attack_trigger.clone(),
+                "test keyword".to_string(),
+            )
+            .with_additional_abilities(vec![activated.clone()]),
+        )))
+        .build();
+    let grant_source_id =
+        game.create_object_from_definition(&grant_source, alice, Zone::Battlefield);
+    let target_card = CardBuilder::new(CardId::new(), "Grant Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_card(&target_card, alice, Zone::Battlefield);
+
+    let granted = game
+        .calculated_characteristics(target)
+        .expect("grant target should have calculated characteristics")
+        .abilities;
+    let has_ability = |abilities: &[Ability], expected: &Ability| {
+        abilities
+            .iter()
+            .any(|candidate| format!("{candidate:?}") == format!("{expected:?}"))
+    };
+    assert!(has_ability(&granted, &attack_trigger));
+    assert!(has_ability(&granted, &activated));
+
+    let copy_source = CardDefinitionBuilder::new(CardId::new(), "Triggered Copy Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .with_ability(Ability::static_ability(
+            StaticAbility::copy_triggered_abilities(CopyTriggeredAbilities::new(
+                ObjectFilter::creature().named("Grant Target"),
+            )),
+        ))
+        .build();
+    let copy = game.create_object_from_definition(&copy_source, alice, Zone::Battlefield);
+    let copied = game
+        .calculated_characteristics(copy)
+        .expect("copy probe should have calculated characteristics")
+        .abilities;
+    assert!(
+        has_ability(&copied, &attack_trigger),
+        "a copied triggered ability must include a dynamically granted keyword trigger"
+    );
+
+    let remover = CardDefinitionBuilder::new(CardId::new(), "Loss Source")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            StaticAbility::remove_object_abilities(
+                ObjectFilter::creature().named("Grant Target"),
+                vec![attack_trigger.clone(), activated.clone()],
+                "test keyword",
+            ),
+        ))
+        .build();
+    let remover_id = game.create_object_from_definition(&remover, alice, Zone::Battlefield);
+    let after_loss = game
+        .calculated_characteristics(target)
+        .expect("grant target should remain calculable")
+        .abilities;
+    assert!(!has_ability(&after_loss, &attack_trigger));
+    assert!(!has_ability(&after_loss, &activated));
+
+    game.remove_object(remover_id);
+    let restored = game
+        .calculated_characteristics(target)
+        .expect("grant target should remain calculable")
+        .abilities;
+    assert!(has_ability(&restored, &attack_trigger));
+    assert!(has_ability(&restored, &activated));
+
+    game.remove_object(grant_source_id);
+    game.effect_store.continuous_effects.add_effect(
+        crate::continuous::ContinuousEffect::new(
+            grant_source_id,
+            alice,
+            crate::continuous::EffectTarget::Specific(target),
+            crate::continuous::Modification::AddAbilityGeneric(attack_trigger.clone()),
+        )
+        .until(crate::effect::Until::EndOfTurn),
+    );
+    let temporary = game
+        .calculated_characteristics(target)
+        .expect("temporary grant target should be calculable")
+        .abilities;
+    assert!(has_ability(&temporary, &attack_trigger));
+    game.effect_store.continuous_effects.cleanup_end_of_turn();
+    let expired = game
+        .calculated_characteristics(target)
+        .expect("expired grant target should be calculable")
+        .abilities;
+    assert!(
+        !has_ability(&expired, &attack_trigger),
+        "the granted keyword ability must disappear when its duration expires"
+    );
+}
+
+#[test]
+fn level_static_carriers_expose_triggered_and_activated_keyword_abilities() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let attack_trigger = Ability::triggered(
+        crate::triggers::Trigger::this_attacks(),
+        vec![crate::effect::Effect::draw(1)],
+    );
+    let activated = Ability::activated(
+        crate::cost::TotalCost::free(),
+        vec![crate::effect::Effect::put_counters(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            crate::target::ChooseSpec::Source,
+        )],
+    );
+    let carrier = StaticAbility::new(
+        GrantObjectAbilityForFilter::new(
+            ObjectFilter::source(),
+            attack_trigger.clone(),
+            "test level keyword".to_string(),
+        )
+        .with_additional_abilities(vec![activated.clone()]),
+    );
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Level Grant Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .with_ability(Ability::static_ability(
+            StaticAbility::with_level_abilities(vec![
+                crate::ability::LevelAbility::new(0, None).with_ability(carrier),
+            ]),
+        ))
+        .build();
+    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let abilities = game
+        .calculated_characteristics(source)
+        .expect("level grant probe should be calculable")
+        .abilities;
+    let has_ability = |expected: &Ability| {
+        abilities
+            .iter()
+            .any(|candidate| format!("{candidate:?}") == format!("{expected:?}"))
+    };
+    assert!(has_ability(&attack_trigger));
+    assert!(has_ability(&activated));
 }
 
 #[test]
@@ -1041,6 +1344,421 @@ fn test_set_base_power_toughness_for_filter() {
             sublayer: PtSublayer::Setting,
         }
     ));
+}
+
+#[test]
+fn dynamic_base_power_toughness_uses_plural_possessive_for_plural_filter() {
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    let ability =
+        SetBasePowerToughnessValueForFilter::new(ObjectFilter::creature(), value.clone(), value);
+
+    assert_eq!(
+        ability.display(),
+        "creatures have base power and base toughness each equal to their mana value"
+    );
+}
+
+#[test]
+fn each_surface_uses_singular_type_and_iterated_value_grammar() {
+    let mut filter = ObjectFilter::enchantment();
+    filter.other = true;
+    filter.excluded_subtypes.push(Subtype::Aura);
+    filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+
+    let add_type = AddCardTypesForFilter::new(filter.clone(), vec![CardType::Creature]);
+    assert_eq!(
+        add_type.display(),
+        "Each other non-Aura enchantment is a creature in addition to its other types"
+    );
+
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    let set_pt = SetBasePowerToughnessValueForFilter::new(filter, value.clone(), value);
+    assert_eq!(
+        set_pt.display(),
+        "Each other non-Aura enchantment has base power and base toughness each equal to its mana value"
+    );
+}
+
+#[test]
+fn filtered_animation_values_are_evaluated_per_affected_object() {
+    let mut march_game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let march_filter = ObjectFilter::artifact().without_type(CardType::Creature);
+    let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    let march = CardDefinitionBuilder::new(CardId::new(), "March of the Machines")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::set_card_types(
+            march_filter.clone(),
+            vec![CardType::Artifact, CardType::Creature],
+        )))
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_base_power_toughness_value(
+                march_filter,
+                mana_value.clone(),
+                mana_value,
+            ),
+        ))
+        .build();
+    march_game.create_object_from_definition(&march, alice, Zone::Battlefield);
+
+    let artifact_two = CardBuilder::new(CardId::new(), "Two-Mana Artifact")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_five = CardBuilder::new(CardId::new(), "Five-Mana Artifact")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let existing_creature = CardBuilder::new(CardId::new(), "Existing Artifact Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .build();
+    let artifact_two = march_game.create_object_from_card(&artifact_two, alice, Zone::Battlefield);
+    let artifact_five =
+        march_game.create_object_from_card(&artifact_five, alice, Zone::Battlefield);
+    let existing_creature =
+        march_game.create_object_from_card(&existing_creature, alice, Zone::Battlefield);
+
+    for (object, expected) in [(artifact_two, 2), (artifact_five, 5)] {
+        let chars = march_game
+            .calculated_characteristics(object)
+            .expect("animated artifact should have calculated characteristics");
+        assert!(chars.card_types.contains(&CardType::Artifact));
+        assert!(chars.card_types.contains(&CardType::Creature));
+        assert_eq!(chars.power, Some(expected));
+        assert_eq!(chars.toughness, Some(expected));
+    }
+    assert_eq!(march_game.calculated_power(existing_creature), Some(7));
+    assert_eq!(march_game.calculated_toughness(existing_creature), Some(7));
+
+    let mut spark_game = GameState::new(vec!["Alice".to_string()], 20);
+    let walker_filter = ObjectFilter::planeswalker().with_counter_type(CounterType::Loyalty);
+    let loyalty = Value::CountersOn(Box::new(ChooseSpec::Iterated), Some(CounterType::Loyalty));
+    let spark = CardDefinitionBuilder::new(CardId::new(), "Spark Rupture")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            StaticAbility::remove_all_abilities(walker_filter.clone()),
+        ))
+        .with_ability(Ability::static_ability(StaticAbility::set_card_types(
+            walker_filter.clone(),
+            vec![CardType::Creature],
+        )))
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_base_power_toughness_value(walker_filter, loyalty.clone(), loyalty),
+        ))
+        .build();
+    spark_game.create_object_from_definition(&spark, alice, Zone::Battlefield);
+
+    let walker = CardDefinitionBuilder::new(CardId::new(), "Ability-Bearing Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(0)
+        .with_ability(Ability::static_ability(StaticAbility::indestructible()))
+        .build();
+    let walker_three = spark_game.create_object_from_definition(&walker, alice, Zone::Battlefield);
+    let walker_seven = spark_game.create_object_from_definition(&walker, alice, Zone::Battlefield);
+    let walker_zero = spark_game.create_object_from_definition(&walker, alice, Zone::Battlefield);
+    spark_game
+        .object_mut(walker_three)
+        .expect("three-loyalty walker")
+        .counters
+        .insert(CounterType::Loyalty, 3);
+    spark_game
+        .object_mut(walker_seven)
+        .expect("seven-loyalty walker")
+        .counters
+        .insert(CounterType::Loyalty, 7);
+
+    for (object, expected) in [(walker_three, 3), (walker_seven, 7)] {
+        let chars = spark_game
+            .calculated_characteristics(object)
+            .expect("animated planeswalker should have calculated characteristics");
+        assert_eq!(chars.card_types.len(), 1);
+        assert!(chars.card_types.contains(&CardType::Creature));
+        assert_eq!(chars.power, Some(expected));
+        assert_eq!(chars.toughness, Some(expected));
+        assert!(
+            !chars
+                .static_abilities
+                .iter()
+                .any(|ability| ability.id() == StaticAbilityId::Indestructible),
+            "Spark Rupture should remove the animated planeswalker's abilities"
+        );
+    }
+    let zero_chars = spark_game
+        .calculated_characteristics(walker_zero)
+        .expect("zero-loyalty walker should have calculated characteristics");
+    assert!(zero_chars.card_types.contains(&CardType::Planeswalker));
+    assert!(!zero_chars.card_types.contains(&CardType::Creature));
+    assert!(
+        zero_chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.id() == StaticAbilityId::Indestructible),
+        "a planeswalker without loyalty counters should remain untouched"
+    );
+}
+
+#[test]
+fn attached_conditional_animation_is_scoped_to_each_aura() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let animation_filter =
+        ObjectFilter::artifact().match_tagged("enchanted", TaggedOpbjectRelation::IsTaggedObject);
+    let condition =
+        crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::AttachedToSourceMatches(
+            ObjectFilter::default().with_type(CardType::Creature),
+        )));
+    let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_card_types(
+                animation_filter.clone(),
+                vec![CardType::Artifact, CardType::Creature],
+            )
+            .with_condition(condition.clone())
+            .expect("set-card-types animation supports a condition"),
+        ))
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_base_power_toughness_value(
+                animation_filter,
+                mana_value.clone(),
+                mana_value,
+            )
+            .with_condition(condition)
+            .expect("dynamic base P/T animation supports a condition"),
+        ))
+        .build();
+
+    let noncreature_artifact = CardBuilder::new(CardId::new(), "Animated Relic")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let existing_creature = CardBuilder::new(CardId::new(), "Already Animated")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .build();
+    let noncreature_artifact =
+        game.create_object_from_card(&noncreature_artifact, alice, Zone::Battlefield);
+    let existing_creature =
+        game.create_object_from_card(&existing_creature, alice, Zone::Battlefield);
+    let active_aura =
+        game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+    let inactive_aura =
+        game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+    attach_equipment(&mut game, active_aura, noncreature_artifact);
+    attach_equipment(&mut game, inactive_aura, existing_creature);
+
+    let animated = game
+        .calculated_characteristics(noncreature_artifact)
+        .expect("enchanted noncreature artifact should be calculable");
+    assert!(animated.card_types.contains(&CardType::Artifact));
+    assert!(animated.card_types.contains(&CardType::Creature));
+    assert_eq!(animated.power, Some(4));
+    assert_eq!(animated.toughness, Some(4));
+
+    let unchanged = game
+        .calculated_characteristics(existing_creature)
+        .expect("already-creature artifact should be calculable");
+    assert_eq!(unchanged.power, Some(6));
+    assert_eq!(unchanged.toughness, Some(6));
+}
+
+#[test]
+fn second_animation_aura_priority_loop_resolves_without_hanging() {
+    use crate::decision::{AutoPassDecisionMaker, GameProgress, LegalAction};
+    use crate::game_loop::{
+        PriorityLoopState, PriorityResponse, advance_priority_with_dm,
+        apply_priority_response_with_dm,
+    };
+    use crate::game_state::{StackEntry, Target};
+    use crate::triggers::TriggerQueue;
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+
+    let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant artifact\nAs long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value.",
+        )
+        .expect("Animate Artifact should parse");
+
+    let mine = CardBuilder::new(CardId::new(), "Howling Mine")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mine_one = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+    let mine_two = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+
+    let aura_one = game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+    if let Some(aura) = game.object_mut(aura_one) {
+        aura.attached_to = Some(AttachmentTarget::Object(mine_one));
+    }
+    if let Some(host) = game.object_mut(mine_one) {
+        host.attachments.push(aura_one);
+    }
+
+    let aura_two = game.create_object_from_definition(&animate_artifact, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(aura_two, alice).with_targets(vec![Target::Object(mine_two)]),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let mut progress = advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("priority loop should begin");
+
+    for _ in 0..64 {
+        if game.stack.is_empty() {
+            break;
+        }
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => apply_priority_response_with_dm(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::PriorityAction(LegalAction::PassPriority),
+                &mut dm,
+            )
+            .expect("passing priority should succeed"),
+            GameProgress::StackResolved | GameProgress::Continue => {
+                advance_priority_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                    .expect("advancing after resolution should succeed")
+            }
+            other => panic!("unexpected progress: {other:?}"),
+        };
+    }
+
+    assert!(game.stack.is_empty(), "aura should have resolved");
+    for mine_id in [mine_one, mine_two] {
+        let animated = game
+            .calculated_characteristics(mine_id)
+            .expect("each enchanted artifact should be calculable");
+        assert!(
+            animated.card_types.contains(&CardType::Creature),
+            "mine {mine_id:?} should be animated"
+        );
+    }
+}
+
+#[test]
+fn second_animation_aura_resolves_from_stack_without_hanging() {
+    use crate::game_loop::resolve_stack_entry;
+    use crate::game_state::{StackEntry, Target};
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant artifact\nAs long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value.",
+        )
+        .expect("Animate Artifact should parse");
+
+    let mine = CardBuilder::new(CardId::new(), "Howling Mine")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mine_one = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+    let mine_two = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+
+    let aura_one = game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+    if let Some(aura) = game.object_mut(aura_one) {
+        aura.attached_to = Some(AttachmentTarget::Object(mine_one));
+    }
+    if let Some(host) = game.object_mut(mine_one) {
+        host.attachments.push(aura_one);
+    }
+
+    let aura_two = game.create_object_from_definition(&animate_artifact, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(aura_two, alice).with_targets(vec![Target::Object(mine_two)]));
+
+    resolve_stack_entry(&mut game).expect("second Animate Artifact should resolve");
+
+    assert!(game.stack.is_empty(), "stack should be empty after resolution");
+    for mine_id in [mine_one, mine_two] {
+        let animated = game
+            .calculated_characteristics(mine_id)
+            .expect("each enchanted artifact should be calculable");
+        assert!(
+            animated.card_types.contains(&CardType::Creature),
+            "mine {mine_id:?} should be animated"
+        );
+        assert_eq!(animated.power, Some(2));
+        assert_eq!(animated.toughness, Some(2));
+    }
+}
+
+#[test]
+fn two_active_conditional_animation_auras_terminate() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let animation_filter =
+        ObjectFilter::artifact().match_tagged("enchanted", TaggedOpbjectRelation::IsTaggedObject);
+    let condition =
+        crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::AttachedToSourceMatches(
+            ObjectFilter::default().with_type(CardType::Creature),
+        )));
+    let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    let animate_artifact = CardDefinitionBuilder::new(CardId::new(), "Animate Artifact")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_card_types(
+                animation_filter.clone(),
+                vec![CardType::Artifact, CardType::Creature],
+            )
+            .with_condition(condition.clone())
+            .expect("set-card-types animation supports a condition"),
+        ))
+        .with_ability(Ability::static_ability(
+            StaticAbility::set_base_power_toughness_value(
+                animation_filter,
+                mana_value.clone(),
+                mana_value,
+            )
+            .with_condition(condition)
+            .expect("dynamic base P/T animation supports a condition"),
+        ))
+        .build();
+
+    let mine = CardBuilder::new(CardId::new(), "Howling Mine")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mine_one = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+    let mine_two = game.create_object_from_card(&mine, alice, Zone::Battlefield);
+    let aura_one = game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+    let aura_two = game.create_object_from_definition(&animate_artifact, alice, Zone::Battlefield);
+    attach_equipment(&mut game, aura_one, mine_one);
+    attach_equipment(&mut game, aura_two, mine_two);
+
+    for mine_id in [mine_one, mine_two] {
+        let animated = game
+            .calculated_characteristics(mine_id)
+            .expect("each enchanted artifact should be calculable");
+        assert!(animated.card_types.contains(&CardType::Creature));
+        assert_eq!(animated.power, Some(2));
+        assert_eq!(animated.toughness, Some(2));
+    }
 }
 
 #[test]
@@ -1408,4 +2126,203 @@ fn dynamic_party_anthem_uses_rules_legal_maximum_party_size() {
     }
 
     assert_eq!(game.calculated_power(source_id), Some(3));
+}
+
+#[test]
+fn copied_static_variants_preserve_payloads_scope_and_rules_behavior() {
+    use ironsmith_core::StaticAbilityVariantSelector::{Any, ProtectionFromColor};
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let red_filter = ObjectFilter::default().with_colors(crate::color::ColorSet::RED);
+    let blue_filter = ObjectFilter::default().with_colors(crate::color::ColorSet::BLUE);
+
+    let donor = CardDefinitionBuilder::new(CardId::new(), "Variant Donor")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .with_ability(Ability::static_ability(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Color(crate::color::ColorSet::RED),
+        )))
+        .with_ability(Ability::static_ability(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Creatures,
+        )))
+        .with_ability(Ability::static_ability(StaticAbility::landwalk(
+            Subtype::Plains,
+        )))
+        .with_ability(Ability::static_ability(StaticAbility::hexproof_from(
+            red_filter.clone(),
+        )))
+        .with_ability(Ability::static_ability(StaticAbility::hexproof_from(
+            blue_filter.clone(),
+        )))
+        .build();
+    let donor_id = game.create_object_from_definition(&donor, alice, Zone::Battlefield);
+
+    let donor_filter = ObjectFilter::creature().named("Variant Donor");
+    let general_copy = CardDefinitionBuilder::new(CardId::new(), "General Copy")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .with_ability(Ability::static_ability(
+            StaticAbility::copy_static_ability_variants(CopyStaticAbilityVariants::new(
+                donor_filter.clone(),
+                vec![
+                    Any(StaticAbilityId::Protection),
+                    Any(StaticAbilityId::Landwalk),
+                    Any(StaticAbilityId::HexproofFrom),
+                ],
+                "copy selected static abilities".to_string(),
+            )),
+        ))
+        .build();
+    let general_id = game.create_object_from_definition(&general_copy, alice, Zone::Battlefield);
+
+    let color_copy = CardDefinitionBuilder::new(CardId::new(), "Color Copy")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .with_ability(Ability::static_ability(
+            StaticAbility::copy_static_ability_variants(CopyStaticAbilityVariants::new(
+                donor_filter,
+                vec![ProtectionFromColor],
+                "copy protection from colors".to_string(),
+            )),
+        ))
+        .build();
+    let color_id = game.create_object_from_definition(&color_copy, alice, Zone::Battlefield);
+
+    let landwalk_copy = CardDefinitionBuilder::new(CardId::new(), "Landwalk Copy")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .with_ability(Ability::static_ability(
+            StaticAbility::copy_static_ability_variants(CopyStaticAbilityVariants::new(
+                ObjectFilter::creature().named("Variant Donor"),
+                vec![Any(StaticAbilityId::Landwalk)],
+                "copy landwalk".to_string(),
+            )),
+        ))
+        .build();
+    let landwalk_id = game.create_object_from_definition(&landwalk_copy, alice, Zone::Battlefield);
+
+    let inherited = game
+        .calculated_characteristics(general_id)
+        .expect("general copy should be calculable")
+        .static_abilities;
+    assert!(inherited.iter().any(|ability| {
+        ability.protection_from()
+            == Some(&crate::ability::ProtectionFrom::Color(
+                crate::color::ColorSet::RED,
+            ))
+    }));
+    assert!(inherited.iter().any(|ability| {
+        ability.protection_from() == Some(&crate::ability::ProtectionFrom::Creatures)
+    }));
+    assert!(inherited.iter().any(|ability| {
+        ability.landwalk_kind()
+            == Some(LandwalkKind::Subtype {
+                subtype: Subtype::Plains,
+                snow: false,
+            })
+    }));
+    assert!(
+        inherited
+            .iter()
+            .any(|ability| { ability.hexproof_from_filter() == Some(&red_filter) })
+    );
+    assert!(
+        inherited
+            .iter()
+            .any(|ability| { ability.hexproof_from_filter() == Some(&blue_filter) })
+    );
+
+    let color_scoped = game
+        .calculated_characteristics(color_id)
+        .expect("color copy should be calculable")
+        .static_abilities;
+    assert!(color_scoped.iter().any(|ability| {
+        ability.protection_from()
+            == Some(&crate::ability::ProtectionFrom::Color(
+                crate::color::ColorSet::RED,
+            ))
+    }));
+    assert!(!color_scoped.iter().any(|ability| {
+        ability.protection_from() == Some(&crate::ability::ProtectionFrom::Creatures)
+    }));
+
+    let red_blocker = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Red Blocker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .color_indicator(crate::color::ColorSet::RED)
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let blue_blocker = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Blue Blocker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .color_indicator(crate::color::ColorSet::BLUE)
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let color_attacker = game
+        .object(color_id)
+        .expect("color copy should exist")
+        .clone();
+    assert!(!crate::rules::can_block(
+        &color_attacker,
+        game.object(red_blocker).expect("red blocker should exist"),
+        &game,
+    ));
+    assert!(crate::rules::can_block(
+        &color_attacker,
+        game.object(blue_blocker)
+            .expect("blue blocker should exist"),
+        &game,
+    ));
+
+    let landwalk_attacker = game
+        .object(landwalk_id)
+        .expect("landwalk copy should exist")
+        .clone();
+    assert!(crate::rules::can_block(
+        &landwalk_attacker,
+        game.object(blue_blocker)
+            .expect("blue blocker should exist"),
+        &game,
+    ));
+
+    game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Plains")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Plains])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    assert!(!crate::rules::can_block(
+        &landwalk_attacker,
+        game.object(blue_blocker)
+            .expect("blue blocker should exist"),
+        &game,
+    ));
+
+    game.remove_object(donor_id);
+    let after_removal = game
+        .calculated_characteristics(general_id)
+        .expect("general copy should remain calculable")
+        .static_abilities;
+    assert!(!after_removal.iter().any(|ability| {
+        matches!(
+            ability.id(),
+            StaticAbilityId::Protection | StaticAbilityId::Landwalk | StaticAbilityId::HexproofFrom
+        )
+    }));
+    assert!(crate::rules::can_block(
+        &landwalk_attacker,
+        game.object(blue_blocker)
+            .expect("blue blocker should exist"),
+        &game,
+    ));
 }

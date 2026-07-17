@@ -49,6 +49,22 @@ fn resolve_zone_replacements(
         .collect())
 }
 
+fn local_rewrite_fallback_target(effect: &Effect) -> Option<&crate::target::ChooseSpec> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return local_rewrite_fallback_target(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return local_rewrite_fallback_target(&with_id.effect);
+    }
+    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+        let [inner] = unless_pays.effects.as_slice() else {
+            return None;
+        };
+        return local_rewrite_fallback_target(inner);
+    }
+    effect.0.get_target_spec()
+}
+
 impl EffectExecutor for LocalRewriteEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         visitor(&self.effect);
@@ -64,7 +80,7 @@ impl EffectExecutor for LocalRewriteEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut replacements = Vec::new();
-        let fallback_target = self.effect.0.get_target_spec().cloned();
+        let fallback_target = local_rewrite_fallback_target(&self.effect).cloned();
         for replacement in &self.zone_replacements {
             match resolve_zone_replacements(replacement, game, ctx) {
                 Ok(resolved) => replacements.extend(resolved.into_iter().map(|effect| {

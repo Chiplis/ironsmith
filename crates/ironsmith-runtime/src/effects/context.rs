@@ -31,10 +31,18 @@ use crate::types::Subtype;
 pub enum ExecutionError {
     /// Target is invalid or no longer exists.
     InvalidTarget,
+    /// CR 801 suppresses this effect instruction because its resolved subject
+    /// is outside the resolving source controller's range of influence.
+    OutOfRange,
     /// Could not resolve a value (e.g., X not set).
     UnresolvableValue(String),
     /// Effect is impossible to execute in current state.
     Impossible(String),
+    /// The CR names an action but delegates its procedure to an external rules document/profile.
+    ExternalRulesProfileRequired {
+        action: &'static str,
+        specification: &'static str,
+    },
     /// Referenced player does not exist.
     PlayerNotFound(PlayerId),
     /// Referenced object does not exist.
@@ -51,8 +59,16 @@ impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExecutionError::InvalidTarget => write!(f, "Invalid target"),
+            ExecutionError::OutOfRange => write!(f, "Subject is outside range of influence"),
             ExecutionError::UnresolvableValue(msg) => write!(f, "Cannot resolve value: {}", msg),
             ExecutionError::Impossible(msg) => write!(f, "Effect impossible: {}", msg),
+            ExecutionError::ExternalRulesProfileRequired {
+                action,
+                specification,
+            } => write!(
+                f,
+                "{action} requires an enabled external rules profile defined by {specification}"
+            ),
             ExecutionError::PlayerNotFound(id) => write!(f, "Player {:?} not found", id),
             ExecutionError::ObjectNotFound(id) => write!(f, "Object {:?} not found", id),
             ExecutionError::EffectNotFound(id) => write!(f, "Effect {:?} not found", id),
@@ -162,8 +178,12 @@ pub struct ManaExecutionContext {
     pub mana_source_chosen_creature_type: Option<Subtype>,
     /// Provenance marker for mana produced during this execution.
     pub production_provenance: crate::events::mana::ManaProductionProvenance,
+    /// Optional per-unit retention applied to mana produced in this execution.
+    pub retention: Option<ironsmith_core::ManaRetentionDuration>,
     /// Mana spent on the activation cost of the resolving ability.
     pub activation_payment: crate::player::ManaPool,
+    /// More specific purpose for mana payments nested inside this effect.
+    pub payment_reason: Option<crate::costs::PaymentReason>,
 }
 
 /// Ephemeral replacement effects scoped to the current resolution path.
@@ -172,6 +192,10 @@ pub struct ReplacementExecutionContext {
     pub additional_replacement_effects: Vec<ReplacementEffect>,
     pub suppressed_replacement_effects: HashSet<ReplacementEffectId>,
     pub suppressed_replacement_effect_keys: HashSet<ReplacementEffectKey>,
+    /// CR 400.6 destination choices for objects moved by mutually exclusive
+    /// parts of one simultaneous event (for example, a lethal Exquisite
+    /// Archangel whose lose-game replacement also tries to exile itself).
+    pub simultaneous_zone_destinations: HashMap<ObjectId, crate::zone::Zone>,
 }
 
 /// Context for effect execution.
@@ -256,6 +280,11 @@ pub struct ExecutionContext<'a> {
     pub mana: ManaExecutionContext,
     /// Ephemeral replacement effects scoped to this execution.
     pub replacement: ReplacementExecutionContext,
+    /// Identity of the direct effect currently executing. This lets CR 805.8
+    /// collapse one effect applied to multiple teammates without collapsing
+    /// distinct printed effects that add or skip the same structure.
+    pub(crate) executing_effect: Option<usize>,
+    pub(crate) shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -296,6 +325,10 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field(
                 "additional_replacement_effects",
                 &self.replacement.additional_replacement_effects.len(),
+            )
+            .field(
+                "simultaneous_zone_destinations",
+                &self.replacement.simultaneous_zone_destinations,
             )
             .finish()
     }
@@ -338,6 +371,8 @@ impl<'a> ExecutionContext<'a> {
             provenance: ProvNodeId::default(),
             mana: ManaExecutionContext::default(),
             replacement: ReplacementExecutionContext::default(),
+            executing_effect: None,
+            shared_team_structure_operations: HashSet::new(),
         }
     }
 
@@ -384,6 +419,8 @@ impl<'a> ExecutionContext<'a> {
             provenance: ProvNodeId::default(),
             mana: ManaExecutionContext::default(),
             replacement: ReplacementExecutionContext::default(),
+            executing_effect: None,
+            shared_team_structure_operations: HashSet::new(),
         }
     }
 
@@ -420,7 +457,30 @@ impl<'a> ExecutionContext<'a> {
             provenance: self.provenance,
             mana: self.mana,
             replacement: self.replacement,
+            executing_effect: self.executing_effect,
+            shared_team_structure_operations: self.shared_team_structure_operations,
         }
+    }
+
+    /// Claim one team-level structural operation for the currently executing
+    /// effect. Ordinary games and direct executor calls retain legacy behavior.
+    pub(crate) fn claim_shared_team_structure_operation(
+        &mut self,
+        game: &GameState,
+        player: PlayerId,
+        operation: &'static str,
+    ) -> bool {
+        if !game.shared_team_turns_enabled() {
+            return true;
+        }
+        let Some(effect) = self.executing_effect else {
+            return true;
+        };
+        let Some(team) = game.team_index_for(player) else {
+            return true;
+        };
+        self.shared_team_structure_operations
+            .insert((effect, team, operation))
     }
 
     pub fn additional_replacement_effects(&self) -> &[ReplacementEffect] {
@@ -429,6 +489,14 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn additional_replacement_effects_snapshot(&self) -> Vec<ReplacementEffect> {
         self.replacement.additional_replacement_effects.clone()
+    }
+
+    /// Return the CR 400.6 destination selected for this object, if any.
+    pub fn simultaneous_zone_destination(&self, object: ObjectId) -> Option<crate::zone::Zone> {
+        self.replacement
+            .simultaneous_zone_destinations
+            .get(&object)
+            .copied()
     }
 
     pub fn with_temp_additional_replacement_effects<R>(
@@ -478,10 +546,7 @@ impl<'a> ExecutionContext<'a> {
     }
 
     /// Retain the resolving activated ability's mana payment.
-    pub fn with_activation_mana_payment(
-        mut self,
-        payment: crate::player::ManaPool,
-    ) -> Self {
+    pub fn with_activation_mana_payment(mut self, payment: crate::player::ManaPool) -> Self {
         self.mana.activation_payment = payment;
         self
     }
@@ -1112,20 +1177,22 @@ impl<'a> ExecutionContext<'a> {
                     .extend(block_context.blocker_snapshots);
             }
         }
+        let chosen_player = self
+            .combat
+            .chosen_player
+            .or_else(|| game.chosen_player(self.source));
         let mut filter_ctx = game
             .filter_context_for(self.controller, Some(self.source))
+            .with_source_snapshot(self.source_snapshot.clone())
             .with_iterated_player(self.iteration.iterated_player)
             .with_x_value(self.x_value)
-            .with_chosen_player(
-                self.combat
-                    .chosen_player
-                    .or_else(|| game.chosen_player(self.source)),
-            )
+            .with_chosen_player(chosen_player)
             .with_target_players(target_players)
             .with_target_objects(target_objects)
             .with_tagged_objects(&tagged_objects)
             .with_tagged_players(&tagged_players)
             .with_effect_outcomes(&self.effect_outcomes);
+        filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
         }

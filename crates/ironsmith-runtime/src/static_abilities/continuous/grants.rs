@@ -263,6 +263,7 @@ impl StaticAbilityKind for SetChosenColorForFilter {
 pub struct GrantObjectAbilityForFilter {
     pub filter: ObjectFilter,
     pub ability: Ability,
+    pub additional_abilities: Vec<Ability>,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
     pub set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
@@ -273,6 +274,7 @@ impl std::fmt::Debug for GrantObjectAbilityForFilter {
         f.debug_struct("GrantObjectAbilityForFilter")
             .field("filter", &self.filter)
             .field("ability", &self.ability)
+            .field("additional_abilities", &self.additional_abilities)
             .field(
                 "generated_modification",
                 &Modification::AddAbilityGeneric(self.ability.clone()),
@@ -289,10 +291,16 @@ impl GrantObjectAbilityForFilter {
         Self {
             filter,
             ability,
+            additional_abilities: Vec::new(),
             display,
             condition: None,
             set_quantifier_surface: None,
         }
+    }
+
+    pub fn with_additional_abilities(mut self, abilities: Vec<Ability>) -> Self {
+        self.additional_abilities = abilities;
+        self
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
@@ -347,7 +355,11 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             }
             _ => ability_text,
         };
-        let (subject, explicitly_singular_subject) = if filter_desc == "Sliver" {
+        let (mut subject, explicitly_singular_subject) = if let Some(subject) =
+            exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
+        {
+            (subject, true)
+        } else if filter_desc == "Sliver" {
             ("All Slivers".to_string(), false)
         } else {
             grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface)
@@ -359,8 +371,37 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         } else {
             "has"
         };
-        let mut text = format!("{subject} {verb} {rendered_ability}");
+        let renders_unblockable_restriction = matches!(
+            &self.ability.kind,
+            AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Unblockable
+        );
+        // A source-only unblockable grant necessarily applies to a creature.
+        // Keep the generic filter's internal `source` noun out of Oracle text
+        // when the parser did not preserve a more specific source surface.
+        if renders_unblockable_restriction && self.filter.source && subject == "this source" {
+            subject = "this creature".to_string();
+        }
+        let mut text = if renders_unblockable_restriction {
+            format!("{subject} can't be blocked")
+        } else {
+            format!("{subject} {verb} {rendered_ability}")
+        };
         if let Some(condition) = &self.condition {
+            if renders_unblockable_restriction
+                && self.filter.source
+                && (matches!(
+                    condition,
+                    crate::ConditionExpr::SourceIsEquipped
+                        | crate::ConditionExpr::SourceIsEnchanted
+                        | crate::ConditionExpr::SourceIsMonstrous
+                        | crate::ConditionExpr::SourceIsAttacking
+                        | crate::ConditionExpr::SourceIsUntapped
+                ) || source_is_attacking_alone_condition(condition))
+            {
+                text.push(' ');
+                text.push_str(&describe_same_source_static_condition(condition));
+                return text;
+            }
             let condition_text = describe_static_condition(condition);
             if static_condition_is_during_your_turn(condition) {
                 return format!("During your turn, {text}");
@@ -382,13 +423,23 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         Some(&self.ability)
     }
 
+    fn source_granted_inline_abilities(&self) -> Vec<&crate::ability::Ability> {
+        if !self.filter.source {
+            return Vec::new();
+        }
+        std::iter::once(&self.ability)
+            .chain(self.additional_abilities.iter())
+            .collect()
+    }
+
     fn generate_effects(
         &self,
         source: ObjectId,
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        vec![effect_with_optional_static_condition(
+        let mut effects = Vec::with_capacity(1 + self.additional_abilities.len());
+        effects.push(effect_with_optional_static_condition(
             ContinuousEffect::new(
                 source,
                 controller,
@@ -397,7 +448,20 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
-        )]
+        ));
+        effects.extend(self.additional_abilities.iter().cloned().map(|ability| {
+            effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    EffectTarget::Filter(self.filter.clone()),
+                    Modification::AddAbilityGeneric(ability),
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )
+        }));
+        effects
     }
 }
 

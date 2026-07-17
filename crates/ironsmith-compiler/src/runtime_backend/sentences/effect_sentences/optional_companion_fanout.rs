@@ -2,6 +2,9 @@ use super::super::grammar::effects::optional_companion_shapes::{
     LeadingOptionalCompanionVerb, parse_leading_optional_companion_shape,
     parse_shared_subject_optional_companion_shape,
 };
+use super::super::grammar::structure::{
+    LeadingResultPrefixKind, split_leading_result_prefix_lexed,
+};
 use super::super::lexer::OwnedLexToken;
 use super::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -123,7 +126,7 @@ fn combine_shared_keyword_choice(
     Ok(Some(EffectAst::ChooseOneOf { modes }))
 }
 
-pub(crate) fn parse_optional_companion_fanout_sentence(
+fn parse_optional_companion_fanout_body(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(shape) = parse_shared_subject_optional_companion_shape(tokens) {
@@ -160,6 +163,29 @@ pub(crate) fn parse_optional_companion_fanout_sentence(
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_optional_companion_fanout_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(prefix) = split_leading_result_prefix_lexed(tokens) else {
+        return parse_optional_companion_fanout_body(tokens);
+    };
+    let Some(mut effects) = parse_optional_companion_fanout_body(prefix.trailing_tokens)? else {
+        return Ok(None);
+    };
+
+    super::preserve_result_conjunction_body_lexed(prefix.trailing_tokens, &mut effects);
+    Ok(Some(vec![match prefix.kind {
+        LeadingResultPrefixKind::If => EffectAst::IfResult {
+            predicate: prefix.predicate,
+            effects,
+        },
+        LeadingResultPrefixKind::When => EffectAst::WhenResult {
+            predicate: prefix.predicate,
+            effects,
+        },
+    }]))
 }
 
 #[cfg(test)]

@@ -54,9 +54,13 @@ impl EffectExecutor for SkipTurnEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        if !ctx.claim_shared_team_structure_operation(game, player_id, "skip_turn") {
+            return Ok(EffectOutcome::resolved());
+        }
 
         // Mark the player to skip their next turn
-        game.turn_store.skip_next_turn.insert(player_id);
+        let turn_player = game.team_turn_representative(player_id);
+        game.turn_store.skip_next_turn.insert(turn_player);
 
         Ok(EffectOutcome::resolved())
     }

@@ -2946,6 +2946,97 @@ pub(super) fn parse_choose_card_name_then_draw_for_each_card_exiled_from_hand_th
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn same_name_three_zone_extraction_cards_render_structural_references() {
+    let cases: &[(&str, &[&str])] = &[
+        (
+            "Lost Legacy",
+            &[
+                "choose a nonartifact, nonland card name",
+                "search target player's graveyard, hand, and library for any number of cards with that name and exile them",
+                "that player shuffles, then draws a card for each card exiled from their hand this way",
+            ],
+        ),
+        (
+            "Shimian Specter",
+            &[
+                "that player reveals their hand. you choose a nonland card from it",
+                "search that player's graveyard, hand, and library for all cards with the same name as that card and exile them",
+                "then that player shuffles",
+            ],
+        ),
+        (
+            "Surgical Extraction",
+            &[
+                "choose target card in a graveyard other than a basic land card",
+                "search its owner's graveyard, hand, and library for any number of cards with the same name as that card and exile them",
+                "then that player shuffles",
+            ],
+        ),
+        (
+            "Test of Talents",
+            &[
+                "counter target instant or sorcery spell",
+                "search its controller's graveyard, hand, and library for any number of cards with the same name as that spell and exile them",
+                "that player shuffles, then draws a card for each card exiled from their hand this way",
+            ],
+        ),
+        (
+            "The End",
+            &[
+                "exile target creature or planeswalker",
+                "search its controller's graveyard, hand, and library for any number of cards with the same name as that permanent and exile them",
+                "that player shuffles, then draws a card for each card exiled from their hand this way",
+            ],
+        ),
+        (
+            "The Rise of Sozin",
+            &[
+                "choose a card name",
+                "search target opponent's graveyard, hand, and library for up to four cards with that name and exile them",
+                "then that player shuffles",
+            ],
+        ),
+        (
+            "The Stone Brain",
+            &[
+                "choose a card name",
+                "search target opponent's graveyard, hand, and library for up to four cards with that name and exile them",
+                "that player shuffles, then draws a card for each card exiled from their hand this way",
+            ],
+        ),
+        (
+            "Unmoored Ego",
+            &[
+                "choose a card name",
+                "search target opponent's graveyard, hand, and library for up to four cards with that name and exile them",
+                "that player shuffles, then draws a card for each card exiled from their hand this way",
+            ],
+        ),
+    ];
+
+    for (name, fragments) in cases {
+        let definition = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&definition)
+            .join(" ")
+            .to_ascii_lowercase();
+        for fragment in *fragments {
+            assert!(
+                rendered.contains(fragment),
+                "{name} should preserve {fragment:?}, got {rendered}"
+            );
+        }
+        assert!(
+            !rendered.contains("for each card searched this way")
+                && !rendered.contains("for each card searched for this way")
+                && !rendered.contains("with the same name as it")
+                && !rendered.contains("nonland land card"),
+            "{name} should not expose generic same-name iteration or a contradictory basic-land filter, got {rendered}"
+        );
+    }
+}
+
 #[test]
 pub(super) fn parse_predict_oracle_strict_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Predict");

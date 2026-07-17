@@ -44,6 +44,9 @@ fn exile_object(
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
     if let Some(obj) = game.object(object_id) {
         let from_zone = obj.zone;
+        let requested_zone = ctx
+            .simultaneous_zone_destination(object_id)
+            .unwrap_or(Zone::Exile);
         let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         let additional_effects = ctx.additional_replacement_effects_snapshot();
 
@@ -51,7 +54,7 @@ fn exile_object(
             game,
             object_id,
             from_zone,
-            Zone::Exile,
+            requested_zone,
             ctx.cause.clone(),
             &mut ctx.decision_maker,
             &additional_effects,
@@ -248,6 +251,9 @@ impl EffectExecutor for ExileEffect {
                     return Ok(false);
                 };
                 let from_zone = obj.zone;
+                let requested_zone = ctx
+                    .simultaneous_zone_destination(object_id)
+                    .unwrap_or(Zone::Exile);
                 let pre_snapshot =
                     ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
                 let additional_effects = ctx.additional_replacement_effects_snapshot();
@@ -255,7 +261,7 @@ impl EffectExecutor for ExileEffect {
                     game,
                     object_id,
                     from_zone,
-                    Zone::Exile,
+                    requested_zone,
                     ctx.cause.clone(),
                     &mut ctx.decision_maker,
                     &additional_effects,

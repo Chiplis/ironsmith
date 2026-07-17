@@ -46,10 +46,10 @@ use super::lowering_support::{
 use super::reference_helpers::{
     as_followup_player_alias, choose_spec_targets_object, infer_player_filter_from_object_filter,
     is_you_player_filter, object_filter_as_tagged_reference, resolve_attach_object_spec,
-    resolve_it_tag, resolve_it_tag_key, resolve_non_target_player_filter,
-    resolve_restriction_it_tag, resolve_target_spec_with_choices, resolve_total_cost_it_tags,
-    resolve_unless_player_filter, resolve_value_it_tag, watch_tag_from_filter,
-    with_target_reference_surface_hint,
+    resolve_choose_spec_it_tag, resolve_it_tag, resolve_it_tag_key,
+    resolve_non_target_player_filter, resolve_restriction_it_tag, resolve_target_spec_with_choices,
+    resolve_total_cost_it_tags, resolve_unless_player_filter, resolve_value_it_tag,
+    watch_tag_from_filter, with_target_reference_surface_hint,
 };
 use super::reference_model::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, ReferenceEnv, ReferenceExports,
@@ -60,10 +60,7 @@ use super::reference_resolution::{
     preserves_existing_it_for_power_self_damage_followup,
 };
 use super::static_ability_helpers::{
-    afflict_triggered_ability, decayed_triggered_ability, exalted_triggered_ability,
     lower_granted_abilities_ast, lower_granted_abilities_ast_to_object_abilities,
-    myriad_triggered_ability, persist_triggered_ability, suspend_exile_triggered_abilities,
-    undying_triggered_ability,
 };
 use super::util::map_span_to_original;
 
@@ -101,11 +98,11 @@ pub(crate) use choose_effect_helpers::{
     compile_choose_player_with_subject,
 };
 pub(crate) use control_flow_handlers::{
-    compile_effects_in_iterated_object_context, compile_effects_in_iterated_player_context,
-    compile_effects_preserving_last_effect, compile_if_do_with_opponent_did,
-    compile_if_do_with_opponent_doesnt, compile_if_do_with_player_did,
-    compile_if_do_with_player_doesnt, compile_repeat_process_body, compile_result_followup,
-    compile_vote_sequence, effect_predicate_from_if_result,
+    collect_targeted_player_specs_from_player_filter, compile_effects_in_iterated_object_context,
+    compile_effects_in_iterated_player_context, compile_effects_preserving_last_effect,
+    compile_if_do_with_opponent_did, compile_if_do_with_opponent_doesnt,
+    compile_if_do_with_player_did, compile_if_do_with_player_doesnt, compile_repeat_process_body,
+    compile_result_followup, compile_vote_sequence, effect_predicate_from_if_result,
     force_implicit_vote_token_controller_you, target_context_prelude_for_filter,
     with_preserved_lowering_context,
 };
@@ -157,6 +154,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
         PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
+        PredicateAst::SourceControllersMainPhase => Condition::SourceControllersMainPhase,
         PredicateAst::ItIsLandCard => {
             let mut filter = ObjectFilter {
                 zone: None,
@@ -646,6 +644,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::SourceIsEquipped => Condition::SourceIsEquipped,
         PredicateAst::SourceIsEnchanted => Condition::SourceIsEnchanted,
         PredicateAst::SourceIsSaddled => Condition::SourceIsSaddled,
+        PredicateAst::SourceIsRenowned => Condition::SourceIsRenowned,
         PredicateAst::SourceCrewedByExactly { count, filter } => Condition::SourceCrewedByExactly {
             count: *count,
             filter: filter.clone(),
@@ -810,6 +809,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 ironsmith_core::TurnHistoryCondition::SourceAttackedThisTurn {
                     surface: surface.clone(),
                 }
+            }
+            TurnHistoryPredicateAst::TriggeringObjectEnlistedThisCombat => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectEnlistedThisCombat
             }
             TurnHistoryPredicateAst::TriggeringObjectWasCast => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast
@@ -1183,6 +1185,12 @@ fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return effect_exposes_target_choice(&with_id.effect, choice);
     }
+    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect<Effect>>() {
+        return unless_pays
+            .effects
+            .iter()
+            .any(|child| effect_exposes_target_choice(child, choice));
+    }
     effect
         .downcast_ref::<crate::effects::SequenceEffect>()
         .filter(|sequence| sequence.surface != ironsmith_core::SequenceSurface::Sequential)
@@ -1292,41 +1300,19 @@ fn bind_relative_iterated_player_filters_to_chooser(
     }
     let chooser = as_followup_player_alias(chooser.clone());
 
-    if matches!(filter.owner, Some(PlayerFilter::IteratedPlayer)) {
-        filter.owner = Some(chooser.clone());
-    }
-    if matches!(filter.controller, Some(PlayerFilter::IteratedPlayer)) {
-        filter.controller = Some(chooser.clone());
-    }
-    if matches!(filter.cast_by, Some(PlayerFilter::IteratedPlayer)) {
-        filter.cast_by = Some(chooser.clone());
-    }
-    if matches!(filter.targets_player, Some(PlayerFilter::IteratedPlayer)) {
-        filter.targets_player = Some(chooser.clone());
-    }
-    if matches!(
-        filter.targets_only_player,
-        Some(PlayerFilter::IteratedPlayer)
-    ) {
-        filter.targets_only_player = Some(chooser.clone());
-    }
-    if matches!(
-        filter.attacking_player_or_planeswalker_controlled_by,
-        Some(PlayerFilter::IteratedPlayer)
-    ) {
-        filter.attacking_player_or_planeswalker_controlled_by = Some(chooser.clone());
-    }
-    if matches!(
-        filter.entered_battlefield_controller,
-        Some(PlayerFilter::IteratedPlayer)
-    ) {
-        filter.entered_battlefield_controller = Some(chooser.clone());
-    }
-    if matches!(
-        filter.attached_to_player,
-        Some(PlayerFilter::IteratedPlayer)
-    ) {
-        filter.attached_to_player = Some(chooser.clone());
+    for relative in [
+        &mut filter.owner,
+        &mut filter.controller,
+        &mut filter.cast_by,
+        &mut filter.targets_player,
+        &mut filter.targets_only_player,
+        &mut filter.attacking_player_or_planeswalker_controlled_by,
+        &mut filter.entered_battlefield_controller,
+        &mut filter.attached_to_player,
+    ] {
+        if let Some(relative) = relative.as_mut() {
+            bind_relative_iterated_player_filter_to_player_filter(relative, &chooser);
+        }
     }
     if let Some(targets) = filter.targets_object.as_deref_mut() {
         bind_relative_iterated_player_filters_to_chooser(targets, &chooser);
@@ -1361,10 +1347,26 @@ fn bind_relative_iterated_player_filter_to_player_filter(
     relative: &mut PlayerFilter,
     player_filter: &PlayerFilter,
 ) {
-    if matches!(relative, PlayerFilter::IteratedPlayer)
-        && !matches!(player_filter, PlayerFilter::IteratedPlayer)
-    {
-        *relative = as_followup_player_alias(player_filter.clone());
+    if matches!(player_filter, PlayerFilter::IteratedPlayer) {
+        return;
+    }
+    match relative {
+        PlayerFilter::IteratedPlayer => {
+            *relative = as_followup_player_alias(player_filter.clone());
+        }
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
+            bind_relative_iterated_player_filter_to_player_filter(inner, player_filter);
+        }
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::MaxSpeed { base, .. } => {
+            bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
+        }
+        PlayerFilter::Excluding { base, excluded } => {
+            bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
+            bind_relative_iterated_player_filter_to_player_filter(excluded, player_filter);
+        }
+        _ => {}
     }
 }
 
@@ -1797,7 +1799,10 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
     let EffectAst::SubjectVerb(subject_verb) = &effects[0] else {
         return Ok(None);
     };
-    let SubjectVerbActionAst::Exile { target, face_down } = &subject_verb.action else {
+    let SubjectVerbActionAst::Exile {
+        target, face_down, ..
+    } = &subject_verb.action
+    else {
         return Ok(None);
     };
     if *face_down {
@@ -2116,70 +2121,14 @@ fn apply_local_reference_env(ctx: &mut EffectLoweringContext, env: &ReferenceEnv
 fn lower_granted_ability_grant_modifications(
     abilities: &[GrantedAbilityAst],
 ) -> Result<Vec<crate::continuous::Modification>, CardTextError> {
-    let mut modifications = Vec::with_capacity(abilities.len());
-    for ability in abilities {
-        match ability {
-            GrantedAbilityAst::ThisAbility => {
-                return Err(CardTextError::InvariantViolation(
-                    "this ability cannot be granted".to_string(),
-                ));
+    let lowered = lower_granted_abilities_ast_to_object_abilities(abilities)?;
+    let mut modifications = Vec::with_capacity(lowered.len());
+    for ability in lowered {
+        match ability.kind {
+            crate::ability::AbilityKind::Static(static_ability) => {
+                modifications.push(crate::continuous::Modification::AddAbility(static_ability));
             }
-            GrantedAbilityAst::ParsedObjectAbility { ability, display } => {
-                let mut lowered = lower_parsed_ability(ability.clone())?;
-                *lowered.text_mut() = Some(display.clone());
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    lowered.into_runtime(),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Decayed) => {
-                modifications.push(crate::continuous::Modification::AddAbility(
-                    StaticAbility::keyword_marker("decayed"),
-                ));
-                modifications.push(crate::continuous::Modification::AddAbility(
-                    StaticAbility::cant_block(),
-                ));
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    decayed_triggered_ability(),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Persist) => {
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    persist_triggered_ability(),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Undying) => {
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    undying_triggered_ability(),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Exalted) => {
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    exalted_triggered_ability(),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Myriad) => {
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    myriad_triggered_ability(),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Afflict(amount)) => {
-                modifications.push(crate::continuous::Modification::AddAbilityGeneric(
-                    afflict_triggered_ability(*amount),
-                ));
-            }
-            GrantedAbilityAst::KeywordAction(crate::KeywordAction::Marker("suspend")) => {
-                modifications.extend(
-                    suspend_exile_triggered_abilities()
-                        .into_iter()
-                        .map(crate::continuous::Modification::AddAbilityGeneric),
-                );
-            }
-            _ => {
-                let mut lowered = lower_granted_abilities_ast(std::slice::from_ref(ability))?;
-                if let Some(static_ability) = lowered.pop() {
-                    modifications.push(crate::continuous::Modification::AddAbility(static_ability));
-                }
-            }
+            _ => modifications.push(crate::continuous::Modification::AddAbilityGeneric(ability)),
         }
     }
     Ok(modifications)
@@ -2196,6 +2145,7 @@ fn granted_ability_mode_description(
     let display = match ability {
         GrantedAbilityAst::ThisAbility => "this ability".to_string(),
         GrantedAbilityAst::ParsedObjectAbility { display, .. } => display.clone(),
+        GrantedAbilityAst::KeywordAction(action) => action.display_text(),
         _ => lower_granted_abilities_ast(std::slice::from_ref(ability))?
             .into_iter()
             .next()
@@ -2232,6 +2182,42 @@ pub(crate) fn tag_object_target_effect(
         effect.tag(tag)
     } else {
         effect
+    }
+}
+
+fn selected_object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+    match spec.unhinted() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => selected_object_filter(inner),
+        _ => None,
+    }
+}
+
+/// Preserve the exact player associated with a selected object for a later
+/// "that player" reference. A broad lexical filter such as `Opponent` is only
+/// the legal set; once the object is selected, its tagged owner/controller is
+/// the concrete multiplayer antecedent.
+pub(crate) fn track_selected_object_player_provenance(
+    spec: &ChooseSpec,
+    ctx: &mut EffectLoweringContext,
+) {
+    let Some(filter) = selected_object_filter(spec) else {
+        return;
+    };
+    let reference = if spec.is_target() && !ctx.auto_tag_object_targets {
+        ObjectRef::Target
+    } else {
+        ctx.last_object_tag
+            .as_ref()
+            .map(|tag| ObjectRef::tagged(tag.clone()))
+            .unwrap_or(ObjectRef::Target)
+    };
+    if filter.owner.is_some() {
+        ctx.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(reference));
+    } else if filter.controller.is_some() {
+        ctx.last_player_filter = Some(PlayerFilter::AliasedControllerOf(reference));
     }
 }
 
@@ -3320,11 +3306,10 @@ fn build_creature_token_definition(
         builder = builder.with_ability(ability);
     }
     if rules.bands_with_wolves {
-        builder = builder.with_ability(Ability::static_ability(
-            StaticAbility::keyword_fallback_text(
-                "bands with other creatures named Wolves of the Hunt",
-            ),
-        ));
+        builder = builder.with_ability(Ability::static_ability(StaticAbility::bands_with_other(
+            ObjectFilter::creature().named("Wolves of the Hunt"),
+            "bands with other creatures named Wolves of the Hunt",
+        )));
     }
     if rules.red_pump {
         builder = builder.with_ability(token_red_pump_ability());

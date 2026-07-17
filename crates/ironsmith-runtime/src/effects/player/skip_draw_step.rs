@@ -5,6 +5,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::game_state::Step;
 use crate::target::PlayerFilter;
 
 /// Effect that causes a player to skip their next draw step.
@@ -33,7 +34,10 @@ impl EffectExecutor for SkipDrawStepEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        game.turn_store.skip_next_draw_step.insert(player_id);
+        if !ctx.claim_shared_team_structure_operation(game, player_id, "skip_draw_step") {
+            return Ok(EffectOutcome::resolved());
+        }
+        game.skip_next_step(player_id, Step::Draw);
         Ok(EffectOutcome::resolved())
     }
 }
@@ -58,7 +62,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(game.turn_store.skip_next_draw_step.contains(&alice));
+        assert_eq!(game.pending_step_skips(alice, Step::Draw), 1);
     }
 
     #[test]
@@ -73,7 +77,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
-        assert!(!game.turn_store.skip_next_draw_step.contains(&alice));
-        assert!(game.turn_store.skip_next_draw_step.contains(&bob));
+        assert_eq!(game.pending_step_skips(alice, Step::Draw), 0);
+        assert_eq!(game.pending_step_skips(bob, Step::Draw), 1);
     }
 }

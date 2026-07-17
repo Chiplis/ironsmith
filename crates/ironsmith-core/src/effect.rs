@@ -100,6 +100,69 @@ impl ChoiceAggregateConstraint {
     }
 }
 
+/// Object identity used by a predicate-bearing resolution duration.
+///
+/// Semantic references are materialized to `Specific` when the resolving
+/// spell or ability creates its continuous effect. This keeps the duration's
+/// operands distinct from both the effect source and the fixed affected set.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ContinuousDurationObject {
+    Source,
+    AffectedObject,
+    Tagged(TagKey),
+    Specific(crate::ObjectId),
+}
+
+/// Player identity used by a predicate-bearing resolution duration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ContinuousDurationPlayer {
+    EffectController,
+    ControllerOf(ContinuousDurationObject),
+    Tagged(TagKey),
+    Specific(crate::PlayerId),
+}
+
+/// A reusable current-state predicate for CR 611.2b durations.
+///
+/// These predicates are evaluated against current game state, but their
+/// duration is latched: a false initial value starts no effect, and a false
+/// value after the effect starts expires it permanently.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContinuousDurationPredicate {
+    All(Vec<ContinuousDurationPredicate>),
+    ObjectOnBattlefield(ContinuousDurationObject),
+    ObjectTapped(ContinuousDurationObject),
+    ObjectHasCounter {
+        object: ContinuousDurationObject,
+        counter_type: CounterType,
+        minimum: u32,
+    },
+    ObjectAttachedTo {
+        attachment: ContinuousDurationObject,
+        attached_to: ContinuousDurationObject,
+    },
+    ObjectIsEnchanted(ContinuousDurationObject),
+    PlayerIsMonarch(ContinuousDurationPlayer),
+    ObjectPowerAtMostObject {
+        lesser: ContinuousDurationObject,
+        greater: ContinuousDurationObject,
+    },
+}
+
+impl ContinuousDurationPredicate {
+    pub fn all(predicates: impl IntoIterator<Item = Self>) -> Self {
+        Self::All(predicates.into_iter().collect())
+    }
+
+    pub fn affected_object_has_counter(counter_type: CounterType) -> Self {
+        Self::ObjectHasCounter {
+            object: ContinuousDurationObject::AffectedObject,
+            counter_type,
+            minimum: 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum Until {
     #[default]
@@ -113,6 +176,9 @@ pub enum Until {
     ThisLeavesTheBattlefield,
     SourceUntaps,
     YouStopControllingThis,
+    /// A CR 611.2b duration whose predicate is materialized at resolution and
+    /// whose first transition to false is permanent.
+    ForAsLongAs(ContinuousDurationPredicate),
     TurnsPass(crate::value_model::Value),
 }
 
@@ -258,6 +324,11 @@ pub enum DelayedTriggerSpec {
     SourceControllerLosesControl {
         source_description: String,
     },
+    ThisEntersBattlefield,
+    ThisEntersBattlefieldWithSurface {
+        surface: SourceReferenceSurface,
+        subject_number: crate::trigger_model::TriggerSubjectNumber,
+    },
     ThisDies,
     ThisLeavesBattlefield,
     ThisAttacksAndIsntBlocked,
@@ -269,6 +340,12 @@ pub enum DelayedTriggerSpec {
     BecomesBlocked(ObjectFilter),
     LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
+    PermanentBecomesTapped(ObjectFilter),
+    DealsCombatDamage(ObjectFilter),
+    DealsCombatDamageTo {
+        source: ObjectFilter,
+        target: ObjectFilter,
+    },
     DealsCombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
@@ -283,6 +360,7 @@ pub enum DelayedTriggerSpec {
     SpellCast {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        timing: Option<crate::trigger_model::TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
@@ -303,15 +381,35 @@ pub enum DelayedTriggerSpec {
     Either(Box<DelayedTriggerSpec>, Box<DelayedTriggerSpec>),
 }
 
+/// Lifetime policy for a delayed trigger registration.
+///
+/// The runtime anchors turn-relative variants when the scheduling effect
+/// resolves, so intervening extra turns do not change their meaning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DelayedTriggerDuration {
+    #[default]
+    Forever,
+    EndOfTurn,
+    EndOfCombat,
+    UntilControllerNextTurn,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduleDelayedTriggerEffect<E> {
     pub trigger: DelayedTriggerSpec,
     pub effects: Vec<E>,
     pub one_shot: bool,
     pub start_next_turn: bool,
+    pub duration: DelayedTriggerDuration,
     pub until_end_of_turn: bool,
     pub until_end_of_combat: bool,
     pub watch_ability_source: bool,
+    /// Capture every object target chosen for the resolving spell or ability
+    /// and register one watcher per object.
+    pub watch_all_object_targets: bool,
+    /// Preserve the authored set-reference surface for a watched tagged set,
+    /// such as "either of those creatures".
+    pub either_of_watched_objects: bool,
     pub target_choices: Vec<ChooseSpec>,
     pub target_tag: Option<crate::tag::TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -331,9 +429,12 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             effects: effects.into(),
             one_shot,
             start_next_turn: false,
+            duration: DelayedTriggerDuration::Forever,
             until_end_of_turn: false,
             until_end_of_combat: false,
             watch_ability_source: false,
+            watch_all_object_targets: false,
+            either_of_watched_objects: false,
             target_choices,
             target_tag: None,
             target_filter: None,
@@ -366,18 +467,38 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
     }
 
     pub fn until_end_of_turn(mut self) -> Self {
+        self.duration = DelayedTriggerDuration::EndOfTurn;
         self.until_end_of_turn = true;
+        self.until_end_of_combat = false;
         self
     }
 
     pub fn until_end_of_combat(mut self) -> Self {
+        self.duration = DelayedTriggerDuration::EndOfCombat;
         self.until_end_of_combat = true;
         self.until_end_of_turn = false;
         self
     }
 
+    pub fn until_controller_next_turn(mut self) -> Self {
+        self.duration = DelayedTriggerDuration::UntilControllerNextTurn;
+        self.until_end_of_turn = false;
+        self.until_end_of_combat = false;
+        self
+    }
+
+    pub fn with_either_of_watched_objects_surface(mut self) -> Self {
+        self.either_of_watched_objects = true;
+        self
+    }
+
     pub fn watch_ability_source(mut self) -> Self {
         self.watch_ability_source = true;
+        self
+    }
+
+    pub fn watch_all_object_targets(mut self) -> Self {
+        self.watch_all_object_targets = true;
         self
     }
 }
@@ -394,7 +515,30 @@ pub enum SetQuantifierSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeRetentionSurface {
     InAdditionToOtherTypes,
+    /// The effect adds the creature card type, but Oracle expresses the
+    /// animation as a P/T plus creature subtype (for example, "a 1/1
+    /// Spirit") without spelling out the `creature` noun.
+    InAdditionToOtherTypesImplicitCreature,
     StillALand,
+}
+
+/// Oracle surface used to express the power and toughness portion of an
+/// animation effect. Both forms create the same base-power/toughness layer,
+/// but authored leading P/T ("a 4/4 Angel creature") must not be rewritten as
+/// an explicit base-P/T clause ("an Angel creature with base power and
+/// toughness 4/4").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationPtSurface {
+    LeadingPowerToughness,
+    ExplicitBasePowerToughness,
+}
+
+/// Oracle placement of an animation effect's duration. Absence retains the
+/// legacy trailing-duration surface, while this marker preserves authored
+/// leading durations such as "Until end of turn, target land becomes ...".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationDurationSurface {
+    Leading,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -416,6 +560,8 @@ pub struct ApplyContinuousEffect<
     pub source_reference_surface: Option<SourceReferenceSurface>,
     pub set_quantifier_surface: Option<SetQuantifierSurface>,
     pub type_retention_surface: Option<TypeRetentionSurface>,
+    pub animation_pt_surface: Option<AnimationPtSurface>,
+    pub animation_duration_surface: Option<AnimationDurationSurface>,
     pub lock_filter_at_resolution: bool,
     pub resolve_set_pt_values_at_resolution: bool,
     pub require_creature_target: bool,
@@ -437,6 +583,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             source_reference_surface: None,
             set_quantifier_surface: None,
             type_retention_surface: None,
+            animation_pt_surface: None,
+            animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -456,6 +604,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             source_reference_surface: None,
             set_quantifier_surface: None,
             type_retention_surface: None,
+            animation_pt_surface: None,
+            animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -478,6 +628,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             source_reference_surface: None,
             set_quantifier_surface: None,
             type_retention_surface: None,
+            animation_pt_surface: None,
+            animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -504,6 +656,8 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             source_reference_surface: None,
             set_quantifier_surface: None,
             type_retention_surface: None,
+            animation_pt_surface: None,
+            animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
             require_creature_target: false,
@@ -545,6 +699,19 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 
     pub fn with_type_retention_surface(mut self, surface: Option<TypeRetentionSurface>) -> Self {
         self.type_retention_surface = surface;
+        self
+    }
+
+    pub fn with_animation_pt_surface(mut self, surface: Option<AnimationPtSurface>) -> Self {
+        self.animation_pt_surface = surface;
+        self
+    }
+
+    pub fn with_animation_duration_surface(
+        mut self,
+        surface: Option<AnimationDurationSurface>,
+    ) -> Self {
+        self.animation_duration_surface = surface;
         self
     }
 
@@ -730,6 +897,32 @@ impl DealDamageEffect {
     }
 }
 
+/// Remove an exact amount, or all, of the damage marked on a permanent.
+///
+/// `amount == None` represents the CR 701.69a surface "damage ... is healed,"
+/// which removes all marked damage from the permanent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HealDamageEffect {
+    pub target: ChooseSpec,
+    pub amount: Option<Value>,
+}
+
+impl HealDamageEffect {
+    pub fn exact(target: ChooseSpec, amount: impl Into<Value>) -> Self {
+        Self {
+            target,
+            amount: Some(amount.into()),
+        }
+    }
+
+    pub fn all(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            amount: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawCardsEffect {
     pub count: Value,
@@ -755,6 +948,9 @@ pub struct NoteLifeTotalEffect;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetOnlyEffect {
     pub target: ChooseSpec,
+    /// The player who makes this target choice when Oracle assigns the choice
+    /// to someone other than the spell or ability's controller.
+    pub chooser: Option<PlayerFilter>,
     /// Whether this target declaration was an authored standalone clause
     /// (for example, "Choose target opponent.") rather than a synthetic
     /// prelude introduced by lowering so later effects can share a target.
@@ -765,6 +961,7 @@ impl TargetOnlyEffect {
     pub fn new(target: ChooseSpec) -> Self {
         Self {
             target,
+            chooser: None,
             explicit_declaration: false,
         }
     }
@@ -772,8 +969,14 @@ impl TargetOnlyEffect {
     pub fn explicit(target: ChooseSpec) -> Self {
         Self {
             target,
+            chooser: None,
             explicit_declaration: true,
         }
+    }
+
+    pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
+        self.chooser = Some(chooser);
+        self
     }
 }
 
@@ -951,6 +1154,7 @@ impl CounterEffect {
 pub enum ConditionalSurface {
     #[default]
     LeadingIf,
+    TrailingIf,
     TrailingUnless,
 }
 
@@ -989,6 +1193,17 @@ impl<E> ConditionalEffect<E> {
             if_true: effects,
             if_false: vec![],
             surface: ConditionalSurface::TrailingUnless,
+        }
+    }
+
+    /// A resolution-time condition authored after its effect as
+    /// "... if <condition>".
+    pub fn trailing_if(condition: crate::value_model::Condition, effects: Vec<E>) -> Self {
+        Self {
+            condition,
+            if_true: effects,
+            if_false: vec![],
+            surface: ConditionalSurface::TrailingIf,
         }
     }
 
@@ -1112,6 +1327,12 @@ pub struct ChooseModeEffect<E> {
     pub min_choose_count: Value,
     pub allow_repeated_modes: bool,
     pub mode_point_costs: Vec<u32>,
+    /// Whether these are Spree modes whose selected labels are mandatory
+    /// additional costs paid during the spell-casting transaction.
+    pub spree: bool,
+    /// Additional mana cost associated with each mode. Non-Spree modal
+    /// effects leave this empty.
+    pub mode_additional_mana_costs: Vec<ManaCost>,
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
     /// Each chosen mode must declare a player target different from every other chosen mode.
@@ -1136,6 +1357,8 @@ impl<E> ChooseModeEffect<E> {
             min_choose_count,
             allow_repeated_modes: allow_repeat,
             mode_point_costs,
+            spree: false,
+            mode_additional_mana_costs: Vec::new(),
             disallow_previously_chosen_modes: false,
             disallow_previously_chosen_modes_this_turn: false,
             distinct_player_targets_per_mode: false,
@@ -1178,6 +1401,12 @@ impl<E> ChooseModeEffect<E> {
 
     pub fn with_mode_point_costs(mut self, costs: Vec<u32>) -> Self {
         self.mode_point_costs = costs;
+        self
+    }
+
+    pub fn with_spree_mana_costs(mut self, costs: Vec<ManaCost>) -> Self {
+        self.spree = true;
+        self.mode_additional_mana_costs = costs;
         self
     }
 
@@ -1700,18 +1929,30 @@ impl ShuffleGraveyardIntoLibraryEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleHandAndGraveyardIntoLibraryEffect {
     pub player: PlayerFilter,
+    /// Also move every battlefield permanent owned by that player.
+    pub include_owned_permanents: bool,
 }
 
 impl ShuffleHandAndGraveyardIntoLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            include_owned_permanents: false,
+        }
+    }
+
+    pub fn including_owned_permanents(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            include_owned_permanents: true,
+        }
     }
 }
 
 /// Oracle-facing cardinality for a zone move of cards linked to the source
 /// that exiled them. The runtime selection remains a `ChooseSpec`; this only
 /// preserves distinctions that an aggregate selection cannot recover.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExiledWithSourceSubjectSurface {
     AllCards,
     EachCard,
@@ -1722,6 +1963,10 @@ pub enum ExiledWithSourceSubjectSurface {
     TheExiledCard,
     TheExiledCards,
     TheCards,
+    /// A typed or qualified card noun whose semantic filter is already
+    /// carried by the zone-move target (for example, "target creature card
+    /// with mana value X" or "each creature card").
+    Custom(String),
 }
 
 /// Oracle-facing reference to the object that exiled the moved cards.
@@ -1741,11 +1986,19 @@ pub enum ExiledWithSourceDestinationSurface {
     TheirOwners,
 }
 
+/// Oracle-facing verb used for a zone move of cards linked to the source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExiledWithSourceMoveVerbSurface {
+    Put,
+    Return,
+}
+
 /// Presentation metadata for a `put ... exiled with ... into ...` clause.
 /// Object identity, source linkage, and the destination zone continue to live
 /// in the ordinary filter and zone-move fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExiledWithSourceMoveSurface {
+    pub verb: ExiledWithSourceMoveVerbSurface,
     pub subject: ExiledWithSourceSubjectSurface,
     pub source: ExiledWithSourceReferenceSurface,
     pub destination: ExiledWithSourceDestinationSurface,
@@ -2866,6 +3119,44 @@ pub struct ManifestTopCardOfLibraryEffect {
     pub cloak: bool,
 }
 
+/// Put an arbitrary collection of cards onto the battlefield face down as
+/// manifested or cloaked creatures.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManifestObjectsEffect {
+    pub target: ChooseSpec,
+    pub controller: PlayerFilter,
+    pub cloak: bool,
+    pub tapped: bool,
+    pub shuffle: bool,
+}
+
+impl ManifestObjectsEffect {
+    pub fn new(target: ChooseSpec, controller: PlayerFilter) -> Self {
+        Self {
+            target,
+            controller,
+            cloak: false,
+            tapped: false,
+            shuffle: false,
+        }
+    }
+
+    pub fn cloak(mut self) -> Self {
+        self.cloak = true;
+        self
+    }
+
+    pub fn tapped(mut self) -> Self {
+        self.tapped = true;
+        self
+    }
+
+    pub fn shuffled(mut self) -> Self {
+        self.shuffle = true;
+        self
+    }
+}
+
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
@@ -3162,6 +3453,10 @@ pub struct CreateTokenEffect<D> {
     pub count: Value,
     pub controller: PlayerFilter,
     pub controller_target: Option<ChooseSpec>,
+    /// Whether the authored text explicitly named `you` as the actor of the
+    /// create action. This is presentation-only; `controller` remains the
+    /// semantic source of truth for who creates and controls the token.
+    pub actor_surface_explicit: bool,
     pub suppress_aura_attachment_choice: bool,
     pub ability_presentation: Option<TokenAbilityPresentation>,
     pub enters_tapped: bool,
@@ -3187,6 +3482,7 @@ impl<D> CreateTokenEffect<D> {
             count,
             controller,
             controller_target,
+            actor_surface_explicit: false,
             suppress_aura_attachment_choice: false,
             ability_presentation: None,
             enters_tapped: false,
@@ -3205,6 +3501,11 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn one(token: D) -> Self {
         Self::you(token, 1)
+    }
+
+    pub fn with_explicit_actor_surface(mut self) -> Self {
+        self.actor_surface_explicit = true;
+        self
     }
 
     pub fn tapped(mut self) -> Self {

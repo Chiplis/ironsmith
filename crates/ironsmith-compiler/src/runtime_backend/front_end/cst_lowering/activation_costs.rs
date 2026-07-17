@@ -30,18 +30,20 @@ fn apply_activation_cost_default_battlefield_scope(filter: &mut ObjectFilter) {
 pub(crate) fn lower_activation_cost_cst(
     cst: &ActivationCostCst,
 ) -> Result<TotalCost, CardTextError> {
+    if let Some(generic) = cst.waterbend_generic {
+        return Ok(
+            crate::runtime_backend::lowering::compile_support::waterbend_optional_total_cost(
+                generic,
+            ),
+        );
+    }
+
     if !cst.alternative_branches.is_empty() {
-        let mut modes = Vec::with_capacity(cst.alternative_branches.len());
+        let mut branches = Vec::with_capacity(cst.alternative_branches.len());
         for branch in &cst.alternative_branches {
-            let total = lower_activation_cost_cst(branch)?;
-            modes.push(crate::effect::EffectMode::new(
-                branch.raw.clone(),
-                crate::costs::total_cost_to_payment_effects(&total),
-            ));
+            branches.push(lower_activation_cost_cst(branch)?);
         }
-        return Ok(TotalCost::from_cost(Cost::validated_effect(
-            Effect::choose_one(modes),
-        )));
+        return Ok(TotalCost::one_of(branches));
     }
 
     fn flush_pending_mana(costs: &mut Vec<Cost>, pending: &mut Vec<Vec<ManaSymbol>>) {
@@ -298,6 +300,7 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::ExileChosen {
                 choice_count,
                 filter,
+                top_only,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
@@ -311,12 +314,16 @@ pub(crate) fn lower_activation_cost_cst(
                 }
                 let tag = format!("exile_cost_{exile_tag_id}");
                 exile_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
+                let mut choose = crate::effects::ChooseObjectsEffect::new(
                     filter,
                     *choice_count,
                     PlayerFilter::You,
                     tag.clone(),
-                )));
+                );
+                if *top_only {
+                    choose = choose.top_only();
+                }
+                costs.push(Cost::validated_effect(Effect::new(choose)));
                 costs.push(Cost::validated_effect(Effect::exile(
                     crate::target::ChooseSpec::tagged(tag),
                 )));

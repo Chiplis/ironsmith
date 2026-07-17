@@ -1266,7 +1266,10 @@ pub(super) fn fatespinner_triggers_only_on_opponents_upkeep() {
 pub(super) fn fatespinner_draw_step_choice_skips_only_that_players_draw_step() {
     let (game, bob) = resolve_fatespinner_upkeep_choice("draw step");
 
-    assert!(game.turn_store.skip_next_draw_step.contains(&bob));
+    assert_eq!(
+        game.pending_step_skips(bob, crate::game_state::Step::Draw),
+        1
+    );
     assert!(!game.turn_store.skip_current_turn_main_phases.contains(&bob));
     assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
 }
@@ -1276,7 +1279,10 @@ pub(super) fn fatespinner_main_phase_choice_skips_each_remaining_main_phase_this
     let (mut game, bob) = resolve_fatespinner_upkeep_choice("main phase");
 
     assert!(game.turn_store.skip_current_turn_main_phases.contains(&bob));
-    assert!(!game.turn_store.skip_next_draw_step.contains(&bob));
+    assert_eq!(
+        game.pending_step_skips(bob, crate::game_state::Step::Draw),
+        0
+    );
     assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
 
     crate::turn::advance_phase(&mut game).expect("first main phase should be skipped");
@@ -1295,7 +1301,10 @@ pub(super) fn fatespinner_combat_phase_choice_skips_only_that_players_combat_pha
             .contains(&bob)
     );
     assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
-    assert!(!game.turn_store.skip_next_draw_step.contains(&bob));
+    assert_eq!(
+        game.pending_step_skips(bob, crate::game_state::Step::Draw),
+        0
+    );
     assert!(!game.turn_store.skip_current_turn_main_phases.contains(&bob));
 
     crate::turn::advance_phase(&mut game).expect("first main phase should happen normally");
@@ -2125,6 +2134,123 @@ pub(super) fn leaf_migration_labeled_line_regression_cards_parse_strictly() {
     ] {
         assert_oracle_card_parses_strict(name);
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn labeled_saga_chapters_keep_their_authored_ability_names() {
+    for (name, expected) in [
+        (
+            "Summon: Brynhildr",
+            &[("I", "Chain"), ("II, III", "Gestalt Mode")][..],
+        ),
+        (
+            "Summon: Fenrir",
+            &[
+                ("I", "Crescent Fang"),
+                ("II", "Heavenward Howl"),
+                ("III", "Ecliptic Growl"),
+            ][..],
+        ),
+        (
+            "Summon: Kujata",
+            &[("I", "Lightning"), ("II", "Ice"), ("III", "Fire")][..],
+        ),
+        (
+            "Summon: Primal Garuda",
+            &[("I", "Aerial Blast"), ("II, III", "Slipstream")][..],
+        ),
+        (
+            "Summon: Primal Odin",
+            &[
+                ("I", "Gungnir"),
+                ("II", "Zantetsuken"),
+                ("III", "Hall of Sorrow"),
+            ][..],
+        ),
+        (
+            "Summon: Shiva",
+            &[("I, II", "Heavenly Strike"), ("III", "Diamond Dust")][..],
+        ),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = compiled_text_lines(&def).join("\n");
+        let chapter_labels = def
+            .abilities
+            .iter()
+            .filter_map(|ability| {
+                let AbilityKind::Triggered(triggered) = &ability.kind else {
+                    return None;
+                };
+                triggered.trigger.saga_chapters()?;
+                triggered
+                    .presentation_label
+                    .as_ref()
+                    .and_then(crate::ability::PresentationLabel::display_prefix)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            chapter_labels,
+            expected
+                .iter()
+                .map(|(_, label)| (*label).to_string())
+                .collect::<Vec<_>>(),
+            "{name} must retain typed chapter presentation labels"
+        );
+        for (chapters, label) in expected {
+            let prefix = format!("{chapters} — {label} — ");
+            assert!(
+                rendered.contains(&prefix),
+                "{name} must render its authored chapter label {prefix:?}: {rendered}"
+            );
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn summon_brynhildr_and_shiva_render_authored_chapter_sentences_exactly() {
+    let brynhildr =
+        compiled_text_lines(&parse_oracle_card_definition("Summon: Brynhildr")).join("\n");
+    assert!(
+        brynhildr.contains(
+            "I — Chain — Exile the top card of your library. During any turn you put a lore counter on this Saga, you may play that card"
+        ),
+        "Brynhildr must retain its counter-gated play permission: {brynhildr}"
+    );
+
+    let shiva = compiled_text_lines(&parse_oracle_card_definition("Summon: Shiva"));
+    let heavenly_strike = shiva
+        .iter()
+        .find(|line| line.starts_with("I, II —"))
+        .unwrap_or_else(|| panic!("Shiva must render chapters I and II: {shiva:#?}"));
+    assert_eq!(
+        heavenly_strike,
+        "I, II — Heavenly Strike — Tap target creature an opponent controls. Put a stun counter on it."
+    );
+    let diamond_dust = shiva
+        .iter()
+        .find(|line| line.starts_with("III —"))
+        .unwrap_or_else(|| panic!("Shiva must render chapter III: {shiva:#?}"));
+    assert_eq!(
+        diamond_dust,
+        "III — Diamond Dust — Draw a card for each tapped creature your opponents control."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn halvar_keeps_attachment_state_qualification_and_attached_to_target_filter() {
+    let rendered =
+        compiled_text_lines(&parse_oracle_card_definition("Halvar, God of Battle")).join("\n");
+    assert!(
+        rendered.contains(
+            "Creatures you control that are enchanted or equipped have double strike"
+        ) && rendered.contains(
+            "you may attach target Aura or Equipment attached to a creature you control to target creature you control"
+        ),
+        "Halvar must retain both attachment predicates: {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

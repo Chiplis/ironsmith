@@ -590,6 +590,15 @@ pub(super) fn sundial_of_the_infinite_end_turn_effect_runtime_branches_by_active
     effect
         .execute(&mut game, &mut ctx)
         .expect("Sundial effect should resolve on your turn");
+    assert!(game.turn_store.end_turn_procedure_pending);
+    let mut runner = crate::turn_runner::TurnRunner::from_state_for_sync(
+        crate::turn_runner::TurnState::FirstMainPriority,
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    assert!(matches!(
+        runner.advance(&mut game, &mut trigger_queue),
+        Ok(crate::turn_runner::TurnAction::Continue)
+    ));
     assert_eq!(game.turn.phase, crate::game_state::Phase::Ending);
     assert_eq!(game.turn.step, Some(crate::game_state::Step::Cleanup));
 
@@ -1358,22 +1367,22 @@ pub(super) fn woodlurker_mimic_trigger_runtime_shape_keeps_color_filter_and_with
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn base_pt_animation_representatives_lower_to_continuous_setters() {
-    for name in [
-        "Ascendant Spirit",
-        "Evolved Sleeper",
-        "Skilled Animator",
-        "Living Brain, Mechanical Marvel",
-        "Unctus's Retrofitter",
+    for (name, expected_type_modification) in [
+        ("Ascendant Spirit", "SetCardTypes"),
+        ("Evolved Sleeper", "SetCardTypes"),
+        ("Skilled Animator", "AddCardTypes"),
+        ("Living Brain, Mechanical Marvel", "AddCardTypes"),
+        ("Unctus's Retrofitter", "AddCardTypes"),
     ] {
         let def = parse_oracle_card_definition(name);
         let debug = format!("{def:#?}");
         assert!(
             debug.contains("ApplyContinuousEffect")
-                && debug.contains("AddCardTypes")
+                && debug.contains(expected_type_modification)
                 && debug.contains("Creature")
                 && debug.contains("SetPowerToughness")
                 && debug.contains("sublayer: Setting"),
-            "expected {name} to lower base-P/T animation through continuous SetPowerToughness, got {debug}"
+            "expected {name} to lower through {expected_type_modification} plus continuous SetPowerToughness, got {debug}"
         );
     }
 }
@@ -3098,6 +3107,12 @@ pub(super) fn vote_regression_elrond_preserves_voter_choice_branch_and_owner_att
             && debug.contains("CantAttackItsOwner")
             && debug.contains("VoteCount(\"aid\")"),
         "expected Elrond to keep the fellowship voter choice branch, the owner-attack restriction, and the aid vote loop, got {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Secret council — When Elrond enters, each player secretly votes for fellowship or aid, then those votes are revealed. For each fellowship vote, the voter chooses a creature they control. You gain control of each creature chosen this way, and they gain \"This creature can't attack its owner.\" Then for each aid vote, put a +1/+1 counter on each creature you control."
+        ),
+        "expected Elrond's typed vote sequence to render its voter-relative creature set, got {rendered}"
     );
 }
 

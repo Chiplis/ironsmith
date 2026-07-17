@@ -11,7 +11,7 @@ use crate::filter::PlayerFilterExt;
 use crate::ids::{CardId, ObjectId, PlayerId, StableId};
 use crate::mana::ManaCost;
 use crate::player::ManaPool;
-use crate::snapshot::ObjectSnapshot;
+use crate::snapshot::{CopiableValues, ObjectSnapshot};
 use crate::static_abilities::{StaticAbility, StaticAbilityId};
 use crate::tag::TagKey;
 use crate::target::FilterContext;
@@ -437,7 +437,8 @@ pub struct Object {
     pub card: Option<CardId>,
     pub zone: Zone,
 
-    // Ownership (owner never changes)
+    // Ownership (normally immutable; CR 407.2 changes ownership at the end of
+    // a game played for ante)
     pub owner: PlayerId,
 
     // Copiable values (what Clone effects copy)
@@ -464,6 +465,10 @@ pub struct Object {
     pub base_toughness: Option<PtValue>,
     pub base_loyalty: Option<u32>,
     pub base_defense: Option<u32>,
+    /// Copiable printed Vanguard hand modifier.
+    pub hand_modifier: i32,
+    /// Copiable printed Vanguard life modifier.
+    pub life_modifier: i32,
     /// Abilities this object has (copiable)
     pub abilities: Arc<Vec<Ability>>,
 
@@ -646,6 +651,8 @@ impl Object {
             base_toughness,
             base_loyalty: card.loyalty,
             base_defense: card.defense,
+            hand_modifier: card.hand_modifier,
+            life_modifier: card.life_modifier,
             abilities: Arc::new(Vec::new()),
             counters: HashMap::new(),
             attached_to: None,
@@ -723,6 +730,8 @@ impl Object {
             base_toughness: None,
             base_loyalty: None,
             base_defense: None,
+            hand_modifier: 0,
+            life_modifier: 0,
             abilities: Arc::new(Vec::new()),
             counters: HashMap::new(),
             attached_to: None,
@@ -813,6 +822,8 @@ impl Object {
         self.base_toughness = base_toughness;
         self.base_loyalty = def.card.loyalty;
         self.base_defense = def.card.defense;
+        self.hand_modifier = def.card.hand_modifier;
+        self.life_modifier = def.card.life_modifier;
         self.abilities = handles.abilities.clone();
 
         self.spell_effect = handles.spell_effect.clone();
@@ -825,6 +836,12 @@ impl Object {
         self.has_fuse = def.has_fuse;
         self.optional_costs = handles.optional_costs.clone();
         self.additional_cost = handles.additional_cost.clone();
+    }
+
+    /// Restore the printed spell program after a stack-only text/effect
+    /// overlay (for example Overload, Cleave, or Awaken) ends.
+    pub(crate) fn restore_printed_spell_effect(&mut self, handles: &CardSharedHandles) {
+        self.spell_effect = handles.spell_effect.clone();
     }
 
     /// Apply the temporary stack characteristics of a fused split spell.
@@ -897,6 +914,8 @@ impl Object {
                 power_toughness,
                 loyalty: self.base_loyalty,
                 defense: self.base_defense,
+                hand_modifier: self.hand_modifier,
+                life_modifier: self.life_modifier,
                 other_face: self.other_face,
                 other_face_name: self
                     .other_face_name
@@ -912,6 +931,7 @@ impl Object {
             has_fuse: self.has_fuse,
             optional_costs: self.optional_costs.to_vec(),
             additional_cost: self.additional_cost.to_owned_value(),
+            refers_to_ante: false,
         }
     }
 
@@ -951,6 +971,8 @@ impl Object {
             base_toughness: toughness.map(PtValue::Fixed),
             base_loyalty: None,
             base_defense: None,
+            hand_modifier: 0,
+            life_modifier: 0,
             abilities: Arc::new(Vec::new()),
             counters: HashMap::new(),
             attached_to: None,
@@ -1017,6 +1039,8 @@ impl Object {
             base_toughness: source.base_toughness,
             base_loyalty: source.base_loyalty,
             base_defense: source.base_defense,
+            hand_modifier: source.hand_modifier,
+            life_modifier: source.life_modifier,
             abilities: source.abilities.clone(),
             // Non-copiable values reset to defaults
             counters: HashMap::new(),
@@ -1084,6 +1108,8 @@ impl Object {
             base_toughness: source.base_toughness,
             base_loyalty: source.base_loyalty,
             base_defense: source.base_defense,
+            hand_modifier: source.hand_modifier,
+            life_modifier: source.life_modifier,
             abilities: source.abilities.clone(),
             counters: HashMap::new(),
             attached_to: None,
@@ -1134,7 +1160,7 @@ impl Object {
             owner,
             name: copiable.name.clone().into(),
             first_printed_set_name: snapshot.first_printed_set_name.clone().map(Into::into),
-            mana_cost: shared_optional_value(snapshot.mana_cost.clone()),
+            mana_cost: shared_optional_value(copiable.mana_cost.clone()),
             color_override: (!copiable.colors.is_empty()).then_some(copiable.colors),
             supertypes: copiable.supertypes.clone().into(),
             card_types: copiable.card_types.clone().into(),
@@ -1146,8 +1172,10 @@ impl Object {
             linked_face_layout: snapshot.linked_face_layout,
             base_power: copiable.power.map(PtValue::Fixed),
             base_toughness: copiable.toughness.map(PtValue::Fixed),
-            base_loyalty: snapshot.loyalty,
+            base_loyalty: copiable.loyalty,
             base_defense: snapshot.defense,
+            hand_modifier: 0,
+            life_modifier: 0,
             abilities: copiable.abilities.clone(),
             counters: HashMap::new(),
             attached_to: None,
@@ -1170,7 +1198,7 @@ impl Object {
             cast_tagged_objects: HashMap::new(),
             additional_cost: TotalCost::free().into(),
         };
-        if let Some(loyalty) = snapshot.loyalty {
+        if let Some(loyalty) = copiable.loyalty {
             token.add_counters(CounterType::Loyalty, loyalty);
         }
         token
@@ -1211,6 +1239,8 @@ impl Object {
             base_toughness: None,
             base_loyalty: None,
             base_defense: None,
+            hand_modifier: 0,
+            life_modifier: 0,
             abilities: Arc::new(abilities),
             counters: HashMap::new(),
             attached_to: None,
@@ -1240,32 +1270,38 @@ impl Object {
     /// subtypes, supertypes, rules text, power, toughness, loyalty, and abilities.
     /// Non-copiable state (counters, damage, etc.) is NOT copied.
     pub fn copy_copiable_values_from(&mut self, source: &Object) {
+        self.copy_copiable_values_from_values(&CopiableValues::from_object(source));
         let bestow_restore = source.bestow_cast_state.as_ref();
-        self.name = source.name.clone();
         self.first_printed_set_name = source.first_printed_set_name.clone();
-        self.mana_cost = source.mana_cost.clone();
-        self.color_override = source.color_override;
-        self.supertypes = source.supertypes.clone();
-        self.card_types = bestow_restore
-            .map(|restore| restore.card_types.clone())
-            .unwrap_or_else(|| source.card_types.clone());
-        self.subtypes = bestow_restore
-            .map(|restore| restore.subtypes.clone())
-            .unwrap_or_else(|| source.subtypes.clone());
-        self.compiled_card_text = source.compiled_card_text.clone();
         self.rules_text_color_identity = source.rules_text_color_identity;
         self.other_face = source.other_face;
         self.other_face_name = source.other_face_name.clone();
         self.linked_face_layout = source.linked_face_layout;
-        self.base_power = source.base_power;
-        self.base_toughness = source.base_toughness;
-        self.base_loyalty = source.base_loyalty;
         self.base_defense = source.base_defense;
-        self.abilities = source.abilities.clone();
         self.aura_attach_filter = bestow_restore
             .map(|restore| restore.aura_attach_filter.clone())
             .unwrap_or_else(|| source.aura_attach_filter.clone());
         self.has_fuse = source.has_fuse;
+    }
+
+    /// Apply an already-frozen layer-1 copiable-values record.
+    ///
+    /// Game-aware copy paths use this after calculating the source through
+    /// layers 1a and 1b, so a copy of a copy does not fall back to the source
+    /// object's printed/raw fields (CR 707.2–707.3).
+    pub fn copy_copiable_values_from_values(&mut self, values: &CopiableValues) {
+        self.name = values.name.clone().into();
+        self.mana_cost = shared_optional_value(values.mana_cost.clone());
+        self.color_override = Some(values.colors);
+        self.supertypes = values.supertypes.clone().into();
+        self.card_types = values.card_types.clone().into();
+        self.subtypes = values.subtypes.clone().into();
+        self.compiled_card_text = values.compiled_card_text.clone().into();
+        self.base_power = values.power.map(PtValue::Fixed);
+        self.base_toughness = values.toughness.map(PtValue::Fixed);
+        self.base_loyalty = values.loyalty;
+        self.abilities = values.abilities.clone();
+        self.aura_attach_filter = shared_optional_value(values.aura_attach_filter.clone());
     }
 
     /// Apply the temporary "cast with bestow" Aura overlay.
@@ -1869,6 +1905,8 @@ impl Object {
             base_toughness: def.card.power_toughness.map(|pt| pt.toughness),
             base_loyalty: def.card.loyalty,
             base_defense: def.card.defense,
+            hand_modifier: def.card.hand_modifier,
+            life_modifier: def.card.life_modifier,
             abilities: handles.abilities.clone(),
             counters: HashMap::new(),
             attached_to: None,

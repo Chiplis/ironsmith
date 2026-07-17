@@ -60,6 +60,31 @@ fn parses_relative_attachment_state_as_an_intrinsic_filter_constraint() {
 }
 
 #[test]
+fn parses_disjunctive_relative_attachment_states_as_typed_union() {
+    let tokens = lex_line("Creatures you control that are enchanted or equipped", 0).unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected a typed attachment-state union");
+    };
+
+    assert!(
+        filter.has_relative_attachment_state_surface(),
+        "{filter:#?}"
+    );
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert_eq!(
+        filter
+            .any_of
+            .iter()
+            .flat_map(|branch| branch.tagged_constraints.iter())
+            .map(|constraint| constraint.tag.as_str())
+            .collect::<Vec<_>>(),
+        vec!["enchanted", "equipped"]
+    );
+}
+
+#[test]
 fn classifies_speculative_fragments_without_suffix_recovery() {
     for fragment in [
         "all abilities and",

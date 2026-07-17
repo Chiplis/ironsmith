@@ -163,6 +163,7 @@ where
         ctx.controller,
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
+        ctx.mana.retention,
         ctx.mana.production_provenance,
         ctx.source_snapshot.clone(),
         &mut *ctx.decision_maker,
@@ -177,6 +178,7 @@ fn credit_mana_symbols_with_context<I>(
     controller: PlayerId,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
+    retention: Option<ironsmith_core::ManaRetentionDuration>,
     production_provenance: crate::events::mana::ManaProductionProvenance,
     source_snapshot: Option<ObjectSnapshot>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
@@ -203,9 +205,14 @@ where
     if let Some(player) = game.player_mut(player_id) {
         for symbol in mana.iter().copied() {
             if restrictions.is_empty() {
-                player.add_unrestricted_mana(symbol, source, snapshot.clone());
+                player.add_unrestricted_mana_with_retention(
+                    symbol,
+                    source,
+                    snapshot.clone(),
+                    retention,
+                );
             } else {
-                player.add_restricted_mana_with_snapshot(
+                player.add_restricted_mana_with_snapshot_and_retention(
                     crate::ability::RestrictedManaUnit {
                         symbol,
                         source,
@@ -213,6 +220,7 @@ where
                         restrictions: restrictions.to_vec(),
                     },
                     snapshot.clone(),
+                    retention,
                 );
             }
         }
@@ -236,6 +244,7 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
         ctx.controller,
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
+        ctx.mana.retention,
         ctx.mana.production_provenance,
         ctx.source_snapshot.clone(),
         &mut *ctx.decision_maker,
@@ -251,6 +260,7 @@ fn credit_repeated_mana_symbol_with_context(
     controller: PlayerId,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
+    retention: Option<ironsmith_core::ManaRetentionDuration>,
     production_provenance: crate::events::mana::ManaProductionProvenance,
     source_snapshot: Option<ObjectSnapshot>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
@@ -263,6 +273,7 @@ fn credit_repeated_mana_symbol_with_context(
         controller,
         restrictions,
         source_chosen_creature_type,
+        retention,
         production_provenance,
         source_snapshot,
         decision_maker,

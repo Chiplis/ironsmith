@@ -486,8 +486,25 @@ pub(super) fn comma_boundary_facts(
     after: &[OwnedLexToken],
 ) -> CommaBoundaryFacts {
     let before_has_verb = find_chain_verb_tokens(before).is_some();
-    let after_starts_effect = find_chain_verb_tokens(after)
-        .is_some_and(|found| found.word_index == 0)
+    let after_verb = find_chain_verb_tokens(after);
+    let explicit_subject_action = after_verb.is_some_and(|found| found.word_index > 0)
+        && starts_any(
+            after,
+            &[
+                &["you"],
+                &["they"],
+                &["it"],
+                &["that", "player"],
+                &["that", "opponent"],
+                &["target", "player"],
+                &["target", "opponent"],
+                &["each", "player"],
+                &["each", "opponent"],
+                &["defending", "player"],
+            ],
+        );
+    let after_starts_effect = after_verb.is_some_and(|found| found.word_index == 0)
+        || explicit_subject_action
         || has_extended_effect_head_tokens(after);
     let duration_trigger = starts_any(before, &[&["until"], &["during"]])
         && (contains_any(before, &["whenever", "when"])
@@ -660,6 +677,10 @@ fn starts_with_nonverb_effect_head(tokens: &[OwnedLexToken]) -> bool {
             &["that", "player", "chooses"],
             &["that", "players", "choose"],
             &["that", "players", "chooses"],
+            &["that", "opponent", "choose"],
+            &["that", "opponent", "chooses"],
+            &["that", "opponents", "choose"],
+            &["that", "opponents", "chooses"],
             &["the", "voter", "choose"],
             &["the", "voter", "chooses"],
             &["target", "player", "choose"],

@@ -158,6 +158,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 strip_leading_article(&describe_player_filter(base))
             )
         }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -187,6 +188,12 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
         }
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Opponent)
+                && !matches!(excluded.as_ref(), PlayerFilter::You) =>
+        {
+            "another one of your opponents".to_string()
+        }
         PlayerFilter::Excluding { base, excluded } => format!(
             "{} other than {}",
             strip_leading_article(&describe_player_filter(base)),
@@ -212,6 +219,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         }
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_)) => {
             "its controller".to_string()
+        }
+        PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
+            if tag.as_str() == crate::tag::SOURCE_OBJECT_TAG =>
+        {
+            "this source's owner".to_string()
         }
         PlayerFilter::OwnerOf(crate::target::ObjectRef::Target) => "its owner".to_string(),
         PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(_)) => "its owner".to_string(),
@@ -395,6 +407,7 @@ fn describe_cast_spell_origin(filter: &ObjectFilter) -> Option<String> {
         Zone::Library => Some(possessive_zone("library")),
         Zone::Exile => Some("from exile".to_string()),
         Zone::Command => Some("from the command zone".to_string()),
+        Zone::Ante => Some("from ante".to_string()),
         Zone::OutsideGame => Some("from outside the game".to_string()),
     }
 }
@@ -1553,6 +1566,7 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("searches ", "search "),
         ("shuffles ", "shuffle "),
         ("surveils ", "surveil "),
+        ("Behold ", "behold "),
     ];
     for (from, to) in replacements {
         if text.starts_with(from) {
@@ -1834,21 +1848,41 @@ pub(super) fn normalize_enchanted_creature_dies_clause(text: &str) -> Option<Str
 
     let create_tail = strip_prefix_ascii_ci(tail, "return this aura to its owner's hand. ")
         .or_else(|| strip_prefix_ascii_ci(tail, "return this permanent to its owner's hand. "))
-        .and_then(|rest| strip_prefix_ascii_ci(rest, "create "))
-        .or_else(|| strip_prefix_ascii_ci(tail, "return this aura to its owner's hand and create "))
+        .and_then(|rest| {
+            strip_prefix_ascii_ci(rest, "you create ")
+                .map(|tail| (tail, true))
+                .or_else(|| strip_prefix_ascii_ci(rest, "create ").map(|tail| (tail, false)))
+        })
+        .or_else(|| {
+            strip_prefix_ascii_ci(tail, "return this aura to its owner's hand and you create ")
+                .map(|tail| (tail, true))
+        })
+        .or_else(|| {
+            strip_prefix_ascii_ci(
+                tail,
+                "return this permanent to its owner's hand and you create ",
+            )
+            .map(|tail| (tail, true))
+        })
+        .or_else(|| {
+            strip_prefix_ascii_ci(tail, "return this aura to its owner's hand and create ")
+                .map(|tail| (tail, false))
+        })
         .or_else(|| {
             strip_prefix_ascii_ci(
                 tail,
                 "return this permanent to its owner's hand and create ",
             )
+            .map(|tail| (tail, false))
         });
-    if let Some(create_tail) = create_tail {
+    if let Some((create_tail, actor_surface_explicit)) = create_tail {
         let mut create_clause = create_tail.trim().to_string();
         if !create_clause.ends_with('.') {
             create_clause.push('.');
         }
+        let actor = if actor_surface_explicit { "you " } else { "" };
         return Some(format!(
-            "When enchanted creature dies, return this card to its owner's hand and create {create_clause}"
+            "When enchanted creature dies, return this card to its owner's hand and {actor}create {create_clause}"
         ));
     }
 
@@ -3064,6 +3098,7 @@ fn normalize_for_each_opponent_gain_control_followup(line: &str) -> Option<Strin
         for followup_prefix in [
             ", untap that creature, then it gains ",
             ". Untap that creature. It gains ",
+            ". Untap those creatures. It gains ",
         ] {
             let Some(after_followup) = after_marker.strip_prefix(followup_prefix) else {
                 continue;
@@ -3536,6 +3571,86 @@ fn compact_coward_polymorph_surface(line: &str) -> Option<String> {
         "When this creature enters, each creature target opponent controls loses all abilities, becomes a Coward in addition to its other types, and has base power and toughness 1/1."
             .to_string(),
     )
+}
+
+/// Collapse the runtime choice used by an untargeted graveyard return back
+/// into Oracle's single return instruction, including an immediately linked
+/// counter placement on the returned object.
+fn compact_choose_graveyard_return_with_counter_surface(line: &str) -> Option<String> {
+    let (prefix, choice_tail) = line.split_once(", choose ")?;
+    let (selection, counter_tail) =
+        choice_tail.split_once(", return it from graveyard to the battlefield, and put ")?;
+    if selection.trim().is_empty() || !selection.trim_end().ends_with("card") {
+        return None;
+    }
+    let counter_end = counter_tail.find(" on it")?;
+    let counter = counter_tail[..counter_end].trim();
+    if counter.is_empty() || !counter.contains("counter") {
+        return None;
+    }
+    let remainder = &counter_tail[counter_end + " on it".len()..];
+    Some(format!(
+        "{prefix}, then return {} from your graveyard to the battlefield with {counter} on it{remainder}",
+        selection.trim()
+    ))
+}
+
+/// A return limited to one object produces a singular antecedent even though
+/// its internal result tag uses the collection-shaped fallback renderer.
+fn normalize_single_returned_animation_surface(line: &str) -> Option<String> {
+    let marker = ". Those permanents are ";
+    let (return_text, animation_tail) = line.split_once(marker)?;
+    if !return_text
+        .to_ascii_lowercase()
+        .contains("up to one target ")
+    {
+        return None;
+    }
+    let sentence_end = animation_tail.find(". ").unwrap_or(animation_tail.len());
+    let animation = &animation_tail[..sentence_end];
+    if !animation.contains(" in addition to their other types") {
+        return None;
+    }
+    let singular = animation
+        .replacen(" creatures", " creature", 1)
+        .replace("their other types", "its other types");
+    let remainder = &animation_tail[sentence_end..];
+    Some(format!("{return_text}. It's {singular}{remainder}"))
+}
+
+/// Merge a linked base-P/T assignment and additive subtype change into the
+/// copular animation surface they represent. A preceding exhaustive `each`
+/// battlefield move supplies the distributive singular subject.
+fn compact_linked_base_pt_subtype_animation_surface(line: &str) -> Option<String> {
+    let marker = ". It has base power and toughness ";
+    let (prefix, animation_tail) = line.split_once(marker)?;
+    let (power_toughness, subtype_tail) = animation_tail.split_once(" and becomes a ")?;
+    let (subtypes, remainder) = subtype_tail.split_once(" in addition to its other types")?;
+    if power_toughness.trim().is_empty() || !power_toughness.contains('/') {
+        return None;
+    }
+    let subtypes = subtypes
+        .split_whitespace()
+        .map(capitalize_first)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if subtypes.is_empty() {
+        return None;
+    }
+    let prior_instruction = prefix
+        .rsplit_once(". ")
+        .map_or(prefix, |(_, instruction)| instruction)
+        .to_ascii_lowercase();
+    let subject =
+        if prior_instruction.contains("put each ") || prior_instruction.contains("return each ") {
+            "Each of them is"
+        } else {
+            "It's"
+        };
+    Some(format!(
+        "{prefix}. {subject} a {} {subtypes} in addition to its other types{remainder}",
+        power_toughness.trim()
+    ))
 }
 
 fn compact_second_landfall_damage_surface(line: &str) -> Option<String> {

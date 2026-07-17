@@ -1,4 +1,12 @@
 use super::*;
+
+#[test]
+fn relative_object_pluralization_keeps_creation_provenance_postpositive() {
+    assert_eq!(
+        pluralize_relative_object_phrase("token created with this enchantment"),
+        "tokens created with this enchantment"
+    );
+}
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 
 #[test]
@@ -164,6 +172,40 @@ fn attached_and_related_creatures_render_as_a_plural_conjunction() {
 }
 
 #[test]
+fn negative_toughness_modifier_preserves_the_authored_negative_zero_power() {
+    let effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature())),
+        crate::continuous::Modification::ModifyPowerToughness {
+            power: 0,
+            toughness: -3,
+        },
+        Until::EndOfTurn,
+    );
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("target creature gets -0/-3 until end of turn")
+    );
+
+    let mut runtime_effect = crate::effects::ApplyContinuousEffect::new_runtime(
+        crate::continuous::EffectTarget::Source,
+        crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+            power: Value::Fixed(0),
+            toughness: Value::Fixed(-3),
+        },
+        Until::EndOfTurn,
+    );
+    runtime_effect.target_spec = Some(ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::creature(),
+    )));
+
+    assert_eq!(
+        describe_apply_continuous_effect(&runtime_effect).as_deref(),
+        Some("target creature gets -0/-3 until end of turn")
+    );
+}
+
+#[test]
 fn describe_total_power_of_sacrificed_objects_keeps_the_sacrifice_link() {
     let mut filter = ObjectFilter::creature();
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -214,6 +256,28 @@ fn explicit_revealed_card_reference_renders_without_losing_tag_identity() {
     ]);
 
     assert_eq!(describe_value(&value), "the revealed card's mana value");
+}
+
+#[test]
+fn lady_loki_absolute_difference_names_both_mana_values() {
+    let triggering_spell =
+        Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from("triggering"))));
+    let nonland_card = Value::ManaValueOf(Box::new(
+        ChooseSpec::Tagged(TagKey::from("consult_match_0")).with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "that nonland card".to_string(),
+                ),
+            ),
+        ),
+    ));
+    let difference = Value::absolute_difference(triggering_spell, nonland_card)
+        .with_surface_hint(ValueSurfaceHint::Difference);
+
+    assert_eq!(
+        describe_value(&difference),
+        "the difference between that spell's mana value and that nonland card's mana value"
+    );
 }
 
 #[test]
@@ -342,6 +406,18 @@ fn describe_opponent_life_total_at_most_condition_uses_or_less_life_surface() {
 }
 
 #[test]
+fn describe_empty_library_condition_uses_no_cards_surface() {
+    assert_eq!(
+        describe_condition(&Condition::ValueComparison {
+            left: Value::CardsInLibrary(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        }),
+        "your library has no cards in it"
+    );
+}
+
+#[test]
 fn temporary_generic_granted_trigger_renders_quoted_oracle_surface() {
     let triggered = crate::ability::TriggeredAbility {
         trigger: crate::triggers::Trigger::this_deals_damage_to_player(
@@ -379,6 +455,154 @@ fn temporary_generic_granted_trigger_renders_quoted_oracle_surface() {
 }
 
 #[test]
+fn executable_annihilator_grant_renders_as_its_keyword() {
+    let ability = Ability::triggered(
+        crate::triggers::Trigger::this_attacks(),
+        vec![Effect::sacrifice_player(
+            ObjectFilter::permanent(),
+            Value::Fixed(2),
+            PlayerFilter::Defending,
+        )],
+    );
+    let effect = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbilityGeneric(ability),
+        Until::EndOfTurn,
+    )
+    .with_source_reference_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this creature".to_string(),
+    ));
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("this creature gains annihilator 2 until end of turn")
+    );
+}
+
+#[test]
+fn temporary_additional_blocker_grant_uses_action_surface() {
+    let effect = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::can_block_additional_creature_each_combat(1),
+        ),
+        Until::EndOfTurn,
+    )
+    .with_source_reference_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this creature".to_string(),
+    ));
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("this creature can block an additional creature this turn")
+    );
+}
+
+#[test]
+fn turn_long_global_x_block_cost_renders_as_a_per_blocker_tax() {
+    let dynamic_x = crate::costs::Cost::dynamic_mana(ironsmith_core::DynamicManaCost::new(
+        crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::X]]),
+        None,
+        None,
+        None,
+        ironsmith_core::DynamicManaDisplayHint::Default,
+    ));
+    let block_cost = crate::static_abilities::StaticAbility::block_cost(
+        ObjectFilter::source(),
+        ObjectFilter::creature(),
+        crate::cost::TotalCost::from_cost(dynamic_x),
+        "display text is not a rendering input",
+    );
+    let effect = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Filter(ObjectFilter::creature()),
+        crate::continuous::Modification::AddAbility(block_cost),
+        Until::EndOfTurn,
+    );
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some(
+            "This turn, creatures can't block unless their controller pays {X} for each blocking creature they control"
+        )
+    );
+}
+
+#[test]
+fn executable_sunburst_grant_compacts_only_the_complete_counter_bundle() {
+    fn compiled_static(
+        model: crate::static_abilities::CompiledStaticAbility,
+    ) -> crate::static_abilities::StaticAbility {
+        crate::static_abilities::StaticAbility::from_model(model)
+    }
+
+    let creature_filter = ObjectFilter::creature();
+    let creature_counters: crate::static_abilities::CompiledStaticAbility =
+        ironsmith_core::StaticAbility::enters_with_counters_value(
+            CounterType::PlusOnePlusOne,
+            Value::ColorsOfManaSpentToCastThisSpell,
+        )
+        .with_condition(Condition::SourceMatches(creature_filter.clone()));
+    let charge_counters: crate::static_abilities::CompiledStaticAbility =
+        ironsmith_core::StaticAbility::enters_with_counters_value(
+            CounterType::Charge,
+            Value::ColorsOfManaSpentToCastThisSpell,
+        )
+        .with_condition(Condition::Not(Box::new(Condition::SourceMatches(
+            creature_filter,
+        ))));
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(TagKey::from("triggering")),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::keyword_marker("sunburst"),
+        ),
+        Until::Forever,
+    );
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::AddAbility(compiled_static(creature_counters)),
+        crate::continuous::Modification::AddAbility(compiled_static(charge_counters)),
+    ]);
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("it gains sunburst")
+    );
+}
+
+#[test]
+fn executable_vanishing_pair_compacts_only_the_complete_keyword_bundle() {
+    let upkeep = Ability::triggered(
+        crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),
+        vec![Effect::remove_counters(
+            CounterType::Time,
+            1,
+            ChooseSpec::Source,
+        )],
+    );
+    let last_counter = Ability::triggered(
+        crate::triggers::Trigger::custom(
+            "vanishing-last-time-counter-removed",
+            "when the last time counter is removed".to_string(),
+        ),
+        vec![Effect::sacrifice_source()],
+    );
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(TagKey::from("triggering")),
+        crate::continuous::Modification::AddAbilityGeneric(upkeep),
+        Until::Forever,
+    );
+    effect
+        .additional_modifications
+        .push(crate::continuous::Modification::AddAbilityGeneric(
+            last_counter,
+        ));
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("it gains vanishing")
+    );
+}
+
+#[test]
 fn source_generic_granted_trigger_uses_source_surface_for_target() {
     let surface =
         crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string());
@@ -410,6 +634,26 @@ fn source_generic_granted_trigger_uses_source_surface_for_target() {
         Some(
             "this creature gains \"When this creature leaves the battlefield, an opponent draws a card.\""
         )
+    );
+}
+
+#[test]
+fn source_generic_static_ability_removal_renders_typed_ability_and_duration() {
+    let effect = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::RemoveAbilityGeneric {
+            ability: Ability::static_ability(crate::static_abilities::StaticAbility::trample()),
+            mode: ironsmith_core::AbilityLossMode::Lose,
+        },
+        Until::EndOfTurn,
+    )
+    .with_source_reference_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this creature".to_string(),
+    ));
+
+    assert_eq!(
+        describe_apply_continuous_effect(&effect).as_deref(),
+        Some("this creature loses trample until end of turn")
     );
 }
 
@@ -1701,6 +1945,165 @@ fn land_animation_prefers_still_land_surface_for_land_targets() {
 }
 
 #[test]
+fn typed_animation_pt_surface_preserves_leading_and_authored_base_pt_forms() {
+    let build = |surface, power| {
+        let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::target(ChooseSpec::Object(ObjectFilter::artifact())),
+            crate::continuous::Modification::AddCardTypes(vec![
+                CardType::Artifact,
+                CardType::Creature,
+            ]),
+            Until::EndOfTurn,
+        )
+        .with_animation_pt_surface(Some(surface));
+        effect.additional_modifications.extend([
+            crate::continuous::Modification::SetPowerToughness {
+                power: Value::Fixed(power),
+                toughness: Value::Fixed(power),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            },
+            crate::continuous::Modification::AddSubtypes(vec![Subtype::Angel]),
+        ]);
+        effect
+    };
+
+    let leading = build(
+        ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+        4,
+    );
+    let (target, plural) = describe_apply_continuous_target(&leading);
+    assert_eq!(
+        describe_apply_continuous_animation_effect(&leading, &target, plural).as_deref(),
+        Some("Target artifact becomes a 4/4 angel artifact creature until end of turn")
+    );
+
+    let explicit = build(
+        ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness,
+        4,
+    );
+    let (target, plural) = describe_apply_continuous_target(&explicit);
+    assert_eq!(
+        describe_apply_continuous_animation_effect(&explicit, &target, plural).as_deref(),
+        Some(
+            "Target artifact becomes an angel artifact creature with base power and toughness 4/4 until end of turn"
+        )
+    );
+
+    for (power, article) in [(1, "a"), (8, "an")] {
+        let leading = build(
+            ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+            power,
+        );
+        let (target, plural) = describe_apply_continuous_target(&leading);
+        let rendered = describe_apply_continuous_animation_effect(&leading, &target, plural)
+            .expect("fixed leading P/T animation should render");
+        assert!(
+            rendered.contains(&format!("becomes {article} {power}/{power}")),
+            "{rendered}"
+        );
+    }
+}
+
+#[test]
+fn typed_animation_duration_surface_preserves_authored_leading_placement() {
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control())),
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    )
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand))
+    .with_animation_pt_surface(Some(
+        ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+    ))
+    .with_animation_duration_surface(Some(ironsmith_core::AnimationDurationSurface::Leading));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(4),
+            toughness: Value::Fixed(4),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Dinosaur]),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::reach(),
+        ),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::haste(),
+        ),
+    ]);
+
+    let (target, plural) = describe_apply_continuous_target(&effect);
+    assert_eq!(
+        describe_apply_continuous_animation_effect(&effect, &target, plural).as_deref(),
+        Some(
+            "Until end of turn, target land you control becomes a 4/4 dinosaur creature with reach and haste. It's still a land"
+        )
+    );
+}
+
+#[test]
+fn explicit_type_retention_is_not_suppressed_by_redundant_artifact_type() {
+    let mut target_filter = ObjectFilter::artifact().you_control();
+    target_filter.excluded_card_types.push(CardType::Creature);
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::target(ChooseSpec::Object(target_filter)),
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Artifact, CardType::Creature]),
+        Until::Forever,
+    )
+    .with_type_retention_surface(Some(
+        ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes,
+    ))
+    .with_animation_pt_surface(Some(
+        ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+    ));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(8),
+            toughness: Value::Fixed(8),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Robot, Subtype::Villain]),
+    ]);
+
+    let (target, plural) = describe_apply_continuous_target(&effect);
+    assert_eq!(
+        describe_apply_continuous_animation_effect(&effect, &target, plural).as_deref(),
+        Some(
+            "Target noncreature artifact you control becomes an 8/8 robot villain artifact creature in addition to its other types"
+        )
+    );
+}
+
+#[test]
+fn dynamic_equal_animation_renders_explicit_value_without_lossy_x_rewrite() {
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature())),
+        crate::continuous::Modification::SetCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    );
+    let value = Value::Add(Box::new(Value::X), Box::new(Value::Fixed(1)));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: value.clone(),
+            toughness: value,
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::SetColors(
+            crate::color::ColorSet::GREEN.union(crate::color::ColorSet::BLUE),
+        ),
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Fractal]),
+    ]);
+
+    let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+    let rendered = describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+        .expect("dynamic animation should render structurally");
+    assert!(
+        rendered.contains("with base power and toughness each equal to X plus 1"),
+        "{rendered}"
+    );
+    assert!(!rendered.contains("until end of turn plus 1"), "{rendered}");
+}
+
+#[test]
 fn attached_land_animation_is_singular_and_quotes_its_granted_ability() {
     let mut filter = ObjectFilter::default().with_subtype(Subtype::Swamp);
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -1736,6 +2139,51 @@ fn attached_land_animation_is_singular_and_quotes_its_granted_ability() {
     assert!(rendered.contains("\"Trample.\""), "{rendered}");
     assert!(rendered.ends_with("It's still a land"), "{rendered}");
     assert!(!rendered.contains("All enchanted"), "{rendered}");
+}
+
+#[test]
+fn animation_quotes_a_nested_conditional_source_ability() {
+    let conditional_first_strike =
+        crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
+            ObjectFilter::source(),
+            Ability::static_ability(crate::static_abilities::StaticAbility::first_strike()),
+            "First strike".to_string(),
+        )
+        .with_condition(Condition::ActivationTiming(
+            crate::ability::ActivationTiming::DuringYourTurn,
+        ))
+        .expect("source grant supports a runtime condition");
+    let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Source,
+        crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+        Until::EndOfTurn,
+    )
+    .with_source_reference_surface(crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this land".to_string(),
+    ))
+    .with_type_retention_surface(Some(ironsmith_core::TypeRetentionSurface::StillALand));
+    effect.additional_modifications.extend([
+        crate::continuous::Modification::SetPowerToughness {
+            power: Value::Fixed(2),
+            toughness: Value::Fixed(1),
+            sublayer: crate::continuous::PtSublayer::Setting,
+        },
+        crate::continuous::Modification::SetColors(
+            crate::color::ColorSet::BLUE.union(crate::color::ColorSet::RED),
+        ),
+        crate::continuous::Modification::AddSubtypes(vec![Subtype::Elemental]),
+        crate::continuous::Modification::AddAbility(conditional_first_strike),
+    ]);
+
+    let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+    let rendered = describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+        .expect("nested source ability should remain a structural animation");
+
+    assert!(
+        rendered.contains("\"During your turn, this creature has first strike.\""),
+        "{rendered}"
+    );
+    assert!(rendered.ends_with("It's still a land"), "{rendered}");
 }
 
 #[test]
@@ -2211,5 +2659,17 @@ fn normalize_recent_regression_surfaces() {
             "Magma Burst deals 3 damage to any target. Then if this spell was kicked, Magma Burst deals 3 damage to any other target."
         ),
         "Magma Burst deals 3 damage to any target. If this spell was kicked, it deals 3 damage to another target."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "You may You put those cards on the bottom of your library in any order."
+        ),
+        "You may put those cards on the bottom of your library in any order."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "You may You may repeat this process any number of times."
+        ),
+        "You may repeat this process any number of times."
     );
 }

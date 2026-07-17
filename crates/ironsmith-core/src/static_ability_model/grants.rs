@@ -83,6 +83,7 @@ impl Anthem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttachedAbilityGrant<T, E, C, Cond> {
     pub ability: AbilityModel<T, E, C, Cond>,
+    pub additional_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     pub display: String,
     pub condition: Option<Condition>,
 }
@@ -91,9 +92,17 @@ impl<T, E, C, Cond> AttachedAbilityGrant<T, E, C, Cond> {
     pub fn new(ability: AbilityModel<T, E, C, Cond>, display: impl Into<String>) -> Self {
         Self {
             ability,
+            additional_abilities: Vec::new(),
             display: display.into(),
             condition: None,
         }
+    }
+    pub fn with_additional_abilities(
+        mut self,
+        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+    ) -> Self {
+        self.additional_abilities = abilities;
+        self
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
         self.condition = Some(condition);
@@ -159,6 +168,7 @@ impl<T, E, C, Cond> GrantAbility<T, E, C, Cond> {
 pub struct GrantObjectAbilityForFilter<T, E, C, Cond> {
     pub filter: ObjectFilter,
     pub ability: AbilityModel<T, E, C, Cond>,
+    pub additional_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     pub display: String,
     pub condition: Option<Condition>,
     /// Original leading set quantifier, retained only for compiled-text surface.
@@ -176,6 +186,7 @@ where
         f.debug_struct("GrantObjectAbilityForFilter")
             .field("filter", &self.filter)
             .field("ability", &self.ability)
+            .field("additional_abilities", &self.additional_abilities)
             .field(
                 "generated_modification",
                 &format!("AddAbilityGeneric({:?})", self.ability),
@@ -196,10 +207,18 @@ impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
         Self {
             filter,
             ability,
+            additional_abilities: Vec::new(),
             display: display.into(),
             condition: None,
             set_quantifier_surface: None,
         }
+    }
+    pub fn with_additional_abilities(
+        mut self,
+        abilities: Vec<AbilityModel<T, E, C, Cond>>,
+    ) -> Self {
+        self.additional_abilities = abilities;
+        self
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
         self.condition = Some(condition);
@@ -259,6 +278,63 @@ impl CopyActivatedAbilities {
         self
     }
     pub fn with_condition(self, _condition: Condition) -> Self {
+        self
+    }
+}
+
+/// Selects which complete static-ability instances may be inherited.
+///
+/// `Any` is the common case and deliberately preserves the selected ability's
+/// complete payload. The color-protection selector represents Oracle's
+/// narrower "protection from any color" category without treating unrelated
+/// protection qualities as colors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticAbilityVariantSelector {
+    Any(StaticAbilityId),
+    ProtectionFromColor,
+}
+
+impl StaticAbilityVariantSelector {
+    pub const fn any(id: StaticAbilityId) -> Self {
+        Self::Any(id)
+    }
+
+    pub const fn ability_id(self) -> StaticAbilityId {
+        match self {
+            Self::Any(id) => id,
+            Self::ProtectionFromColor => StaticAbilityId::Protection,
+        }
+    }
+}
+
+/// Inherit complete static-ability variants from objects matching a filter.
+///
+/// Unlike a fixed ability grant, this preserves payloads such as a protection
+/// quality, a landwalk kind, or a qualified-hexproof filter.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopyStaticAbilityVariants {
+    pub filter: ObjectFilter,
+    pub selectors: Vec<StaticAbilityVariantSelector>,
+    pub exclude_source_id: bool,
+    pub display: String,
+}
+
+impl CopyStaticAbilityVariants {
+    pub fn new(
+        filter: ObjectFilter,
+        selectors: Vec<StaticAbilityVariantSelector>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            filter,
+            selectors,
+            exclude_source_id: true,
+            display: display.into(),
+        }
+    }
+
+    pub fn with_exclude_source_id(mut self, exclude: bool) -> Self {
+        self.exclude_source_id = exclude;
         self
     }
 }

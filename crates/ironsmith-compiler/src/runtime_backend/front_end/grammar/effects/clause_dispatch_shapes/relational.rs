@@ -98,21 +98,35 @@ pub(crate) fn parse_copular_animation_shape(
         (tokens.get(..copula)?, animation_tokens)
     };
     let animation_body = leaf::parse_leaf_leading_indefinite_article_tokens(animation_tokens).rest;
+    let descriptor_words = parser_token_word_refs(animation_body);
+    let omitted_creature_subtype_animation =
+        become_shapes::parse_become_leading_pt_shape(&descriptor_words, animation_body)
+            .is_some_and(|shape| {
+                if shape.creature_word_index.is_some() {
+                    return false;
+                }
+                let (descriptor, preserves_other_types) =
+                    become_shapes::strip_become_addition_tail_words(
+                        &descriptor_words[shape.value_word_count..],
+                    );
+                preserves_other_types
+                    && become_shapes::parse_become_creature_descriptor_words(descriptor).is_some()
+            });
     let fixed_pt_animation = animation_body
         .first()
         .and_then(|token| leaf::parse_leaf_pt_modifier_values_complete(token.parser_text()).ok())
         .is_some_and(|(power, toughness)| {
             matches!((power, toughness), (Value::Fixed(_), Value::Fixed(_)))
-                && primitives::find_prefix(animation_tokens, || {
+                && (primitives::find_prefix(animation_tokens, || {
                     alt((primitives::kw("creature"), primitives::kw("creatures")))
                 })
                 .is_some()
+                    || omitted_creature_subtype_animation)
                 && primitives::find_prefix(animation_tokens, || {
                     primitives::phrase(&["in", "addition", "to"])
                 })
                 .is_some()
         });
-    let descriptor_words = parser_token_word_refs(animation_body);
     let simple_descriptor = !matches!(
         become_shapes::parse_become_simple_descriptor_words(&descriptor_words),
         become_shapes::BecomeSimpleDescriptorShape::None

@@ -278,6 +278,12 @@ pub enum ExecutionFact {
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
     OtherNumber(u32),
+    CoinFlip {
+        face: ironsmith_core::CoinFace,
+        call: Option<ironsmith_core::CoinFace>,
+        winner: Option<PlayerId>,
+        loser: Option<PlayerId>,
+    },
 }
 
 impl ExecutionFact {
@@ -1964,6 +1970,18 @@ impl Effect {
         Self::new(LoseLifeEffect::with_filter(amount, player))
     }
 
+    /// Create a fixed life-payment effect.
+    pub fn pay_life(amount: impl Into<Value>) -> Self {
+        use crate::effects::PayLifeEffect;
+        Self::new(PayLifeEffect::you(amount))
+    }
+
+    /// Create a fixed life-payment effect for a specific player.
+    pub fn pay_life_player(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::PayLifeEffect;
+        Self::new(PayLifeEffect::with_filter(amount, player))
+    }
+
     /// Create a "target player loses N life" effect.
     pub fn lose_life_target(amount: impl Into<Value>) -> Self {
         use crate::effects::LoseLifeEffect;
@@ -2901,15 +2919,6 @@ impl Effect {
         Self::new(TapEffect::source())
     }
 
-    /// Create a "pay life" effect (controller loses life).
-    ///
-    /// Used for cost effects that require paying life.
-    /// Note: Paying life is identical to losing life in the rules.
-    pub fn pay_life(amount: u32) -> Self {
-        use crate::effects::LoseLifeEffect;
-        Self::new(LoseLifeEffect::you(amount))
-    }
-
     /// Create an "exile card(s) from hand as cost" effect.
     ///
     /// Used for alternative casting costs like Force of Will.
@@ -2962,6 +2971,18 @@ impl Effect {
     pub fn clear_damage(target: ChooseSpec) -> Self {
         use crate::effects::ClearDamageEffect;
         Self::new(ClearDamageEffect::new(target))
+    }
+
+    /// Create a CR 701.69a heal effect for an exact amount of marked damage.
+    pub fn heal_damage(target: ChooseSpec, amount: impl Into<Value>) -> Self {
+        use crate::effects::HealDamageEffect;
+        Self::new(HealDamageEffect::exact(target, amount))
+    }
+
+    /// Create a CR 701.69a heal effect that removes all marked damage.
+    pub fn heal_all_damage(target: ChooseSpec) -> Self {
+        use crate::effects::HealDamageEffect;
+        Self::new(HealDamageEffect::all(target))
     }
 
     /// Create a "monstrosity N" effect.
@@ -3076,7 +3097,7 @@ impl Effect {
     pub fn grant_next_spell_ability_this_turn(
         player: crate::target::PlayerFilter,
         filter: crate::target::ObjectFilter,
-        ability: crate::static_abilities::StaticAbility,
+        ability: crate::ability::Ability,
     ) -> Self {
         use crate::effects::GrantNextSpellAbilityEffect;
         Self::new(GrantNextSpellAbilityEffect::new(player, filter, ability))
@@ -3156,6 +3177,13 @@ impl Effect {
         Self::new(ShuffleHandAndGraveyardIntoLibraryEffect::new(player))
     }
 
+    pub fn shuffle_hand_graveyard_and_owned_permanents_into_library_player(
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect;
+        Self::new(ShuffleHandAndGraveyardIntoLibraryEffect::including_owned_permanents(player))
+    }
+
     /// Create a "reorder graveyard" effect for a specific player.
     pub fn reorder_graveyard_player(player: PlayerFilter) -> Self {
         use crate::effects::ReorderGraveyardEffect;
@@ -3223,6 +3251,12 @@ impl Effect {
     pub fn flip_coin(player: PlayerFilter) -> Self {
         use crate::effects::FlipCoinEffect;
         Self::new(FlipCoinEffect::new(player))
+    }
+
+    /// Flip a coin where the instruction cares only about heads or tails.
+    pub fn flip_coin_for_face(player: PlayerFilter) -> Self {
+        use crate::effects::FlipCoinEffect;
+        Self::new(FlipCoinEffect::face_only(player))
     }
 
     /// Roll a die with the given number of sides for the specified player.
@@ -3883,6 +3917,11 @@ impl Effect {
         Self::new(WinTheGameEffect::new(player))
     }
 
+    /// Create an effect that states that the game is a draw.
+    pub fn draw_the_game() -> Self {
+        Self::new(crate::effects::DrawTheGameEffect)
+    }
+
     /// Create an "extra turn" effect for the controller.
     pub fn extra_turn() -> Self {
         use crate::effects::ExtraTurnEffect;
@@ -3917,6 +3956,11 @@ impl Effect {
     pub fn end_turn_player(player: PlayerFilter) -> Self {
         use crate::effects::EndTurnEffect;
         Self::new(EndTurnEffect::new(player))
+    }
+
+    /// Create an "end the combat phase" effect.
+    pub fn end_combat_phase() -> Self {
+        Self::new(crate::effects::EndCombatPhaseEffect::new())
     }
 
     /// Create a "skip turn" effect for a specific player.

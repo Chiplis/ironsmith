@@ -947,7 +947,7 @@ fn describe_for_players_may_copy_spell_and_choose_new_targets(
     ))
 }
 
-pub(super) fn describe_with_id_then_for_players_if_happened(
+pub(crate) fn describe_with_id_then_for_players_if_happened(
     with_id: &crate::effects::WithIdEffect,
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -1307,12 +1307,17 @@ pub(super) fn describe_may_search_basic_land_then_shuffle(
     ))
 }
 
-pub(super) fn same_search_player_filter(left: &PlayerFilter, right: &PlayerFilter) -> bool {
+pub(crate) fn same_search_player_filter(left: &PlayerFilter, right: &PlayerFilter) -> bool {
     player_filters_refer_to_same_player(left, right)
         || matches!(
             (left, right),
-            (PlayerFilter::ControllerOf(_), PlayerFilter::ControllerOf(_))
-                | (PlayerFilter::OwnerOf(_), PlayerFilter::OwnerOf(_))
+            (
+                PlayerFilter::ControllerOf(_) | PlayerFilter::AliasedControllerOf(_),
+                PlayerFilter::ControllerOf(_) | PlayerFilter::AliasedControllerOf(_),
+            ) | (
+                PlayerFilter::OwnerOf(_) | PlayerFilter::AliasedOwnerOf(_),
+                PlayerFilter::OwnerOf(_) | PlayerFilter::AliasedOwnerOf(_),
+            )
         )
 }
 
@@ -1679,6 +1684,7 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
     }
 
     let mut clauses = Vec::new();
+    let mut subject_last_clauses = Vec::new();
     let (repeat_effects, trailing_effects) = repeat_effects.split_at(options.len());
     for (option, repeat_effect) in options.iter().zip(repeat_effects.iter()) {
         let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
@@ -1706,17 +1712,45 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
             title_case_vote_option(&option.name),
             lowercase_first(&body)
         ));
+        subject_last_clauses.push(format!(
+            "{} for each {} vote",
+            lowercase_first(&body),
+            option.name.to_ascii_lowercase()
+        ));
     }
 
+    let shared_quantified_subject = [
+        "each opponent ",
+        "each player ",
+        "each other player ",
+        "you ",
+    ]
+    .iter()
+    .any(|prefix| {
+        subject_last_clauses
+            .iter()
+            .all(|clause| clause.starts_with(prefix))
+    });
     let option_names = options
         .iter()
-        .map(|option| title_case_vote_option(&option.name))
+        .map(|option| {
+            if shared_quantified_subject {
+                option.name.to_ascii_lowercase()
+            } else {
+                title_case_vote_option(&option.name)
+            }
+        })
         .collect::<Vec<_>>();
     let mut text = format!(
         "Council's dilemma — Starting with you, each player votes for {}",
         join_with_or(&option_names)
     );
-    if !clauses.is_empty() {
+    if shared_quantified_subject {
+        text.push_str(". ");
+        text.push_str(&capitalize_first(&compact_repeated_vote_clause_subjects(
+            &subject_last_clauses,
+        )));
+    } else if !clauses.is_empty() {
         text.push_str(". ");
         text.push_str(&clauses.join(". "));
     }
@@ -1960,8 +1994,21 @@ pub(super) fn describe_secret_named_vote_intervening_followup(effect: &Effect) -
 pub(super) fn describe_secret_vote_voter_choice_control_sequence(
     effects: &[Effect],
 ) -> Option<String> {
-    let [vote_effect, control_effect, grant_effect, repeat_effect] = effects else {
-        return None;
+    let (vote_effect, control_effect, grant_effect, repeat_effect) = match effects {
+        [vote_effect, control_effect, grant_effect, repeat_effect] => {
+            (vote_effect, control_effect, grant_effect, repeat_effect)
+        }
+        [vote_effect, coordinated_effect, repeat_effect] => {
+            let sequence = coordinated_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+            if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+                return None;
+            }
+            let [control_effect, grant_effect] = sequence.effects.as_slice() else {
+                return None;
+            };
+            (vote_effect, control_effect, grant_effect, repeat_effect)
+        }
+        _ => return None,
     };
     let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
     let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice else {
@@ -1999,6 +2046,7 @@ pub(super) fn describe_secret_vote_voter_choice_control_sequence(
     let control_tag = direct_wrapped_effect_tag(control_effect)?;
     let control = unwrap_basic_tag_wrappers(control_effect)
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let aggregated_vote_choice_tag = TagKey::from("__chosen_objects__");
     if control.until != Until::Forever
         || control.condition.is_some()
         || control.modification.is_some()
@@ -2007,10 +2055,10 @@ pub(super) fn describe_secret_vote_voter_choice_control_sequence(
             control.runtime_modifications.as_slice(),
             [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
         )
-        || !control
-            .target_spec
-            .as_ref()
-            .is_some_and(|target| choose_spec_references_tagged_object(target, &choose.tag))
+        || !control.target_spec.as_ref().is_some_and(|target| {
+            choose_spec_references_tagged_object(target, &choose.tag)
+                || choose_spec_references_tagged_object(target, &aggregated_vote_choice_tag)
+        })
     {
         return None;
     }
@@ -2028,15 +2076,18 @@ pub(super) fn describe_secret_vote_voter_choice_control_sequence(
     {
         return None;
     }
-    let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &grant.modification
-    else {
-        return None;
+    let grants_cant_attack_its_owner = match &grant.modification {
+        Some(crate::continuous::Modification::AddAbility(ability)) => {
+            ability.id() == crate::static_abilities::StaticAbilityId::CantAttackItsOwner
+        }
+        Some(crate::continuous::Modification::AddAbilityGeneric(ability)) => matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::CantAttackItsOwner
+        ),
+        _ => false,
     };
-    if !matches!(
-        &ability.kind,
-        crate::ability::AbilityKind::Static(ability)
-            if ability.id() == crate::static_abilities::StaticAbilityId::CantAttackItsOwner
-    ) {
+    if !grants_cant_attack_its_owner {
         return None;
     }
 
@@ -3555,6 +3606,30 @@ pub(super) fn describe_library_consult_selection_with_cards(filter: &ObjectFilte
     describe_search_selection_with_cards(&selection)
 }
 
+/// A cast trigger already supplies the comparison object for "lesser mana
+/// value".  Preserve that concise Oracle surface only when the consult filter
+/// explicitly compares against the typed triggering-object tag; other tagged
+/// comparisons still need their rendered antecedent.
+fn describe_triggering_spell_lesser_mana_consult_selection(
+    filter: &ObjectFilter,
+) -> Option<String> {
+    filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| {
+            constraint.tag.as_str() == "triggering"
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLtTagged
+        })
+        .then_some(())?;
+
+    let selection = describe_library_consult_selection_with_cards(filter);
+    let head = selection.strip_suffix(" with lesser mana value than it")?;
+    Some(format!(
+        "{} with lesser mana value",
+        with_indefinite_article(strip_leading_article(head))
+    ))
+}
+
 pub(super) fn describe_consult_may_cast_remainder_bottom_sequence(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -3591,7 +3666,9 @@ pub(super) fn describe_consult_may_cast_remainder_bottom_sequence(
 
     let player = describe_player_filter(&consult.player);
     let library_owner = describe_possessive_player_filter(&consult.player);
-    let (subject_verb, followup_verb, remainder_subject) = match consult.mode {
+    let concise_triggering_spell_selection =
+        describe_triggering_spell_lesser_mana_consult_selection(&consult.filter);
+    let (subject_verb, followup_verb, default_remainder_subject) = match consult.mode {
         crate::effects::consult_helpers::LibraryConsultMode::Reveal => (
             player_verb(&player, "reveal", "reveals"),
             "reveal",
@@ -3604,7 +3681,17 @@ pub(super) fn describe_consult_may_cast_remainder_bottom_sequence(
         ),
     };
     let pronoun = if player == "you" { "you" } else { "they" };
-    let selection = describe_library_consult_selection_with_cards(&consult.filter);
+    let selection = concise_triggering_spell_selection
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| describe_library_consult_selection_with_cards(&consult.filter));
+    let remainder_subject = if concise_triggering_spell_selection.is_some()
+        && remainder.surface == ironsmith_core::LibraryRemainderSurface::Rest
+    {
+        "the rest"
+    } else {
+        default_remainder_subject
+    };
     let stop_text =
         describe_consult_stop_text(&selection, &consult.stop_rule, consult.max_exposed.as_ref());
     let caster = describe_player_filter(&cast.player);
@@ -4326,6 +4413,125 @@ pub(super) fn describe_look_hand_choose_then_discard_or_exile(
     None
 }
 
+pub(in crate::compiled_text) fn describe_reveal_hand_choose_discard_inline(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [look_effect, _, action_effect] = effects else {
+        return None;
+    };
+    if !look_effect
+        .downcast_ref::<crate::effects::LookAtHandEffect>()?
+        .reveal
+        || unwrap_basic_tag_wrappers(action_effect)
+            .downcast_ref::<crate::effects::DiscardEffect>()
+            .is_none()
+    {
+        return None;
+    }
+    let rendered = describe_look_hand_choose_then_discard_or_exile(effects)?;
+    let (reveal, rest) = rendered.split_once(". You choose ")?;
+    let (choice, discard) = rest.split_once(". That player discards ")?;
+    Some(format!(
+        "{reveal}, you choose {choice}, then that player discards {discard}"
+    ))
+}
+
+pub(super) fn describe_reveal_hand_optional_choice_discard_else_exile(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [
+        look_effect,
+        may_choose_effect,
+        discard_if_effect,
+        fallback_if_effect,
+    ] = effects
+    else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    let looked_player = choose_spec_player_filter(&look.target)?;
+    if !look.reveal || looked_player == PlayerFilter::You {
+        return None;
+    }
+
+    let may_choose_with_id = may_choose_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may_choose = may_choose_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let [choose_effect] = may_choose.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if may_choose.decider.as_ref() != Some(&PlayerFilter::You)
+        || may_choose.fallback != crate::decision::FallbackStrategy::Decline
+        || choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || choose.filter.excluded_card_types.as_slice() != [CardType::Land]
+        || !choose
+            .filter
+            .owner
+            .as_ref()
+            .is_some_and(|owner| player_filters_refer_to_same_player(owner, &looked_player))
+    {
+        return None;
+    }
+
+    let discard_with_id = discard_if_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let discard_if = discard_with_id
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()?;
+    let [discard_effect] = discard_if.then.as_slice() else {
+        return None;
+    };
+    let discard = unwrap_basic_tag_wrappers(discard_effect)
+        .downcast_ref::<crate::effects::DiscardEffect>()?;
+    if discard_if.condition != may_choose_with_id.id
+        || discard_if.predicate != EffectPredicate::Happened
+        || !discard_if.else_.is_empty()
+        || !discard_discards_chosen_card(discard, choose, &looked_player)
+    {
+        return None;
+    }
+
+    let fallback_if = fallback_if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [fallback_may_effect] = fallback_if.then.as_slice() else {
+        return None;
+    };
+    let fallback_may = fallback_may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [move_effect] = fallback_may.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let ChooseSpec::Object(exiled_filter) = move_to_zone.target.base() else {
+        return None;
+    };
+    if fallback_if.condition != may_choose_with_id.id
+        || fallback_if.predicate != EffectPredicate::DidNotHappen
+        || !fallback_if.else_.is_empty()
+        || fallback_may.decider.as_ref() != Some(&PlayerFilter::You)
+        || fallback_may.fallback != crate::decision::FallbackStrategy::Decline
+        || move_to_zone.zone != Zone::Graveyard
+        || move_to_zone.to_top
+        || move_to_zone.target_plural_surface
+        || exiled_filter.zone != Some(Zone::Exile)
+        || exiled_filter.face_down != Some(false)
+        || !exiled_filter
+            .owner
+            .as_ref()
+            .is_some_and(|owner| player_filters_refer_to_same_player(owner, &looked_player))
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{}. You may choose {} from it. If you do, that player discards that card. Otherwise, you may put a face-up exiled card they own into their graveyard",
+        describe_effect(look_effect).trim_end_matches('.'),
+        hand_choice_from_it_text(choose)?
+    ))
+}
+
 pub(super) fn describe_look_hand_choose_then_discard(effects: &[&Effect]) -> Option<String> {
     let [look_effect, choose_effect, discard_effect] = effects else {
         return None;
@@ -4373,10 +4579,20 @@ pub(super) fn describe_look_hand_choose_then_discard(effects: &[&Effect]) -> Opt
     }
     let look_text = describe_effect(look_effect);
     let choice = hand_choice_from_it_text(choose)?;
-    Some(if optional {
-        format!("{look_text}. You may choose {choice} from it. That player discards that card")
+    let discard_subject = if look_text
+        .to_ascii_lowercase()
+        .contains("that player's hand")
+    {
+        "The player"
     } else {
-        format!("{look_text} and choose {choice} from it. That player discards that card")
+        "That player"
+    };
+    Some(if optional {
+        format!(
+            "{look_text}. You may choose {choice} from it. {discard_subject} discards that card"
+        )
+    } else {
+        format!("{look_text} and choose {choice} from it. {discard_subject} discards that card")
     })
 }
 
@@ -4822,6 +5038,8 @@ fn referenced_player_action(effect: &Effect) -> Option<(PlayerFilter, String)> {
         mill.player.clone()
     } else if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
         choose_spec_player_filter(&lose.player)?
+    } else if let Some(pay) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+        choose_spec_player_filter(&pay.player)?
     } else if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
         choose_spec_player_filter(&gain.player)?
     } else if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {

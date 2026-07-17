@@ -83,3 +83,63 @@ fn top_only_graveyard_choice_preserves_the_filtered_top_card_surface() {
         Some("you return the top creature card of your graveyard to the battlefield")
     );
 }
+
+#[test]
+fn top_only_graveyard_exile_preserves_filtered_top_card_surface() {
+    let tag = TagKey::from("chosen_top_0");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::creature()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You),
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        tag.clone(),
+    )
+    .top_only();
+    let exile = crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag));
+
+    assert_eq!(
+        describe_choose_then_exile(&choose, &exile).as_deref(),
+        Some("you exile the top creature card of your graveyard")
+    );
+}
+
+#[test]
+fn ordinary_graveyard_exile_remains_a_choice_from_the_zone() {
+    let tag = TagKey::from("chosen_0");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::creature()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You),
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        tag.clone(),
+    );
+    let exile = crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(tag));
+
+    assert_eq!(
+        describe_choose_then_exile(&choose, &exile).as_deref(),
+        Some("you exile a creature card from your graveyard")
+    );
+}
+
+#[test]
+fn top_only_graveyard_to_library_bottom_renders_as_one_ordered_move() {
+    let tag = TagKey::from("chosen_top_0");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You),
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        tag.clone(),
+    )
+    .top_only();
+    let move_to_library =
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag), Zone::Library, false);
+
+    assert_eq!(
+        describe_choose_then_move_to_library(&choose, &move_to_library).as_deref(),
+        Some("you put the top card of your graveyard on the bottom of your library")
+    );
+}

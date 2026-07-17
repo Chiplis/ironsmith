@@ -31,9 +31,13 @@ impl EffectExecutor for ExtraTurnEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        if !ctx.claim_shared_team_structure_operation(game, player_id, "extra_turn") {
+            return Ok(EffectOutcome::resolved());
+        }
 
         // Add an extra turn for this player
-        game.turn_store.extra_turns.push(player_id);
+        let turn_player = game.team_turn_representative(player_id);
+        game.turn_store.extra_turns.push(turn_player);
         game.record_ui_effect_event("extra_turn", Some(player_id), None, Vec::new(), None, None);
 
         Ok(EffectOutcome::resolved())

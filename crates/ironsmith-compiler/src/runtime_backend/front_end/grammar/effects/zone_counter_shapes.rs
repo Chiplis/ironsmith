@@ -791,6 +791,7 @@ pub(crate) fn source_spec_for_reference(source: CounterReferenceSource) -> crate
 pub(crate) fn player_filter_for_half_reference(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
+        PlayerAst::Active => Some(PlayerFilter::Active),
         PlayerAst::Any => Some(PlayerFilter::Any),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),

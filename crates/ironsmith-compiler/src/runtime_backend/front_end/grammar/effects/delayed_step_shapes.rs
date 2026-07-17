@@ -69,6 +69,7 @@ pub(crate) enum DelayedTimingStepShape {
     Upkeep,
     DrawStep,
     EndStep,
+    EndOfCombat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

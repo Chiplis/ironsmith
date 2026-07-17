@@ -240,7 +240,13 @@ pub(crate) fn parse_from_among_them_shape(
 ) -> Option<FromAmongPutShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let (reference_index, _, after_reference) = primitives::find_prefix(tokens, || {
-        primitives::phrase(&["from", "among", "them"]).void()
+        alt((
+            primitives::phrase(&["from", "among", "them"]),
+            primitives::phrase(&["from", "among", "those", "cards"]),
+            primitives::phrase(&["from", "among", "the", "revealed", "cards"]),
+            primitives::phrase(&["from", "among", "the", "cards", "revealed", "this", "way"]),
+        ))
+        .void()
     })?;
     let choice_tokens = strip_optional_put(trim_lexed_commas(tokens.get(..reference_index)?));
     let (count, filter_tokens) =
@@ -399,6 +405,22 @@ mod tests {
         let shape = parse_from_among_them_shape(&among).unwrap();
         assert_eq!(shape.destination, FromAmongDestinationShape::Battlefield);
         assert_eq!(shape.rest_destination, Some(RestDestinationShape::Hand));
+
+        let revealed = lex_line(
+            "put up to two creature cards from among the revealed cards into your hand instead of one",
+            0,
+        )
+        .unwrap();
+        let shape = parse_from_among_them_shape(&revealed).unwrap();
+        assert_eq!(shape.count, ChoiceCount::up_to(2));
+        assert_eq!(shape.destination, FromAmongDestinationShape::Hand);
+        assert!(
+            shape
+                .filter_tokens
+                .iter()
+                .any(|token| token.is_word("creature"))
+        );
+
         assert!(is_reorder_tagged_cards(
             &lex_line("put them back in any order", 0).unwrap()
         ));

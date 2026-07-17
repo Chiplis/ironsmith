@@ -2397,6 +2397,31 @@ fn parse_predicate_card_in_your_graveyard_uses_capture_parser() -> Result<(), Ca
 }
 
 #[test]
+fn parse_predicate_independently_articled_graveyard_cards_are_conjunctive()
+-> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If there is an instant card and a sorcery card in your graveyard",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+    let PredicateAst::And(left, right) = parsed else {
+        panic!("expected two independent graveyard existentials");
+    };
+    let expected = [CardType::Instant, CardType::Sorcery];
+    for (predicate, expected_type) in [left, right].into_iter().zip(expected) {
+        let PredicateAst::PlayerControls { player, filter } = *predicate else {
+            panic!("expected each existential arm to be a controls predicate");
+        };
+        assert_eq!(player, PlayerAst::You);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, vec![expected_type]);
+    }
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_targets_only_source_uses_capture_parser() -> Result<(), CardTextError> {
     for (text, expected_card_types) in [
         (
@@ -2476,7 +2501,12 @@ fn parse_predicate_behold_or_controlled_subtype_uses_capture_parser() -> Result<
     assert_eq!(
         parsed,
         PredicateAst::Or(
-            Box::new(PredicateAst::ThisSpellPaidLabel("Behold".into())),
+            Box::new(PredicateAst::ThisSpellPaidLabel(
+                crate::cost::OptionalCostRef::with_discriminator(
+                    crate::cost::OptionalCostKind::Behold,
+                    crate::types::Subtype::Dragon.to_string(),
+                ),
+            )),
             Box::new(PredicateAst::PlayerControls {
                 player: PlayerAst::You,
                 filter: ObjectFilter::default()
@@ -2484,6 +2514,28 @@ fn parse_predicate_behold_or_controlled_subtype_uses_capture_parser() -> Result<
             }),
         )
     );
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_beheld_subtype_preserves_optional_cost_discriminator()
+-> Result<(), CardTextError> {
+    for (text, subtype) in [
+        ("If a Dragon was beheld", Subtype::Dragon),
+        ("If an Angel was beheld", Subtype::Angel),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::ThisSpellPaidLabel(crate::cost::OptionalCostRef::with_discriminator(
+                crate::cost::OptionalCostKind::Behold,
+                subtype.to_string(),
+            ),),
+            "{text}"
+        );
+    }
     Ok(())
 }
 
@@ -3019,10 +3071,7 @@ fn parse_predicate_intervening_if_low_score_cohort_is_typed() {
         ),
         ("Paladin of Atonement", "you lost life last turn"),
         ("Palani's Hatcher", "you control one or more Eggs"),
-        (
-            "Phage the Untouchable",
-            "you didn't cast it from your hand",
-        ),
+        ("Phage the Untouchable", "you didn't cast it from your hand"),
         ("Pollywog Symbiote", "it has mutate"),
         ("Price of Glory", "it's not that player's turn"),
         (
@@ -3121,5 +3170,36 @@ fn parse_predicate_compares_object_count_with_source_counter_count() -> Result<(
         panic!("expected quest counters on the source, got {right:?}");
     };
     assert!(matches!(spec.unhinted(), crate::target::ChooseSpec::Source));
+    Ok(())
+}
+
+#[test]
+fn explicit_additional_cost_object_predicates_use_stable_alias() -> Result<(), CardTextError> {
+    for (text, expected_action, expected_kind) in [
+        (
+            "the sacrificed permanent was an artifact",
+            ironsmith_core::AdditionalCostObjectAction::Sacrificed,
+            ironsmith_core::SacrificedObjectKind::Permanent,
+        ),
+        (
+            "the exiled creature was a Thrull",
+            ironsmith_core::AdditionalCostObjectAction::Exiled,
+            ironsmith_core::SacrificedObjectKind::Creature,
+        ),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let PredicateAst::TaggedMatches(tag, filter) = parse_predicate(&tokens)? else {
+            panic!("expected tagged cost-object predicate for {text}");
+        };
+        assert_eq!(tag.as_str(), ADDITIONAL_COST_OBJECT_TAG, "{text}");
+        assert_eq!(
+            filter.additional_cost_object_surface(),
+            Some(ironsmith_core::AdditionalCostObjectSurface::new(
+                expected_action,
+                expected_kind,
+            )),
+            "{text}"
+        );
+    }
     Ok(())
 }

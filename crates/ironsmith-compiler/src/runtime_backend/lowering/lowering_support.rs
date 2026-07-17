@@ -1,7 +1,7 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, ParsedAbility,
-    PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, TriggerSpec,
+    PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TagKey, TargetAst, TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef};
@@ -17,11 +17,11 @@ use super::compile_support::{
     effect_references_it_tag, effect_references_its_controller, effect_references_tag,
     effects_contain_pending_effect_metric, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag, ensure_concrete_trigger_spec,
-    inferred_trigger_player_filter, is_sentence_helper_exiled_collection_tag,
-    materialize_prepared_effects_with_trigger_context, materialize_prepared_statement_effects,
-    materialize_prepared_triggered_effects, object_filter_mentions_iterated_player,
-    trigger_binds_player_reference_context, trigger_supports_event_value,
-    value_mentions_iterated_player,
+    filter_references_tag, inferred_trigger_player_filter,
+    is_sentence_helper_exiled_collection_tag, materialize_prepared_effects_with_trigger_context,
+    materialize_prepared_statement_effects, materialize_prepared_triggered_effects,
+    object_filter_mentions_iterated_player, trigger_binds_player_reference_context,
+    trigger_supports_event_value, value_mentions_iterated_player,
 };
 use super::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
@@ -31,8 +31,10 @@ use super::condition_antecedent::{
     predicate_source_counter_antecedent, retarget_it_animations_to_source,
     retarget_source_damage_attack_followups_to_source,
 };
-use super::effect_ast_normalization::normalize_effects_ast;
-use super::effect_ast_traversal::for_each_nested_effects_mut;
+use super::effect_ast_normalization::{
+    correlate_conditional_quantified_choice_followups, normalize_effects_ast,
+};
+use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::effect_pipeline::{
     EffectPreludeTag, NormalizedAdditionalCostChoiceOptionAst, NormalizedParsedAbility,
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
@@ -40,7 +42,7 @@ use super::effect_pipeline::{
 };
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
-use super::static_ability_helpers::exalted_triggered_ability;
+use super::static_ability_helpers::executable_object_abilities_for_keyword_action;
 
 fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
     match target {
@@ -386,6 +388,47 @@ fn discard_one_or_more_trigger_uses_event_count(trigger: &TriggerSpec) -> bool {
     }
 }
 
+fn counter_removed_this_way_trigger_uses_event_count(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            counter_removed_this_way_trigger_uses_event_count(trigger)
+        }
+        TriggerSpec::CounterRemovedFrom {
+            caused_by_source: true,
+            ..
+        } => true,
+        _ => false,
+    }
+}
+
+fn preserve_counter_removed_this_way_damage_amount(effect: &mut EffectAst) {
+    fn preserve_in_effects(effects: &mut [EffectAst]) {
+        for effect in effects {
+            preserve_counter_removed_this_way_damage_amount(effect);
+        }
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        let amount = match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+            | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEach { amount, .. } => Some(amount),
+            _ => None,
+        };
+        if let Some(amount) = amount
+            && matches!(amount.unhinted(), Value::EventValue(EventValueSpec::Amount))
+            && !amount.has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay)
+        {
+            *amount = amount
+                .clone()
+                .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay);
+        }
+    }
+
+    for_each_nested_effects_mut(effect, false, preserve_in_effects);
+}
+
 fn replace_it_count_with_event_count(effect: &mut EffectAst) {
     fn is_it_count(value: &Value) -> bool {
         matches!(value, Value::Count(filter) if object_filter_is_it_reference(filter))
@@ -511,6 +554,15 @@ pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&
     }
     if matches!(
         trigger,
+        TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ManifestDread,
+            ..
+        }
+    ) {
+        return Some(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG);
+    }
+    if matches!(
+        trigger,
         TriggerSpec::ThisIsDealtDamage
             | TriggerSpec::ThisIsDealtCombatDamage
             | TriggerSpec::IsDealtDamage(_)
@@ -535,6 +587,12 @@ fn default_trigger_last_object_prelude(
         TriggerSpec::ThisBecomesBlockedByObject(filter) => Some(
             EffectPreludeTag::TriggeringBlockers(tag.clone(), filter.clone()),
         ),
+        TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ManifestDread,
+            ..
+        } if tag.as_str() == crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG => {
+            Some(EffectPreludeTag::TriggeringObject(tag.clone()))
+        }
         _ => None,
     }
 }
@@ -703,7 +761,15 @@ fn has_prior_effect_before_it_reference(effects: &[EffectAst]) -> bool {
     let mut saw_prior_effect = false;
     for effect in effects {
         if effect_references_it_tag(effect) {
-            return saw_prior_effect;
+            if saw_prior_effect {
+                return true;
+            }
+
+            let mut nested_has_prior_effect = false;
+            for_each_nested_effects(effect, true, |nested| {
+                nested_has_prior_effect |= has_prior_effect_before_it_reference(nested);
+            });
+            return nested_has_prior_effect;
         }
         saw_prior_effect = true;
     }
@@ -898,6 +964,97 @@ fn rewrite_prepare_effects_from_normalized(
     })
 }
 
+fn source_sentence_followup_requires_shared_lowering(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::ForEachOpponentDoesNot { .. }
+            | EffectAst::ForEachPlayerDoesNot { .. }
+            | EffectAst::ForEachOpponentDid { .. }
+            | EffectAst::ForEachPlayerDid { .. }
+            | EffectAst::VoteOption { .. }
+            | EffectAst::VoteExtra { .. }
+    )
+}
+
+fn source_sentence_boundary_continues_repeat_process(
+    effects: &[EffectAst],
+    boundary: usize,
+) -> bool {
+    boundary + 1 == effects.len()
+        && matches!(
+            effects.get(boundary),
+            Some(EffectAst::IfResult { effects, .. })
+                if matches!(effects.last(), Some(EffectAst::RepeatThisProcess))
+        )
+}
+
+fn push_unique_source_sentence_hand_tag(tags: &mut Vec<TagKey>, tag: &TagKey) {
+    if !tags.iter().any(|known| known == tag) {
+        tags.push(tag.clone());
+    }
+}
+
+fn collect_source_sentence_hand_pipeline_tags(effects: &[EffectAst], tags: &mut Vec<TagKey>) {
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RevealCardsFromHand { tag, .. },
+                ..
+            }) => push_unique_source_sentence_hand_tag(tags, tag),
+            EffectAst::ChooseObjects { filter, tag, .. }
+                if filter.zone == Some(Zone::Hand)
+                    || tags
+                        .iter()
+                        .any(|hand_tag| filter_references_tag(filter, hand_tag.as_str())) =>
+            {
+                push_unique_source_sentence_hand_tag(tags, tag);
+            }
+            _ => {}
+        }
+
+        for_each_nested_effects(effect, true, |nested| {
+            collect_source_sentence_hand_pipeline_tags(nested, tags);
+        });
+    }
+}
+
+fn source_sentence_effect_consumes_hand_pipeline_tag(effect: &EffectAst, tag: &TagKey) -> bool {
+    let directly_consumes = match effect {
+        EffectAst::ChooseObjects { filter, .. } => filter_references_tag(filter, tag.as_str()),
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Discard { filter, .. },
+            ..
+        }) => {
+            effect_references_tag(effect, tag.as_str())
+                || filter
+                    .as_ref()
+                    .is_some_and(|filter| filter_references_tag(filter, tag.as_str()))
+        }
+        _ => false,
+    };
+    if directly_consumes {
+        return true;
+    }
+
+    let mut nested_consumes = false;
+    for_each_nested_effects(effect, true, |nested| {
+        nested_consumes |= nested.iter().any(|nested_effect| {
+            source_sentence_effect_consumes_hand_pipeline_tag(nested_effect, tag)
+        });
+    });
+    nested_consumes
+}
+
+fn source_sentence_boundary_splits_hand_pipeline(effects: &[EffectAst], boundary: usize) -> bool {
+    let mut hand_tags = Vec::new();
+    collect_source_sentence_hand_pipeline_tags(&effects[..boundary], &mut hand_tags);
+    hand_tags.iter().any(|tag| {
+        effects[boundary..]
+            .iter()
+            .any(|effect| source_sentence_effect_consumes_hand_pipeline_tag(effect, tag))
+    })
+}
+
 fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst>, Vec<usize>) {
     let has_source_sentence = effects
         .iter()
@@ -921,11 +1078,51 @@ fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst
         }
     }
 
-    if all_source_sentences && counts.len() > 1 && counts.iter().all(|count| *count > 0) {
-        (flattened, counts)
-    } else {
-        (flattened, Vec::new())
+    if correlate_conditional_quantified_choice_followups(&mut flattened) {
+        // The consumer is authored in the next sentence but is semantically
+        // branch-local because it uses a collection produced only by that
+        // conditional choice. Lower the correlated branch as one unit.
+        return (flattened, Vec::new());
     }
+
+    if all_source_sentences && counts.len() > 1 && counts.iter().all(|count| *count > 0) {
+        let mut boundary = 0usize;
+        let mut splits_shared_lowering_followup = false;
+        let mut splits_hand_pipeline = false;
+        let mut continues_repeat_process = false;
+        for count in &counts[..counts.len() - 1] {
+            boundary += *count;
+            splits_shared_lowering_followup |= flattened
+                .get(boundary)
+                .is_some_and(source_sentence_followup_requires_shared_lowering);
+            continues_repeat_process |=
+                source_sentence_boundary_continues_repeat_process(&flattened, boundary);
+            splits_hand_pipeline |=
+                source_sentence_boundary_splits_hand_pipeline(&flattened, boundary);
+        }
+        if continues_repeat_process {
+            // Repeat-process normalization needs the preceding process body
+            // and its trailing conditional in the same AST slice. Re-run it
+            // only for the exact cross-sentence continuation shape.
+            return (normalize_effects_ast(&flattened), Vec::new());
+        }
+        if splits_hand_pipeline {
+            // Hand reveal/look, choice, and dependent discard effects form a
+            // typed tag pipeline. Keep that pipeline in one lowering slice so
+            // its specialist can see the complete operation.
+            return (flattened, Vec::new());
+        }
+        if splits_shared_lowering_followup {
+            // Correlated participant and vote followups are deliberately
+            // lowered together with their preceding clause. Keep the
+            // flattened program in one lowering slice rather than turning a
+            // followup into an orphan at a source-sentence segment boundary.
+            return (flattened, Vec::new());
+        }
+        return (flattened, counts);
+    }
+
+    (flattened, Vec::new())
 }
 
 pub(crate) fn rewrite_prepare_effects_for_lowering(
@@ -1000,9 +1197,14 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     {
         retarget_phase_step_it_targets_to_source(&mut normalized);
     }
+    let references_trigger_event_tag = trigger
+        .and_then(default_trigger_last_object_tag)
+        .is_some_and(|tag| effects_reference_tag(&normalized, tag));
     let default_last_object_tag = if imports.last_object_tag.is_none()
         && !has_local_target_prelude
-        && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
+        && (effects_reference_it_tag(&normalized)
+            || effects_reference_its_controller(&normalized)
+            || references_trigger_event_tag)
     {
         trigger
             .and_then(default_trigger_last_object_tag)
@@ -1010,6 +1212,9 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     } else {
         None
     };
+    let default_last_object_prelude = default_last_object_tag.as_ref().and_then(|tag| {
+        trigger.and_then(|trigger| default_trigger_last_object_prelude(trigger, tag))
+    });
 
     rewrite_prepare_effects_from_normalized(
         normalized.clone(),
@@ -1023,7 +1228,7 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
         },
         trigger.and_then(inferred_trigger_player_filter),
         default_last_object_tag,
-        None,
+        default_last_object_prelude,
         trigger.is_some(),
     )
 }
@@ -1197,6 +1402,11 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             replace_it_count_with_event_count(effect);
         }
     }
+    if counter_removed_this_way_trigger_uses_event_count(&trigger) {
+        for effect in &mut body_effects {
+            preserve_counter_removed_this_way_damage_amount(effect);
+        }
+    }
     if death_trigger_counts_counters_on_triggering_object(&trigger) {
         for effect in &mut body_effects {
             replace_exile_top_event_count_with_triggering_counter_count(effect);
@@ -1266,11 +1476,14 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             [EffectAst::Conditional { predicate, .. }]
                 if predicate_requires_battlefield_state(predicate)
         );
+    let references_trigger_event_tag = default_trigger_last_object_tag(&trigger)
+        .is_some_and(|tag| effects_reference_tag(&normalized, tag));
     let (default_last_object_tag, default_last_object_prelude) = if !has_local_target_prelude
         && !body_it_binds_to_body_target
         && (effects_reference_it_tag(&normalized)
             || effects_reference_its_controller(&normalized)
-            || intervening_if_uses_trigger_object)
+            || intervening_if_uses_trigger_object
+            || references_trigger_event_tag)
     {
         let default_tag = if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1))
             || matches!(
@@ -1696,81 +1909,47 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Wither => Some(StaticAbility::wither()),
         KeywordAction::Afflict(_) => None,
         KeywordAction::Amplify(_) => None,
-        KeywordAction::Afterlife(amount) => {
-            Some(StaticAbility::keyword_marker(format!("afterlife {amount}")))
-        }
-        KeywordAction::Fabricate(amount) => {
-            Some(StaticAbility::keyword_marker(format!("fabricate {amount}")))
-        }
+        KeywordAction::Afterlife(_) | KeywordAction::Fabricate(_) => None,
         KeywordAction::Infect => Some(StaticAbility::infect()),
-        KeywordAction::Undying => Some(StaticAbility::keyword_marker("undying".to_string())),
-        KeywordAction::Persist => Some(StaticAbility::keyword_marker("persist".to_string())),
-        KeywordAction::Prowess => Some(StaticAbility::keyword_marker("prowess".to_string())),
-        KeywordAction::Exalted => Some(StaticAbility::keyword_marker("exalted".to_string())),
+        KeywordAction::Undying
+        | KeywordAction::Persist
+        | KeywordAction::Prowess
+        | KeywordAction::Exalted => None,
         KeywordAction::Cascade => Some(StaticAbility::cascade()),
-        KeywordAction::Storm => Some(StaticAbility::keyword_marker("storm".to_string())),
-        KeywordAction::Toxic(amount) => {
-            Some(StaticAbility::keyword_marker(format!("toxic {amount}")))
-        }
-        KeywordAction::BattleCry => Some(StaticAbility::keyword_marker("battle cry".to_string())),
-        KeywordAction::Dethrone => Some(StaticAbility::keyword_marker("dethrone".to_string())),
-        KeywordAction::Evolve => Some(StaticAbility::keyword_marker("evolve".to_string())),
-        KeywordAction::Ingest => Some(StaticAbility::keyword_marker("ingest".to_string())),
-        KeywordAction::Mentor => Some(StaticAbility::keyword_marker("mentor".to_string())),
+        KeywordAction::Storm
+        | KeywordAction::Gravestorm
+        | KeywordAction::Toxic(_)
+        | KeywordAction::Poisonous(_)
+        | KeywordAction::BattleCry
+        | KeywordAction::Dethrone
+        | KeywordAction::Evolve
+        | KeywordAction::Ingest
+        | KeywordAction::Mentor => None,
         KeywordAction::Skulk => Some(StaticAbility::skulk()),
-        KeywordAction::Training => Some(StaticAbility::keyword_marker("training".to_string())),
-        KeywordAction::Riot => Some(StaticAbility::keyword_marker("riot".to_string())),
+        KeywordAction::Training | KeywordAction::Riot => None,
         KeywordAction::Unleash => Some(StaticAbility::unleash()),
-        KeywordAction::Renown(amount) => {
-            Some(StaticAbility::keyword_marker(format!("renown {amount}")))
-        }
-        KeywordAction::Modular(amount) => {
-            Some(StaticAbility::keyword_marker(format!("modular {amount}")))
-        }
-        KeywordAction::Graft(amount) => {
-            Some(StaticAbility::keyword_marker(format!("graft {amount}")))
-        }
-        KeywordAction::Soulbond => Some(StaticAbility::keyword_marker("soulbond".to_string())),
-        KeywordAction::Soulshift(amount) => {
-            Some(StaticAbility::keyword_marker(format!("soulshift {amount}")))
-        }
-        KeywordAction::SoulshiftValue(value) => Some(StaticAbility::keyword_marker(format!(
-            "soulshift X, where X is {}",
-            crate::payload::describe_soulshift_value(&value)
-        ))),
-        KeywordAction::Outlast(cost) => Some(StaticAbility::keyword_marker(format!(
-            "outlast {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Unearth(cost) => Some(StaticAbility::keyword_marker(format!(
-            "unearth {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Eternalize(cost) => Some(StaticAbility::keyword_marker(format!(
-            "eternalize {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Ninjutsu(cost) => Some(StaticAbility::keyword_marker(format!(
-            "ninjutsu {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Extort => Some(StaticAbility::keyword_marker("extort".to_string())),
+        KeywordAction::Renown(_)
+        | KeywordAction::Modular(_)
+        | KeywordAction::Graft(_)
+        | KeywordAction::Soulbond
+        | KeywordAction::Soulshift(_)
+        | KeywordAction::SoulshiftValue(_)
+        | KeywordAction::Outlast(_)
+        | KeywordAction::Unearth(_)
+        | KeywordAction::Eternalize(_)
+        | KeywordAction::Ninjutsu(_)
+        | KeywordAction::Extort => None,
         KeywordAction::Partner => Some(StaticAbility::partner()),
         KeywordAction::StartYourEngines => Some(StaticAbility::start_your_engines()),
         KeywordAction::Assist => Some(StaticAbility::assist()),
         KeywordAction::SplitSecond => Some(StaticAbility::split_second()),
         KeywordAction::Rebound => Some(StaticAbility::rebound()),
-        KeywordAction::Sunburst => Some(StaticAbility::keyword_marker("sunburst".to_string())),
+        KeywordAction::Sunburst => None,
         KeywordAction::ReadAhead => Some(StaticAbility::read_ahead()),
-        KeywordAction::Firebending(amount) => Some(StaticAbility::keyword_marker(format!(
-            "firebending {amount}"
-        ))),
-        KeywordAction::Fading(amount) => {
-            Some(StaticAbility::keyword_marker(format!("fading {amount}")))
-        }
-        KeywordAction::Vanishing(amount) => {
-            Some(StaticAbility::keyword_marker(format!("vanishing {amount}")))
-        }
+        KeywordAction::Firebending(_)
+        | KeywordAction::FirebendingValue { .. }
+        | KeywordAction::Fading(_)
+        | KeywordAction::Vanishing(_) => None,
         KeywordAction::Fear => Some(StaticAbility::fear()),
         KeywordAction::Intimidate => Some(StaticAbility::intimidate()),
         KeywordAction::Shadow => Some(StaticAbility::shadow()),
@@ -1796,12 +1975,7 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
         KeywordAction::Tribute(amount) => Some(StaticAbility::tribute(amount)),
-        KeywordAction::Rampage(amount) => {
-            Some(StaticAbility::keyword_marker(format!("rampage {amount}")))
-        }
-        KeywordAction::Bushido(amount) => {
-            Some(StaticAbility::keyword_marker(format!("bushido {amount}")))
-        }
+        KeywordAction::Rampage(_) | KeywordAction::Bushido(_) | KeywordAction::Frenzy(_) => None,
         KeywordAction::Changeling => Some(StaticAbility::changeling()),
         KeywordAction::HexproofFrom(filter) => Some(StaticAbility::hexproof_from(filter.clone())),
         KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
@@ -1838,9 +2012,8 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         )),
         KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
         KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
-        KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
-            "annihilator {amount}"
-        ))),
+        KeywordAction::Annihilator(_) => None,
+        KeywordAction::Dredge(amount) => Some(StaticAbility::dredge(amount)),
         KeywordAction::StaticMarker(name) => Some(StaticAbility::keyword_marker(name)),
         KeywordAction::StaticMarkerText(text) => Some(StaticAbility::keyword_marker(text)),
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
@@ -1859,34 +2032,80 @@ fn rewrite_lower_keyword_action_or_err(
     })
 }
 
-fn rewrite_lower_attached_keyword_action_grant(
+pub(crate) fn rewrite_lower_keyword_action_to_object_abilities(
     action: KeywordAction,
+) -> Result<Vec<Ability>, CardTextError> {
+    if let Some(abilities) = executable_object_abilities_for_keyword_action(&action) {
+        return Ok(abilities);
+    }
+    Ok(vec![Ability::static_ability(
+        rewrite_lower_keyword_action_or_err(action)?,
+    )])
+}
+
+fn rewrite_object_abilities_grant(
+    filter: ObjectFilter,
+    abilities: Vec<Ability>,
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
-    if matches!(action, KeywordAction::Exalted) {
-        let mut grant = crate::static_abilities::AttachedAbilityGrant::new(
-            exalted_triggered_ability(),
-            display,
-        );
-        if let Some(condition) = condition {
-            grant = grant.with_condition(condition);
-        }
-        return Ok(StaticAbility::new(grant));
-    }
-
-    let granted = Ability::static_ability(rewrite_lower_keyword_action_or_err(action)?);
-    let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
+    let mut abilities = abilities.into_iter();
+    let first = abilities.next().ok_or_else(|| {
+        CardTextError::InvariantViolation("keyword grant produced no abilities".to_string())
+    })?;
+    let mut grant =
+        crate::static_abilities::GrantObjectAbilityForFilter::new(filter, first, display)
+            .with_additional_abilities(abilities.collect());
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
     }
     Ok(StaticAbility::new(grant))
 }
 
+fn rewrite_attached_object_abilities_grant(
+    abilities: Vec<Ability>,
+    display: String,
+    condition: Option<crate::ConditionExpr>,
+) -> Result<StaticAbility, CardTextError> {
+    let mut abilities = abilities.into_iter();
+    let first = abilities.next().ok_or_else(|| {
+        CardTextError::InvariantViolation(
+            "attached keyword grant produced no abilities".to_string(),
+        )
+    })?;
+    let mut grant = crate::static_abilities::AttachedAbilityGrant::new(first, display)
+        .with_additional_abilities(abilities.collect());
+    if let Some(condition) = condition {
+        grant = grant.with_condition(condition);
+    }
+    Ok(StaticAbility::new(grant))
+}
+
+fn rewrite_lower_attached_keyword_action_grant(
+    action: KeywordAction,
+    display: String,
+    condition: Option<crate::ConditionExpr>,
+) -> Result<StaticAbility, CardTextError> {
+    rewrite_attached_object_abilities_grant(
+        rewrite_lower_keyword_action_to_object_abilities(action)?,
+        display,
+        condition,
+    )
+}
+
 fn rewrite_lower_conditional_static_ability(
     ability: StaticAbilityAst,
     condition: crate::ConditionExpr,
 ) -> Result<StaticAbility, CardTextError> {
+    if let StaticAbilityAst::KeywordAction(action) = ability {
+        let display = action.display_text();
+        return rewrite_object_abilities_grant(
+            ObjectFilter::source(),
+            rewrite_lower_keyword_action_to_object_abilities(action)?,
+            display,
+            Some(condition),
+        );
+    }
     let lowered = rewrite_lower_static_ability_ast(ability)?;
     Ok(lowered
         .clone()
@@ -1903,19 +2122,14 @@ fn rewrite_lower_grant_static_ability(
     ability: StaticAbilityAst,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
-    if matches!(
-        ability,
-        StaticAbilityAst::KeywordAction(KeywordAction::Exalted)
-    ) {
-        let mut grant = crate::static_abilities::GrantObjectAbilityForFilter::new(
+    if let StaticAbilityAst::KeywordAction(action) = ability {
+        let display = action.display_text();
+        return rewrite_object_abilities_grant(
             filter,
-            exalted_triggered_ability(),
-            KeywordAction::Exalted.display_text(),
+            rewrite_lower_keyword_action_to_object_abilities(action)?,
+            display,
+            condition,
         );
-        if let Some(condition) = condition {
-            grant = grant.with_condition(condition);
-        }
-        return Ok(StaticAbility::new(grant));
     }
 
     let mut grant = crate::static_abilities::GrantAbility::new(
@@ -1954,18 +2168,12 @@ fn rewrite_lower_attached_static_ability_grant(
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
-    if matches!(
-        ability,
-        StaticAbilityAst::KeywordAction(KeywordAction::Exalted)
-    ) {
-        let mut grant = crate::static_abilities::AttachedAbilityGrant::new(
-            exalted_triggered_ability(),
+    if let StaticAbilityAst::KeywordAction(action) = ability {
+        return rewrite_attached_object_abilities_grant(
+            rewrite_lower_keyword_action_to_object_abilities(action)?,
             display,
+            condition,
         );
-        if let Some(condition) = condition {
-            grant = grant.with_condition(condition);
-        }
-        return Ok(StaticAbility::new(grant));
     }
 
     let granted = Ability::static_ability(rewrite_lower_static_ability_ast(ability)?);
@@ -2040,7 +2248,24 @@ pub(crate) fn rewrite_lower_static_ability_ast(
 ) -> Result<StaticAbility, CardTextError> {
     match ability {
         StaticAbilityAst::Static(ability) => Ok(ability),
-        StaticAbilityAst::KeywordAction(action) => rewrite_lower_keyword_action_or_err(action),
+        StaticAbilityAst::KeywordAction(action) => {
+            if executable_object_abilities_for_keyword_action(&action).is_some()
+                || matches!(
+                    action,
+                    KeywordAction::Firebending(_) | KeywordAction::FirebendingValue { .. }
+                )
+            {
+                let display = action.display_text();
+                rewrite_object_abilities_grant(
+                    ObjectFilter::source(),
+                    rewrite_lower_keyword_action_to_object_abilities(action)?,
+                    display,
+                    None,
+                )
+            } else {
+                rewrite_lower_keyword_action_or_err(action)
+            }
+        }
         StaticAbilityAst::PregameRevealFromOpeningHand {
             trigger,
             effects,
@@ -2056,6 +2281,22 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             effect_before_timing,
             display,
         ),
+        StaticAbilityAst::LoseGameReplacement {
+            effects,
+            optional,
+            display,
+        } => {
+            let (effects, choices) = compile_trigger_effects(None, &effects)?;
+            if !choices.is_empty() {
+                return Err(CardTextError::InvariantViolation(
+                    "lose-game replacement effects cannot carry unresolved spell targets"
+                        .to_string(),
+                ));
+            }
+            Ok(StaticAbility::lose_game_replacement(
+                effects, optional, display,
+            ))
+        }
         StaticAbilityAst::ConditionalStaticAbility { ability, condition } => {
             rewrite_lower_conditional_static_ability(*ability, condition)
         }
@@ -2092,15 +2333,29 @@ pub(crate) fn rewrite_lower_static_ability_ast(
         StaticAbilityAst::RemoveStaticAbility { filter, ability } => Ok(
             StaticAbility::remove_ability(filter, rewrite_lower_static_ability_ast(*ability)?),
         ),
-        StaticAbilityAst::RemoveKeywordAction { filter, action } => {
-            if matches!(action, KeywordAction::Soulbond) {
-                return Err(CardTextError::InvariantViolation(
-                    "removing soulbond requires non-marker semantics".to_string(),
+        StaticAbilityAst::RemoveKeywordAction {
+            filter,
+            action,
+            mode,
+        } => {
+            if executable_object_abilities_for_keyword_action(&action).is_some()
+                || matches!(
+                    &action,
+                    KeywordAction::Firebending(_) | KeywordAction::FirebendingValue { .. }
+                )
+            {
+                let display = action.display_text();
+                return Ok(StaticAbility::remove_object_abilities_with_mode(
+                    filter,
+                    rewrite_lower_keyword_action_to_object_abilities(action)?,
+                    display,
+                    mode,
                 ));
             }
-            Ok(StaticAbility::remove_ability(
+            Ok(StaticAbility::remove_ability_with_mode(
                 filter,
                 rewrite_lower_keyword_action_or_err(action)?,
+                mode,
             ))
         }
         StaticAbilityAst::AttachedStaticAbilityGrant {
@@ -2119,11 +2374,13 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             condition,
         } => rewrite_lower_attached_chosen_landwalk_grant(display, snow, condition),
         StaticAbilityAst::EquipmentKeywordActionsGrant { actions } => {
-            let mut lowered = Vec::with_capacity(actions.len());
+            let mut lowered = Vec::new();
+            let mut displays = Vec::with_capacity(actions.len());
             for action in actions {
-                lowered.push(rewrite_lower_keyword_action_or_err(action)?);
+                displays.push(action.display_text());
+                lowered.extend(rewrite_lower_keyword_action_to_object_abilities(action)?);
             }
-            Ok(StaticAbility::equipment_grant(lowered))
+            rewrite_attached_object_abilities_grant(lowered, displays.join(", "), None)
         }
         StaticAbilityAst::GrantObjectAbility {
             filter,
@@ -2385,6 +2642,20 @@ fn rewrite_validate_effect_for_iterated_player(
         return rewrite_validate_effects_for_iterated_player(&if_effect.else_, true, context);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+        return rewrite_validate_effects_for_iterated_player(
+            &repeat.effects,
+            iterated_player_bound,
+            context,
+        );
+    }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>() {
+        if !iterated_player_bound {
+            rewrite_validate_unbound_iterated_player(
+                value_mentions_iterated_player(&repeat.count),
+                &repeat.count,
+                context,
+            )?;
+        }
         return rewrite_validate_effects_for_iterated_player(
             &repeat.effects,
             iterated_player_bound,

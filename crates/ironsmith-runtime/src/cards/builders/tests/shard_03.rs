@@ -351,9 +351,13 @@ pub(super) fn parse_atraxa_grand_unifier_uses_card_type_reveal_bundle() {
     let debug = format!("{def:#?}");
     assert!(
         debug.contains("LookAtTopCardsEffect")
-            && debug.contains("RevealTaggedEffect")
+            && debug.contains("reveal: true")
             && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
-        "expected Atraxa to use the revealed-cards card-type bundle, got {debug}"
+        "expected Atraxa to use one public reveal producer and an exact tagged remainder, got {debug}"
+    );
+    assert!(
+        !debug.contains("RevealTaggedEffect"),
+        "expected Atraxa not to split one public reveal into look-plus-reveal effects, got {debug}"
     );
     assert!(
         !debug.contains("zone: Graveyard"),
@@ -364,11 +368,10 @@ pub(super) fn parse_atraxa_grand_unifier_uses_card_type_reveal_bundle() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        (rendered.contains("reveal the top ten cards of your library")
-            || rendered.contains("look at the top ten cards of your library"))
-            && (rendered.contains("for each card type") || rendered.contains("each card type"))
-            && rendered.contains("revealed cards")
-            && rendered.contains("bottom of your library"),
+        rendered.contains(
+            "reveal the top ten cards of your library. for each card type, you may put a card of that type from among the revealed cards into your hand. put the rest on the bottom of your library in a random order"
+        ) && !rendered.contains("look at the top ten cards")
+            && !rendered.contains("reveal them"),
         "expected Atraxa compiled text to preserve the reveal bundle structure, got {rendered}"
     );
 }
@@ -1720,10 +1723,11 @@ pub(super) fn test_parse_copy_this_spell_for_each_creature_sacrificed_this_way()
         "expected repeatable optional additional cost line, got {rendered}"
     );
     assert!(
-        (rendered.contains("when you cast this spell") || rendered.contains("when you do"))
-            && rendered.contains("copy this spell")
-            && rendered.contains("sacrifice one or more creatures"),
-        "expected cast-triggered copy followup line, got {rendered}"
+        rendered.contains(
+            "as an additional cost to cast this spell, you may sacrifice one or more creatures. when you do, copy this spell for each creature sacrificed this way"
+        ) && !rendered.contains("optional cost 'additional'")
+            && !rendered.contains("when you cast this spell"),
+        "expected the structural helper trigger to render inline with its repeatable sacrifice cost, got {rendered}"
     );
     assert_eq!(
         def.optional_costs.len(),
@@ -2653,12 +2657,71 @@ pub(super) fn test_parse_damage_trigger_with_source_subject() {
     assert!(
         debug.contains("DealsDamageTrigger")
             && debug.contains("filter: ObjectFilter")
+            && debug.contains("zone: None")
             && debug.contains("damaged_player: Some(")
             && debug.contains("You")
+            && debug.contains("source_surface: Source")
             && debug.contains("PutCountersEffect")
             && debug.contains("filibuster"),
         "expected a generic source-damage trigger with filibuster counter effect, got {debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_parse_low_scoring_damage_source_card_regressions() {
+    let opponent_source_cards = [
+        (
+            "Awaken the Sky Tyrant",
+            CardType::Enchantment,
+            "Whenever a source an opponent controls deals damage to you, sacrifice Awaken the Sky Tyrant. If you do, create a 5/5 red Dragon creature token with flying.",
+        ),
+        (
+            "Farsight Mask",
+            CardType::Artifact,
+            "Whenever a source an opponent controls deals damage to you, if Farsight Mask is untapped, you may draw a card.",
+        ),
+        (
+            "Michiko Konda, Truth Seeker",
+            CardType::Creature,
+            "Whenever a source an opponent controls deals damage to you, that player sacrifices a permanent.",
+        ),
+    ];
+
+    for (name, card_type, text) in opponent_source_cards {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+            .card_types(vec![card_type])
+            .parse_text(text)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
+        let debug = format!("{:#?}", def.abilities);
+        assert!(debug.contains("DealsDamageTrigger"), "{name}: {debug}");
+        assert!(debug.contains("zone: None"), "{name}: {debug}");
+        assert!(
+            debug.contains("controller: Some(") && debug.contains("Opponent"),
+            "{name}: {debug}"
+        );
+        assert!(debug.contains("damaged_player: Some("), "{name}: {debug}");
+        assert!(debug.contains("source_surface: Source"), "{name}: {debug}");
+    }
+
+    let name = "Tamanoa";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), name)
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever a noncreature source you control deals damage, you gain that much life.",
+        )
+        .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("DealsDamageTrigger"), "{name}: {debug}");
+    assert!(debug.contains("zone: None"), "{name}: {debug}");
+    assert!(
+        debug.contains("controller: Some(") && debug.contains("You"),
+        "{name}: {debug}"
+    );
+    assert!(debug.contains("excluded_card_types"), "{name}: {debug}");
+    assert!(debug.contains("Creature"), "{name}: {debug}");
+    assert!(debug.contains("damaged_player: None"), "{name}: {debug}");
+    assert!(debug.contains("source_surface: Source"), "{name}: {debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

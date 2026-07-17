@@ -15,8 +15,8 @@ use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
 use super::grammar::structure::{
-    parse_modal_header_choose_spec, scan_modal_header_flags, split_lexed_sentences,
-    split_trailing_modal_gate_clause,
+    ModalHeaderChooseSpec, parse_modal_header_choose_spec, scan_modal_header_flags,
+    split_lexed_sentences, split_trailing_modal_gate_clause,
 };
 use super::keyword_static::parse_value_binding_clause_lexed;
 use super::lexer::{
@@ -60,14 +60,30 @@ pub(crate) fn parse_modal_header(
     info: &LineInfo,
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ModalHeader>, CardTextError> {
-    let Some(choose_spec) = grammar::parse_all_with_display_line(
-        tokens,
-        parse_modal_header_choose_spec,
-        "modal-header",
-        info.display_line_index,
-    )?
-    else {
-        return Ok(None);
+    let spree = info
+        .raw_line
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("spree");
+    let choose_spec = if spree {
+        ModalHeaderChooseSpec {
+            choose_idx: 0,
+            min: Value::Fixed(1),
+            max: None,
+            random: false,
+            x_clause_start: None,
+        }
+    } else {
+        let Some(choose_spec) = grammar::parse_all_with_display_line(
+            tokens,
+            parse_modal_header_choose_spec,
+            "modal-header",
+            info.display_line_index,
+        )?
+        else {
+            return Ok(None);
+        };
+        choose_spec
     };
     let modal_flags = scan_modal_header_flags(tokens);
     let choose_idx = choose_spec.choose_idx;
@@ -148,12 +164,17 @@ pub(crate) fn parse_modal_header(
         effect_start_idx = comma_idx + 1;
     }
 
-    let prechoose_tokens = trim_lexed_commas(&tokens[effect_start_idx..choose_idx]);
+    let prechoose_tokens = if spree {
+        &[]
+    } else {
+        trim_lexed_commas(&tokens[effect_start_idx..choose_idx])
+    };
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
 
     Ok(Some(ModalHeader {
         min,
         max,
+        spree,
         weighted_mode_points: super::grammar::modal::parse_modal_point_header_tokens(tokens)
             .is_some(),
         random,
@@ -240,6 +261,7 @@ fn replace_modal_header_x_in_effect_ast(
             SubjectVerbActionAst::Draw { count: amount }
             | SubjectVerbActionAst::ExileTopOfLibrary { count: amount, .. }
             | SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::PayLife { amount }
             | SubjectVerbActionAst::GainLife { amount }
             | SubjectVerbActionAst::Mill { count: amount }
             | SubjectVerbActionAst::Scry { count: amount }
@@ -280,7 +302,11 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::MoveToLibraryNthFromTop {
                 position: amount, ..
             }
-            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
+            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. }
+            | SubjectVerbActionAst::HealDamage {
+                amount: Some(amount),
+                ..
+            } => {
                 replace_modal_header_x_in_value(amount, replacement, clause)?
             }
             SubjectVerbActionAst::Incubate { amount, count } => {
@@ -341,6 +367,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::CloakTopCardOfLibrary
             | SubjectVerbActionAst::ManifestCardFromHand
             | SubjectVerbActionAst::ManifestDread
+            | SubjectVerbActionAst::HealDamage { amount: None, .. }
             | SubjectVerbActionAst::Earthbend { .. }
             | SubjectVerbActionAst::Behold { .. }
             | SubjectVerbActionAst::Fight { .. }
@@ -350,6 +377,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RollDie { .. }
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
@@ -377,6 +405,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::EndTurn
+            | SubjectVerbActionAst::EndCombatPhase
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn

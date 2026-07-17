@@ -69,6 +69,14 @@ impl EffectExecutor for CreateTokenEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id =
             crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
+        // CR 800.4b/800.4d: no token is created under the control of, or owned
+        // by, a player who has left the game.
+        if !game
+            .player(controller_id)
+            .is_some_and(|player| player.is_in_game())
+        {
+            return Ok(EffectOutcome::with_objects(Vec::new()));
+        }
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
         let token_preview =
             game.object_from_token_definition(ObjectId::from_raw(0), &self.token, controller_id);
@@ -651,6 +659,25 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn multiplayer_800_4b_d_does_not_create_tokens_for_player_who_left() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        assert!(game.leave_game(alice));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let result = CreateTokenEffect::you(soldier_token(), 2)
+            .execute(&mut game, &mut ctx)
+            .expect("the creation instruction should be skipped cleanly");
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected an empty object outcome");
+        };
+        assert!(ids.is_empty());
+        assert!(game.battlefield.is_empty());
     }
 
     #[test]

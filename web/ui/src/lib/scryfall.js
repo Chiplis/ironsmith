@@ -219,7 +219,7 @@ export function cardRouteKey(name) {
     .toLocaleLowerCase("en-US")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9_]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized || "";
 }

@@ -57,6 +57,7 @@ impl EffectExecutor for ReconfigureEffect {
     fn target_selection_profile(&self) -> Option<TargetSelectionProfile<'_>> {
         Some(TargetSelectionProfile {
             spec: &self.target,
+            chooser: None,
             description: "target creature to attach to",
             min_targets: 0,
             max_targets: Some(1),

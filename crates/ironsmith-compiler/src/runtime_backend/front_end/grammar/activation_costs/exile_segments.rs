@@ -82,6 +82,10 @@ pub(crate) fn parse_exile_segment_tokens(
                     color_filter: hand.color_filter,
                 });
             }
+            let (subject_tokens, top_only) = strip_top_only_prefix(subject_tokens);
+            if top_only && zone != Zone::Graveyard {
+                return Err(unsupported(tokens, "ordered-exile-source-zone"));
+            }
             let choice = parse_activation_choice_prefix_tokens(subject_tokens)
                 .ok_or_else(|| unsupported(subject_tokens, "exile-zone-selector"))?;
             let mut filter = parse_activation_exile_filter_tokens(choice.rest)?;
@@ -97,6 +101,7 @@ pub(crate) fn parse_exile_segment_tokens(
             Ok(ActivationCostSegmentCst::ExileChosen {
                 choice_count: choice.count,
                 filter,
+                top_only,
             })
         }
         ExileCostShape::NamedArtifacts {
@@ -120,12 +125,24 @@ pub(crate) fn parse_exile_segment_tokens(
 fn parse_generic_exile(
     subject_tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let (subject_tokens, top_only) = strip_top_only_prefix(subject_tokens);
     let choice = parse_activation_choice_prefix_tokens(subject_tokens)
         .ok_or_else(|| unsupported(subject_tokens, "exile-selector"))?;
+    let filter = parse_activation_exile_filter_tokens(choice.rest)?;
+    if top_only && filter.zone != Some(Zone::Graveyard) {
+        return Err(unsupported(subject_tokens, "ordered-exile-source-zone"));
+    }
     Ok(ActivationCostSegmentCst::ExileChosen {
         choice_count: choice.count,
-        filter: parse_activation_exile_filter_tokens(choice.rest)?,
+        filter,
+        top_only,
     })
+}
+
+fn strip_top_only_prefix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
+    primitives::parse_prefix(tokens, primitives::phrase(&["the", "top"]).void())
+        .map(|(_, rest)| (rest, true))
+        .unwrap_or((tokens, false))
 }
 
 fn split_named_artifacts(tokens: &[OwnedLexToken]) -> Vec<String> {
@@ -388,5 +405,26 @@ mod tests {
                 names: vec!["foo".to_string(), "bar".to_string()],
             }
         );
+
+        let top_creature = lex_line("exile the top creature card of your graveyard", 0).unwrap();
+        assert!(matches!(
+            parse_exile_segment_tokens(&top_creature, |_| false).unwrap(),
+            ActivationCostSegmentCst::ExileChosen {
+                choice_count,
+                filter,
+                top_only: true,
+            } if choice_count == crate::effect::ChoiceCount::exactly(1)
+                && filter.zone == Some(Zone::Graveyard)
+                && filter.card_types == [crate::types::CardType::Creature]
+        ));
+
+        let ordinary = lex_line("exile a creature card from your graveyard", 0).unwrap();
+        assert!(matches!(
+            parse_exile_segment_tokens(&ordinary, |_| false).unwrap(),
+            ActivationCostSegmentCst::ExileChosen {
+                top_only: false,
+                ..
+            }
+        ));
     }
 }

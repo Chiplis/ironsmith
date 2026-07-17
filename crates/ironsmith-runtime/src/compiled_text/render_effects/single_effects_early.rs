@@ -456,7 +456,154 @@ pub(super) fn describe_clash_repeat_process(
     ))
 }
 
-pub(super) fn describe_with_id_if_clause(
+fn linked_result_actor(effect: &Effect) -> Option<PlayerFilter> {
+    let effect = structural_unwrap_render_wrappers(effect);
+    if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>() {
+        return Some(discard.player.clone());
+    }
+    if let Some(sacrifice) = sacrifice_view(effect) {
+        return Some(sacrifice.player.clone());
+    }
+    if let Some(pay) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
+        return choose_spec_player_filter(&pay.player);
+    }
+    if let Some(pay) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+        return choose_spec_player_filter(&pay.player);
+    }
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return Some(
+            move_to_zone
+                .actor_surface
+                .clone()
+                .unwrap_or(PlayerFilter::You),
+        );
+    }
+    if effect
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()
+        .is_some()
+    {
+        return Some(PlayerFilter::You);
+    }
+    if effect
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+        .is_some()
+    {
+        return Some(PlayerFilter::You);
+    }
+    effect
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .map(|_| PlayerFilter::You)
+}
+
+fn linked_result_player_pronoun(player: &PlayerFilter) -> &'static str {
+    if *player == PlayerFilter::You {
+        "you"
+    } else {
+        "they"
+    }
+}
+
+fn describe_linked_action_result_condition(
+    effect: &Effect,
+    predicate: &EffectPredicate,
+) -> Option<String> {
+    let effect = structural_unwrap_render_wrappers(effect);
+    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+        let who = linked_result_player_pronoun(&unless_pays.player);
+        return match predicate {
+            EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
+                Some(format!("If {who} do"))
+            }
+            EffectPredicate::Happened => Some(format!("If {who} don't")),
+            _ => None,
+        };
+    }
+
+    let actor = linked_result_actor(effect)?;
+    let who = linked_result_player_pronoun(&actor);
+    if effect
+        .downcast_ref::<crate::effects::PayManaEffect>()
+        .is_some()
+        || effect
+            .downcast_ref::<crate::effects::PayLifeEffect>()
+            .is_some()
+    {
+        return match predicate {
+            EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
+                Some(format!("If {who} don't"))
+            }
+            EffectPredicate::Happened | EffectPredicate::Chosen => Some(format!("If {who} do")),
+            _ => None,
+        };
+    }
+    match predicate {
+        EffectPredicate::DidNotHappen => Some(format!("If {who} can't")),
+        EffectPredicate::Happened | EffectPredicate::Chosen => Some(format!("If {who} do")),
+        _ => None,
+    }
+}
+
+fn describe_may_result_condition(may: &crate::effects::MayEffect, accepted: bool) -> String {
+    let who = may
+        .decider
+        .as_ref()
+        .map(describe_player_filter)
+        .unwrap_or_else(|| "you".to_string());
+    match may.decider.as_ref() {
+        None | Some(PlayerFilter::You) => {
+            if accepted {
+                "If you do".to_string()
+            } else {
+                "If you don't".to_string()
+            }
+        }
+        Some(PlayerFilter::Target(inner)) if matches!(inner.as_ref(), PlayerFilter::Opponent) => {
+            if accepted {
+                "If they do".to_string()
+            } else {
+                "If they don't".to_string()
+            }
+        }
+        _ => {
+            if accepted {
+                format!("If {who} does")
+            } else {
+                format!("If {who} doesn't")
+            }
+        }
+    }
+}
+
+/// The non-taken branch of these exact result-producing actions has an
+/// explicit, structurally provable condition. Other setup/predicate pairs do
+/// not imply an authored inverse clause and retain the generic `Otherwise`.
+pub(crate) fn describe_explicit_alternative_result_condition(
+    effect: &Effect,
+    predicate: &EffectPredicate,
+) -> Option<String> {
+    if effect
+        .downcast_ref::<crate::effects::FlipCoinEffect>()
+        .is_some_and(|flip| flip.player == PlayerFilter::You)
+    {
+        return match predicate {
+            EffectPredicate::Happened => Some("If you lose the flip".to_string()),
+            EffectPredicate::DidNotHappen => Some("If you win the flip".to_string()),
+            _ => None,
+        };
+    }
+    let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
+    match predicate {
+        EffectPredicate::Happened | EffectPredicate::Chosen => {
+            Some(describe_may_result_condition(may, false))
+        }
+        EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
+            Some(describe_may_result_condition(may, true))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn describe_with_id_if_clause(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
@@ -500,13 +647,10 @@ pub(super) fn describe_with_id_if_clause(
         && matches!(if_effect.predicate, EffectPredicate::Happened)
     {
         "When one or more cards are milled this way".to_string()
-    } else if with_id
-        .effect
-        .downcast_ref::<crate::effects::PayManaEffect>()
-        .is_some()
-        && matches!(if_effect.predicate, EffectPredicate::Happened)
+    } else if let Some(condition) =
+        describe_linked_action_result_condition(&with_id.effect, &if_effect.predicate)
     {
-        "If you do".to_string()
+        condition
     } else if matches!(if_effect.predicate, EffectPredicate::DealtDamageToPlayer) {
         "If a player is dealt damage this way".to_string()
     } else if with_id
@@ -520,40 +664,14 @@ pub(super) fn describe_with_id_if_clause(
         if let Some(condition) = describe_may_have_source_deal_damage_condition(may, if_effect) {
             condition
         } else {
-            let who = may
-                .decider
-                .as_ref()
-                .map(describe_player_filter)
-                .unwrap_or_else(|| "you".to_string());
-            let pronoun = match may.decider.as_ref() {
-                None => "you",
-                Some(crate::filter::PlayerFilter::You) => "you",
-                Some(crate::filter::PlayerFilter::Target(inner))
-                    if matches!(inner.as_ref(), crate::filter::PlayerFilter::Opponent) =>
-                {
-                    "they"
-                }
-                _ => "",
-            };
             match if_effect.predicate {
                 EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
-                    if pronoun == "you" {
-                        "If you don't".to_string()
-                    } else if pronoun == "they" {
-                        "If they don't".to_string()
-                    } else {
-                        format!("If {who} doesn't")
-                    }
+                    describe_may_result_condition(may, false)
                 }
-                _ => {
-                    if pronoun == "you" {
-                        "If you do".to_string()
-                    } else if pronoun == "they" {
-                        "If they do".to_string()
-                    } else {
-                        format!("If {who} does")
-                    }
+                EffectPredicate::Happened | EffectPredicate::Chosen => {
+                    describe_may_result_condition(may, true)
                 }
+                _ => format!("If {}", describe_effect_predicate(&if_effect.predicate)),
             }
         }
     } else if let Some(for_players) = with_id
@@ -680,6 +798,14 @@ pub(super) fn describe_with_id_if_clause(
 
     if else_text.is_empty() {
         Some(format!("{condition}, {}", lowercase_first(&then_text)))
+    } else if let Some(alternative_condition) =
+        describe_explicit_alternative_result_condition(&with_id.effect, &if_effect.predicate)
+    {
+        Some(format!(
+            "{condition}, {}. {alternative_condition}, {}",
+            lowercase_first(&then_text),
+            lowercase_first(&else_text)
+        ))
     } else {
         Some(format!(
             "{condition}, {}. Otherwise, {}",
@@ -742,7 +868,7 @@ pub(super) fn damage_effect_view(effect: &Effect) -> Option<&crate::effects::Dea
     effect.downcast_ref::<crate::effects::DealDamageEffect>()
 }
 
-pub(super) fn damage_with_source_view(
+pub(in crate::compiled_text) fn damage_with_source_view(
     effect: &Effect,
 ) -> Option<(Option<&ChooseSpec>, &crate::effects::DealDamageEffect)> {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
@@ -961,6 +1087,9 @@ pub(super) fn effect_where_x_value(effect: &Effect) -> Option<&Value> {
     }
     if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
         return Some(&lose.amount);
+    }
+    if let Some(pay) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+        return Some(&pay.amount);
     }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
         return Some(&gain.amount);
@@ -1445,6 +1574,17 @@ pub(super) fn describe_optional_setup_effect_for_if_happened(
             describe_pay_mana_cost(pay_mana)
         ));
     }
+    if let Some(pay_life) = with_id
+        .effect
+        .downcast_ref::<crate::effects::PayLifeEffect>()
+    {
+        let player = describe_choose_spec(&pay_life.player);
+        let payment = describe_life_amount_phrase(&pay_life.amount);
+        if player == "you" {
+            return Some(format!("You may pay {payment}"));
+        }
+        return Some(format!("{player} may pay {payment}"));
+    }
 
     let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
     if !matches!(may.decider.as_ref(), None | Some(PlayerFilter::You)) || may.effects.len() != 2 {
@@ -1452,10 +1592,18 @@ pub(super) fn describe_optional_setup_effect_for_if_happened(
     }
     let pay_mana = unwrap_basic_tag_wrappers(&may.effects[0])
         .downcast_ref::<crate::effects::PayManaEffect>()?;
-    let lose_life = unwrap_basic_tag_wrappers(&may.effects[1])
-        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    let life_payment = unwrap_basic_tag_wrappers(&may.effects[1]);
+    let (life_player, life_amount) = if let Some(pay_life) =
+        life_payment.downcast_ref::<crate::effects::PayLifeEffect>()
+    {
+        (&pay_life.player, &pay_life.amount)
+    } else if let Some(lose_life) = life_payment.downcast_ref::<crate::effects::LoseLifeEffect>() {
+        (&lose_life.player, &lose_life.amount)
+    } else {
+        return None;
+    };
     if describe_choose_spec(&pay_mana.player) != "you"
-        || lose_life.player != ChooseSpec::Player(PlayerFilter::You)
+        || life_player != &ChooseSpec::Player(PlayerFilter::You)
     {
         return None;
     }
@@ -1463,7 +1611,7 @@ pub(super) fn describe_optional_setup_effect_for_if_happened(
     Some(format!(
         "You may pay {} and {}",
         pay_mana.cost.to_oracle(),
-        describe_life_amount_phrase(&lose_life.amount)
+        describe_life_amount_phrase(life_amount)
     ))
 }
 
@@ -1543,7 +1691,10 @@ pub(crate) fn describe_with_id_then_for_players_if_didnt(
     let antecedent = with_id
         .effect
         .downcast_ref::<crate::effects::ForPlayersEffect>()?;
-    if antecedent.filter != for_players.filter || for_players.effects.len() != 1 {
+    let same_partition = antecedent.filter == for_players.filter;
+    let opponents_within_all =
+        antecedent.filter == PlayerFilter::Any && for_players.filter == PlayerFilter::Opponent;
+    if (!same_partition && !opponents_within_all) || for_players.effects.len() != 1 {
         return None;
     }
     let if_effect = for_players.effects[0].downcast_ref::<crate::effects::IfEffect>()?;
@@ -1554,8 +1705,26 @@ pub(crate) fn describe_with_id_then_for_players_if_didnt(
         return None;
     }
 
-    let (subject, each_player, action) = describe_for_players_may_clause(antecedent)?;
     let followup = describe_for_players_didnt_followup(&if_effect.then)?;
+
+    if antecedent.effects.len() == 1 {
+        let setup = describe_effect(&with_id.effect)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        let each_player =
+            strip_leading_article(&describe_for_each_player_filter(&for_players.filter))
+                .to_string();
+        if !setup.is_empty()
+            && let Some(action) = followup
+                .strip_prefix("that player ")
+                .or_else(|| followup.strip_prefix("That player "))
+        {
+            return Some(format!("{setup}. Each {each_player} who can't {action}"));
+        }
+    }
+
+    let (subject, each_player, action) = describe_for_players_may_clause(antecedent)?;
 
     if antecedent.filter == PlayerFilter::You {
         Some(format!("{subject} may {action}. If you don't, {followup}"))
@@ -1825,6 +1994,7 @@ pub(crate) fn describe_search_origin_zones(
                     Zone::Stack => "stack".to_string(),
                     Zone::Exile => "exile".to_string(),
                     Zone::Command => "command zone".to_string(),
+                    Zone::Ante => "ante".to_string(),
                     Zone::OutsideGame => "outside the game".to_string(),
                 })
                 .collect::<Vec<_>>();
@@ -2336,7 +2506,7 @@ pub(crate) fn describe_search_choose_for_each(
     Some(text)
 }
 
-pub(super) fn describe_search_choose_then_move(
+pub(crate) fn describe_search_choose_then_move(
     choose: &crate::effects::ChooseObjectsEffect,
     reveal: Option<&crate::effects::RevealTaggedEffect>,
     move_to_zone: &crate::effects::MoveToZoneEffect,
@@ -3554,6 +3724,73 @@ pub(super) fn describe_endure_mode(
     Some(format!("it endures {}", describe_value(&amount)))
 }
 
+pub(super) fn describe_inline_pt_modifier_choice(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose_mode.modes.len() != 2
+        || choose_mode.choose_count != Value::Fixed(1)
+        || choose_mode.min_choose_count != Value::Fixed(1)
+        || choose_mode.allow_repeat
+        || choose_mode.allow_repeated_modes
+        || choose_mode.random
+        || choose_mode.chooser.is_some()
+        || choose_mode.modes.iter().any(|mode| !mode.source_text.trim().is_empty())
+    {
+        return None;
+    }
+
+    fn extract(
+        mode: &crate::effect::EffectMode,
+    ) -> Option<(
+        &crate::effects::ApplyContinuousEffect,
+        &Value,
+        &Value,
+    )> {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let apply = unwrap_basic_tag_wrappers(effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+            power,
+            toughness,
+        }] = apply.runtime_modifications.as_slice()
+        else {
+            return None;
+        };
+        Some((apply, power, toughness))
+    }
+
+    let (first, first_power, first_toughness) = extract(&choose_mode.modes[0])?;
+    let (second, second_power, second_toughness) = extract(&choose_mode.modes[1])?;
+    let mut first_shape = first.clone();
+    let mut second_shape = second.clone();
+    first_shape.runtime_modifications.clear();
+    second_shape.runtime_modifications.clear();
+    if first_shape != second_shape {
+        return None;
+    }
+
+    let (target, plural) = describe_apply_continuous_target(first);
+    let verb = if plural { "get" } else { "gets" };
+    let first_pt = format!(
+        "{}/{}",
+        describe_signed_value(first_power),
+        describe_signed_value(first_toughness)
+    );
+    let second_pt = format!(
+        "{}/{}",
+        describe_signed_value(second_power),
+        describe_signed_value(second_toughness)
+    );
+    let tail = describe_apply_continuous_tail(first)
+        .map(|tail| format!(" {tail}"))
+        .unwrap_or_default();
+    Some(format!(
+        "{target} {verb} {first_pt} or {second_pt}{tail}"
+    ))
+}
+
 pub(crate) fn describe_tap_or_untap_mode(
     choose_mode: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
@@ -4234,4 +4471,118 @@ pub(super) fn describe_create_attached_token_then_reflexive_fight(
         "Create {token} attached to {}. When you do, {followup}",
         describe_choose_spec(&attach.target)
     ))
+}
+
+#[cfg(test)]
+mod alternative_result_condition_tests {
+    use super::*;
+    use ironsmith_core::EffectId;
+
+    fn render_linked_branches(setup: Effect, predicate: EffectPredicate) -> String {
+        let setup = Effect::with_id(7, setup);
+        let branch = Effect::if_then_else(
+            crate::effect::EffectId(7),
+            predicate,
+            vec![Effect::draw(1)],
+            vec![Effect::draw(2)],
+        );
+        let setup = setup
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .expect("typed setup wrapper");
+        let branch = branch
+            .downcast_ref::<crate::effects::IfEffect>()
+            .expect("typed result branch");
+        describe_with_id_if_clause(setup, branch).expect("linked branch should render")
+    }
+
+    fn render_sequential_linked_branches(setup: Effect) -> String {
+        describe_effect_list(&[
+            Effect::with_id(7, setup),
+            Effect::if_then_else(
+                crate::effect::EffectId(7),
+                EffectPredicate::Happened,
+                vec![Effect::draw(1)],
+                vec![],
+            ),
+            Effect::if_then_else(
+                crate::effect::EffectId(7),
+                EffectPredicate::DidNotHappen,
+                vec![Effect::draw(2)],
+                vec![],
+            ),
+        ])
+    }
+
+    #[test]
+    fn exact_may_and_coin_results_render_explicit_alternative_conditions() {
+        assert_eq!(
+            render_linked_branches(
+                Effect::may_single(Effect::gain_life(1)),
+                EffectPredicate::Chosen,
+            ),
+            "If you do, you draw a card. If you don't, you draw two cards"
+        );
+        assert_eq!(
+            render_linked_branches(
+                Effect::flip_coin(PlayerFilter::You),
+                EffectPredicate::Happened,
+            ),
+            "If you win the flip, you draw a card. If you lose the flip, you draw two cards"
+        );
+    }
+
+    #[test]
+    fn unrelated_or_mismatched_result_pairs_keep_generic_otherwise() {
+        let roll = render_linked_branches(
+            Effect::roll_die(6, PlayerFilter::You),
+            EffectPredicate::Value(Comparison::Equal(1)),
+        );
+        assert!(roll.contains(". Otherwise, "), "{roll}");
+
+        let mismatched_coin = render_linked_branches(
+            Effect::flip_coin(PlayerFilter::You),
+            EffectPredicate::Chosen,
+        );
+        assert!(
+            mismatched_coin.contains(". Otherwise, "),
+            "{mismatched_coin}"
+        );
+
+        let mismatched_may = render_linked_branches(
+            Effect::may_single(Effect::gain_life(1)),
+            EffectPredicate::Value(Comparison::Equal(1)),
+        );
+        assert!(mismatched_may.contains(". Otherwise, "), "{mismatched_may}");
+
+        let opponent_flip = render_linked_branches(
+            Effect::flip_coin(PlayerFilter::Opponent),
+            EffectPredicate::Happened,
+        );
+        assert!(opponent_flip.contains(". Otherwise, "), "{opponent_flip}");
+    }
+
+    #[test]
+    fn sequential_explicit_alternatives_do_not_collapse_to_otherwise() {
+        let coin = render_sequential_linked_branches(Effect::flip_coin(PlayerFilter::You));
+        assert!(
+            coin.contains("If you win the flip, you draw a card"),
+            "{coin}"
+        );
+        assert!(
+            coin.contains("If you lose the flip, you draw two cards"),
+            "{coin}"
+        );
+        assert!(!coin.contains("Otherwise"), "{coin}");
+
+        let may = render_sequential_linked_branches(Effect::may_single(Effect::gain_life(1)));
+        assert!(may.contains("If you do, you draw a card"), "{may}");
+        assert!(may.contains("If you don't, you draw two cards"), "{may}");
+        assert!(!may.contains("Otherwise"), "{may}");
+    }
+
+    #[test]
+    fn sequential_generic_result_pair_keeps_otherwise() {
+        let roll = render_sequential_linked_branches(Effect::roll_die(6, PlayerFilter::You));
+        assert!(roll.contains("Otherwise, you draw two cards"), "{roll}");
+    }
 }

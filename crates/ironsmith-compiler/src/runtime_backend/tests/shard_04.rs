@@ -613,6 +613,66 @@ pub(super) fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_gr
 }
 
 #[test]
+pub(super) fn flow_state_replacement_reuses_looked_source_and_requires_both_card_types() {
+    let text = "Look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order. If there is an instant card and a sorcery card in your graveyard, instead put two of them into your hand and the rest on the bottom of your library in any order.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Flow State")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("Flow State should lower with its looked-card self-replacement");
+    let program = def.spell_effect.as_ref().expect("spell resolution");
+    let segment = program.segments.first().expect("resolution segment");
+    let default_look = segment.default_effects[0]
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .expect("default looked-card producer");
+    let replacement = segment
+        .self_replacements
+        .first()
+        .expect("graveyard-card replacement");
+
+    let crate::effect::Condition::And(left, right) = &replacement.condition else {
+        panic!(
+            "independently articled graveyard cards should be conjunctive: {:#?}",
+            replacement.condition
+        );
+    };
+    for (condition, expected_type) in [left.as_ref(), right.as_ref()]
+        .into_iter()
+        .zip([CardType::Instant, CardType::Sorcery])
+    {
+        let crate::effect::Condition::PlayerControls { player, filter } = condition else {
+            panic!("expected a typed graveyard existential: {condition:#?}");
+        };
+        assert_eq!(*player, crate::target::PlayerFilter::You);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+        assert_eq!(filter.card_types, vec![expected_type]);
+    }
+
+    let replacement_look = replacement.replacement_effects[0]
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .expect("replacement should execute the looked-card producer");
+    assert_eq!(replacement_look.tag, default_look.tag);
+    let choose = replacement
+        .replacement_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .expect("replacement two-card choice");
+    assert_eq!(choose.count, crate::effect::ChoiceCount::exactly(2));
+    assert!(choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == default_look.tag
+    }));
+    let remainder = replacement
+        .replacement_effects
+        .iter()
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+        })
+        .expect("replacement looked-card remainder");
+    assert_eq!(remainder.tag, default_look.tag);
+}
+
+#[test]
 pub(super) fn gather_the_pack_replacement_keeps_revealed_source_set_for_remainder() {
     let text = "Reveal the top five cards of your library. You may put a creature card from among them into your hand. Put the rest into your graveyard.\nSpell mastery — If there are two or more instant and/or sorcery cards in your graveyard, put up to two creature cards from among the revealed cards into your hand instead of one.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Gather the Pack")
@@ -625,6 +685,17 @@ pub(super) fn gather_the_pack_replacement_keeps_revealed_source_set_for_remainde
         .self_replacements
         .first()
         .expect("spell-mastery replacement");
+    let default_look = segment.default_effects[0]
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .expect("default revealed-card producer");
+    let replacement_look = replacement.replacement_effects[0]
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        .expect("replacement should execute the revealed-card producer");
+    assert_eq!(replacement_look.tag, default_look.tag);
+    let replacement_reveal = replacement.replacement_effects[1]
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()
+        .expect("replacement should reveal the produced collection");
+    assert_eq!(replacement_reveal.tag, default_look.tag);
     let choose = replacement
         .replacement_effects
         .iter()
@@ -632,6 +703,8 @@ pub(super) fn gather_the_pack_replacement_keeps_revealed_source_set_for_remainde
         .expect("replacement creature choice");
     assert_eq!(choose.zone, Some(Zone::Library));
     assert_eq!(choose.filter.zone, Some(Zone::Library));
+    assert_eq!(choose.count, crate::effect::ChoiceCount::up_to(2));
+    assert_eq!(choose.filter.card_types, vec![CardType::Creature]);
     let revealed_source = choose
         .filter
         .tagged_constraints
@@ -797,6 +870,76 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_dynamic_battlefield_rest_b
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_preserves_dynamic_revealed_matching_set_and_remainder() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top X cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match a dynamic revealed-set partition");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "reveal-top-matching-into-hand-rest-graveyard");
+    assert!(debug.contains("count: X"), "{debug}");
+    assert!(debug.contains("TagMatchingObjects"), "{debug}");
+    assert!(
+        debug.contains("card_types: [") && debug.contains("Creature"),
+        "{debug}"
+    );
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_keeps_conditional_looked_partition_in_one_result_branch() {
+    let sentences = registry_sentence_inputs(
+        "If you do, look at the top two cards of your library. Put one of them into your hand and the other into your graveyard.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match a conditional looked-card partition");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "look-at-top-partition-selected-and-remainder");
+    assert!(debug.contains("IfResult"), "{debug}");
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("TagMatchingObjects"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_builds_one_hidden_pile_then_cloaks_it() {
+    let sentences = registry_sentence_inputs(
+        "Exile target nontoken creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter tapped.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match the hidden-pile cloak procedure");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "exile-face-down-pile-then-cloak-tapped");
+    assert_eq!(matched.consumed_sentences, 2);
+    assert!(debug.contains("ExileTopOfLibrary"), "{debug}");
+    assert!(debug.contains("face_down: true"), "{debug}");
+    assert!(debug.contains("accumulated_tags"), "{debug}");
+    assert!(debug.contains("cloak: true"), "{debug}");
+    assert!(debug.contains("shuffle_before: true"), "{debug}");
+    assert!(debug.contains("tapped: true"), "{debug}");
+    assert!(!debug.contains("LookAtTopCards"), "{debug}");
 }
 
 #[test]
@@ -1005,6 +1148,86 @@ pub(super) fn rewrite_sequence_registry_splits_and_or_single_revealed_cards_hand
 }
 
 #[test]
+pub(super) fn rewrite_sequence_registry_links_and_or_revealed_choice_to_x_destination_override() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top X plus one cards of your library. Choose a creature card and/or a land card from among them. Put those cards into your hand and the rest on the bottom of your library in a random order. If X is 5 or more, instead put the chosen cards onto the battlefield or into your hand and the rest on the bottom of your library in a random order.",
+    );
+
+    let choice_shape = crate::runtime_backend::grammar::effects::sequence_quad_shapes::parse_choose_looked_card_and_or_shape(
+        sentences[1].lowered(),
+    )
+    .expect("typed looked-card choice should parse");
+    assert!(choice_shape.uses_and_or);
+    assert!(
+        crate::runtime_backend::grammar::effects::sequence_quad_shapes::parse_chosen_cards_hand_remainder_shape(
+            sentences[2].lowered(),
+        )
+        .is_some(),
+        "default chosen-card disposition should parse"
+    );
+    assert!(
+        crate::runtime_backend::grammar::effects::sequence_quad_shapes::parse_chosen_cards_destination_replacement_shape(
+            sentences[3].lowered(),
+        )
+        .is_some(),
+        "replacement chosen-card disposition should parse"
+    );
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match revealed and/or destination replacement bundle");
+    assert_eq!(matched.name, "revealed-and-or-choice-destination-override");
+    assert_eq!(matched.consumed_sentences, 4);
+
+    let [
+        crate::cards::builders::EffectAst::SelfReplacement {
+            predicate,
+            if_true,
+            if_false,
+            attach_to_previous_ability,
+        },
+    ] = matched.effects.as_slice()
+    else {
+        panic!(
+            "expected one typed self-replacement, got {:#?}",
+            matched.effects
+        );
+    };
+    assert!(!*attach_to_previous_ability);
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::X,
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(5),
+        }
+    ));
+
+    let default_debug = format!("{if_false:#?}");
+    let replacement_debug = format!("{if_true:#?}");
+    for debug in [&default_debug, &replacement_debug] {
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert_eq!(
+            debug.matches("ChooseTaggedObjectsInZone").count(),
+            2,
+            "expected one independently tagged choice per and/or card type: {debug}"
+        );
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("Land"), "{debug}");
+        assert!(debug.contains("IsTaggedObject"), "{debug}");
+        assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+    }
+    assert!(default_debug.contains("MoveTaggedGroupToZone"));
+    assert!(replacement_debug.contains("ChooseOneOf"));
+    assert!(replacement_debug.contains("Battlefield"));
+    assert!(replacement_debug.contains("Hand"));
+}
+
+#[test]
 pub(super) fn rewrite_sequence_registry_matches_reveal_one_gain_mana_value_other_revealed_graveyard_bundle()
  {
     let sentences = registry_sentence_inputs(
@@ -1096,6 +1319,27 @@ pub(super) fn rewrite_subject_verb_damage_replacement_counter_clause_uses_captur
             && debug.contains("PlusOnePlusOne"),
         "{debug}"
     );
+}
+
+#[test]
+pub(super) fn rewrite_subject_verb_cant_blocked_then_base_pt_keeps_both_effects() {
+    let tokens = lex_line(
+        "That creature can't be blocked this turn and has base power and toughness 1/1 until end of turn.",
+        0,
+    )
+    .expect("cant-blocked/base-pt line should lex");
+
+    let parsed = super::super::effect_sentences::parse_top_level_subject_verb_recognition(&tokens)
+        .expect("cant-blocked/base-pt line should parse")
+        .expect("subject-verb recognizer should match cant-blocked/base-pt line");
+    let debug = format!("{:#?}", parsed.1);
+
+    assert_eq!(
+        parsed.0,
+        "subject-verb verb=Cant subject=target recognizer=cant-blocked-base-pt"
+    );
+    assert!(debug.contains("Cant"), "{debug}");
+    assert!(debug.contains("SetBasePowerToughness"), "{debug}");
 }
 
 #[test]
@@ -1350,6 +1594,10 @@ pub(super) fn rewrite_exile_counter_cast_permission_with_mana_permission_static_
         grant.filter.with_counter,
         Some(crate::filter::CounterConstraint::Typed(CounterType::Ice))
     );
+    assert_eq!(
+        grant.display(),
+        "You may cast spells from among cards in exile your opponents own with ice counters on them"
+    );
 
     let permission = direct_abilities
         .iter()
@@ -1454,6 +1702,10 @@ pub(super) fn rewrite_source_exiled_counter_play_and_cast_permission_static_line
                     "fetch",
                 )))
     }));
+    assert_eq!(
+        grant.display(),
+        "You may play lands and cast noncreature spells from among cards you exiled that have fetch counters on them"
+    );
 
     let permission = direct_abilities
         .iter()
@@ -1925,6 +2177,89 @@ pub(super) fn rewrite_lowered_trigger_keeps_counter_linked_land_subtype_as_effec
     assert!(debug.contains("PutCountersEffect"), "{debug}");
     assert!(debug.contains("AddSubtypes("), "{debug}");
     assert!(debug.contains("Island"), "{debug}");
+    assert!(
+        debug.contains("ForAsLongAs") && debug.contains("Flood"),
+        "{debug}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn obsidian_fireheart_full_card_keeps_counter_linked_land_trigger_grant()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Obsidian Fireheart")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(4, 4));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "{1}{R}{R}: Put a blaze counter on target land without a blaze counter on it. For as long as that land has a blaze counter on it, it has \"At the beginning of your upkeep, this land deals 1 damage to you.\" (The land continues to burn after this creature has left the battlefield.)"
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("ActivatedAbility"), "{debug}");
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(
+        debug.contains("Named(") && debug.contains("\"blaze\""),
+        "{debug}"
+    );
+    assert!(debug.contains("ForAsLongAs"), "{debug}");
+    assert!(debug.contains("AddAbilityGeneric"), "{debug}");
+    assert!(debug.contains("BeginningOfUpkeep"), "{debug}");
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn mathas_full_card_keeps_counter_linked_creature_trigger_grant()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Mathas, Fiend Seeker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 3));
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Menace\nAt the beginning of your end step, put a bounty counter on target creature an opponent controls. For as long as that creature has a bounty counter on it, it has \"When this creature dies, each opponent draws a card and gains 2 life.\""
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("Menace"), "{debug}");
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("ForAsLongAs"), "{debug}");
+    assert!(debug.to_ascii_lowercase().contains("bounty"), "{debug}");
+    assert!(debug.contains("AddAbilityGeneric"), "{debug}");
+    assert!(debug.contains("ThisDies"), "{debug}");
+    assert!(
+        debug.contains("Draw") && debug.contains("GainLife"),
+        "{debug}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn aquitects_will_full_card_keeps_flood_duration_and_conditional_draw()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Aquitect's Will")
+        .card_types(vec![CardType::Kindred, CardType::Sorcery]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Put a flood counter on target land. That land is an Island in addition to its other types for as long as it has a flood counter on it. If you control a Merfolk, draw a card."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{:#?}", definition.spell_effect);
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("AddSubtypes("), "{debug}");
+    assert!(debug.contains("Island"), "{debug}");
+    assert!(
+        debug.contains("ForAsLongAs") && debug.contains("Flood"),
+        "{debug}"
+    );
+    assert!(debug.contains("Merfolk"), "{debug}");
+    assert!(debug.contains("Draw"), "{debug}");
     Ok(())
 }
 
@@ -3180,6 +3515,66 @@ pub(super) fn rewrite_lowered_supports_spent_to_cast_conditional_chain() -> Resu
     assert!(debug.contains("excluded_static_abilities"), "{debug}");
     assert!(debug.contains("static_abilities"), "{debug}");
     assert!(debug.contains("Flying"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_lowered_keeps_each_invert_the_skies_mana_condition_on_its_arm()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Invert the Skies")
+        .card_types(vec![CardType::Instant]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Creatures your opponents control lose flying until end of turn if {G} was spent to cast this spell, and creatures you control gain flying until end of turn if {U} was spent to cast this spell."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    assert_eq!(
+        debug.matches("ManaSpentToCastThisSpellAtLeast").count(),
+        2,
+        "{debug}"
+    );
+    let removal = debug
+        .split_once("RemoveAbilityGeneric")
+        .map(|(_, tail)| tail)
+        .expect("full-card output should contain the flying-removal effect");
+    let removal = removal
+        .split_once("source_type:")
+        .map(|(effect, _)| effect)
+        .expect("flying-removal effect should retain its condition field");
+    assert!(
+        removal.contains("ManaSpentToCastThisSpellAtLeast") && removal.contains("Green"),
+        "{debug}"
+    );
+    assert!(debug.contains("Blue"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn rewrite_lowered_wishful_merfolk_shares_end_of_turn_across_activated_arms()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Wishful Merfolk")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Defender\n{1}{U}: This creature loses defender and becomes a Human until end of turn."
+            .to_string(),
+        false,
+    )?;
+
+    let debug = format!("{definition:#?}");
+    let removal = debug
+        .split_once("RemoveAbilityGeneric")
+        .map(|(_, tail)| tail)
+        .expect("full-card output should contain the defender-removal effect");
+    let removal = removal
+        .split_once("condition:")
+        .map(|(effect, _)| effect)
+        .expect("defender-removal effect should retain its duration field");
+    assert!(removal.contains("until: EndOfTurn"), "{debug}");
+    assert!(debug.contains("RemoveAllSubtypesOfFamily"), "{debug}");
     Ok(())
 }
 

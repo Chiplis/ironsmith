@@ -1,8 +1,5 @@
 /* @ts-self-types="./ironsmith.d.ts" */
 
-/**
- * Browser-exposed game handle.
- */
 export class WasmGame {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -152,6 +149,15 @@ export class WasmGame {
     cardsMeetingThreshold() {
         const ret = wasm.wasmgame_cardsMeetingThreshold(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * Return the rules-defined chooser for a creature's combat-damage division.
+     * @param {bigint} source_id
+     * @returns {number | undefined}
+     */
+    combatDamageAssignmentPlayer(source_id) {
+        const ret = wasm.wasmgame_combatDamageAssignmentPlayer(this.__wbg_ptr, source_id);
+        return ret === 0xFFFFFF ? undefined : ret;
     }
     /**
      * @param {any} payload_js
@@ -678,6 +684,30 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * @param {number} player_index
+     * @param {number} marker
+     * @returns {any}
+     */
+    selectGrandMeleeStack(player_index, marker) {
+        const ret = wasm.wasmgame_selectGrandMeleeStack(this.__wbg_ptr, player_index, marker);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Enable or disable the CR 803 attack-left/attack-right option.
+     * @param {string | null} [direction]
+     */
+    setAttackDirection(direction) {
+        var ptr0 = isLikeNone(direction) ? 0 : passStringToWasm0(direction, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmgame_setAttackDirection(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Record an attacking band for the current combat.
      * @param {Array<any>} member_ids
      */
@@ -710,6 +740,19 @@ export class WasmGame {
         wasm.wasmgame_setCombatDamageAssignment(this.__wbg_ptr, attacker_id, recipient_id, amount);
     }
     /**
+     * Set a combat-damage assignment on behalf of the rules-defined chooser.
+     * @param {number} assigning_player
+     * @param {bigint} source_id
+     * @param {bigint} recipient_id
+     * @param {number} amount
+     */
+    setCombatDamageAssignmentForPlayer(assigning_player, source_id, recipient_id, amount) {
+        const ret = wasm.wasmgame_setCombatDamageAssignmentForPlayer(this.__wbg_ptr, assigning_player, source_id, recipient_id, amount);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * @param {boolean} daytime
      * @returns {any}
      */
@@ -721,12 +764,29 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Enable or disable the CR 804 deploy-creatures option.
+     * @param {boolean} enabled
+     */
+    setDeployCreatures(enabled) {
+        wasm.wasmgame_setDeployCreatures(this.__wbg_ptr, enabled);
+    }
+    /**
      * Set a player's life total.
      * @param {number} player_index
      * @param {number} life
      */
     setLife(player_index, life) {
         const ret = wasm.wasmgame_setLife(this.__wbg_ptr, player_index, life);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Enable the CR 801 multiplayer option in current player-seat order.
+     * @param {any} ranges
+     */
+    setLimitedRangeOfInfluence(ranges) {
+        const ret = wasm.wasmgame_setLimitedRangeOfInfluence(this.__wbg_ptr, ranges);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }
@@ -747,6 +807,38 @@ export class WasmGame {
      */
     setSemanticThreshold(threshold) {
         wasm.wasmgame_setSemanticThreshold(this.__wbg_ptr, threshold);
+    }
+    /**
+     * Record one team's chosen within-team order for CR 805 simultaneous
+     * choices, actions, and trigger placement.
+     * @param {number} team
+     * @param {any} order
+     */
+    setSharedTeamMemberOrder(team, order) {
+        const ret = wasm.wasmgame_setSharedTeamMemberOrder(this.__wbg_ptr, team, order);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Enable or disable the CR 805 shared-team-turns option.
+     * @param {boolean} enabled
+     */
+    setSharedTeamTurns(enabled) {
+        const ret = wasm.wasmgame_setSharedTeamTurns(this.__wbg_ptr, enabled);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Configure explicit multiplayer teams as arrays of player indices.
+     * @param {any} teams
+     */
+    setTeams(teams) {
+        const ret = wasm.wasmgame_setTeams(this.__wbg_ptr, teams);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Return a JS object snapshot of public game state.

@@ -120,8 +120,25 @@ pub(super) fn queue_triggers_for_simultaneous_events(
 
     let trigger_groups = check_triggers_batch(game, &events);
     let mut speed_controllers = std::collections::HashSet::new();
+    let mut simultaneous_groups_seen = HashSet::new();
     for triggers in trigger_groups {
+        // Delay inserting keys until this event's complete group is handled.
+        // That preserves multiple identical ability instances on one object,
+        // while suppressing their duplicate matches on later assignments in
+        // the same simultaneous action.
+        let mut groups_from_this_event = Vec::new();
         for trigger in triggers {
+            if let Some(group) = trigger
+                .ability
+                .trigger
+                .simultaneous_trigger_key(&trigger.triggering_event)
+            {
+                let key = (trigger.source_stable_id, trigger.trigger_identity, group);
+                if simultaneous_groups_seen.contains(&key) {
+                    continue;
+                }
+                groups_from_this_event.push(key);
+            }
             if crate::triggers::check::is_speed_rule_trigger(&trigger) {
                 if !speed_controllers.insert(trigger.controller) {
                     continue;
@@ -130,6 +147,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
             }
             trigger_queue.add(trigger);
         }
+        simultaneous_groups_seen.extend(groups_from_this_event);
     }
 }
 
@@ -246,32 +264,33 @@ pub(super) fn queue_ability_activated_event(
                 .insert(activator);
         }
     }
+    let activation_entry = game
+        .stack
+        .iter()
+        .rev()
+        .find(|entry| entry.is_ability && entry.object_id == source);
+    let ability_index = activation_entry.and_then(|entry| entry.ability_index);
+    let activated_ability = ability_index
+        .and_then(|ability_index| game.current_ability(source, ability_index))
+        .or_else(|| {
+            let ability_index = ability_index?;
+            activation_entry?
+                .source_snapshot
+                .as_ref()?
+                .abilities
+                .get(ability_index)
+                .cloned()
+        });
     let is_loyalty_ability = !is_mana_ability
-        && game
-            .stack
-            .iter()
-            .rev()
-            .find(|entry| entry.is_ability && entry.object_id == source)
-            .and_then(|entry| entry.ability_index)
-            .and_then(|ability_index| game.current_ability(source, ability_index))
+        && activated_ability
+            .as_ref()
             .is_some_and(|ability| match &ability.kind {
                 crate::ability::AbilityKind::Activated(activated) => activated.is_loyalty_ability(),
                 _ => false,
             });
-    let x_value = game
-        .stack
-        .iter()
-        .rev()
-        .find(|entry| entry.is_ability && entry.object_id == source)
-        .and_then(|entry| entry.x_value);
-    let activation_cost_has_x = game
-        .stack
-        .iter()
-        .rev()
-        .find(|entry| entry.is_ability && entry.object_id == source)
-        .is_some_and(|entry| entry.activation_cost_has_x);
-    let mana_sources_tag =
-        crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+    let x_value = activation_entry.and_then(|entry| entry.x_value);
+    let activation_cost_has_x = activation_entry.is_some_and(|entry| entry.activation_cost_has_x);
+    let mana_sources_tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
     let mana_sources_spent = game
         .stack
         .iter()
@@ -286,6 +305,7 @@ pub(super) fn queue_ability_activated_event(
     let event = TriggerEvent::new_with_provenance(
         AbilityActivatedEvent::new(source, activator, is_mana_ability)
             .with_loyalty_ability(is_loyalty_ability)
+            .with_activated_ability(activated_ability)
             .with_activation_cost_has_x(activation_cost_has_x)
             .with_activation_cost_has_tap(activation_cost_has_tap)
             .with_x_value(x_value)
@@ -295,7 +315,12 @@ pub(super) fn queue_ability_activated_event(
     );
     queue_triggers_from_event(game, trigger_queue, event, true);
     if is_mana_ability {
-        resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker);
+        if matches!(
+            resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker),
+            Err(GameLoopError::MandatoryLoopDraw)
+        ) {
+            game.mark_mandatory_loop_draw();
+        }
     }
 }
 
@@ -537,7 +562,33 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
             break;
         }
         let batch_lki_events = simultaneous_rule_ltb_batch_events(&pending_events);
-        for event in pending_events {
+        let mut pending_events = pending_events.into_iter().peekable();
+        while let Some(event) = pending_events.next() {
+            if let Some(batch) = event.simultaneous_batch()
+                && matches!(
+                    event.kind(),
+                    crate::events::EventKind::Damage | crate::events::EventKind::LifeLoss
+                )
+            {
+                let mut simultaneous = vec![event];
+                while pending_events
+                    .peek()
+                    .is_some_and(|next| next.simultaneous_batch() == Some(batch))
+                {
+                    simultaneous.push(
+                        pending_events
+                            .next()
+                            .expect("peeked simultaneous event should still be present"),
+                    );
+                }
+                queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
+                for event in &simultaneous {
+                    for trigger in crate::triggers::check_delayed_triggers(game, event) {
+                        trigger_queue.add(trigger);
+                    }
+                }
+                continue;
+            }
             let source_leave = event
                 .downcast::<crate::events::zones::ZoneChangeEvent>()
                 .and_then(|zone_change| {
@@ -1474,6 +1525,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             }
             let profile = crate::effects::TargetSelectionProfile {
                 spec: &spec,
+                chooser: None,
                 description: "target",
                 min_targets: 1,
                 max_targets: Some(1),
@@ -1489,6 +1541,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                     crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
                 requirements.push(TargetRequirement {
                     spec,
+                    chooser: None,
                     legal_targets,
                     legal_target_sets,
                     description: "target".to_string(),
@@ -1523,9 +1576,10 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             &legal_targets,
             min_targets,
         );
-        if has_enough_targets {
+        if has_enough_targets || extracted.chooser.is_some() {
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
+                chooser: extracted.chooser.cloned(),
                 legal_targets,
                 legal_target_sets,
                 description: extracted.description.to_string(),
@@ -1601,6 +1655,7 @@ fn extract_target_requirements_from_iterated_effect(
         let spec = specialize_iterated_player_choose_spec(extracted.spec, iterated_player);
         let profile = ExtractedTarget {
             spec: &spec,
+            chooser: extracted.chooser,
             description: extracted.description,
             min_targets: extracted.min_targets,
             max_targets: extracted.max_targets,
@@ -1623,9 +1678,10 @@ fn extract_target_requirements_from_iterated_effect(
             &legal_targets,
             min_targets,
         );
-        if has_enough_targets {
+        if has_enough_targets || extracted.chooser.is_some() {
             requirements.push(TargetRequirement {
                 spec,
+                chooser: extracted.chooser.cloned(),
                 legal_targets,
                 legal_target_sets,
                 description: extracted.description.to_string(),
@@ -1866,6 +1922,7 @@ fn count_target_selection_slots_from_effect_internal(
             }
             let profile = crate::effects::TargetSelectionProfile {
                 spec: &spec,
+                chooser: None,
                 description: "target",
                 min_targets: 1,
                 max_targets: Some(1),
@@ -2442,9 +2499,9 @@ pub fn player_matches_filter_with_combat(
         PlayerFilter::Any => true,
         PlayerFilter::You => player_id == controller,
         PlayerFilter::NotYou => player_id != controller,
-        PlayerFilter::Opponent => player_id != controller,
-        PlayerFilter::Active => game.turn.active_player == player_id,
-        PlayerFilter::Teammate => false, // In 2-player games, no teammates
+        PlayerFilter::Opponent => game.are_opponents(controller, player_id),
+        PlayerFilter::Active => game.is_active_player(player_id),
+        PlayerFilter::Teammate => game.are_teammates(controller, player_id),
         PlayerFilter::Defending => combat
             .map(|c| is_defending_player(c, player_id))
             .unwrap_or(false),
@@ -2515,6 +2572,10 @@ pub fn player_matches_filter_with_combat(
                     .player(player_id)
                     .zip(game.player(controller))
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
+        }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+            let filter_ctx = game.filter_context_for(controller, None);
+            crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }
         PlayerFilter::MaxSpeed {
             base,
@@ -3016,7 +3077,12 @@ pub(super) fn validate_stack_entry_targets_with_view(
             match target {
                 Target::Object(obj_id) => game
                     .object(*obj_id)
-                    .is_some_and(|obj| obj.zone == Zone::Battlefield || obj.zone == Zone::Stack),
+                    .is_some_and(|obj| {
+                        obj.zone == Zone::Battlefield
+                            || (obj.zone == Zone::Stack
+                                && (game.grand_melee().is_none()
+                                    || game.object_is_on_current_stack(*obj_id)))
+                    }),
                 Target::Player(player_id) => game
                     .player(*player_id)
                     .map(|p| p.is_in_game())

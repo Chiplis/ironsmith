@@ -261,7 +261,8 @@ fn modification_can_change_spell_cost_modifier_presence(modification: &Modificat
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_spell_cost_modifier(static_ability)
         }
-        Modification::AddAbilityGeneric(ability) | Modification::RemoveAbilityGeneric(ability) => {
+        Modification::AddAbilityGeneric(ability)
+        | Modification::RemoveAbilityGeneric { ability, .. } => {
             ability_has_spell_cost_modifier(ability)
         }
         _ => false,
@@ -281,7 +282,8 @@ fn modification_can_change_activated_ability_cost_modifier_presence(
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_activated_ability_cost_modifier(static_ability)
         }
-        Modification::AddAbilityGeneric(ability) | Modification::RemoveAbilityGeneric(ability) => {
+        Modification::AddAbilityGeneric(ability)
+        | Modification::RemoveAbilityGeneric { ability, .. } => {
             ability_has_activated_ability_cost_modifier(ability)
         }
         _ => false,
@@ -299,7 +301,8 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
         Modification::AddAbility(static_ability) | Modification::RemoveAbility(static_ability) => {
             static_ability_has_minimum_total_spell_mana(static_ability)
         }
-        Modification::AddAbilityGeneric(ability) | Modification::RemoveAbilityGeneric(ability) => {
+        Modification::AddAbilityGeneric(ability)
+        | Modification::RemoveAbilityGeneric { ability, .. } => {
             ability_has_minimum_total_spell_mana(ability)
         }
         _ => false,
@@ -590,7 +593,10 @@ impl<'a> DerivedGameView<'a> {
         }
 
         let object = self.game.object(object_id)?;
-        let abilities = if !self.requires_battlefield_characteristic_calculation(object_id) {
+        let needs_calculated_abilities = self
+            .requires_battlefield_characteristic_calculation(object_id)
+            || (self.game.deploy_creatures_enabled() && object.zone == Zone::Battlefield);
+        let abilities = if !needs_calculated_abilities {
             object.abilities_vec()
         } else {
             self.calculated_characteristics_arc(object_id)?
@@ -784,18 +790,17 @@ impl<'a> DerivedGameView<'a> {
         let mana_spend_policy = self.game.mana_spend_policy(player, source);
         let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && self.player_can_pay_black_with_life_for_reason(player, reason);
-        let mut preview_pool = self.potential_mana(player);
-        let (can_pay, life_to_pay) = preview_pool
-            .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
-                cost,
-                x_value,
-                &mana_spend_policy,
-                allow_black_life,
-            );
-        can_pay
-            && self
-                .game
-                .can_pay_life_with_reason(player, life_to_pay, reason)
+        crate::decision::can_pay_mana_cost_with_available_sources(
+            self.game,
+            player,
+            source,
+            cost,
+            x_value,
+            reason,
+            &mana_spend_policy,
+            allow_black_life,
+            self,
+        )
     }
 
     pub(crate) fn player_can_pay_black_with_life_for_reason(
@@ -1939,7 +1944,10 @@ mod tests {
         ));
         assert!(
             modification_can_change_activated_ability_cost_modifier_presence(
-                &Modification::RemoveAbilityGeneric(Ability::static_ability(activation_modifier))
+                &Modification::RemoveAbilityGeneric {
+                    ability: Ability::static_ability(activation_modifier),
+                    mode: ironsmith_core::AbilityLossMode::Lose,
+                }
             )
         );
         assert!(modification_can_change_minimum_total_spell_mana_presence(

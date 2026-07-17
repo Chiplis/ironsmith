@@ -121,6 +121,10 @@ impl EffectExecutor for TaggedEffect {
         self.effect.0.get_target_spec()
     }
 
+    fn target_chooser(&self) -> Option<&crate::target::PlayerFilter> {
+        self.effect.0.target_chooser()
+    }
+
     fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
         self.effect.0.decision_related_object_specs()
     }
@@ -254,6 +258,10 @@ impl EffectExecutor for TagAllEffect {
         self.effect.0.get_target_spec()
     }
 
+    fn target_chooser(&self) -> Option<&crate::target::PlayerFilter> {
+        self.effect.0.target_chooser()
+    }
+
     fn decision_related_object_specs(&self) -> Vec<crate::target::ChooseSpec> {
         self.effect.0.decision_related_object_specs()
     }
@@ -266,6 +274,14 @@ impl EffectExecutor for TagAllEffect {
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         // Delegate to inner effect
         self.effect.0.get_target_count()
+    }
+
+    fn target_reuse_policy(&self) -> TargetReusePolicy {
+        if self.effect.0.get_target_spec().is_some() {
+            TargetReusePolicy::AlwaysDeclareNew
+        } else {
+            self.effect.0.target_reuse_policy()
+        }
     }
 }
 
@@ -580,6 +596,28 @@ mod tests {
         let effect = TagAllEffect::new("test", Effect::gain_life(1));
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("TagAllEffect"));
+    }
+
+    #[test]
+    fn test_tag_all_effect_delegates_target_chooser_and_reuse_policy() {
+        use super::TagAllEffect;
+
+        let chooser = PlayerFilter::ControllerOf(ObjectRef::Tagged(TagKey::from("first")));
+        let effect = TagAllEffect::new(
+            "second",
+            Effect::new(
+                crate::effects::TargetOnlyEffect::explicit(ChooseSpec::target(
+                    ChooseSpec::creature(),
+                ))
+                .with_chooser(chooser.clone()),
+            ),
+        );
+
+        assert_eq!(effect.target_chooser(), Some(&chooser));
+        assert!(matches!(
+            effect.target_reuse_policy(),
+            TargetReusePolicy::AlwaysDeclareNew
+        ));
     }
 
     #[test]

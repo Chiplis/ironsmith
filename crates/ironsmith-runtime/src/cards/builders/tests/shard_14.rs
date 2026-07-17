@@ -3137,9 +3137,18 @@ pub(super) fn parse_creature_tapped_to_pay_additional_cost_targets_tap_cost_tag(
         .expect("cost-linked tapped creature reference should parse");
 
     let spell_debug = format!("{:#?}", def.spell_effect);
+    let cost_debug = format!("{:#?}", def.additional_cost);
     assert!(
-        spell_debug.contains("tap_cost_0"),
-        "expected follow-up counter target to reference tap_cost_0, got {spell_debug}"
+        spell_debug.contains("tapped_0") && cost_debug.contains("tapped_0"),
+        "expected the additional-cost producer and follow-up target to share tapped_0, got cost {cost_debug} and spell {spell_debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("tap an untapped creature you control")
+            && rendered.contains(
+                "Put a +1/+1 counter on the creature tapped to pay this spell's additional cost"
+            ),
+        "expected exact cost-linked creature surface, got {rendered}"
     );
 }
 

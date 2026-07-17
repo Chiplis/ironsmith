@@ -69,6 +69,7 @@ use crate::zone::Zone;
 mod choose_player_tests;
 mod combat_damage;
 mod combat_decisions;
+mod mandatory_loop;
 mod priority_apply;
 mod priority_cast;
 mod priority_core;
@@ -117,7 +118,8 @@ pub use self::turn_execution::*;
 pub use self::types::*;
 
 pub(crate) use self::priority_cast::{
-    apply_attack_mana_ability_window_response, attack_mana_ability_window_context,
+    apply_attack_mana_ability_window_response, apply_blocker_mana_ability_window_response,
+    attack_mana_ability_window_context, blocker_mana_ability_window_context,
     cast_spell_from_resolving_effect,
 };
 pub(crate) use self::priority_mana::propose_spell_cast;

@@ -45,6 +45,7 @@ pub(crate) enum ChainVerbKind {
     Flip,
     Roll,
     Regenerate,
+    Heal,
     Mill,
     Get,
     Remove,

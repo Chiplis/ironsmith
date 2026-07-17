@@ -141,6 +141,38 @@ pub(crate) fn value_text_describes_card_count(text: &str) -> bool {
         || lower.contains("cards that player")
 }
 
+/// Return the authored additional-cost object surface when a discard count
+/// and its card filter name the same complete color-matched set.
+///
+/// This is a semantic shape check, not a text normalization: `Value::Count`
+/// makes the number of cards to discard equal to the number of eligible cards
+/// in the affected player's hand, so every eligible card must be discarded.
+pub(crate) fn additional_cost_color_discard_surface(
+    value: &Value,
+    filter: Option<&ObjectFilter>,
+) -> Option<ironsmith_core::AdditionalCostObjectSurface> {
+    let filter = filter?;
+    let Value::Count(count_filter) = value.unhinted() else {
+        return None;
+    };
+    if count_filter != filter
+        || filter.tagged_constraints.len() != 1
+        || filter.tagged_constraints[0].relation
+            != crate::filter::TaggedOpbjectRelation::SharesColorWithTagged
+    {
+        return None;
+    }
+
+    let surface = filter.additional_cost_object_surface()?;
+    let mut semantic_rest = filter.clone();
+    semantic_rest.zone = None;
+    semantic_rest.owner = None;
+    semantic_rest.controller = None;
+    semantic_rest.tagged_constraints.clear();
+    semantic_rest.set_additional_cost_object_surface(None);
+    (semantic_rest == ObjectFilter::default()).then_some(surface)
+}
+
 pub(crate) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter>) -> String {
     let Some(filter) = filter else {
         return match value {
@@ -190,6 +222,10 @@ pub(crate) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
                 describe_value(value)
             ),
         };
+    }
+
+    if let Some(surface) = additional_cost_color_discard_surface(value, Some(filter)) {
+        return format!("all cards of each of {}'s colors", surface.description());
     }
 
     if !filter.tagged_constraints.is_empty() {
@@ -468,6 +504,27 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     }) {
         return "those cards".to_string();
     }
+    if filter.zone == Some(Zone::Hand) && filter.owner.is_none() {
+        let mut unscoped = filter.clone();
+        unscoped.zone = None;
+        unscoped.single_graveyard = false;
+        unscoped.set_explicit_card_noun(true);
+        let subject =
+            pluralize_noun_phrase(strip_indefinite_article(&unscoped.description()).trim());
+        return format!("{subject} in all players' hands");
+    }
+    if filter.zone == Some(Zone::Graveyard)
+        && let Some(owner) = filter.owner.as_ref()
+    {
+        let mut unscoped = filter.clone();
+        unscoped.zone = None;
+        unscoped.owner = None;
+        unscoped.single_graveyard = false;
+        unscoped.set_explicit_card_noun(true);
+        let subject =
+            pluralize_noun_phrase(strip_indefinite_article(&unscoped.description()).trim());
+        return format!("{subject} in {}", describe_card_type_graveyard_scope(owner));
+    }
     if filter.zone == Some(Zone::Hand)
         && filter.card_types.is_empty()
         && filter.all_card_types.is_empty()
@@ -475,6 +532,24 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         && let Some(owner) = &filter.owner
     {
         return format!("cards in {} hand", describe_possessive_player_filter(owner));
+    }
+    if filter.attached_to_object.is_none()
+        && let Some(attached_to_player) = filter.attached_to_player.as_ref()
+    {
+        // Pluralize the counted objects, not the trailing attachment player.
+        // `ObjectFilter::description` places the attachment phrase last, so
+        // pluralizing that complete surface would produce e.g. "Curse
+        // attached to enchanted players". Attachment already implies the
+        // battlefield, so describe the remaining typed filter without a zone
+        // and then append the structured player relation.
+        let mut unattached = filter.clone();
+        unattached.attached_to_player = None;
+        unattached.zone = None;
+        return format!(
+            "{} attached to {}",
+            describe_count_filter_value_subject(&unattached),
+            describe_player_filter(attached_to_player)
+        );
     }
     if filter.zone == Some(Zone::Battlefield)
         && filter.controller == Some(PlayerFilter::Opponent)
@@ -502,6 +577,9 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         .trim()
         .to_string();
     subject = pluralize_noun_phrase(&subject);
+    if let Some(rest) = subject.strip_prefix("another ") {
+        subject = format!("other {rest}");
+    }
     let attachment_already_implies_battlefield = filter.attached_to_object.is_some()
         || filter.attached_to_player.is_some()
         || filter
@@ -800,7 +878,18 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         return subject;
     }
 
+    let tagged_this_way_action = describe_tagged_this_way_action(filter);
     let mut bare = filter.clone();
+    if tagged_this_way_action
+        == filter
+            .prior_effect_action_surface()
+            .map(describe_prior_effect_action)
+    {
+        // The concrete result tag and the typed surface can both preserve the
+        // same authored provenance. The tag is rendered below; keep the local
+        // noun description bare so `revealed this way` is emitted only once.
+        bare.set_prior_effect_action_surface(None);
+    }
     let controller = bare.controller.clone();
     let owner = bare.owner.clone();
     bare.controller = None;
@@ -828,7 +917,7 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
     } else if let Some(rest) = lower_subject.strip_prefix("another ") {
         subject = format!("other {}", rest.trim());
     }
-    if let Some(action) = describe_tagged_this_way_action(filter) {
+    if let Some(action) = tagged_this_way_action {
         if action == "discarded" && filter.zone == Some(Zone::Graveyard) {
             // An explicit graveyard destination distinguishes oracle's movement wording
             // ("put into a graveyard this way") from the broader "discarded this way".
@@ -895,6 +984,17 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         | Some(PlayerFilter::IteratedPlayer) => Some("that player controls"),
         Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
             Some("they control")
+        }
+        Some(PlayerFilter::Excluding { base, excluded })
+            if matches!(base.as_ref(), PlayerFilter::Any)
+                && matches!(
+                    excluded.as_ref(),
+                    PlayerFilter::ControllerOf(
+                        crate::target::ObjectRef::Tagged(_) | crate::target::ObjectRef::Target
+                    )
+                ) =>
+        {
+            Some("another player controls")
         }
         _ => None,
     };
@@ -1049,6 +1149,9 @@ pub(crate) fn describe_demonstrative_tagged_object_filter(
     if let Some(prior_result) = describe_prior_effect_tagged_filter_surface(filter) {
         return Some(prior_result);
     }
+    if let Some(attributed_choice) = describe_attributed_target_choice_filter(filter) {
+        return Some(attributed_choice);
+    }
 
     let implicit_constraints = filter
         .tagged_constraints
@@ -1081,6 +1184,81 @@ pub(crate) fn describe_demonstrative_tagged_object_filter(
     } else {
         Some(format!("that {base_desc}"))
     }
+}
+
+const CHOSEN_OBJECTS_SURFACE_TAG: &str = "__chosen_objects__";
+
+/// Render an `All` selection constrained to the durable union of authored
+/// choices. Unlike generated antecedent tags, this tag denotes the complete
+/// selected set, so its canonical surface is "the chosen ..." rather than
+/// "those ..." or an unconstrained "all ...".
+fn describe_chosen_object_set_filter(filter: &ObjectFilter) -> Option<String> {
+    let chosen_constraints = filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == CHOSEN_OBJECTS_SURFACE_TAG
+        })
+        .count();
+    if chosen_constraints != 1 {
+        return None;
+    }
+
+    let mut base = filter.clone();
+    base.tagged_constraints.retain(|constraint| {
+        constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+            || constraint.tag.as_str() != CHOSEN_OBJECTS_SURFACE_TAG
+    });
+    let noun = strip_leading_article(&base.description())
+        .trim()
+        .to_string();
+    let noun = if noun.is_empty() {
+        "objects".to_string()
+    } else {
+        pluralize_relative_object_phrase(&noun)
+    };
+    Some(format!("the chosen {noun}"))
+}
+
+/// Render an identity reference to a target according to the player who made
+/// that authored choice. Ordinary generated target tags only retain "that
+/// creature"; this role-aware form preserves "the creature you chose" versus
+/// "the creature your opponent chose" when both are live at once.
+fn describe_attributed_target_choice_filter(
+    filter: &crate::filter::ObjectFilter,
+) -> Option<String> {
+    let attributed = filter
+        .tagged_constraints
+        .iter()
+        .filter_map(|constraint| {
+            (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                .then(|| effect_text_shared::target_choice_attribution(constraint.tag.as_str()))
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    let [attribution] = attributed.as_slice() else {
+        return None;
+    };
+
+    let mut base = filter.clone();
+    base.tagged_constraints.retain(|constraint| {
+        constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            || effect_text_shared::target_choice_attribution(constraint.tag.as_str()).is_none()
+    });
+    let noun = strip_leading_article(&base.description())
+        .trim()
+        .to_string();
+    let noun = if noun.is_empty() {
+        "object"
+    } else {
+        noun.as_str()
+    };
+    let chooser = match attribution {
+        effect_text_shared::TargetChoiceAttribution::AbilityController => "you",
+        effect_text_shared::TargetChoiceAttribution::Opponent => "your opponent",
+    };
+    Some(format!("the {noun} {chooser} chose"))
 }
 
 /// Render an object reference that explicitly named the action producing it,
@@ -1305,6 +1483,12 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::Target(inner) => {
+            if let ChooseSpec::Player(PlayerFilter::Excluding { base, excluded }) = inner.as_ref()
+                && matches!(base.as_ref(), PlayerFilter::Any)
+                && !matches!(excluded.as_ref(), PlayerFilter::OwnerOf(_))
+            {
+                return "another target player".to_string();
+            }
             if let ChooseSpec::Object(filter) = inner.as_ref()
                 && let Some(exiled_card) = describe_simple_exiled_card_filter(filter)
             {
@@ -1419,6 +1603,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::All(filter) => {
+            if let Some(chosen_set) = describe_chosen_object_set_filter(filter) {
+                return chosen_set;
+            }
             if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
                 if matches!(tagged_text.as_str(), "it" | "that object") {
                     return "them".to_string();
@@ -1586,6 +1773,42 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod chosen_object_set_surface_tests {
+    use super::*;
+
+    #[test]
+    fn all_over_durable_chosen_tag_preserves_controller_partition() {
+        for (controller, expected) in [
+            (PlayerFilter::You, "the chosen permanents you control"),
+            (
+                PlayerFilter::NotYou,
+                "the chosen permanents you don't control",
+            ),
+        ] {
+            let filter = ObjectFilter::permanent()
+                .in_zone(Zone::Battlefield)
+                .controlled_by(controller)
+                .match_tagged(
+                    CHOSEN_OBJECTS_SURFACE_TAG,
+                    TaggedOpbjectRelation::IsTaggedObject,
+                );
+            assert_eq!(describe_choose_spec(&ChooseSpec::All(filter)), expected);
+        }
+    }
+
+    #[test]
+    fn ordinary_implicit_tag_keeps_demonstrative_surface() {
+        let filter = ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .match_tagged("__it__", TaggedOpbjectRelation::IsTaggedObject);
+        assert_eq!(
+            describe_choose_spec(&ChooseSpec::All(filter)),
+            "those creatures"
+        );
     }
 }
 
@@ -2204,6 +2427,7 @@ fn rendered_filter_zone_clause(filter: &ObjectFilter) -> Option<String> {
         Zone::Library => "library",
         Zone::Exile => "exile",
         Zone::Command => "command zone",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
         Zone::Battlefield | Zone::Stack => return None,
     };
@@ -2353,6 +2577,16 @@ pub(crate) fn describe_search_selection_with_cards(selection: &str) -> String {
         let amount = parts.next().unwrap_or_default().trim();
         let tail = parts.next().unwrap_or_default().trim();
         if !tail.is_empty() {
+            if let Some((noun, qualifier)) = tail.split_once(" with ") {
+                let noun = noun.trim();
+                let qualifier = qualifier.trim();
+                if !noun.is_empty() && !qualifier.is_empty() {
+                    if amount == "1" || amount.eq_ignore_ascii_case("one") {
+                        return format!("{} card with {qualifier}", with_indefinite_article(noun));
+                    }
+                    return format!("up to {amount} {noun} cards with {qualifier}");
+                }
+            }
             if amount == "1" || amount.eq_ignore_ascii_case("one") {
                 return format!("a {tail} card");
             }
@@ -2362,7 +2596,21 @@ pub(crate) fn describe_search_selection_with_cards(selection: &str) -> String {
     if let Some(rest) = selection.strip_prefix("any number ") {
         let rest = rest.trim_start_matches("of ").trim();
         if !rest.is_empty() {
+            if let Some((noun, qualifier)) = rest.split_once(" with ") {
+                let noun = noun.trim();
+                let qualifier = qualifier.trim();
+                if !noun.is_empty() && !qualifier.is_empty() {
+                    return format!("any number of {noun} cards with {qualifier}");
+                }
+            }
             return format!("any number of {rest} cards");
+        }
+    }
+    if let Some((noun, qualifier)) = selection.split_once(" with ") {
+        let noun = noun.trim();
+        let qualifier = qualifier.trim();
+        if !noun.is_empty() && !qualifier.is_empty() {
+            return format!("{} card with {qualifier}", with_indefinite_article(noun));
         }
     }
     format!("{} card", with_indefinite_article(selection))
@@ -2503,6 +2751,7 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
     let mut target: Option<&ChooseSpec> = None;
     let mut color_mode_count = 0usize;
     let mut allow_colorless = false;
+    let mut allow_artifacts = false;
 
     for mode in &choose_mode.modes {
         if mode.effects.len() != 1 {
@@ -2514,7 +2763,16 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
         }
         match grant.abilities[0].protection_from()? {
             crate::ability::ProtectionFrom::Colorless => {
+                if allow_colorless {
+                    return None;
+                }
                 allow_colorless = true;
+            }
+            crate::ability::ProtectionFrom::CardType(crate::types::CardType::Artifact) => {
+                if allow_artifacts {
+                    return None;
+                }
+                allow_artifacts = true;
             }
             crate::ability::ProtectionFrom::Color(colors) => {
                 if colors.count() != 1 {
@@ -2534,7 +2792,7 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
         }
     }
 
-    if color_mode_count != 5 {
+    if color_mode_count != 5 || (allow_colorless && allow_artifacts) {
         return None;
     }
     let target_desc = describe_choose_spec(target?);
@@ -2545,7 +2803,11 @@ pub(crate) fn describe_compact_protection_choice(effect: &Effect) -> Option<Stri
         }
         Some(chooser) => describe_possessive_player_filter(chooser),
     };
-    Some(if allow_colorless {
+    Some(if allow_artifacts {
+        format!(
+            "{target_desc} gains protection from artifacts or from the color of {choice_owner} choice until end of turn"
+        )
+    } else if allow_colorless {
         format!(
             "{target_desc} gains protection from colorless or from the color of {choice_owner} choice until end of turn"
         )
@@ -2914,6 +3176,34 @@ mod optional_companion_keyword_choice_tests {
             Some(
                 "this creature and up to one other target creature you control both gain your choice of first strike or lifelink until end of turn"
             )
+        );
+    }
+}
+
+#[cfg(test)]
+mod structured_zone_count_surface_tests {
+    use super::*;
+
+    #[test]
+    fn hand_and_owned_graveyard_counts_keep_plural_zone_scopes() {
+        let all_hands = ObjectFilter::default().in_zone(Zone::Hand);
+        assert_eq!(
+            describe_value(&Value::Count(all_hands)),
+            "the number of cards in all players' hands"
+        );
+
+        let mut opponent_graveyards = ObjectFilter::default().in_zone(Zone::Graveyard);
+        opponent_graveyards.owner = Some(PlayerFilter::Opponent);
+        assert_eq!(
+            describe_value(&Value::Count(opponent_graveyards)),
+            "the number of cards in your opponents' graveyards"
+        );
+
+        let mut chosen_graveyard = ObjectFilter::default().in_zone(Zone::Graveyard);
+        chosen_graveyard.owner = Some(PlayerFilter::ChosenPlayer);
+        assert_eq!(
+            describe_value(&Value::Count(chosen_graveyard)),
+            "the number of cards in the chosen player's graveyard"
         );
     }
 }
@@ -3310,6 +3600,28 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
                 None => format!("{subject} that died this turn"),
             })
         }
+        Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+            counter_type,
+            filter,
+        }) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            subject_filter.zone = None;
+            let subject = pluralize_noun_phrase(&describe_for_each_filter(&subject_filter));
+            let controlled = controller.map_or_else(String::new, |controller| {
+                format!(
+                    " under {} control",
+                    describe_possessive_player_filter(&controller)
+                )
+            });
+            let counter = counter_type.map_or_else(
+                || "counter".to_string(),
+                |counter_type| format!("{} counter", counter_type.description()),
+            );
+            Some(format!(
+                "{counter} you've put on {subject}{controlled} this turn"
+            ))
+        }
         Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
             player,
             filter,
@@ -3577,6 +3889,38 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
     }
 }
 
+fn describe_absolute_difference(value: &Value) -> Option<String> {
+    if !value.has_surface_hint(ironsmith_core::ValueSurfaceHint::Difference) {
+        return None;
+    }
+    let Value::Scaled(minimum, -1) = value.unhinted() else {
+        return None;
+    };
+    let Value::Min(forward, reverse) = minimum.as_ref() else {
+        return None;
+    };
+    let Value::Add(left, negative_right) = forward.as_ref() else {
+        return None;
+    };
+    let Value::Scaled(right, -1) = negative_right.as_ref() else {
+        return None;
+    };
+    let Value::Add(reverse_right, negative_left) = reverse.as_ref() else {
+        return None;
+    };
+    let Value::Scaled(reverse_left, -1) = negative_left.as_ref() else {
+        return None;
+    };
+    if left.as_ref() != reverse_left.as_ref() || right.as_ref() != reverse_right.as_ref() {
+        return None;
+    }
+    Some(format!(
+        "the difference between {} and {}",
+        describe_value(left),
+        describe_value(right)
+    ))
+}
+
 pub(crate) fn describe_value(value: &Value) -> String {
     fn describe_static_ability_id(
         ability_id: crate::static_abilities::StaticAbilityId,
@@ -3602,7 +3946,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::SurfaceHinted { hints, .. }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::Difference) =>
         {
-            "the difference".to_string()
+            describe_absolute_difference(value).unwrap_or_else(|| "the difference".to_string())
         }
         Value::SurfaceHinted { value, hints } => {
             if hints.contains(&ironsmith_core::ValueSurfaceHint::DamageDealt)
@@ -3732,6 +4076,21 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("the number of votes {} received", filter.description())
         }
         Value::Count(filter) => {
+            if filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+            }) {
+                let mut sacrificed = filter.clone();
+                sacrificed.zone = None;
+                sacrificed.tagged_constraints.retain(|constraint| {
+                    constraint.relation
+                        != crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+                });
+                return format!(
+                    "the number of {} sacrificed as it entered",
+                    describe_count_filter_value_subject(&sacrificed)
+                );
+            }
             format!(
                 "the number of {}",
                 describe_count_filter_value_subject(filter)
@@ -3852,17 +4211,23 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::You => "the number of you".to_string(),
             _ => format!("the number of {}", describe_player_filter(filter)),
         },
-        Value::PlayersWhoControlMoreThanYou(filter) => {
+        Value::PlayersWhoControlMoreThanYou { players, filter } => {
             let mut controlled_filter = filter.clone();
             if controlled_filter.zone == Some(Zone::Battlefield) {
                 controlled_filter.zone = None;
             }
+            let players = match players {
+                PlayerFilter::Any => "players".to_string(),
+                PlayerFilter::Opponent => "opponents".to_string(),
+                other => describe_player_set_filter(other),
+            };
             format!(
-                "the number of players who control more {} than you",
+                "the number of {players} who control more {} than you",
                 describe_count_filter_value_subject(&controlled_filter)
             )
         }
         Value::PlayersWhoControlAtLeastMoreThanYou {
+            players,
             filter,
             minimum_difference,
         } => {
@@ -3870,8 +4235,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
             if controlled_filter.zone == Some(Zone::Battlefield) {
                 controlled_filter.zone = None;
             }
+            let players = match players {
+                PlayerFilter::Any => "players".to_string(),
+                PlayerFilter::Opponent => "opponents".to_string(),
+                other => describe_player_set_filter(other),
+            };
             format!(
-                "the number of players who control at least {} more {} than you",
+                "the number of {players} who control at least {} more {} than you",
                 number_word(*minimum_difference as i32)
                     .unwrap_or_else(|| minimum_difference.to_string()),
                 describe_count_filter_value_subject(&controlled_filter)
@@ -3939,11 +4309,18 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("{} mana value", describe_possessive_choose_spec(spec))
             }
         }
-        Value::ManaSymbolsInManaCostOf { spec, color } => format!(
-            "the number of {} mana symbols in {} mana cost",
-            color.name(),
-            describe_possessive_choose_spec(spec)
-        ),
+        Value::ManaSymbolsInManaCostOf { spec, color } => match spec.unhinted() {
+            ChooseSpec::All(filter) => format!(
+                "the number of {} mana symbols in the mana costs of {}",
+                color.name(),
+                describe_count_filter_value_subject(filter)
+            ),
+            _ => format!(
+                "the number of {} mana symbols in {} mana cost",
+                color.name(),
+                describe_possessive_choose_spec(spec)
+            ),
+        },
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
         }

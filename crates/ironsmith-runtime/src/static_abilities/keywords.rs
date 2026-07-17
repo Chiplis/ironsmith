@@ -106,6 +106,39 @@ define_keyword!(Menace, Menace, "Menace",
 
 define_keyword!(Banding, Banding, "Banding");
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct BandsWithOther {
+    filter: ObjectFilter,
+    display: String,
+}
+
+impl BandsWithOther {
+    pub fn new(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        Self {
+            filter,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for BandsWithOther {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::BandsWithOther
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn bands_with_other_filter(&self) -> Option<&ObjectFilter> {
+        Some(&self.filter)
+    }
+}
+
 define_keyword!(Reach, Reach, "Reach",
     has_reach => true
 );
@@ -175,6 +208,7 @@ impl StaticAbilityKind for PartnerWith {
 }
 
 define_keyword!(StartYourEngines, StartYourEngines, "Start your engines!");
+define_keyword!(SpaceSculptor, SpaceSculptor, "Space sculptor");
 define_keyword!(DoctorsCompanion, DoctorsCompanion, "Doctor's companion");
 define_keyword!(Assist, Assist, "Assist");
 define_keyword!(ReadAhead, ReadAhead, "Read ahead");
@@ -400,7 +434,7 @@ impl StaticAbilityKind for LivingMetal {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        if game.turn.active_player != controller {
+        if !game.is_active_player(controller) {
             return vec![];
         }
 

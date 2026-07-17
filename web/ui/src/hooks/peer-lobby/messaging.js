@@ -6,6 +6,7 @@ import {
   INITIAL_AUDIT_STATE_HASH,
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
+  MATCH_FORMAT_PLANECHASE,
   MULTIPLAYER_SECURITY_TRUSTED,
   MULTIPLAYER_SECURITY_VERIFIED,
   PEER_CONNECT_TIMEOUT_MS,
@@ -70,6 +71,7 @@ import {
   useCallback,
   validationCommandersForMatchPayload,
   validationDecksForMatchPayload,
+  validationPlanarDecksForMatchPayload,
   validationSideboardsForMatchPayload,
   verifyLiveAuditTranscript,
   verifySignedMatchGenesis,
@@ -667,6 +669,12 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       format === MATCH_FORMAT_COMMANDER
         ? players.map((player) => sanitizeCardList(player.commanders))
         : undefined;
+    const planarDecks =
+      format === MATCH_FORMAT_PLANECHASE
+        ? players.map((player) =>
+            sanitizeCardList(player.commanders).map((name) => ({ name }))
+          )
+        : undefined;
     const payloadPlayers = players.map((player) => ({
       ...toPublicPlayer({
         ...player,
@@ -691,6 +699,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       decks: players.map((player) => sanitizeCardList(player.deck)),
       sideboards,
       commanders,
+      planarDecks,
       startingLife: session.startingLife,
       openingHandSize: DEFAULT_OPENING_HAND_SIZE,
       timeoutMs: matchClockConfigRef.current.initialMs,
@@ -723,6 +732,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           decks: validationDecksForMatchPayload(payload),
           sideboards: validationSideboardsForMatchPayload(payload),
           commanders: validationCommandersForMatchPayload(payload),
+          planarDecks: validationPlanarDecksForMatchPayload(payload),
           openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
         });
         if (validation?.valid === false) {
@@ -3366,7 +3376,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       commanderText = "",
     }) => {
       teardownPeer();
-      const normalizedSecurityMode = normalizeMultiplayerSecurityMode(securityMode);
+      const normalizedFormat = normalizeMatchFormat(format);
+      const normalizedSecurityMode =
+        normalizedFormat === MATCH_FORMAT_PLANECHASE
+          ? MULTIPLAYER_SECURITY_TRUSTED
+          : normalizeMultiplayerSecurityMode(securityMode);
       const auditIdentity = isVerifiedMultiplayerSecurityMode(normalizedSecurityMode)
         ? await ensureAuditIdentity()
         : { publicKey: "", encryptionPublicKey: "" };
@@ -3383,7 +3397,6 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         )
       );
       const lifeTotal = Math.max(1, Number(startingLife) || 20);
-      const normalizedFormat = normalizeMatchFormat(format);
       const deckSubmission = parseDeckSubmission(
         normalizedFormat,
         deckText,

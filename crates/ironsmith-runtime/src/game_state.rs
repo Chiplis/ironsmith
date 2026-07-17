@@ -27,7 +27,7 @@ use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::filter::PlayerFilterExt;
 use crate::ids::{CardId, ObjectId, PlayerId, StableId, reset_runtime_id_counters};
 use crate::object::{AttachmentTarget, AuraAttachmentFilter, CardSharedHandles, Object};
-use crate::player::{ManaPool, Player};
+use crate::player::Player;
 use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
 use crate::replacement::{ReplacementEffectId, ReplacementEffectKey, ReplacementEffectManager};
@@ -35,31 +35,144 @@ use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::{AnthemCountExpression, StaticAbility};
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerIdentity;
-use crate::turn_history::TurnHistory;
+use crate::turn_history::{TurnEventRecord, TurnHistory};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
+mod alternating_teams;
+mod attack_direction;
+mod commander_draft;
+mod conspiracy;
+mod emperor;
+mod free_for_all;
+mod grand_melee;
 mod mana_and_permissions;
 mod object_state_and_events;
+mod planechase;
+mod range_of_influence;
 mod restart;
+mod schemes;
+mod subgames;
+mod team_game;
+mod team_vs_team;
 mod turns_and_tracking;
+mod two_headed_giant;
+mod vanguard;
 mod zones_and_characteristics;
+pub use alternating_teams::AlternatingTeamsState;
+pub use attack_direction::AttackDirection;
+pub use commander_draft::{
+    CommanderDraftBooster, CommanderDraftProduct, CommanderDraftState,
+};
+pub use conspiracy::{
+    ConspiracyDraftState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
+};
+pub use emperor::EmperorState;
+pub use free_for_all::{FreeForAllAttackOption, FreeForAllState};
+pub use grand_melee::{
+    GrandMeleeMarkerRestore, GrandMeleeMarkerStatus, GrandMeleeMarkerView, GrandMeleeRestore,
+    GrandMeleeState,
+};
+pub use range_of_influence::LimitedRangeOfInfluenceState;
+use subgames::SubgameFrame;
+pub use subgames::{SubgameCompletion, SubgameTransferKind};
+pub use team_game::{SharedTeamTurnsState, TeamState};
+pub use team_vs_team::TeamVsTeamState;
+pub use two_headed_giant::TwoHeadedGiantState;
+pub(crate) use zones_and_characteristics::PreparedEtbChoices;
+
+/// The two kinds of nontraditional cards allowed in a planar deck.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PlanarCardKind {
+    Plane,
+    Phenomenon,
+}
+
+/// Result of the six-sided planar die.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PlanarDieFace {
+    Blank,
+    Chaos,
+    Planeswalker,
+}
+
+/// Planechase-specific supplementary-deck and designation state.
+#[derive(Debug, Clone)]
+pub struct PlanechaseState {
+    /// Individual planar decks, stored bottom-to-top (top is the last element).
+    pub decks: HashMap<PlayerId, Vec<ObjectId>>,
+    /// Optional communal planar deck, also bottom-to-top.
+    pub communal_deck: Option<Vec<ObjectId>>,
+    /// Original individual-deck owner for each planar card.
+    pub deck_owners: HashMap<ObjectId, PlayerId>,
+    /// Typed plane/phenomenon identity for every planar object.
+    pub card_kinds: HashMap<ObjectId, PlanarCardKind>,
+    /// Face-up planar objects. Ordinary Planechase has exactly one after setup.
+    pub face_up: Vec<ObjectId>,
+    /// Player currently designated as planar controller.
+    pub planar_controller: PlayerId,
+    /// Every planar controller in a Grand Melee game. Ordinary Planechase has
+    /// exactly the singular `planar_controller` in this set.
+    pub planar_controllers: HashSet<PlayerId>,
+    /// Controller of each simultaneously face-up planar card.
+    pub face_up_controllers: HashMap<ObjectId, PlayerId>,
+    /// Voluntary planar-die special actions taken by each player this turn.
+    pub voluntary_rolls_this_turn: HashMap<PlayerId, u32>,
+    /// Number of completed planeswalk actions, for duration/history consumers.
+    pub planeswalk_count: u64,
+}
+
+/// Vanguard-specific command-zone cards and printed signed modifiers.
+#[derive(Debug, Clone)]
+pub struct VanguardState {
+    /// Exactly one face-up Vanguard command-zone object per player.
+    pub cards: HashMap<PlayerId, ObjectId>,
+    /// Printed signed hand modifier for each player's vanguard.
+    pub hand_modifiers: HashMap<PlayerId, i32>,
+    /// Printed signed life modifier for each player's vanguard.
+    pub life_modifiers: HashMap<PlayerId, i32>,
+}
+
+/// Archenemy rules profile used to validate supplementary scheme decks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArchenemyVariant {
+    Default,
+    SupervillainRumble,
+    Commander,
+}
+
+/// Archenemy-specific face-down supplementary decks and face-up schemes.
+#[derive(Debug, Clone)]
+pub struct ArchenemyState {
+    pub variant: ArchenemyVariant,
+    /// Players designated as archenemies.
+    pub archenemies: HashSet<PlayerId>,
+    /// Face-down scheme decks, stored bottom-to-top.
+    pub scheme_decks: HashMap<PlayerId, Vec<ObjectId>>,
+    /// Currently face-up schemes in the command zone.
+    pub face_up: Vec<ObjectId>,
+}
+
+/// Conspiracy command-zone and secret linked-choice state.
+#[derive(Debug, Clone, Default)]
+pub struct ConspiracyState {
+    /// Selected conspiracy objects by owner.
+    pub cards: HashMap<PlayerId, Vec<ObjectId>>,
+    /// Conspiracies whose characteristics and abilities are hidden.
+    pub face_down: HashSet<ObjectId>,
+    /// Secret names linked to hidden/double agenda, keyed by source object.
+    pub agenda_names: HashMap<ObjectId, Vec<String>>,
+}
+
+/// One selected sideboard conspiracy and any secret agenda names chosen for it.
+#[derive(Debug, Clone)]
+pub struct ConspiracySetupCard {
+    pub definition: crate::cards::CardDefinition,
+    pub agenda_names: Vec<String>,
+}
 
 #[cfg(test)]
 mod tests;
-
-fn parse_dredge_amount(text: &str) -> Option<usize> {
-    let mut words = text.split_whitespace();
-    let head = words.next()?;
-    if !head.eq_ignore_ascii_case("dredge") {
-        return None;
-    }
-    words
-        .next()?
-        .trim_matches(|ch: char| !ch.is_ascii_digit())
-        .parse::<usize>()
-        .ok()
-}
 
 /// Pending replacement effect choice when multiple effects apply to the same event.
 ///
@@ -114,6 +227,33 @@ pub struct MeldComponentState {
 #[derive(Debug, Clone)]
 pub struct MeldedPermanentState {
     pub components: Vec<MeldComponentState>,
+}
+
+/// One physical component of a merged permanent (CR 730).
+///
+/// Keeping the component object itself lets mutation support both cards and
+/// tokens without card-name reconstruction or card-specific definitions.  Its
+/// object id is only historical; a component receives a fresh id if the merged
+/// permanent later changes zones.
+#[derive(Debug, Clone)]
+pub struct MergedPermanentComponentState {
+    /// The component's current battlefield face and contributed abilities.
+    pub object: Object,
+    /// The front/default object to create if the component leaves the merged
+    /// permanent. This remains immutable while `object` flips or transforms.
+    pub destination_object: Object,
+    pub is_commander: bool,
+    /// The component's own face status. The merged permanent displays the top
+    /// component's status, while turn-face actions update every component.
+    pub face_down: bool,
+    /// Whether this flip-card component has already been flipped.
+    pub flipped: bool,
+}
+
+/// Components of a merged permanent in physical top-to-bottom order.
+#[derive(Debug, Clone)]
+pub struct MergedPermanentState {
+    pub components: Vec<MergedPermanentComponentState>,
 }
 
 /// One-shot battlefield transition hints for the UI animation layer.
@@ -229,6 +369,11 @@ struct BattlefieldFlags {
     controller_at_last_refresh: HashMap<ObjectId, PlayerId>,
     /// Damage marked on creatures (cleared at cleanup step).
     damage_marked: HashMap<ObjectId, u32>,
+    /// Player currently designated to protect each battle.
+    ///
+    /// This designation is battlefield state rather than a copiable value and
+    /// survives type/copy changes for as long as the same permanent remains.
+    battle_protectors: HashMap<ObjectId, PlayerId>,
     /// Creatures that are monstrous (from monstrosity ability).
     monstrous: HashSet<ObjectId>,
     /// Permanents that are suspected.
@@ -291,6 +436,10 @@ struct ObjectAnnotationStore {
     noted_life_totals: HashMap<ObjectId, i32>,
     /// Stickers attached to an object, keyed by stable object identity.
     object_stickers: HashMap<StableId, Vec<StickerMarker>>,
+    /// Token instance -> source instance that created it. Stable identities
+    /// preserve the link when the source leaves the battlefield and its
+    /// leaves-trigger resolves from last known information.
+    token_creation_sources: HashMap<StableId, StableId>,
 }
 
 /// Commander-format tracking grouped behind copy-on-write storage.
@@ -304,6 +453,11 @@ struct CommanderTracking {
     declined_command_zone_moves: HashSet<ObjectId>,
     /// Component-card identity for battlefield melded permanents.
     melded_permanents: HashMap<StableId, MeldedPermanentState>,
+    /// Physical components of battlefield merged permanents (currently Mutate).
+    merged_permanents: HashMap<StableId, MergedPermanentState>,
+    /// Per-component destinations chosen for a merged permanent's pending
+    /// hand/library move (notably the CR 903.9b commander exception).
+    pending_merged_component_destinations: HashMap<StableId, Vec<Zone>>,
 }
 
 /// Exile and stack-origin tracking grouped behind copy-on-write storage.
@@ -345,6 +499,8 @@ struct CombatTransientState {
     sneak_attack_targets: HashMap<ObjectId, Vec<crate::combat_state::AttackTarget>>,
     /// Combat-damage-to-player hits processed in the current trigger batch.
     combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
+    /// Combat-damage-to-object hits processed in the current trigger batch.
+    combat_damage_object_batch_hits: Vec<(ObjectId, ObjectId)>,
     /// Players whose inherent speed trigger has already fired this turn.
     speed_increase_triggered_this_turn: HashSet<PlayerId>,
 }
@@ -352,6 +508,10 @@ struct CombatTransientState {
 /// Miscellaneous checkpoint-heavy state grouped behind copy-on-write storage.
 #[derive(Debug, Clone, Default)]
 struct AuxiliaryTrackingState {
+    /// A shared rules procedure proved a CR 104.4b mandatory-action loop.
+    mandatory_loop_draw_pending: bool,
+    /// Controllers of objects proved to participate in that loop (CR 801.16).
+    mandatory_loop_draw_controllers: HashSet<PlayerId>,
     /// Current dungeon progress for each player, if any.
     active_dungeons: HashMap<PlayerId, ActiveDungeonProgress>,
     /// Named dungeons each player has completed this game.
@@ -370,6 +530,17 @@ struct AuxiliaryTrackingState {
     draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
     /// Cryptographic hidden-card slots that have not been opened on this peer.
     hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
+    /// Noncopiable alpha/beta/gamma designations on battlefield permanents.
+    sector_designations: HashMap<ObjectId, crate::marker::SectorDesignation>,
+    /// Partially collected asynchronous CR 704.5u choices for the priority driver.
+    pending_sector_designations: Option<PendingSectorDesignationState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingSectorDesignationState {
+    pub source: ObjectId,
+    pub creatures: Vec<(PlayerId, ObjectId)>,
+    pub choices: Vec<crate::marker::SectorDesignation>,
 }
 
 /// Storage and denormalized zone indexes for live objects in the game.
@@ -390,6 +561,8 @@ pub struct ObjectStore {
     pub battlefield: Vec<ObjectId>,
     pub command_zone: Vec<ObjectId>,
     pub exile: Vec<ObjectId>,
+    /// Shared public ante zone (CR 407.2).
+    pub ante: Vec<ObjectId>,
     /// The full set of destination object IDs created by the most recent move
     /// of a given source object.
     zone_change_result_objects: FxMap<ObjectId, Vec<ObjectId>>,
@@ -428,6 +601,18 @@ impl ObjectStore {
     }
 }
 
+/// Rules information retained when a player leaves a multiplayer game.
+#[derive(Debug, Clone)]
+pub struct DepartedPlayerHistory {
+    /// Frozen immediately before owned objects leave the game (CR 800.4i).
+    pub player_lki: Player,
+    /// Actions from the departed player's most recent turn, while the special
+    /// CR 800.4i lookup window remains open.
+    pub last_turn_history: Option<TurnHistory>,
+    /// Turn number at which the departed player's next turn would have begun.
+    pub last_turn_expires_before_turn: u32,
+}
+
 /// Turn-order, skip/extra-turn, and per-turn history state.
 #[derive(Debug, Clone, Default)]
 pub struct TurnStore {
@@ -438,6 +623,14 @@ pub struct TurnStore {
     /// Additional phases inserted after the current phase.
     /// These are consumed before the normal turn sequence advances.
     pub additional_phases: Vec<Phase>,
+    /// Creation sequence parallel to `additional_phases`.
+    pub additional_phase_orders: Vec<u64>,
+    /// Optional sole step for CR 500.10 synthetic phases, parallel to the queue.
+    pub additional_phase_only_steps: Vec<Option<Step>>,
+    /// Monotonic creation sequence shared by phase and step additions.
+    pub next_turn_schedule_order: u64,
+    /// Normal destination restored after the unified additional-phase queue.
+    pub phase_schedule_continuation: Option<TurnScheduleDestination>,
     /// Number of combat phases that have started during the current turn.
     pub combat_phases_started_this_turn: u32,
     /// Normal phase to resume after inserted additional phases finish.
@@ -445,9 +638,16 @@ pub struct TurnStore {
     /// Players who will skip their next turn.
     /// Checked and cleared when a player would start their turn.
     pub skip_next_turn: HashSet<PlayerId>,
-    /// Players who will skip their next draw step.
-    /// Checked and cleared when a player would draw in draw step.
-    pub skip_next_draw_step: HashSet<PlayerId>,
+    /// Consumable one-shot step skips, preserving independently created effects.
+    pub skipped_steps: HashMap<(PlayerId, Step), u32>,
+    /// Extra steps waiting at a named step/phase boundary in this turn.
+    pub added_steps: Vec<AddedStep>,
+    /// Additional steps already selected for execution at the current boundary.
+    pub pending_added_steps: Vec<ScheduledStep>,
+    /// The additional step currently being executed, if any.
+    pub active_added_step: Option<ScheduledStep>,
+    /// Normal turn position restored after the current additional-step group.
+    pub added_step_continuation: Option<TurnScheduleDestination>,
     /// The active player whose draw step is currently being tracked for draw-count-sensitive triggers.
     pub tracked_draw_step_player: Option<PlayerId>,
     /// Cards the tracked player has already drawn in the current draw step.
@@ -467,6 +667,14 @@ pub struct TurnStore {
     /// Intervening-if predicates such as "lost life last turn" must inspect
     /// the completed turn rather than the freshly reset current-turn store.
     pub previous_turn_history: TurnHistory,
+    /// Most recently completed turn for each player rather than merely the
+    /// immediately previous table turn.
+    last_turn_history_by_player: HashMap<PlayerId, TurnHistory>,
+    /// Committed event/action records retained for the full game and indexed
+    /// by every player whose action or result the record describes.
+    action_history_by_player: HashMap<PlayerId, Vec<TurnEventRecord>>,
+    /// Frozen LKI and bounded "last turn" windows for departed players.
+    departed_player_history: HashMap<PlayerId, DepartedPlayerHistory>,
     /// Hand sizes captured as the current turn began, before the untap step.
     pub hand_sizes_at_turn_start: HashMap<PlayerId, usize>,
     /// Total number of spells cast during the immediately previous turn.
@@ -488,6 +696,17 @@ pub struct TurnStore {
     /// Hand cards revealed by Forecast through the end of the current upkeep.
     /// A zone change removes the old object ID immediately.
     pub forecast_revealed_hand_cards: HashSet<ObjectId>,
+    /// CR 724 requested an immediate scheduler transition to the cleanup step.
+    ///
+    /// The resolving effect performs CR 724.1a-b synchronously, then the turn
+    /// runner consumes this marker to perform the no-priority SBA pass and the
+    /// resumable cleanup procedure.
+    pub end_turn_procedure_pending: bool,
+    /// CR 724.2 requested the ordered procedure that ends the current combat.
+    ///
+    /// The resolving effect performs CR 724.2a-b synchronously, then the turn
+    /// runner performs the no-priority SBA pass and skips to the next phase.
+    pub end_combat_phase_procedure_pending: bool,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -907,11 +1126,21 @@ impl WorkCounters {
     pub(crate) fn bump_dependency_pairs_probed(&self) {
         self.dependency_pairs_probed
             .set(self.dependency_pairs_probed.get().saturating_add(1));
+        if std::env::var_os("IRONSMITH_LOOP_TRIPWIRE").is_some()
+            && self.dependency_pairs_probed.get() > 2_000_000
+        {
+            panic!("loop tripwire: dependency_pairs_probed exceeded 2M");
+        }
     }
 
     fn bump_characteristics_full_recomputes(&self) {
         self.characteristics_full_recomputes
             .set(self.characteristics_full_recomputes.get().saturating_add(1));
+        if std::env::var_os("IRONSMITH_LOOP_TRIPWIRE").is_some()
+            && self.characteristics_full_recomputes.get() > 200_000
+        {
+            panic!("loop tripwire: characteristics_full_recomputes exceeded 200k");
+        }
     }
 
     fn bump_characteristics_cache_hits(&self) {
@@ -945,6 +1174,7 @@ pub struct ZoneRevisionSnapshot {
     pub battlefield: u64,
     pub command: u64,
     pub exile: u64,
+    pub ante: u64,
     pub library: u64,
     pub hand: u64,
     pub graveyard: u64,
@@ -1278,13 +1508,12 @@ impl RestrictionEffectInstance {
 
         match self.duration {
             crate::effect::Until::YourNextTurn => {
-                !(current_turn > self.expires_end_of_turn
-                    && game.turn.active_player == self.controller)
+                !(current_turn > self.expires_end_of_turn && game.is_active_player(self.controller))
             }
             crate::effect::Until::YourNextTurnEnd => current_turn <= self.expires_end_of_turn,
             crate::effect::Until::YourNextUpkeep => {
                 if current_turn <= self.expires_end_of_turn
-                    || game.turn.active_player != self.controller
+                    || !game.is_active_player(self.controller)
                 {
                     true
                 } else if matches!(game.turn.phase, Phase::Beginning) {
@@ -1294,7 +1523,7 @@ impl RestrictionEffectInstance {
                 }
             }
             crate::effect::Until::ControllersNextUntapStep => {
-                game.turn.active_player == self.controller
+                game.is_active_player(self.controller)
                     && matches!(game.turn.phase, Phase::Beginning)
                     && matches!(game.turn.step, Some(Step::Untap))
             }
@@ -1336,8 +1565,7 @@ impl GoadEffectInstance {
 
         match self.duration {
             crate::effect::Until::YourNextTurn => {
-                !(current_turn > self.expires_end_of_turn
-                    && game.turn.active_player == self.goaded_by)
+                !(current_turn > self.expires_end_of_turn && game.is_active_player(self.goaded_by))
             }
             crate::effect::Until::YourNextTurnEnd => current_turn <= self.expires_end_of_turn,
             crate::effect::Until::ThisLeavesTheBattlefield => game
@@ -1371,16 +1599,17 @@ pub struct TemporarySpellCostReductionEffectInstance {
 }
 
 impl TemporarySpellCostReductionEffectInstance {
-    pub fn is_expired(&self, current_turn: u32, active_player: PlayerId) -> bool {
+    pub fn is_expired(&self, game: &GameState) -> bool {
         if self.remaining_uses == 0 {
             return true;
         }
         match self.duration {
             crate::effect::Until::YourNextTurn => {
-                current_turn > self.expires_end_of_turn && active_player == self.duration_controller
+                game.turn.turn_number > self.expires_end_of_turn
+                    && game.is_active_player(self.duration_controller)
             }
             crate::effect::Until::Forever => false,
-            _ => current_turn > self.expires_end_of_turn,
+            _ => game.turn.turn_number > self.expires_end_of_turn,
         }
     }
 }
@@ -1390,7 +1619,7 @@ pub struct TemporarySpellAbilityGrantEffectInstance {
     pub player: PlayerId,
     pub source: ObjectId,
     pub filter: crate::target::ObjectFilter,
-    pub ability: crate::static_abilities::StaticAbility,
+    pub ability: crate::ability::Ability,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
 }
@@ -2151,7 +2380,7 @@ impl ActiveManaSpendPermission {
 }
 
 /// Game phases.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Phase {
     Beginning,
     FirstMain,
@@ -2179,7 +2408,7 @@ impl std::fmt::Display for Phase {
 }
 
 /// Steps within phases.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Step {
     // Beginning phase
     Untap,
@@ -2194,6 +2423,58 @@ pub enum Step {
     // Ending phase
     End,
     Cleanup,
+}
+
+impl Step {
+    /// Phase that normally contains this step (CR 500.10).
+    pub const fn containing_phase(self) -> Phase {
+        match self {
+            Step::Untap | Step::Upkeep | Step::Draw => Phase::Beginning,
+            Step::BeginCombat
+            | Step::DeclareAttackers
+            | Step::DeclareBlockers
+            | Step::CombatDamage
+            | Step::EndCombat => Phase::Combat,
+            Step::End | Step::Cleanup => Phase::Ending,
+        }
+    }
+}
+
+/// Boundary at which an additional step is created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddedStepPlacement {
+    BeforeStep(Step),
+    AfterStep(Step),
+    AfterPhase(Phase),
+}
+
+/// One additional step tied to the turn in which it was created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddedStep {
+    pub step: Step,
+    pub placement: AddedStepPlacement,
+    pub turn_number: u32,
+    pub creation_order: u64,
+}
+
+/// A step selected for execution, including its containing phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduledStep {
+    pub phase: Phase,
+    pub step: Step,
+    /// CR 500.10 phase synthesized with only this step.
+    pub isolated_phase: bool,
+}
+
+/// Typed continuation after an additional-step group finishes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnScheduleDestination {
+    Step(Step),
+    CombatDamageFirstStrike,
+    CombatDamageRegular,
+    Phase(Phase),
+    ResumePhaseSchedule,
+    Complete,
 }
 
 impl Step {
@@ -2338,6 +2619,11 @@ pub struct StackEntry {
     /// Saga state-based actions use this to delay sacrifice while a chapter
     /// ability from that Saga is still on the stack.
     pub chapter_ability_source: Option<ObjectId>,
+    /// If this is a battle's intrinsic defeat ability, the source battle's ID.
+    ///
+    /// Battle SBAs use this to keep a zero-defense battle on the battlefield
+    /// while its intrinsic ability is pending on the stack.
+    pub battle_defeat_source: Option<ObjectId>,
     /// The stable instance ID of the source (persists across zone changes).
     /// Used to track the source even after it leaves the battlefield.
     pub source_stable_id: Option<StableId>,
@@ -2418,6 +2704,7 @@ impl StackEntry {
             defending_player: None,
             chosen_player: None,
             chapter_ability_source: None,
+            battle_defeat_source: None,
             source_stable_id: None,
             source_snapshot: None,
             source_name: None,
@@ -2462,6 +2749,7 @@ impl StackEntry {
             defending_player: None,
             chosen_player: None,
             chapter_ability_source: None,
+            battle_defeat_source: None,
             source_stable_id: None,
             source_snapshot: None,
             source_name: None,
@@ -2483,6 +2771,11 @@ impl StackEntry {
     /// Mark this as a chapter ability from the given source.
     pub fn with_chapter_ability_source(mut self, source_id: ObjectId) -> Self {
         self.chapter_ability_source = Some(source_id);
+        self
+    }
+
+    pub fn with_battle_defeat_source(mut self, source_id: ObjectId) -> Self {
+        self.battle_defeat_source = Some(source_id);
         self
     }
 
@@ -2701,6 +2994,44 @@ pub struct GameState {
     pub turn: TurnState,
     pub turn_store: TurnStore,
     pub effect_store: EffectStore,
+    /// Present only when the Planechase casual variant is active.
+    pub planechase: Option<PlanechaseState>,
+    /// Present only when the Vanguard casual variant is active.
+    pub vanguard: Option<VanguardState>,
+    /// Present only when an Archenemy variant is active.
+    pub archenemy: Option<ArchenemyState>,
+    /// Present only when a Conspiracy Draft game is active.
+    pub conspiracy: Option<ConspiracyState>,
+    /// Present only when the CR 806 Free-for-All profile is active.
+    free_for_all: Option<FreeForAllState>,
+    /// Present only when the CR 807 Grand Melee profile is active.
+    grand_melee: Option<GrandMeleeState>,
+    /// Present only when the CR 809 Emperor profile is active.
+    emperor: Option<EmperorState>,
+    /// Present only when the CR 808 Team vs. Team profile is active.
+    team_vs_team: Option<TeamVsTeamState>,
+    /// Present only when the CR 810 Two-Headed Giant profile is active.
+    two_headed_giant: Option<TwoHeadedGiantState>,
+    /// Present only when the CR 811 Alternating Teams profile is active.
+    alternating_teams: Option<AlternatingTeamsState>,
+    /// Present only when the CR 801 limited-range option is active.
+    range_of_influence: Option<LimitedRangeOfInfluenceState>,
+    /// Present only when a CR 803 attack-left or attack-right option is active.
+    attack_direction: Option<AttackDirection>,
+    /// Explicit multiplayer team identity shared by team-format options.
+    teams: Option<TeamState>,
+    /// Whether CR 804 deploy creatures is active.
+    deploy_creatures: bool,
+    /// Derived seating, primary-player, and team-order state for CR 805.
+    shared_team_turns: Option<SharedTeamTurnsState>,
+    /// Suspended parent-game frame when this state is an active subgame.
+    subgame_parent: Option<Box<SubgameFrame>>,
+    /// The active child has drawn its initial hands but has not yet completed
+    /// the ordinary rule 103 mulligan/opening-action procedure.
+    subgame_starting_procedure_pending: bool,
+    /// One-shot signal for host loops that need to restore their suspended
+    /// turn-runner context after `finish_subgame_with` resumes a parent.
+    subgame_just_resumed: bool,
     choice_store: Arc<ChoiceStore>,
     metadata: MetadataStateStore,
     mutation_revision: u64,
@@ -2731,6 +3062,10 @@ pub struct GameState {
     cast_permission_flags: Arc<CastPermissionFlags>,
 
     commander_tracking: Arc<CommanderTracking>,
+
+    /// Whether CR 704.6c commander-damage loss applies in this variant.
+    /// Brawl explicitly disables this state-based action (CR 903.12h).
+    commander_damage_loss_enabled: bool,
 
     exile_tracking: Arc<ExileTracking>,
 
@@ -2772,6 +3107,127 @@ impl GameState {
 
     fn auxiliary_tracking_mut(&mut self) -> &mut AuxiliaryTrackingState {
         Arc::make_mut(&mut self.auxiliary_tracking)
+    }
+
+    pub(crate) fn mark_mandatory_loop_draw(&mut self) {
+        self.auxiliary_tracking_mut().mandatory_loop_draw_pending = true;
+    }
+
+    pub(crate) fn mark_mandatory_loop_draw_for(
+        &mut self,
+        controllers: impl IntoIterator<Item = PlayerId>,
+    ) {
+        let tracking = self.auxiliary_tracking_mut();
+        tracking.mandatory_loop_draw_pending = true;
+        tracking.mandatory_loop_draw_controllers.extend(controllers);
+    }
+
+    /// Apply CR 801.16 and clear the pending marker. Returns true only when no
+    /// player remains and the whole game is a draw.
+    pub(crate) fn resolve_mandatory_loop_draw(&mut self) -> bool {
+        let controllers = self
+            .auxiliary_tracking
+            .mandatory_loop_draw_controllers
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        let mut affected = HashSet::new();
+        if controllers.is_empty() {
+            affected.extend(
+                self.players
+                    .iter()
+                    .filter(|player| player.is_in_game())
+                    .map(|player| player.id),
+            );
+        } else {
+            for controller in controllers {
+                affected.extend(self.players_within_range(controller));
+            }
+        }
+        {
+            let tracking = self.auxiliary_tracking_mut();
+            tracking.mandatory_loop_draw_pending = false;
+            tracking.mandatory_loop_draw_controllers.clear();
+        }
+        self.draw_game_for_players(affected);
+        !self.players.iter().any(|player| player.is_in_game())
+    }
+
+    pub(crate) fn mandatory_loop_draw_pending(&self) -> bool {
+        self.auxiliary_tracking.mandatory_loop_draw_pending
+    }
+
+    /// Return a permanent's current space-sculptor sector designation.
+    pub fn sector_designation(&self, object: ObjectId) -> Option<crate::marker::SectorDesignation> {
+        self.object(object)
+            .filter(|object| object.zone == Zone::Battlefield)?;
+        self.auxiliary_tracking
+            .sector_designations
+            .get(&object)
+            .copied()
+    }
+
+    /// Assign a battlefield permanent to a sector. Returns whether state changed.
+    pub fn set_sector_designation(
+        &mut self,
+        object: ObjectId,
+        sector: crate::marker::SectorDesignation,
+    ) -> bool {
+        if self
+            .object(object)
+            .is_none_or(|object| object.zone != Zone::Battlefield)
+        {
+            return false;
+        }
+        if self.sector_designation(object) == Some(sector) {
+            return false;
+        }
+        self.auxiliary_tracking_mut()
+            .sector_designations
+            .insert(object, sector);
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+        true
+    }
+
+    /// Clear all sector designations when no space-sculptor source remains.
+    pub fn clear_sector_designations(&mut self) -> bool {
+        if self.auxiliary_tracking.sector_designations.is_empty() {
+            return false;
+        }
+        self.auxiliary_tracking_mut().sector_designations.clear();
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+        true
+    }
+
+    pub(crate) fn has_sector_designations(&self) -> bool {
+        !self.auxiliary_tracking.sector_designations.is_empty()
+    }
+
+    pub(crate) fn take_pending_sector_designations(
+        &mut self,
+    ) -> Option<PendingSectorDesignationState> {
+        self.auxiliary_tracking_mut()
+            .pending_sector_designations
+            .take()
+    }
+
+    pub(crate) fn set_pending_sector_designations(
+        &mut self,
+        pending: PendingSectorDesignationState,
+    ) {
+        self.auxiliary_tracking_mut().pending_sector_designations = Some(pending);
+    }
+
+    pub(crate) fn clear_pending_sector_designations(&mut self) {
+        self.auxiliary_tracking_mut().pending_sector_designations = None;
+    }
+
+    /// Two permanents are in the same sector only if both have the same designation.
+    pub fn permanents_are_in_same_sector(&self, left: ObjectId, right: ObjectId) -> bool {
+        self.sector_designation(left)
+            .is_some_and(|sector| self.sector_designation(right) == Some(sector))
     }
 
     fn choice_store_mut(&mut self) -> &mut ChoiceStore {
@@ -2823,6 +3279,24 @@ impl GameState {
                 ..TurnStore::default()
             },
             effect_store: EffectStore::default(),
+            planechase: None,
+            vanguard: None,
+            archenemy: None,
+            conspiracy: None,
+            free_for_all: None,
+            grand_melee: None,
+            emperor: None,
+            team_vs_team: None,
+            two_headed_giant: None,
+            alternating_teams: None,
+            range_of_influence: None,
+            attack_direction: None,
+            teams: None,
+            deploy_creatures: false,
+            shared_team_turns: None,
+            subgame_parent: None,
+            subgame_starting_procedure_pending: false,
+            subgame_just_resumed: false,
             choice_store: Arc::new(ChoiceStore::default()),
             metadata: MetadataStateStore {
                 ui_battlefield_transitions: im::Vector::new(),
@@ -2847,6 +3321,7 @@ impl GameState {
             object_annotations: Arc::new(ObjectAnnotationStore::default()),
             cast_permission_flags: Arc::new(CastPermissionFlags::default()),
             commander_tracking: Arc::new(CommanderTracking::default()),
+            commander_damage_loss_enabled: true,
             exile_tracking: Arc::new(ExileTracking::default()),
             auto_choose_single_object_decisions: true,
             runtime_cache: RuntimeCacheState::new(active_player),
@@ -3011,6 +3486,9 @@ impl GameState {
             }
             Zone::Exile => {
                 self.zone_revisions.exile = self.zone_revisions.exile.saturating_add(1);
+            }
+            Zone::Ante => {
+                self.zone_revisions.ante = self.zone_revisions.ante.saturating_add(1);
             }
             Zone::Library => {
                 self.zone_revisions.library = self.zone_revisions.library.saturating_add(1);
@@ -3201,12 +3679,15 @@ impl GameState {
             | crate::effect::Value::ColorsAmong(filter)
             | crate::effect::Value::DistinctNames(filter)
             | crate::effect::Value::DistinctPowers(filter)
-            | crate::effect::Value::PlayersWhoControlMoreThanYou(filter)
             | crate::effect::Value::StaticAbilitiesAmong { filter, .. } => {
                 Self::object_filter_is_turn_context_sensitive(filter)
             }
-            crate::effect::Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
-                Self::object_filter_is_turn_context_sensitive(filter)
+            crate::effect::Value::PlayersWhoControlMoreThanYou { players, filter }
+            | crate::effect::Value::PlayersWhoControlAtLeastMoreThanYou {
+                players, filter, ..
+            } => {
+                Self::player_filter_is_turn_context_sensitive(players)
+                    || Self::object_filter_is_turn_context_sensitive(filter)
             }
             crate::effect::Value::CreaturesDiedThisTurn
             | crate::effect::Value::CreaturesDiedThisTurnControlledBy(_)
@@ -3611,6 +4092,56 @@ impl GameState {
         true
     }
 
+    /// Temporarily remove a library object from its indexed position while an
+    /// atomic zone-change transaction is prepared. This is not a game action
+    /// or a reorder; callers must restore the reservation if the transaction
+    /// does not commit.
+    pub(crate) fn reserve_library_object_position(
+        &mut self,
+        player: PlayerId,
+        object: ObjectId,
+    ) -> Option<usize> {
+        let index = self
+            .player(player)?
+            .library
+            .iter()
+            .position(|candidate| *candidate == object)?;
+        let was_top = self.player(player)?.library.len().checked_sub(1) == Some(index);
+        self.player_mut(player)?.library.remove(index);
+        if was_top {
+            self.bump_library_top_revision(player);
+        }
+        Some(index)
+    }
+
+    /// Restore a library reservation at its original index.
+    pub(crate) fn restore_library_object_position(
+        &mut self,
+        player: PlayerId,
+        object: ObjectId,
+        index: usize,
+    ) -> bool {
+        let Some(library) = self.player(player).map(|state| state.library.clone()) else {
+            return false;
+        };
+        if library.contains(&object) {
+            return false;
+        }
+        let old_top = library.last().copied();
+        let insert_at = index.min(library.len());
+        if let Some(state) = self.player_mut(player) {
+            state.library.insert(insert_at, object);
+        }
+        if self
+            .player(player)
+            .and_then(|state| state.library.last().copied())
+            != old_top
+        {
+            self.bump_library_top_revision(player);
+        }
+        true
+    }
+
     pub fn move_library_card_to_top(
         &mut self,
         player: PlayerId,
@@ -3913,7 +4444,7 @@ impl GameState {
         player: PlayerId,
         source: ObjectId,
         filter: crate::target::ObjectFilter,
-        ability: crate::static_abilities::StaticAbility,
+        ability: crate::ability::Ability,
         remaining_uses: u32,
     ) {
         self.effect_store.temporary_spell_ability_grants.push(
@@ -3997,7 +4528,7 @@ impl GameState {
         &self,
         spell_id: ObjectId,
         player: PlayerId,
-    ) -> Vec<crate::static_abilities::StaticAbility> {
+    ) -> Vec<crate::ability::Ability> {
         let Some(spell_obj) = self.object(spell_id).cloned() else {
             return Vec::new();
         };
@@ -4087,10 +4618,7 @@ impl GameState {
             .collect::<Vec<_>>();
         if let Some(spell) = self.object_mut(spell_id) {
             for ability in granted_abilities {
-                spell.abilities_mut().push(crate::ability::Ability {
-                    kind: crate::ability::AbilityKind::Static(ability),
-                    functional_zones: vec![Zone::Stack],
-                });
+                spell.abilities_mut().push(ability);
             }
         }
         for idx in matching {
@@ -4189,6 +4717,19 @@ impl GameState {
         self.turn_store.no_combat_damage_this_combat.clear();
     }
 
+    /// Expire every duration tied to the end of the current combat.
+    ///
+    /// This is shared by the ordinary end-of-combat step and CR 724.2, whose
+    /// procedure skips that step and therefore cannot rely on its event.
+    pub fn cleanup_effects_end_of_combat(&mut self) {
+        self.cleanup_restrictions_end_of_combat();
+        self.cleanup_combat_damage_assignment_suppressions_end_of_combat();
+        self.effect_store.continuous_effects.cleanup_end_of_combat();
+        self.effect_store
+            .delayed_triggers
+            .retain(|trigger| !trigger.expires_at_end_of_combat);
+    }
+
     pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
         self.effect_store
@@ -4203,11 +4744,14 @@ impl GameState {
     }
 
     pub fn cleanup_temporary_spell_cost_reductions_end_of_turn(&mut self) {
-        let current_turn = self.turn.turn_number;
-        let active_player = self.turn.active_player;
-        self.effect_store
+        let retained = self
+            .effect_store
             .temporary_spell_cost_reductions
-            .retain(|effect| !effect.is_expired(current_turn, active_player));
+            .iter()
+            .filter(|effect| !effect.is_expired(self))
+            .cloned()
+            .collect();
+        self.effect_store.temporary_spell_cost_reductions = retained;
     }
 
     pub fn cleanup_temporary_spell_ability_grants_end_of_turn(&mut self) {
@@ -4246,24 +4790,35 @@ impl GameState {
 
     /// Can the player gain life?
     pub fn can_gain_life(&self, player: PlayerId) -> bool {
-        self.effect_store.cant_effects.can_gain_life(player)
+        self.two_headed_giant_team_members(player)
+            .unwrap_or_else(|| vec![player])
+            .into_iter()
+            .all(|member| self.effect_store.cant_effects.can_gain_life(member))
     }
 
     /// Can the player lose life (not from damage)?
     pub fn can_lose_life(&self, player: PlayerId) -> bool {
-        self.effect_store.cant_effects.can_lose_life(player)
+        self.two_headed_giant_team_members(player)
+            .unwrap_or_else(|| vec![player])
+            .into_iter()
+            .all(|member| self.effect_store.cant_effects.can_lose_life(member))
     }
 
     /// Can damage dealt to the player cause life loss?
     pub fn can_damage_cause_life_loss(&self, player: PlayerId) -> bool {
-        self.effect_store
-            .cant_effects
-            .can_damage_cause_life_loss(player)
+        self.can_lose_life(player)
+            && self
+                .effect_store
+                .cant_effects
+                .can_damage_cause_life_loss(player)
     }
 
     /// Can the player's life total change?
     pub fn can_change_life_total(&self, player: PlayerId) -> bool {
-        self.effect_store.cant_effects.can_change_life_total(player)
+        self.two_headed_giant_team_members(player)
+            .unwrap_or_else(|| vec![player])
+            .into_iter()
+            .all(|member| self.effect_store.cant_effects.can_change_life_total(member))
     }
 
     /// Returns true if a player can currently pay the given amount of life.
@@ -4290,6 +4845,45 @@ impl GameState {
         self.can_pay_life(player, amount)
     }
 
+    /// Returns true if all listed life payments can be made simultaneously.
+    ///
+    /// CR 810.9b caps the aggregate paid by members of a Two-Headed Giant team
+    /// at the team's immutable prepayment life total. Duplicate entries for an
+    /// ordinary player are aggregated by the same rule.
+    pub fn can_pay_life_simultaneously(&self, payments: &[(PlayerId, u32)]) -> bool {
+        self.can_pay_life_simultaneously_with_reason(payments, crate::costs::PaymentReason::Other)
+    }
+
+    /// Reason-aware form of [`GameState::can_pay_life_simultaneously`].
+    pub fn can_pay_life_simultaneously_with_reason(
+        &self,
+        payments: &[(PlayerId, u32)],
+        reason: crate::costs::PaymentReason,
+    ) -> bool {
+        let mut totals = HashMap::<(bool, usize), (u32, u32)>::new();
+        for (player, amount) in payments.iter().copied() {
+            let Some(candidate) = self.player(player) else {
+                return false;
+            };
+            if !self.can_pay_life_with_reason(player, amount, reason) {
+                return false;
+            }
+            let key = self
+                .two_headed_giant()
+                .and_then(|profile| profile.team_index(player))
+                .map(|team| (true, team))
+                .unwrap_or_else(|| (false, player.index()));
+            let entry = totals
+                .entry(key)
+                .or_insert((0, candidate.life.max(0) as u32));
+            let Some(total) = entry.0.checked_add(amount) else {
+                return false;
+            };
+            entry.0 = total;
+        }
+        totals.values().all(|(total, available)| total <= available)
+    }
+
     /// Makes a player lose life if their life total can change.
     ///
     /// Returns the amount of life actually lost.
@@ -4297,15 +4891,43 @@ impl GameState {
         if amount == 0 || !self.can_lose_life(player) {
             return 0;
         }
-        if let Some(p) = self.player_mut(player) {
-            p.lose_life(amount);
-            return amount;
+        let Some(current) = self.player(player).map(|candidate| candidate.life) else {
+            return 0;
+        };
+        self.write_shared_life(
+            player,
+            current.saturating_sub(i32::try_from(amount).unwrap_or(i32::MAX)),
+        )
+        .then_some(amount)
+        .unwrap_or(0)
+    }
+
+    /// Makes the affected player gain life while updating a CR 810 team pool.
+    pub fn gain_life(&mut self, player: PlayerId, amount: u32) -> u32 {
+        if amount == 0 || !self.can_gain_life(player) {
+            return 0;
         }
-        0
+        let Some(current) = self.player(player).map(|candidate| candidate.life) else {
+            return 0;
+        };
+        self.write_shared_life(
+            player,
+            current.saturating_add(i32::try_from(amount).unwrap_or(i32::MAX)),
+        )
+        .then_some(amount)
+        .unwrap_or(0)
+    }
+
+    /// Apply a previously validated absolute life value to a player or shared team pool.
+    pub fn write_life_total(&mut self, player: PlayerId, life: i32) -> bool {
+        self.write_shared_life(player, life)
     }
 
     /// Marks a player as having lost the game and emits the trigger-visible event once.
     pub fn mark_player_lost(&mut self, player: PlayerId) -> bool {
+        let propagated_team = self
+            .emperor_team_members(player)
+            .or_else(|| self.two_headed_giant_team_members(player));
         let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
         let should_emit = if let Some(p) = self.player_mut(player) {
             if !p.is_in_game() {
@@ -4325,9 +4947,42 @@ impl GameState {
                     .into_raw()
                     .with_lookback_source_snapshots(lookback_source_snapshots),
             );
+            self.leave_game(player);
+            if let Some(team) = propagated_team {
+                for teammate in team {
+                    if teammate != player {
+                        self.mark_player_lost(teammate);
+                    }
+                }
+            }
         }
 
         should_emit
+    }
+
+    /// Concede the game, propagating CR 810.8b to the complete shared-life team.
+    ///
+    /// Concession is not prevented by effects that say a player can't lose.
+    pub fn concede_game(&mut self, player: PlayerId) -> bool {
+        self.mark_player_lost(player)
+    }
+
+    /// Mark a known group as losing simultaneously, preserving Grand Melee's
+    /// lowest-numbered marker designation rule before any seat is removed.
+    pub fn mark_players_lost_simultaneously(&mut self, players: &[PlayerId]) -> Vec<PlayerId> {
+        let players = players
+            .iter()
+            .copied()
+            .filter(|player| {
+                self.player(*player)
+                    .is_some_and(|candidate| candidate.is_in_game())
+            })
+            .collect::<Vec<_>>();
+        self.prepare_grand_melee_simultaneous_departures(&players);
+        players
+            .into_iter()
+            .filter(|player| self.mark_player_lost(*player))
+            .collect()
     }
 
     /// Pays life as a cost.
@@ -4343,6 +4998,70 @@ impl GameState {
         self.lose_life(player, amount) == amount
     }
 
+    /// Atomically pays life for multiple players from one immutable state.
+    pub fn pay_life_simultaneously(&mut self, payments: &[(PlayerId, u32)]) -> bool {
+        if !self.can_pay_life_simultaneously(payments) {
+            return false;
+        }
+        let checkpoint = self.clone();
+        for (player, amount) in payments.iter().copied() {
+            if amount > 0 && self.lose_life(player, amount) != amount {
+                *self = checkpoint;
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Apply a chosen redistribution of life totals as one transaction.
+    ///
+    /// `assignments` names the affected players and the old totals assigned to
+    /// them. The old and new totals must be the same multiset. In Two-Headed
+    /// Giant, CR 810.9f permits at most one member of each team to be affected.
+    pub fn redistribute_life_totals(&mut self, assignments: &[(PlayerId, i32)]) -> bool {
+        let mut players = HashSet::new();
+        let mut teams = HashSet::new();
+        let mut old_totals = Vec::with_capacity(assignments.len());
+        let mut new_totals = Vec::with_capacity(assignments.len());
+
+        for (player, new_total) in assignments.iter().copied() {
+            let Some(current) = self.player(player).filter(|player| player.is_in_game()) else {
+                return false;
+            };
+            if !players.insert(player) {
+                return false;
+            }
+            if let Some(team) = self
+                .two_headed_giant()
+                .and_then(|profile| profile.team_index(player))
+                && !teams.insert(team)
+            {
+                return false;
+            }
+            if (new_total > current.life && !self.can_gain_life(player))
+                || (new_total < current.life && !self.can_lose_life(player))
+                || (new_total != current.life && !self.can_change_life_total(player))
+            {
+                return false;
+            }
+            old_totals.push(current.life);
+            new_totals.push(new_total);
+        }
+
+        old_totals.sort_unstable();
+        new_totals.sort_unstable();
+        if old_totals != new_totals {
+            return false;
+        }
+
+        for (player, life) in assignments.iter().copied() {
+            if !self.write_life_total(player, life) {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Can the player search their library?
     pub fn can_search_library(&self, player: PlayerId) -> bool {
         self.effect_store.cant_effects.can_search_library(player)
@@ -4353,10 +5072,26 @@ impl GameState {
         self.effect_store.cant_effects.can_draw_extra_cards(player)
     }
 
+    /// Can this player receive poison counters, including CR 810 team restrictions?
+    pub fn can_get_poison_counters(&self, player: PlayerId) -> bool {
+        self.two_headed_giant_team_members(player)
+            .unwrap_or_else(|| vec![player])
+            .into_iter()
+            .all(|member| {
+                self.effect_store
+                    .cant_effects
+                    .can_get_poison_counters(member)
+            })
+    }
+
     /// Sync draw-step tracking to the current turn position.
     pub fn sync_draw_step_tracking(&mut self) {
         if self.turn.phase == Phase::Beginning && self.turn.step == Some(Step::Draw) {
-            if self.turn_store.tracked_draw_step_player != Some(self.turn.active_player) {
+            if self
+                .turn_store
+                .tracked_draw_step_player
+                .is_none_or(|player| !self.is_active_player(player))
+            {
                 self.turn_store.tracked_draw_step_player = Some(self.turn.active_player);
                 self.turn_store.cards_drawn_this_draw_step = 0;
             }
@@ -4369,6 +5104,14 @@ impl GameState {
     /// Returns whether the given player is drawing during their own draw step, plus prior draws in that step.
     pub fn draw_step_context_for_player(&mut self, player: PlayerId) -> (bool, u32) {
         self.sync_draw_step_tracking();
+        if self.turn.phase == Phase::Beginning
+            && self.turn.step == Some(Step::Draw)
+            && self.is_active_player(player)
+            && self.turn_store.tracked_draw_step_player != Some(player)
+        {
+            self.turn_store.tracked_draw_step_player = Some(player);
+            self.turn_store.cards_drawn_this_draw_step = 0;
+        }
         if self.turn_store.tracked_draw_step_player == Some(player) {
             (true, self.turn_store.cards_drawn_this_draw_step)
         } else {
@@ -4398,9 +5141,17 @@ impl GameState {
         creature: ObjectId,
         defending_player: PlayerId,
     ) -> bool {
-        self.effect_store
-            .cant_effects
-            .can_attack_defending_player(creature, defending_player)
+        self.object(creature).is_some_and(|creature| {
+            self.are_opponents(self.controller_of(creature), defending_player)
+                && self.attack_direction_allows_defender(
+                    self.controller_of(creature),
+                    defending_player,
+                )
+                && self
+                    .effect_store
+                    .cant_effects
+                    .can_attack_defending_player(creature.id, defending_player)
+        })
     }
 
     /// Can the creature attack as the only attacker?
@@ -4487,12 +5238,18 @@ impl GameState {
 
     /// Can the player lose the game?
     pub fn can_lose_game(&self, player: PlayerId) -> bool {
-        self.effect_store.cant_effects.can_lose_game(player)
+        self.two_headed_giant_team_members(player)
+            .unwrap_or_else(|| vec![player])
+            .into_iter()
+            .all(|member| self.effect_store.cant_effects.can_lose_game(member))
     }
 
     /// Can the player win the game?
     pub fn can_win_game(&self, player: PlayerId) -> bool {
-        self.effect_store.cant_effects.can_win_game(player)
+        self.two_headed_giant_team_members(player)
+            .unwrap_or_else(|| vec![player])
+            .into_iter()
+            .all(|member| self.effect_store.cant_effects.can_win_game(member))
     }
 
     /// Can the player become the monarch?
@@ -4581,6 +5338,11 @@ impl GameState {
     }
 
     pub fn can_target_object_from_source(&self, object: ObjectId, source_id: ObjectId) -> bool {
+        if let Some(source) = self.object(source_id)
+            && !self.object_is_within_range(self.controller_of(source), object, Some(source_id))
+        {
+            return false;
+        }
         self.effect_store
             .cant_effects
             .can_target_object_from_source(self, object, source_id)
@@ -4593,6 +5355,12 @@ impl GameState {
 
     /// Can this player be targeted by the specified source object?
     pub fn can_target_player_from_source(&self, player: PlayerId, source_id: ObjectId) -> bool {
+        if let Some(source) = self.object(source_id)
+            && !self.source_is_exempt_from_range(Some(source_id))
+            && !self.player_is_within_range(self.controller_of(source), player)
+        {
+            return false;
+        }
         self.effect_store
             .cant_effects
             .can_target_player_from_source(self, player, source_id)
@@ -4637,6 +5405,7 @@ impl GameState {
             }
             Zone::Command => self.command_zone.push(id),
             Zone::Exile => self.exile.push(id),
+            Zone::Ante => self.ante.push(id),
             Zone::Library => {
                 if let Some(player) = self.player_mut(owner) {
                     player.library.push(id);
@@ -4690,6 +5459,7 @@ impl GameState {
             // ordering is deterministic (replay setup, fixtures, etc.).
             self.effect_store.continuous_effects.record_entry(id);
             self.handle_day_night_object_entered(id);
+            self.initialize_intrinsic_battle_state(id);
         }
         id
     }
@@ -4717,6 +5487,7 @@ impl GameState {
             // effects use proper timestamp order in layers.
             self.effect_store.continuous_effects.record_entry(id);
             self.handle_day_night_object_entered(id);
+            self.initialize_intrinsic_battle_state(id);
             if self.object(id).is_some_and(|object| {
                 object.abilities.iter().any(|ability| match &ability.kind {
                     crate::ability::AbilityKind::Static(static_ability) => {
@@ -4872,13 +5643,6 @@ impl GameState {
     ) -> Vec<ObjectId> {
         let mut drawn = Vec::new();
         for _ in 0..count {
-            if self
-                .try_replace_draw_with_dredge(player, decision_maker)
-                .is_some()
-            {
-                continue;
-            }
-
             let card_id = if let Some(player_obj) = self.player(player) {
                 player_obj.library.last().copied()
             } else {
@@ -4915,126 +5679,6 @@ impl GameState {
         }
     }
 
-    pub(crate) fn dredge_replacement_candidate(
-        &self,
-        player: PlayerId,
-    ) -> Option<(ObjectId, usize)> {
-        self.player(player)?
-            .graveyard
-            .iter()
-            .copied()
-            .find_map(|object_id| {
-                let amount = self.dredge_amount_for_object(object_id)?;
-                (self.player(player)?.library.len() >= amount).then_some((object_id, amount))
-            })
-    }
-
-    pub(crate) fn dredge_replacement_context(
-        &self,
-        player: PlayerId,
-        dredge_card: ObjectId,
-        amount: usize,
-    ) -> crate::decisions::context::BooleanContext {
-        let description = self
-            .current_name(dredge_card)
-            .map(|name| {
-                format!(
-                    "mill {amount} cards instead of drawing a card to return {name} to your hand"
-                )
-            })
-            .unwrap_or_else(|| {
-                format!(
-                    "mill {amount} cards instead of drawing a card to return this card to your hand"
-                )
-            });
-        let mut ctx =
-            crate::decisions::context::BooleanContext::new(player, Some(dredge_card), description);
-        if let Some(name) = self.current_name(dredge_card) {
-            ctx = ctx.with_source_name(name);
-        }
-        ctx
-    }
-
-    pub(crate) fn replace_draw_with_dredge(
-        &mut self,
-        player: PlayerId,
-        dredge_card: ObjectId,
-        amount: usize,
-        decision_maker: &mut dyn crate::decision::DecisionMaker,
-    ) -> Option<Vec<ObjectId>> {
-        let card_is_still_in_graveyard = self
-            .player(player)?
-            .graveyard
-            .iter()
-            .any(|&candidate| candidate == dredge_card);
-        if !card_is_still_in_graveyard || self.player(player)?.library.len() < amount {
-            return None;
-        }
-
-        let cause = crate::events::cause::EventCause::from_effect(dredge_card, player);
-        let cards_to_mill: Vec<ObjectId> = self
-            .player(player)
-            .map(|p| p.library.iter().rev().take(amount).copied().collect())
-            .unwrap_or_default();
-        if cards_to_mill.len() < amount {
-            return None;
-        }
-
-        for card_id in cards_to_mill {
-            let Some(from_zone) = self.object(card_id).map(|obj| obj.zone) else {
-                continue;
-            };
-            let outcome = crate::events::processing::process_zone_change(
-                self,
-                card_id,
-                from_zone,
-                Zone::Graveyard,
-                cause.clone(),
-                decision_maker,
-            );
-            if let crate::events::processing::ZoneChangeOutcome::Proceed(final_zone) = outcome
-                && final_zone == Zone::Graveyard
-            {
-                let _ = self.move_object(card_id, Zone::Graveyard, cause.clone());
-            }
-        }
-
-        self.move_object(dredge_card, Zone::Hand, cause)
-            .map(|new_id| vec![new_id])
-    }
-
-    fn try_replace_draw_with_dredge(
-        &mut self,
-        player: PlayerId,
-        decision_maker: &mut dyn crate::decision::DecisionMaker,
-    ) -> Option<Vec<ObjectId>> {
-        let (dredge_card, amount) = self.dredge_replacement_candidate(player)?;
-        let ctx = self.dredge_replacement_context(player, dredge_card, amount);
-        let spec = crate::decisions::MaySpec::new(dredge_card, ctx.description);
-        if !crate::decisions::make_decision_with_fallback(
-            self,
-            decision_maker,
-            player,
-            Some(dredge_card),
-            spec,
-            crate::decision::FallbackStrategy::Decline,
-        ) {
-            return None;
-        }
-
-        self.replace_draw_with_dredge(player, dredge_card, amount, decision_maker)
-    }
-
-    fn dredge_amount_for_object(&self, object_id: ObjectId) -> Option<usize> {
-        let object = self.object(object_id)?;
-        object.abilities.iter().find_map(|ability| {
-            let AbilityKind::Static(static_ability) = &ability.kind else {
-                return None;
-            };
-            parse_dredge_amount(&static_ability.display())
-        })
-    }
-
     /// Moves an object to a new zone.
     /// Per MTG rule 400.7, this creates a new object (new ID).
     /// Returns the new ObjectId.
@@ -5055,6 +5699,36 @@ impl GameState {
         );
         object.stable_id = component.stable_id;
         self.add_object(object);
+        Some(new_id)
+    }
+
+    fn create_merged_component_object(
+        &mut self,
+        component: &MergedPermanentComponentState,
+        zone: Zone,
+    ) -> Option<ObjectId> {
+        let new_id = self.new_object_id();
+        // The destination/front-face representation was captured when the
+        // component joined the merge. Never invoke registry/card-name loading
+        // while splitting a merged object.
+        let mut object = component.destination_object.clone();
+        object.id = new_id;
+        object.stable_id = component.object.stable_id;
+        object.zone = zone;
+        object.counters.clear();
+        object.attached_to = None;
+        object.attachments.clear();
+        object.cast_alternative_method = None;
+        object.optional_costs_paid = crate::cost::OptionalCostsPaid::default();
+        object.keyword_payment_contributions_to_cast.clear();
+        object.cast_tagged_objects.clear();
+        object.temporary_static_ability_grants.clear();
+        object.x_value = None;
+        self.add_object(object);
+        // Every component is a new object in its destination zone. Record a
+        // timestamp now; CR 730.3b may subsequently replace the relative
+        // timestamps of simultaneously exiled components in player order.
+        self.effect_store.continuous_effects.record_entry(new_id);
         Some(new_id)
     }
 

@@ -19,6 +19,9 @@ pub(crate) fn resolve_value_direct(
         filter_ctx: &crate::target::FilterContext,
         current_object: ObjectId,
     ) -> i32 {
+        if let Some(count) = count_retained_tagged_snapshot_matches(filter, game, filter_ctx) {
+            return count;
+        }
         let empty_effects = ContinuousEffectManager::new();
         let ctx = CalculationContext {
             objects,
@@ -50,10 +53,13 @@ pub(crate) fn resolve_value_direct(
         count
     }
 
-    let empty_effects = ContinuousEffectManager::new();
+    let mut effect_manager = ContinuousEffectManager::new();
+    for effect in effects {
+        effect_manager.add_effect(effect.clone());
+    }
     let ctx = CalculationContext {
         objects,
-        effects: &empty_effects,
+        effects: &effect_manager,
         battlefield,
         game,
         current_object: source,
@@ -104,7 +110,7 @@ pub(crate) fn resolve_value_direct(
         }
         Value::DividedRoundedDown(value, divisor) => {
             if *divisor == 0 {
-                0
+                unsupported_continuous_value(value, "division by zero")
             } else {
                 resolve_value_direct(
                     value,
@@ -190,6 +196,9 @@ pub(super) fn calculate_with_layers(
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
 
     let mut chars = initial_characteristics(object);
+    if chars.world_supertype_since.is_some() {
+        chars.world_supertype_since = ctx.effects.get_entry_timestamp(object.id).or(Some(0));
+    }
     let calc_guard = CharacteristicCalculationGuard::begin(object.id, &chars);
     let mut started_groups = HashSet::new();
 
@@ -226,7 +235,13 @@ pub(super) fn calculate_with_layers(
             Some(effects) => effects,
             None => {
                 if layer == Layer::Copy {
+                    let had_world = chars.supertypes.contains(&Supertype::World);
                     apply_face_down_layer(object, &mut chars);
+                    update_world_supertype_since(
+                        &mut chars,
+                        had_world,
+                        ctx.effects.get_entry_timestamp(object.id).unwrap_or(0),
+                    );
                     calc_guard.update(&chars);
                 }
                 if layer == Layer::Type {
@@ -241,6 +256,7 @@ pub(super) fn calculate_with_layers(
                         &mut next_ability_counter,
                         None,
                     );
+                    prune_ability_gain_prohibitions(&mut chars);
                     calc_guard.update(&chars);
                 }
                 continue;
@@ -248,7 +264,7 @@ pub(super) fn calculate_with_layers(
         };
         let needs_source_tracking =
             layer_needs_source_activity_tracking(layer_effects, effects.iter().copied(), layer);
-        let needs_sort_baseline = needs_baseline_dependency_sort(layer_effects);
+        let needs_sort_baseline = needs_baseline_dependency_sort(layer_effects, ctx.game);
         let baseline = if needs_sort_baseline {
             let all_effects =
                 all_effects.get_or_insert_with(|| effects.iter().map(|e| (*e).clone()).collect());
@@ -314,6 +330,7 @@ pub(super) fn calculate_with_layers(
                     &mut next_ability_counter,
                     Some(effect.timestamp),
                 );
+                prune_ability_gain_prohibitions(&mut chars);
                 calc_guard.update(&chars);
             }
             let effect_active = if needs_source_tracking {
@@ -344,7 +361,11 @@ pub(super) fn calculate_with_layers(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            // Apply the modification
+            // Apply the modification. Record the transition timestamp, rather
+            // than merely the permanent's entry timestamp: CR 704.5k compares
+            // how long each permanent has continuously had the World
+            // supertype, including type- and copy-changing effects.
+            let had_world = chars.supertypes.contains(&Supertype::World);
             match &effect.modification {
                 // Layer 1: Copy
                 Modification::CopyOf {
@@ -567,6 +588,29 @@ pub(super) fn calculate_with_layers(
                         }
                     }
                 }
+                Modification::CopyStaticAbilityVariants {
+                    filter,
+                    selectors,
+                    exclude_source_id,
+                } => {
+                    use crate::static_ability_processor::get_all_continuous_effects;
+
+                    let effects = get_all_continuous_effects(ctx.game);
+                    copy_static_ability_variants_into(
+                        &mut chars,
+                        filter,
+                        selectors,
+                        *exclude_source_id,
+                        object,
+                        ctx.objects,
+                        &effects,
+                        ctx.battlefield,
+                        ctx.game.commander_objects(),
+                        ctx.game,
+                        effect.controller,
+                        effect.source,
+                    );
+                }
                 Modification::CopyTriggeredAbilities {
                     filter,
                     exclude_source_name,
@@ -628,10 +672,17 @@ pub(super) fn calculate_with_layers(
                     ));
                 }
                 Modification::RemoveAbility(ability) => {
-                    chars.static_abilities.retain(|a| a != ability);
+                    chars.static_abilities.retain(|candidate| {
+                        candidate != ability
+                            && !(ability.id() == crate::static_abilities::StaticAbilityId::Banding
+                                && candidate.id()
+                                    == crate::static_abilities::StaticAbilityId::BandsWithOther)
+                    });
                 }
-                Modification::RemoveAbilityGeneric(ability) => {
-                    chars.abilities.retain(|a| a != ability);
+                Modification::RemoveAbilityGeneric { ability, .. } => {
+                    chars
+                        .abilities
+                        .retain(|candidate| !object_abilities_match(candidate, ability));
                     if let AbilityKind::Static(static_ability) = &ability.kind {
                         chars.static_abilities.retain(|sa| sa != static_ability);
                     }
@@ -672,11 +723,27 @@ pub(super) fn calculate_with_layers(
                 | Modification::SwitchPowerToughness => {}
             }
 
+            enforce_ability_gain_prohibitions(&mut chars, &effect.modification);
+
+            update_world_supertype_since(
+                &mut chars,
+                had_world,
+                effect
+                    .timestamp
+                    .max(ctx.effects.get_entry_timestamp(object.id).unwrap_or(0)),
+            );
+
             calc_guard.update(&chars);
         }
 
         if layer == Layer::Copy {
+            let had_world = chars.supertypes.contains(&Supertype::World);
             apply_face_down_layer(object, &mut chars);
+            update_world_supertype_since(
+                &mut chars,
+                had_world,
+                ctx.effects.get_entry_timestamp(object.id).unwrap_or(0),
+            );
             calc_guard.update(&chars);
         } else if layer == Layer::Type {
             apply_reconfigure_attached_type_rule(object, &mut chars);
@@ -689,6 +756,7 @@ pub(super) fn calculate_with_layers(
                 &mut next_ability_counter,
                 None,
             );
+            prune_ability_gain_prohibitions(&mut chars);
             calc_guard.update(&chars);
         }
     }
@@ -722,14 +790,13 @@ pub(super) fn calculate_with_layers(
 
     // Add abilities from level tiers if not removed
     if !abilities_removed {
-        let level_abilities = get_level_granted_abilities(object);
-        for ability in level_abilities {
-            push_static_ability_once(&mut chars, ability);
-        }
+        apply_level_granted_abilities(object, &mut chars);
+        prune_ability_gain_prohibitions(&mut chars);
         calc_guard.update(&chars);
     }
 
     add_intrinsic_basic_land_mana_abilities(&mut chars);
+    prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
 
     retain_active_static_abilities(&mut chars, ctx.game, object.id);
@@ -801,7 +868,7 @@ pub(super) fn apply_layer_7_effects(
 
     // Sort by sublayer with dependency handling inside each sublayer.
     let pt_effects = {
-        if needs_baseline_dependency_sort(&pt_effects) {
+        if needs_baseline_dependency_sort(&pt_effects, ctx.game) {
             let all_effects =
                 all_effects.get_or_insert_with(|| effects.iter().map(|e| (*e).clone()).collect());
             let baseline = build_layer_baseline(
@@ -981,10 +1048,11 @@ pub(super) fn apply_layer_7_effects(
             | Modification::AddAbilityGeneric(_)
             | Modification::SetAbilities(_)
             | Modification::CopyActivatedAbilities { .. }
+            | Modification::CopyStaticAbilityVariants { .. }
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAbility(_)
-            | Modification::RemoveAbilityGeneric(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::CantBeBlocked
@@ -1050,7 +1118,7 @@ pub(super) fn effect_applies_to_or_started(
     chars: &CalculatedCharacteristics,
     ctx: &CalculationContext,
 ) -> bool {
-    if !continuous_effect_duration_and_condition_are_active(effect, ctx.game) {
+    if !continuous_effect_duration_is_active(effect, ctx.game) {
         return false;
     }
 
@@ -1066,6 +1134,20 @@ pub(super) fn continuous_filter_context(
     controller: PlayerId,
     source: ObjectId,
 ) -> crate::target::FilterContext {
+    let mut context = game.filter_context_for(controller, Some(source));
+    if let Some(source_object) = game.object(source) {
+        for (tag, snapshots) in &source_object.cast_tagged_objects {
+            let retained = context.tagged_objects.entry(tag.clone()).or_default();
+            for snapshot in snapshots {
+                if retained
+                    .iter()
+                    .all(|existing| existing.stable_id != snapshot.stable_id)
+                {
+                    retained.push(snapshot.clone());
+                }
+            }
+        }
+    }
     let source_exiled = game
         .get_exiled_with_source_links(source)
         .iter()
@@ -1074,30 +1156,41 @@ pub(super) fn continuous_filter_context(
                 .map(|obj| ObjectSnapshot::from_object(obj, game))
         })
         .collect::<Vec<_>>();
-    let mut tagged_objects = HashMap::new();
     if !source_exiled.is_empty() {
-        tagged_objects.insert(TagKey::from(SOURCE_EXILED_TAG), source_exiled);
+        context
+            .tagged_objects
+            .insert(TagKey::from(SOURCE_EXILED_TAG), source_exiled);
+    }
+    context
+}
+
+fn count_retained_tagged_snapshot_matches(
+    filter: &ObjectFilter,
+    game: &crate::game_state::GameState,
+    filter_ctx: &crate::target::FilterContext,
+) -> Option<i32> {
+    let only_identity_tag_constraints = !filter.tagged_constraints.is_empty()
+        && filter.tagged_constraints.iter().all(|constraint| {
+            matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+            )
+        });
+    if !only_identity_tag_constraints {
+        return None;
     }
 
-    crate::target::FilterContext {
-        you: Some(controller),
-        source: Some(source),
-        caster: None,
-        active_player: None,
-        opponents: Vec::new(),
-        teammates: Vec::new(),
-        defending_player: None,
-        attacking_player: None,
-        your_commanders: Vec::new(),
-        iterated_player: None,
-        x_value: None,
-        chosen_player: None,
-        target_players: Vec::new(),
-        target_objects: Vec::new(),
-        tagged_objects,
-        tagged_players: std::collections::HashMap::new(),
-        effect_outcomes: std::collections::HashMap::new(),
-    }
+    let mut seen = std::collections::HashSet::new();
+    let count = filter
+        .tagged_constraints
+        .iter()
+        .filter_map(|constraint| filter_ctx.tagged_objects.get(&constraint.tag))
+        .flatten()
+        .filter(|snapshot| seen.insert(snapshot.stable_id))
+        .filter(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
+        .count();
+    Some(count as i32)
 }
 
 pub(super) fn for_each_zone_candidate(
@@ -1161,6 +1254,13 @@ pub(super) fn for_each_zone_candidate(
                 }
             }
         }
+        Zone::Ante => {
+            for &id in &ctx.game.ante {
+                if let Some(obj) = ctx.objects.get(&id) {
+                    visitor(obj);
+                }
+            }
+        }
         Zone::OutsideGame => {
             for player in &ctx.game.players {
                 for &id in &player.sideboard {
@@ -1201,6 +1301,9 @@ pub(super) fn count_filter_matches(
     ctx: &CalculationContext<'_>,
     filter_ctx: &crate::target::FilterContext,
 ) -> i32 {
+    if let Some(count) = count_retained_tagged_snapshot_matches(filter, ctx.game, filter_ctx) {
+        return count;
+    }
     let mut count = 0i32;
     for_each_filter_candidate(ctx, filter, |obj| {
         let matches = ctx
@@ -1224,6 +1327,136 @@ pub(super) fn count_filter_matches(
 }
 
 use super::*;
+
+fn continuous_value_players(
+    ctx: &CalculationContext<'_>,
+    player_filter: &PlayerFilter,
+    controller: PlayerId,
+    source: ObjectId,
+) -> Vec<PlayerId> {
+    let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+    let extreme = match player_filter {
+        PlayerFilter::MostLifeTied => ctx
+            .game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.life)
+            .max(),
+        PlayerFilter::LowestLifeTied => ctx
+            .game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.life)
+            .min(),
+        _ => None,
+    };
+    let most_cards = matches!(player_filter, PlayerFilter::MostCardsInHand)
+        .then(|| {
+            ctx.game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .map(|player| player.hand.len())
+                .max()
+        })
+        .flatten();
+
+    ctx.game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .filter(|player| match player_filter {
+            PlayerFilter::EffectController => player.id == controller,
+            PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied => {
+                extreme.is_some_and(|life| player.life == life)
+            }
+            PlayerFilter::MostCardsInHand => {
+                most_cards.is_some_and(|cards| player.hand.len() == cards)
+            }
+            PlayerFilter::CastCardTypeThisTurn(card_type) => ctx
+                .game
+                .turn_store
+                .turn_history
+                .spell_cast_snapshot_history()
+                .iter()
+                .any(|snapshot| {
+                    snapshot.controller == player.id && snapshot.card_types.contains(card_type)
+                }),
+            _ => crate::filter::player_filter_matches_game(
+                player_filter,
+                player.id,
+                ctx.game,
+                &filter_ctx,
+            ),
+        })
+        .map(|player| player.id)
+        .collect()
+}
+
+fn required_continuous_value_players(
+    value: &Value,
+    ctx: &CalculationContext<'_>,
+    player_filter: &PlayerFilter,
+    controller: PlayerId,
+    source: ObjectId,
+) -> Vec<PlayerId> {
+    let players = continuous_value_players(ctx, player_filter, controller, source);
+    if players.is_empty() {
+        unsupported_continuous_value(
+            value,
+            "player filter has no player available in continuous-effect context",
+        );
+    }
+    players
+}
+
+fn continuous_single_player(
+    value: &Value,
+    ctx: &CalculationContext<'_>,
+    player_filter: &PlayerFilter,
+    controller: PlayerId,
+    source: ObjectId,
+) -> PlayerId {
+    let players = continuous_value_players(ctx, player_filter, controller, source);
+    match players.as_slice() {
+        [player] => *player,
+        [] => panic!(
+            "unsupported continuous-effect value {value:?}: player filter {player_filter:?} has no state-resolvable player"
+        ),
+        _ => panic!(
+            "unsupported continuous-effect value {value:?}: player filter {player_filter:?} is ambiguous"
+        ),
+    }
+}
+
+fn for_each_matching_continuous_object(
+    ctx: &CalculationContext<'_>,
+    filter: &ObjectFilter,
+    controller: PlayerId,
+    source: ObjectId,
+    mut visitor: impl FnMut(&Object, &CalculatedCharacteristics),
+) {
+    for_each_filter_candidate(ctx, filter, |object| {
+        let Some(chars) = ctx.effects.calculate_characteristics(
+            object.id,
+            ctx.objects,
+            ctx.battlefield,
+            ctx.game,
+        ) else {
+            return;
+        };
+        if filter_matches_with_characteristics(filter, object, &chars, ctx.game, controller, source)
+        {
+            visitor(object, &chars);
+        }
+    });
+}
+
+fn unsupported_continuous_value(value: &Value, reason: &str) -> ! {
+    panic!("unsupported continuous-effect value {value:?}: {reason}")
+}
 
 /// Resolve a Value to an i32 for continuous effect calculations.
 ///
@@ -1264,7 +1497,7 @@ pub(super) fn resolve_value_with_context(
         }
         Value::DividedRoundedDown(value, divisor) => {
             if *divisor == 0 {
-                0
+                unsupported_continuous_value(value, "division by zero")
             } else {
                 resolve_value_with_context(value, ctx, source, controller).div_euclid(*divisor)
             }
@@ -1276,8 +1509,10 @@ pub(super) fn resolve_value_with_context(
         }
 
         Value::X => 0, // X is 0 unless specified (resolved at cast time, not layer time)
-        Value::VoteCount(_) => 0,
-        Value::PlayerVoteCount(_) => 0,
+        Value::XTimes(_) => 0, // X is zero outside the stack (CR 107.3g).
+        Value::VoteCount(_) | Value::PlayerVoteCount(_) => {
+            unsupported_continuous_value(value, "vote totals require a resolving vote context")
+        }
 
         Value::Count(filter) => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
@@ -1491,35 +1726,91 @@ pub(super) fn resolve_value_with_context(
         }
         Value::PlayerCounters(player_filter, counter_type) => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
-            ctx.game
+            let mut players = ctx
+                .game
                 .players
                 .iter()
                 .filter(|player| player.is_in_game())
                 .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .map(|player| player.id)
+                .collect::<Vec<_>>();
+            if matches!(counter_type, crate::object::CounterType::Poison)
+                && ctx.game.two_headed_giant().is_some()
+            {
+                let mut seen_teams = std::collections::HashSet::new();
+                players.retain(|player| {
+                    ctx.game
+                        .team_index_for(*player)
+                        .is_none_or(|team| seen_teams.insert(team))
+                });
+            }
+            players
+                .into_iter()
+                .filter_map(|player| ctx.game.player(player))
                 .map(|player| player.counter_count(*counter_type) as i32)
                 .sum()
         }
 
-        Value::SourcePower => ctx
-            .objects
-            .get(&source)
-            .and_then(|o| o.power())
+        Value::SourcePower => in_progress_characteristics(source)
+            .and_then(|chars| chars.power)
+            .or_else(|| {
+                ctx.effects
+                    .calculate_characteristics(source, ctx.objects, ctx.battlefield, ctx.game)
+                    .and_then(|chars| chars.power)
+            })
+            .or_else(|| ctx.objects.get(&source).and_then(|object| object.power()))
             .unwrap_or(0),
 
-        Value::SourceToughness => ctx
-            .objects
-            .get(&source)
-            .and_then(|o| o.toughness())
+        Value::SourceToughness => in_progress_characteristics(source)
+            .and_then(|chars| chars.toughness)
+            .or_else(|| {
+                ctx.effects
+                    .calculate_characteristics(source, ctx.objects, ctx.battlefield, ctx.game)
+                    .and_then(|chars| chars.toughness)
+            })
+            .or_else(|| {
+                ctx.objects
+                    .get(&source)
+                    .and_then(|object| object.toughness())
+            })
             .unwrap_or(0),
 
         Value::SourceMutationCount => ctx.game.mutation_count(source) as i32,
 
         Value::PowerOf(spec) => object_for_value_spec(spec, ctx, source)
-            .and_then(|object| object.power())
+            .and_then(|object| {
+                in_progress_characteristics(object.id)
+                    .and_then(|chars| chars.power)
+                    .or_else(|| {
+                        ctx.effects
+                            .calculate_characteristics(
+                                object.id,
+                                ctx.objects,
+                                ctx.battlefield,
+                                ctx.game,
+                            )
+                            .and_then(|chars| chars.power)
+                    })
+                    .or_else(|| object.power())
+            })
             .unwrap_or(0),
 
         Value::ToughnessOf(spec) => object_for_value_spec(spec, ctx, source)
-            .and_then(|object| object.toughness())
+            .and_then(|object| {
+                in_progress_characteristics(object.id)
+                    .and_then(|chars| chars.toughness)
+                    .or_else(|| {
+                        ctx.effects
+                            .calculate_characteristics(
+                                object.id,
+                                ctx.objects,
+                                ctx.battlefield,
+                                ctx.game,
+                            )
+                            .and_then(|chars| chars.toughness)
+                    })
+                    .or_else(|| object.toughness())
+            })
             .unwrap_or(0),
 
         Value::ManaValueOf(spec) => object_for_value_spec(spec, ctx, source)
@@ -1529,15 +1820,33 @@ pub(super) fn resolve_value_with_context(
 
         Value::ManaSymbolsInManaCostOf { spec, color } => {
             let symbol = crate::mana::ManaSymbol::from_color(*color);
-            object_for_value_spec(spec, ctx, source)
-                .and_then(|object| object.mana_cost.as_ref())
-                .map(|cost| {
-                    cost.pips()
-                        .iter()
-                        .filter(|pip| pip.contains(&symbol))
-                        .count() as i32
-                })
-                .unwrap_or(0)
+            let count_symbols = |object: &Object| {
+                object
+                    .mana_cost
+                    .as_ref()
+                    .map(|cost| {
+                        cost.pips()
+                            .iter()
+                            .filter(|pip| pip.contains(&symbol))
+                            .count() as i32
+                    })
+                    .unwrap_or(0)
+            };
+            if let ChooseSpec::All(filter) = spec.unhinted() {
+                let mut total = 0;
+                for_each_matching_continuous_object(
+                    ctx,
+                    filter,
+                    controller,
+                    source,
+                    |object, _| total += count_symbols(object),
+                );
+                total
+            } else {
+                object_for_value_spec(spec, ctx, source)
+                    .map(count_symbols)
+                    .unwrap_or(0)
+            }
         }
 
         Value::CountersOnSource(counter_type) => ctx
@@ -1588,169 +1897,73 @@ pub(super) fn resolve_value_with_context(
             }
         }
 
-        Value::MaxCardsInHand(player_filter) => match player_filter {
-            crate::target::PlayerFilter::You => ctx
-                .game
-                .player(controller)
-                .map(|p| p.hand.len() as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Any => ctx
-                .game
-                .players
-                .iter()
-                .filter(|p| p.is_in_game())
-                .map(|p| p.hand.len() as i32)
+        Value::MaxCardsInHand(player_filter) => {
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .filter_map(|player| ctx.game.player(player))
+                .map(|player| player.hand.len() as i32)
                 .max()
-                .unwrap_or(0),
-            crate::target::PlayerFilter::NotYou | crate::target::PlayerFilter::Opponent => ctx
-                .game
-                .players
-                .iter()
-                .filter(|p| p.id != controller && p.is_in_game())
-                .map(|p| p.hand.len() as i32)
-                .max()
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Specific(id) => ctx
-                .game
-                .player(*id)
-                .map(|p| p.hand.len() as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Active => ctx
-                .game
-                .player(ctx.game.turn.active_player)
-                .map(|p| p.hand.len() as i32)
-                .unwrap_or(0),
-            _ => 0,
-        },
-        Value::CardsInLibrary(player_filter) => match player_filter {
-            crate::target::PlayerFilter::You => ctx
-                .game
-                .player(controller)
-                .map(|p| p.library.len() as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Specific(id) => ctx
-                .game
-                .player(*id)
-                .map(|p| p.library.len() as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Active => ctx
-                .game
-                .player(ctx.game.turn.active_player)
-                .map(|p| p.library.len() as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Any => ctx
-                .game
-                .players
-                .iter()
-                .filter(|p| p.is_in_game())
-                .map(|p| p.library.len() as i32)
-                .sum(),
-            crate::target::PlayerFilter::NotYou | crate::target::PlayerFilter::Opponent => ctx
-                .game
-                .players
-                .iter()
-                .filter(|p| p.id != controller && p.is_in_game())
-                .map(|p| p.library.len() as i32)
-                .sum(),
-            _ => 0,
-        },
-        Value::CommanderCastCount(player_filter) => match player_filter {
-            crate::target::PlayerFilter::You => ctx
-                .game
-                .player(controller)
-                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Specific(id) => ctx
-                .game
-                .player(*id)
-                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Active => ctx
-                .game
-                .player(ctx.game.turn.active_player)
-                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
-                .unwrap_or(0),
-            crate::target::PlayerFilter::Any => ctx
-                .game
-                .players
-                .iter()
-                .filter(|p| p.is_in_game())
-                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
-                .sum(),
-            crate::target::PlayerFilter::NotYou | crate::target::PlayerFilter::Opponent => ctx
-                .game
-                .players
-                .iter()
-                .filter(|p| p.id != controller && p.is_in_game())
-                .map(|p| ctx.game.commander_cast_count_for_player(p.id) as i32)
-                .sum(),
-            _ => 0,
-        },
+                .unwrap_or_else(|| {
+                    unsupported_continuous_value(value, "maximum hand size has no matching player")
+                })
+        }
+        Value::CardsInLibrary(player_filter) => {
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .filter_map(|player| ctx.game.player(player))
+                .map(|player| player.library.len() as i32)
+                .sum()
+        }
+        Value::CommanderCastCount(player_filter) => {
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .map(|player| ctx.game.commander_cast_count_for_player(player) as i32)
+                .sum()
+        }
         Value::DevotionToChosenColor(player_filter) => {
-            let Some(chosen) = ctx.game.chosen_color(source) else {
-                return 0;
-            };
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
-            ctx.game
-                .players
-                .iter()
-                .filter(|player| player.is_in_game())
-                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
-                .map(|player| ctx.game.devotion_to_color(player.id, chosen) as i32)
+            let chosen = ctx.game.chosen_color(source).unwrap_or_else(|| {
+                unsupported_continuous_value(value, "source has no chosen color")
+            });
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .map(|player| ctx.game.devotion_to_color(player, chosen) as i32)
                 .sum()
         }
         Value::UnspentMana(player_filter) => {
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
-            ctx.game
-                .players
-                .iter()
-                .filter(|player| player.is_in_game())
-                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .filter_map(|player| ctx.game.player(player))
                 .map(|player| player.mana_pool.total() as i32)
                 .sum()
         }
         Value::PartySize(player_filter) => {
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
-            ctx.game
-                .players
-                .iter()
-                .filter(|player| player.is_in_game())
-                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
-                .map(|player| crate::party::party_size(ctx.game, player.id))
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .map(|player| crate::party::party_size(ctx.game, player))
                 .sum()
         }
         Value::GreatestToughness(filter) => {
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
-            let mut max_toughness = 0i32;
-            for_each_filter_candidate(ctx, filter, |obj| {
-                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
-                    max_toughness = max_toughness.max(obj.toughness().unwrap_or(0));
+            let mut greatest = None::<i32>;
+            for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+                if let Some(toughness) = chars.toughness {
+                    greatest = Some(greatest.map_or(toughness, |value| value.max(toughness)));
                 }
             });
-            max_toughness
+            greatest.unwrap_or(0)
         }
         Value::LeastPower(filter) => {
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut least_power = None::<i32>;
-            for_each_filter_candidate(ctx, filter, |obj| {
-                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game)
-                    && let Some(power) = ctx.game.calculated_power(obj.id).or_else(|| obj.power())
-                {
+            for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+                if let Some(power) = chars.power {
                     least_power = Some(least_power.map_or(power, |least| least.min(power)));
                 }
             });
             least_power.unwrap_or(0)
         }
         Value::LeastToughness(filter) => {
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut least_toughness = None::<i32>;
-            for_each_filter_candidate(ctx, filter, |obj| {
-                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game)
-                    && let Some(toughness) = ctx
-                        .game
-                        .calculated_toughness(obj.id)
-                        .or_else(|| obj.toughness())
-                {
+            for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+                if let Some(toughness) = chars.toughness {
                     least_toughness =
                         Some(least_toughness.map_or(toughness, |least| least.min(toughness)));
                 }
@@ -1758,64 +1971,401 @@ pub(super) fn resolve_value_with_context(
             least_toughness.unwrap_or(0)
         }
         Value::LeastManaValue(filter) => {
-            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut least_mana_value = None::<i32>;
-            for_each_filter_candidate(ctx, filter, |obj| {
-                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
-                    let mana_value = obj
-                        .mana_cost
-                        .as_ref()
-                        .map_or(0, |cost| cost.mana_value() as i32);
-                    least_mana_value =
-                        Some(least_mana_value.map_or(mana_value, |least| least.min(mana_value)));
-                }
+            for_each_matching_continuous_object(ctx, filter, controller, source, |object, _| {
+                let mana_value = object
+                    .mana_cost
+                    .as_ref()
+                    .map_or(0, |cost| cost.mana_value() as i32);
+                least_mana_value =
+                    Some(least_mana_value.map_or(mana_value, |least| least.min(mana_value)));
             });
             least_mana_value.unwrap_or(0)
         }
 
-        // For these, we'd need more complex resolution (game state, execution context)
-        // Return 0 as fallback (these are rare in continuous effects anyway)
-        Value::XTimes(_)
-        | Value::PlayersBeingAttacked
-        | Value::CountPlayers(_)
-        | Value::PlayersWhoControlMoreThanYou(_)
-        | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
-        | Value::TotalPower(_)
-        | Value::TotalToughness(_)
-        | Value::TotalManaValue(_)
-        | Value::GreatestPower(_)
-        | Value::GreatestManaValue(_)
-        | Value::Devotion { .. }
-        | Value::ManaSpentToCastThisSpell
-        | Value::ManaFromSourceSpentToCastThisSpell { .. }
-        | Value::ManaSpentToCastTriggeringObject
-        | Value::ColorsOfManaSpentToCastThisSpell
-        | Value::LifeTotal(_)
-        | Value::LifeTotalAsTurnBegan(_)
-        | Value::LifeTotalDifference(_)
-        | Value::LastNotedLifeTotal
-        | Value::Speed(_)
-        | Value::StartingLifeTotal(_)
-        | Value::HalfLifeTotalRoundedUp(_)
-        | Value::HalfLifeTotalRoundedDown(_)
-        | Value::HalfStartingLifeTotalRoundedUp(_)
-        | Value::HalfStartingLifeTotalRoundedDown(_)
-        | Value::CardsInHand(_)
-        | Value::LifeGainedThisTurn(_)
-        | Value::LifeLostThisTurn(_)
-        | Value::CardsDiscardedThisTurn(_)
-        | Value::DamageDealtToPlayersThisTurn(_)
-        | Value::NoncombatDamageDealtToPlayersThisTurn(_)
-        | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
-        | Value::MaxCardsDrawnThisTurn(_)
-        | Value::MaxDiceRolledThisTurn(_)
-        | Value::CardsInGraveyard(_)
-        | Value::SpellsCastThisTurn(_)
-        | Value::SpellsCastBeforeThisTurn(_)
-        | Value::SpellsCastThisTurnMatching { .. }
+        Value::PlayersBeingAttacked => ctx
+            .game
+            .combat
+            .as_ref()
+            .map(crate::combat_state::defending_players)
+            .map(|players| players.len() as i32)
+            .unwrap_or(0),
+        Value::CountPlayers(player_filter) => {
+            continuous_value_players(ctx, player_filter, controller, source).len() as i32
+        }
+        Value::PlayersWhoControlMoreThanYou { players, filter } => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut your_filter = filter.clone();
+            your_filter.controller = Some(PlayerFilter::Specific(controller));
+            let your_count = count_filter_matches(&your_filter, ctx, &filter_ctx);
+            continuous_value_players(ctx, players, controller, source)
+                .into_iter()
+                .filter(|player| {
+                    let mut player_filter = filter.clone();
+                    player_filter.controller = Some(PlayerFilter::Specific(*player));
+                    count_filter_matches(&player_filter, ctx, &filter_ctx) > your_count
+                })
+                .count() as i32
+        }
+        Value::PlayersWhoControlAtLeastMoreThanYou {
+            players,
+            filter,
+            minimum_difference,
+        } => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut your_filter = filter.clone();
+            your_filter.controller = Some(PlayerFilter::Specific(controller));
+            let your_count = count_filter_matches(&your_filter, ctx, &filter_ctx);
+            continuous_value_players(ctx, players, controller, source)
+                .into_iter()
+                .filter(|player| {
+                    let mut player_filter = filter.clone();
+                    player_filter.controller = Some(PlayerFilter::Specific(*player));
+                    count_filter_matches(&player_filter, ctx, &filter_ctx)
+                        .saturating_sub(your_count)
+                        >= *minimum_difference as i32
+                })
+                .count() as i32
+        }
+        Value::TotalPower(filter) => {
+            let mut total = 0;
+            for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+                total += chars.power.unwrap_or(0)
+            });
+            total
+        }
+        Value::TotalToughness(filter) => {
+            let mut total = 0;
+            for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+                total += chars.toughness.unwrap_or(0)
+            });
+            total
+        }
+        Value::TotalManaValue(filter) => {
+            let mut total = 0;
+            for_each_matching_continuous_object(ctx, filter, controller, source, |object, _| {
+                total += object
+                    .mana_cost
+                    .as_ref()
+                    .map_or(0, |cost| cost.mana_value() as i32)
+            });
+            total
+        }
+        Value::GreatestPower(filter) => {
+            let mut greatest = None::<i32>;
+            for_each_matching_continuous_object(ctx, filter, controller, source, |_, chars| {
+                if let Some(power) = chars.power {
+                    greatest = Some(greatest.map_or(power, |value| value.max(power)));
+                }
+            });
+            greatest.unwrap_or(0)
+        }
+        Value::GreatestManaValue(filter) => {
+            let mut greatest = None::<i32>;
+            for_each_matching_continuous_object(ctx, filter, controller, source, |object, _| {
+                let mana_value = object
+                    .mana_cost
+                    .as_ref()
+                    .map_or(0, |cost| cost.mana_value() as i32);
+                greatest = Some(greatest.map_or(mana_value, |value| value.max(mana_value)));
+            });
+            greatest.unwrap_or(0)
+        }
+        Value::Devotion { player, color } => {
+            required_continuous_value_players(value, ctx, player, controller, source)
+                .into_iter()
+                .map(|player| ctx.game.devotion_to_color(player, *color) as i32)
+                .sum()
+        }
+        Value::ManaSpentToCastThisSpell => ctx
+            .game
+            .object(source)
+            .map(|object| object.mana_spent_to_cast.total() as i32)
+            .unwrap_or(0),
+        Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            ctx.game
+                .object(source)
+                .and_then(|object| {
+                    object
+                        .cast_tagged_objects
+                        .get(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG)
+                })
+                .map(|snapshots| {
+                    snapshots
+                        .iter()
+                        .filter(|snapshot| {
+                            source_filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
+                        })
+                        .count() as i32
+                })
+                .unwrap_or(0)
+        }
+        Value::ColorsOfManaSpentToCastThisSpell => ctx
+            .game
+            .object(source)
+            .map(|object| {
+                let spent = &object.mana_spent_to_cast;
+                [
+                    spent.white > 0,
+                    spent.blue > 0,
+                    spent.black > 0,
+                    spent.red > 0,
+                    spent.green > 0,
+                ]
+                .into_iter()
+                .filter(|present| *present)
+                .count() as i32
+            })
+            .unwrap_or(0),
+        Value::LifeTotal(player_filter) => {
+            let player = continuous_single_player(value, ctx, player_filter, controller, source);
+            ctx.game
+                .player(player)
+                .map(|player| player.life)
+                .unwrap_or(0)
+        }
+        Value::LifeTotalAsTurnBegan(player_filter) => {
+            let player = continuous_single_player(value, ctx, player_filter, controller, source);
+            let history = &ctx.game.turn_store.turn_history;
+            ctx.game
+                .player(player)
+                .map(|player_state| {
+                    player_state.life + history.total_life_lost_for_players(&[player]) as i32
+                        - history.total_life_gained_for_players(&[player]) as i32
+                })
+                .unwrap_or(0)
+        }
+        Value::LifeTotalDifference(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            if players.len() < 2 {
+                unsupported_continuous_value(
+                    value,
+                    "life-total difference requires at least two matching players",
+                );
+            }
+            let mut totals = players
+                .iter()
+                .filter_map(|player| ctx.game.player(*player).map(|state| state.life));
+            let Some(first) = totals.next() else {
+                unsupported_continuous_value(value, "life-total difference has no matching players")
+            };
+            let (minimum, maximum) = totals.fold((first, first), |(minimum, maximum), life| {
+                (minimum.min(life), maximum.max(life))
+            });
+            maximum - minimum
+        }
+        Value::LastNotedLifeTotal => {
+            ctx.game
+                .noted_life_total_for_source(source)
+                .unwrap_or_else(|| {
+                    unsupported_continuous_value(value, "source has no noted life total")
+                })
+        }
+        Value::Speed(player_filter) => {
+            let player = continuous_single_player(value, ctx, player_filter, controller, source);
+            ctx.game
+                .player(player)
+                .and_then(|player| player.speed)
+                .unwrap_or(0) as i32
+        }
+        Value::StartingLifeTotal(player_filter)
+        | Value::HalfStartingLifeTotalRoundedUp(player_filter)
+        | Value::HalfStartingLifeTotalRoundedDown(player_filter) => {
+            let player = continuous_single_player(value, ctx, player_filter, controller, source);
+            let starting = ctx
+                .game
+                .player(player)
+                .map(|player| player.starting_life)
+                .unwrap_or(0);
+            match value {
+                Value::StartingLifeTotal(_) => starting,
+                Value::HalfStartingLifeTotalRoundedUp(_) => (starting + 1).div_euclid(2),
+                Value::HalfStartingLifeTotalRoundedDown(_) => starting.div_euclid(2),
+                _ => unreachable!(),
+            }
+        }
+        Value::HalfLifeTotalRoundedUp(player_filter)
+        | Value::HalfLifeTotalRoundedDown(player_filter) => {
+            let player = continuous_single_player(value, ctx, player_filter, controller, source);
+            let life = ctx
+                .game
+                .player(player)
+                .map(|player| player.life)
+                .unwrap_or(0);
+            match value {
+                Value::HalfLifeTotalRoundedUp(_) => (life + 1).div_euclid(2),
+                Value::HalfLifeTotalRoundedDown(_) => life.div_euclid(2),
+                _ => unreachable!(),
+            }
+        }
+        Value::CardsInHand(player_filter) => {
+            let player = continuous_single_player(value, ctx, player_filter, controller, source);
+            ctx.game
+                .player(player)
+                .map(|player| player.hand.len() as i32)
+                .unwrap_or(0)
+        }
+        Value::LifeGainedThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_life_gained_for_players(&players) as i32
+        }
+        Value::LifeLostThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_life_lost_for_players(&players) as i32
+        }
+        Value::CardsDiscardedThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_cards_discarded_for_players(&players) as i32
+        }
+        Value::DamageDealtToPlayersThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_damage_to_players(&players) as i32
+        }
+        Value::NoncombatDamageDealtToPlayersThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_noncombat_damage_to_players(&players) as i32
+        }
+        Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, colors } => {
+            let players = required_continuous_value_players(value, ctx, player, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_noncombat_damage_dealt_by_sources_controlled_by(&players, *colors)
+                as i32
+        }
+        Value::MaxCardsDrawnThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .max_cards_drawn_for_players(&players) as i32
+        }
+        Value::MaxDiceRolledThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .max_die_rolls_for_players(&players) as i32
+        }
+        Value::CardsInGraveyard(player_filter) => {
+            required_continuous_value_players(value, ctx, player_filter, controller, source)
+                .into_iter()
+                .filter_map(|player| ctx.game.player(player))
+                .map(|player| player.graveyard.len() as i32)
+                .max()
+                .unwrap_or(0)
+        }
+        Value::SpellsCastThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_spells_cast_for_players(&players) as i32
+        }
+        Value::SpellsCastBeforeThisTurn(player_filter) => {
+            let players =
+                required_continuous_value_players(value, ctx, player_filter, controller, source);
+            (ctx.game
+                .turn_store
+                .turn_history
+                .total_spells_cast_for_players(&players) as i32
+                - 1)
+            .max(0)
+        }
+        Value::SpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => {
+            let players = required_continuous_value_players(value, ctx, player, controller, source);
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            ctx.game
+                .turn_store
+                .turn_history
+                .spell_cast_snapshot_history()
+                .into_iter()
+                .filter(|snapshot| {
+                    (!*exclude_source || snapshot.object_id != source)
+                        && players.contains(&snapshot.controller)
+                        && filter.matches_snapshot(snapshot, &filter_ctx, ctx.game)
+                })
+                .count() as i32
+        }
+        Value::SourceRegeneratedThisTurnCount => {
+            ctx.game.regenerated_this_turn_count(source) as i32
+        }
+        Value::DamageDealtThisTurnByTaggedSpellCast(tag) => {
+            let snapshot = ctx
+                .game
+                .object(source)
+                .and_then(|object| object.cast_tagged_objects.get(tag))
+                .and_then(|snapshots| snapshots.first())
+                .unwrap_or_else(|| {
+                    unsupported_continuous_value(
+                        value,
+                        "tagged spell cast is not retained on the continuous-effect source",
+                    )
+                });
+            ctx.game
+                .turn_store
+                .turn_history
+                .damage_dealt_by_spell_this_turn(ctx.game.provenance_graph(), snapshot.object_id)
+                as i32
+        }
+        Value::WasKicked
+        | Value::WasBoughtBack
+        | Value::WasEntwined
+        | Value::WasPaid(_)
+        | Value::WasPaidLabel(_)
+        | Value::TimesPaidLabel(_)
+        | Value::TimesPaid(_)
+        | Value::KickCount => {
+            let paid = &ctx
+                .game
+                .object(source)
+                .unwrap_or_else(|| {
+                    unsupported_continuous_value(value, "source object is unavailable")
+                })
+                .optional_costs_paid;
+            match value {
+                Value::WasKicked => i32::from(paid.was_kicked()),
+                Value::WasBoughtBack => i32::from(paid.was_bought_back()),
+                Value::WasEntwined => i32::from(paid.was_entwined()),
+                Value::WasPaid(index) => i32::from(paid.was_paid(*index)),
+                Value::WasPaidLabel(label) => i32::from(paid.was_paid_label(label.clone())),
+                Value::TimesPaid(index) => paid.times_paid(*index) as i32,
+                Value::TimesPaidLabel(label) => paid.times_paid_label(label.clone()) as i32,
+                Value::KickCount => paid.kick_count() as i32,
+                _ => unreachable!(),
+            }
+        }
+        Value::ManaSpentToCastTriggeringObject
         | Value::ThisAbilityResolvedThisTurnCount
-        | Value::SourceRegeneratedThisTurnCount
-        | Value::DamageDealtThisTurnByTaggedSpellCast(_)
         | Value::EffectValue(_)
         | Value::EffectValueOffset(_, _)
         | Value::EffectMetric { .. }
@@ -1824,18 +2374,13 @@ pub(super) fn resolve_value_with_context(
         | Value::PendingEffectMetricOffset { .. }
         | Value::PriorEffectMetric { .. }
         | Value::PendingPriorEffectMetric(_)
-        | Value::WasKicked
-        | Value::WasBoughtBack
-        | Value::WasEntwined
-        | Value::WasPaid(_)
-        | Value::WasPaidLabel(_)
-        | Value::TimesPaidLabel(_)
-        | Value::TimesPaid(_)
-        | Value::KickCount
-        | Value::MagicGamesLostToOpponentsSinceLastWin
         | Value::TaggedCount
         | Value::EventValue(_)
-        | Value::EventValueOffset(_, _) => 0,
+        | Value::EventValueOffset(_, _)
+        | Value::MagicGamesLostToOpponentsSinceLastWin => unsupported_continuous_value(
+            value,
+            "value requires resolution, trigger, loop, or out-of-game context that layers do not retain",
+        ),
         Value::DraftNotedHighestNumber { card_name } => ctx
             .game
             .draft_noted_highest_number(controller, card_name)
@@ -1992,9 +2537,12 @@ pub(super) fn effect_source_is_active(
         return true;
     };
 
-    source_state
-        .get(&effect.source)
-        .is_some_and(|chars| chars.static_abilities.contains(originating_static_ability))
+    source_state.get(&effect.source).is_some_and(|chars| {
+        chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.instance_id() == originating_static_ability.instance_id())
+    })
 }
 
 pub(super) fn advance_layer_source_state(
@@ -2272,4 +2820,25 @@ pub(super) fn get_level_granted_abilities(object: &Object) -> Vec<StaticAbility>
         }
     }
     Vec::new()
+}
+
+/// Apply the active level tier, including object abilities stored inside a
+/// source-filtered static carrier because `LevelAbility` itself stores only
+/// static abilities.
+pub(super) fn apply_level_granted_abilities(
+    object: &Object,
+    chars: &mut CalculatedCharacteristics,
+) {
+    for ability in get_level_granted_abilities(object) {
+        for granted in ability.source_granted_inline_abilities() {
+            match &granted.kind {
+                AbilityKind::Static(static_ability) => {
+                    push_static_ability_once(chars, static_ability.clone());
+                }
+                _ if !chars.abilities.contains(granted) => chars.abilities.push(granted.clone()),
+                _ => {}
+            }
+        }
+        push_static_ability_once(chars, ability);
+    }
 }

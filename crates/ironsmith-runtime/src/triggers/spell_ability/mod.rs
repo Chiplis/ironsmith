@@ -1,6 +1,7 @@
 //! Spell and ability triggers.
 
 mod ability_activated;
+mod ability_triggered;
 mod becomes_targeted;
 mod becomes_targeted_by_source_controller;
 mod becomes_targeted_by_spell;
@@ -12,6 +13,7 @@ mod tap_for_mana;
 mod you_cast_this_spell;
 
 pub use ability_activated::AbilityActivatedTrigger;
+pub use ability_triggered::AbilityTriggeredTrigger;
 pub use becomes_targeted::BecomesTargetedTrigger;
 pub use becomes_targeted_by_source_controller::{
     BecomesTargetedBySourceControllerTrigger,

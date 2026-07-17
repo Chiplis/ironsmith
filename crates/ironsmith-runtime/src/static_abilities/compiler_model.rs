@@ -49,6 +49,11 @@ impl StaticAbility {
             Some(StaticAbilityId::Lifelink) => Self::lifelink(),
             Some(StaticAbilityId::Menace) => Self::menace(),
             Some(StaticAbilityId::Banding) => Self::banding(),
+            Some(StaticAbilityId::BandsWithOther) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "bands with other needs its typed object-filter payload".to_string(),
+                });
+            }
             Some(StaticAbilityId::Reach) => Self::reach(),
             Some(StaticAbilityId::Shroud) => Self::shroud(),
             Some(StaticAbilityId::Trample) => Self::trample(),
@@ -77,6 +82,7 @@ impl StaticAbility {
             }
             Some(StaticAbilityId::PartnerWith) => Self::partner_with(label),
             Some(StaticAbilityId::StartYourEngines) => Self::start_your_engines(),
+            Some(StaticAbilityId::SpaceSculptor) => Self::space_sculptor(),
             Some(StaticAbilityId::DoctorsCompanion) => Self::doctors_companion(),
             Some(StaticAbilityId::Assist) => Self::assist(),
             Some(StaticAbilityId::Ascend) => Self::ascend(),
@@ -227,6 +233,11 @@ impl StaticAbility {
                 Self::cast_this_card_from_library_while_searching()
             }
             Some(StaticAbilityId::CantHaveCountersPlaced) => Self::cant_have_counters_placed(),
+            Some(StaticAbilityId::CounterLimit) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "counter limit needs its counter type and maximum payload".to_string(),
+                });
+            }
             Some(StaticAbilityId::PermanentsCantBeSacrificed) => {
                 Self::permanents_you_control_cant_be_sacrificed()
             }
@@ -342,6 +353,8 @@ impl StaticAbility {
                 Self::deck_construction_rule_text(label)
             }
             Some(StaticAbilityId::DraftRuleText) => Self::draft_rule_text(label),
+            Some(StaticAbilityId::HiddenAgenda) => Self::hidden_agenda(),
+            Some(StaticAbilityId::DoubleAgenda) => Self::double_agenda(),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),
             Some(StaticAbilityId::KeywordFallbackText) => Self::keyword_fallback_text(label),

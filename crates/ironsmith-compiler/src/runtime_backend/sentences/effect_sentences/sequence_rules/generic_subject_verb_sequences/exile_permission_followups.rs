@@ -90,6 +90,7 @@ pub(crate) fn parse_exile_top_play_then_event_followup(
                 Box::new(TriggerSpec::SpellCast {
                     filter: Some(tagged.clone()),
                     caster: PlayerFilter::You,
+                    timing: None,
                     during_turn: None,
                     min_spells_this_turn: None,
                     exact_spells_this_turn: None,

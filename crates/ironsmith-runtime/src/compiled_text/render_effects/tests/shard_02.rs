@@ -940,6 +940,7 @@ fn source_exiled_filter() -> ObjectFilter {
 #[test]
 fn source_exiled_move_preserves_all_source_type_and_plural_owners() {
     let surface = ironsmith_core::ExiledWithSourceMoveSurface {
+        verb: ironsmith_core::ExiledWithSourceMoveVerbSurface::Put,
         subject: ironsmith_core::ExiledWithSourceSubjectSurface::AllCards,
         source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(
             crate::target::SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
@@ -962,6 +963,7 @@ fn source_exiled_move_preserves_all_source_type_and_plural_owners() {
 #[test]
 fn source_exiled_return_preserves_one_card_and_contextual_hand() {
     let surface = ironsmith_core::ExiledWithSourceMoveSurface {
+        verb: ironsmith_core::ExiledWithSourceMoveVerbSurface::Put,
         subject: ironsmith_core::ExiledWithSourceSubjectSurface::OneCard,
         source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(
             crate::target::SourceReferenceSurface::ThisPermanentType(
@@ -983,6 +985,7 @@ fn source_exiled_return_preserves_one_card_and_contextual_hand() {
 #[test]
 fn source_exiled_move_preserves_each_it_and_singular_owner() {
     let surface = ironsmith_core::ExiledWithSourceMoveSurface {
+        verb: ironsmith_core::ExiledWithSourceMoveVerbSurface::Put,
         subject: ironsmith_core::ExiledWithSourceSubjectSurface::EachCard,
         source: ironsmith_core::ExiledWithSourceReferenceSurface::It,
         destination: ironsmith_core::ExiledWithSourceDestinationSurface::ItsOwner,
@@ -1001,8 +1004,35 @@ fn source_exiled_move_preserves_each_it_and_singular_owner() {
 }
 
 #[test]
+fn source_exiled_battlefield_move_preserves_typed_subject_and_controller() {
+    let surface = ironsmith_core::ExiledWithSourceMoveSurface {
+        verb: ironsmith_core::ExiledWithSourceMoveVerbSurface::Put,
+        subject: ironsmith_core::ExiledWithSourceSubjectSurface::Custom(
+            "each creature card".to_string(),
+        ),
+        source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
+        ),
+        destination: ironsmith_core::ExiledWithSourceDestinationSurface::ContextualPlayer,
+    };
+    let effect = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::All(source_exiled_filter()),
+        Zone::Battlefield,
+        true,
+    )
+    .under_you_control()
+    .with_exiled_with_source_surface(surface);
+
+    assert_eq!(
+        describe_effect(&Effect::new(effect)),
+        "Put each creature card exiled with this artifact onto the battlefield tapped under your control"
+    );
+}
+
+#[test]
 fn source_exiled_return_preserves_definite_singular_without_source_suffix() {
     let surface = ironsmith_core::ExiledWithSourceMoveSurface {
+        verb: ironsmith_core::ExiledWithSourceMoveVerbSurface::Return,
         subject: ironsmith_core::ExiledWithSourceSubjectSurface::TheExiledCard,
         source: ironsmith_core::ExiledWithSourceReferenceSurface::Omitted,
         destination: ironsmith_core::ExiledWithSourceDestinationSurface::ItsOwner,
@@ -1012,6 +1042,49 @@ fn source_exiled_return_preserves_definite_singular_without_source_suffix() {
 
     assert_eq!(
         describe_effect(&Effect::new(effect)),
-        "Put the exiled card into its owner's hand"
+        "Return the exiled card to its owner's hand"
+    );
+}
+
+#[test]
+fn behold_surfaces_preserve_subtype_optional_verb_and_condition_provenance() {
+    let behold = crate::effects::BeholdEffect::you(Subtype::Dragon, 1);
+    assert_eq!(
+        describe_effect(&Effect::new(behold.clone())),
+        "Behold a Dragon"
+    );
+
+    let optional_cost = crate::cost::OptionalCost::custom(
+        "As an additional cost to cast this spell, you may behold a Dragon.",
+        crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(behold)),
+    );
+    assert_eq!(
+        describe_optional_cost_line(&optional_cost),
+        "As an additional cost to cast this spell, you may behold a Dragon"
+    );
+
+    let typed_behold = crate::cost::OptionalCostRef::with_discriminator(
+        crate::cost::OptionalCostKind::Behold,
+        "Dragon",
+    );
+    assert_eq!(
+        describe_condition(&Condition::ThisSpellPaidLabel(typed_behold.clone())),
+        "a Dragon was beheld"
+    );
+    assert_eq!(
+        describe_condition(&Condition::Or(
+            Box::new(Condition::ThisSpellPaidLabel(typed_behold)),
+            Box::new(Condition::PlayerControls {
+                player: PlayerFilter::You,
+                filter: ObjectFilter::default().with_subtype(Subtype::Dragon),
+            }),
+        )),
+        "you revealed a Dragon card or controlled a Dragon as you cast this spell"
+    );
+    assert_eq!(
+        describe_condition(&Condition::ThisSpellPaidLabel(
+            crate::cost::OptionalCostKind::Behold.into(),
+        )),
+        "this spell's behold cost was paid"
     );
 }

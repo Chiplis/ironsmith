@@ -110,6 +110,84 @@ pub enum ObjectFilterUnionConnective {
     AndOr,
 }
 
+/// Oracle-facing noun retained for a same-name tagged-object relationship.
+///
+/// The tag and [`TaggedOpbjectRelation::SameNameAsTagged`] remain the runtime
+/// source of truth. This value only prevents a later renderer from collapsing
+/// an authored antecedent such as "that spell" or "that creature" to the
+/// ambiguous pronoun "it".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SameNameAntecedentSurface {
+    Card,
+    Spell,
+    Permanent,
+    Creature,
+    Object,
+}
+
+impl SameNameAntecedentSurface {
+    pub fn from_noun(noun: &str) -> Option<Self> {
+        match noun {
+            "card" | "cards" => Some(Self::Card),
+            "spell" | "spells" => Some(Self::Spell),
+            "permanent" | "permanents" => Some(Self::Permanent),
+            "creature" | "creatures" => Some(Self::Creature),
+            "object" | "objects" => Some(Self::Object),
+            _ => None,
+        }
+    }
+
+    pub const fn phrase(self) -> &'static str {
+        match self {
+            Self::Card => "that card",
+            Self::Spell => "that spell",
+            Self::Permanent => "that permanent",
+            Self::Creature => "that creature",
+            Self::Object => "that object",
+        }
+    }
+}
+
+/// Oracle-facing action used when a filter refers back to the object paid as
+/// an additional cost. Object identity remains a tagged runtime relation;
+/// this value only preserves whether the authored noun was sacrificed or
+/// exiled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdditionalCostObjectAction {
+    Sacrificed,
+    Exiled,
+}
+
+impl AdditionalCostObjectAction {
+    pub const fn past_participle(self) -> &'static str {
+        match self {
+            Self::Sacrificed => "sacrificed",
+            Self::Exiled => "exiled",
+        }
+    }
+}
+
+/// Presentation-only description of an explicit additional-cost object
+/// reference such as "the sacrificed creature" or "the exiled permanent."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdditionalCostObjectSurface {
+    pub action: AdditionalCostObjectAction,
+    pub kind: crate::target_model::SacrificedObjectKind,
+}
+
+impl AdditionalCostObjectSurface {
+    pub const fn new(
+        action: AdditionalCostObjectAction,
+        kind: crate::target_model::SacrificedObjectKind,
+    ) -> Self {
+        Self { action, kind }
+    }
+
+    pub fn description(self) -> String {
+        format!("the {} {}", self.action.past_participle(), self.kind.noun())
+    }
+}
+
 /// Presentation metadata for an [`ObjectFilter`].
 ///
 /// `PartialEq` is intentionally semantic-transparent: `ObjectFilter` derives
@@ -120,6 +198,17 @@ pub enum ObjectFilterUnionConnective {
 pub struct ObjectFilterUnionSurface {
     connective: ObjectFilterUnionConnective,
     one_or_more: bool,
+    /// Oracle repeated an indefinite article for every arm of an explicit
+    /// object-filter union (for example, "a Doctor card, a card with ..., or
+    /// a Vehicle card"). This controls punctuation and articles only.
+    explicit_branch_articles: bool,
+    /// Oracle selected one member of a previously established tagged set with
+    /// wording such as "one of them". Lowering owns the actual choice; this
+    /// flag only preserves that authored reference in compiled text.
+    one_of_tagged_set: bool,
+    /// Oracle explicitly quantified this set with `all` or distributive
+    /// `each`. This is presentation-only and does not change the matched set.
+    set_quantifier: Option<crate::effect::SetQuantifierSurface>,
     /// Oracle explicitly used `card`/`cards` for this filter's noun.
     ///
     /// Lowering may intentionally clear a nonbattlefield zone after it has
@@ -127,6 +216,7 @@ pub struct ObjectFilterUnionSurface {
     /// independently so that the same semantic filter does not render as a
     /// battlefield `permanent` merely because its contextual zone moved.
     explicit_card_noun: bool,
+    counter_requirement_one_or_more: bool,
     counter_requirement_plural_noun: bool,
     counter_requirement_plural_subject: bool,
     counter_exclusion_plural_noun: bool,
@@ -142,6 +232,13 @@ pub struct ObjectFilterUnionSurface {
     /// `... this way`. The generated runtime tag retains identity; this field
     /// preserves the authored action without deriving semantics from tag text.
     prior_effect_action: Option<PriorEffectAction>,
+    /// Explicit noun/action for a reference to an additional-cost object.
+    /// This is deliberately equality-transparent with the rest of this
+    /// presentation metadata.
+    additional_cost_object: Option<AdditionalCostObjectSurface>,
+    /// Authored noun for a `SameNameAsTagged` antecedent. The tagged relation
+    /// carries identity; this field only preserves the unambiguous noun.
+    same_name_antecedent: Option<SameNameAntecedentSurface>,
 }
 
 impl ObjectFilterUnionSurface {
@@ -149,7 +246,11 @@ impl ObjectFilterUnionSurface {
         Self {
             connective,
             one_or_more: false,
+            explicit_branch_articles: false,
+            one_of_tagged_set: false,
+            set_quantifier: None,
             explicit_card_noun: false,
+            counter_requirement_one_or_more: false,
             counter_requirement_plural_noun: false,
             counter_requirement_plural_subject: false,
             counter_exclusion_plural_noun: false,
@@ -157,6 +258,8 @@ impl ObjectFilterUnionSurface {
             relative_attachment_state: false,
             relative_characteristic_list: false,
             prior_effect_action: None,
+            additional_cost_object: None,
+            same_name_antecedent: None,
         }
     }
 
@@ -178,6 +281,36 @@ impl ObjectFilterUnionSurface {
         self
     }
 
+    pub const fn with_explicit_branch_articles(mut self, explicit: bool) -> Self {
+        self.explicit_branch_articles = explicit;
+        self
+    }
+
+    pub const fn explicit_branch_articles(self) -> bool {
+        self.explicit_branch_articles
+    }
+
+    pub const fn with_one_of_tagged_set(mut self, one_of_tagged_set: bool) -> Self {
+        self.one_of_tagged_set = one_of_tagged_set;
+        self
+    }
+
+    pub const fn one_of_tagged_set(self) -> bool {
+        self.one_of_tagged_set
+    }
+
+    pub const fn with_set_quantifier(
+        mut self,
+        set_quantifier: Option<crate::effect::SetQuantifierSurface>,
+    ) -> Self {
+        self.set_quantifier = set_quantifier;
+        self
+    }
+
+    pub const fn set_quantifier(self) -> Option<crate::effect::SetQuantifierSurface> {
+        self.set_quantifier
+    }
+
     pub const fn explicit_card_noun(self) -> bool {
         self.explicit_card_noun
     }
@@ -189,16 +322,19 @@ impl ObjectFilterUnionSurface {
 
     pub const fn with_counter_requirement_surface(
         mut self,
+        one_or_more: bool,
         plural_noun: bool,
         plural_subject: bool,
     ) -> Self {
+        self.counter_requirement_one_or_more = one_or_more;
         self.counter_requirement_plural_noun = plural_noun;
         self.counter_requirement_plural_subject = plural_subject;
         self
     }
 
-    pub const fn counter_requirement_surface(self) -> (bool, bool) {
+    pub const fn counter_requirement_surface(self) -> (bool, bool, bool) {
         (
+            self.counter_requirement_one_or_more,
             self.counter_requirement_plural_noun,
             self.counter_requirement_plural_subject,
         )
@@ -247,6 +383,30 @@ impl ObjectFilterUnionSurface {
     pub const fn prior_effect_action(self) -> Option<PriorEffectAction> {
         self.prior_effect_action
     }
+
+    pub const fn with_additional_cost_object(
+        mut self,
+        surface: Option<AdditionalCostObjectSurface>,
+    ) -> Self {
+        self.additional_cost_object = surface;
+        self
+    }
+
+    pub const fn additional_cost_object(self) -> Option<AdditionalCostObjectSurface> {
+        self.additional_cost_object
+    }
+
+    pub const fn with_same_name_antecedent(
+        mut self,
+        surface: Option<SameNameAntecedentSurface>,
+    ) -> Self {
+        self.same_name_antecedent = surface;
+        self
+    }
+
+    pub const fn same_name_antecedent(self) -> Option<SameNameAntecedentSurface> {
+        self.same_name_antecedent
+    }
 }
 
 impl PartialEq for ObjectFilterUnionSurface {
@@ -276,6 +436,10 @@ pub enum PowerToughnessRelation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaggedOpbjectRelation {
     IsTaggedObject,
+    /// Identity membership retained from an entry-time sacrifice choice. This
+    /// is runtime-equivalent to `IsTaggedObject`, while preserving the authored
+    /// characteristic surface "sacrificed as it entered."
+    IsTaggedObjectSacrificedAsSourceEntered,
     SharesCardType,
     /// Runtime-equivalent to `SharesCardType`, while preserving the rare
     /// Oracle surface that explicitly says "permanent type."
@@ -394,6 +558,12 @@ pub enum PlayerFilter {
     HasMoreLifeThanYou {
         base: Box<PlayerFilter>,
     },
+    /// An opponent of `player` who controls strictly more objects matching
+    /// `filter` than that player controls.
+    OpponentWithMoreControlledObjectsThan {
+        player: Box<PlayerFilter>,
+        filter: Box<ObjectFilter>,
+    },
     MaxSpeed {
         base: Box<PlayerFilter>,
         has_max_speed: bool,
@@ -453,6 +623,9 @@ impl PlayerFilter {
             Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
             Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
+            Self::OpponentWithMoreControlledObjectsThan { player, filter } => {
+                player.mentions_iterated_player() || filter.mentions_iterated_player()
+            }
             Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -518,6 +691,11 @@ impl PlayerFilter {
                     base.description()
                 )
             }
+            Self::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
+                "an opponent of {} who controls more {} than they do",
+                player.description(),
+                pluralize_count_terminal_word(&filter.description())
+            ),
             Self::MaxSpeed {
                 base,
                 has_max_speed,
@@ -630,6 +808,11 @@ pub struct ObjectFilter {
     pub required_colors: Option<ColorSet>,
     pub chosen_color: bool,
     pub chosen_land_type: bool,
+    /// Requires at least one of the five basic land subtypes.  This is not
+    /// the same as requiring the Basic supertype: nonbasic dual lands can
+    /// have basic land types, while a Basic land need not be constrained by
+    /// how its supertypes are printed.
+    pub has_basic_land_type: bool,
     pub has_nonbasic_land_type: bool,
     pub chosen_creature_type: bool,
     pub chosen_card_type: bool,
@@ -682,6 +865,13 @@ pub struct ObjectFilter {
     /// Oracle-facing source noun for the relation above. Runtime identity is
     /// carried by the relation and the game-state link, not this surface hint.
     pub put_onto_battlefield_with_source_surface: Option<SourceReferenceSurface>,
+    /// This object is a token created by the resolving ability's source
+    /// instance. Creation provenance is tracked by stable source and token
+    /// identities so a source-leaves trigger can still match correctly.
+    pub created_with_source: bool,
+    /// Authored source noun used by `created_with_source`, for example
+    /// "this enchantment".
+    pub created_with_source_surface: Option<SourceReferenceSurface>,
     pub entered_graveyard_this_turn: bool,
     pub entered_graveyard_from_battlefield_this_turn: bool,
     pub surveilled_this_turn: bool,
@@ -735,6 +925,44 @@ pub struct ObjectFilter {
 }
 
 impl ObjectFilter {
+    pub fn mentions_iterated_player(&self) -> bool {
+        [
+            self.controller.as_ref(),
+            self.cast_by.as_ref(),
+            self.owner.as_ref(),
+            self.targets_player.as_ref(),
+            self.targets_only_player.as_ref(),
+            self.attacking_player_or_planeswalker_controlled_by.as_ref(),
+            self.attached_to_player.as_ref(),
+            self.entered_battlefield_controller.as_ref(),
+            self.discarded_or_cycled_this_turn_by.as_ref(),
+            self.dealt_damage_to_player_this_turn.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(PlayerFilter::mentions_iterated_player)
+            || self
+                .targets_object
+                .as_deref()
+                .is_some_and(ObjectFilter::mentions_iterated_player)
+            || self
+                .targets_only_object
+                .as_deref()
+                .is_some_and(ObjectFilter::mentions_iterated_player)
+            || self
+                .attached_to_object
+                .as_deref()
+                .is_some_and(ObjectFilter::mentions_iterated_player)
+            || self
+                .no_shared_creature_types_with
+                .iter()
+                .any(ObjectFilter::mentions_iterated_player)
+            || self
+                .any_of
+                .iter()
+                .any(ObjectFilter::mentions_iterated_player)
+    }
+
     /// Preserve the Oracle connective used for this filter's inclusive union.
     /// This does not affect runtime matching or semantic equality.
     pub fn with_union_connective(mut self, connective: ObjectFilterUnionConnective) -> Self {
@@ -758,6 +986,35 @@ impl ObjectFilter {
         self.union_surface.one_or_more()
     }
 
+    pub fn set_explicit_union_branch_articles(&mut self, explicit: bool) {
+        self.union_surface = self.union_surface.with_explicit_branch_articles(explicit);
+    }
+
+    pub const fn has_explicit_union_branch_articles(&self) -> bool {
+        self.union_surface.explicit_branch_articles()
+    }
+
+    pub fn set_one_of_tagged_set_surface(&mut self, one_of_tagged_set: bool) {
+        self.union_surface = self.union_surface.with_one_of_tagged_set(one_of_tagged_set);
+    }
+
+    pub const fn has_one_of_tagged_set_surface(&self) -> bool {
+        self.union_surface.one_of_tagged_set()
+    }
+
+    /// Preserve an authored leading `all`/`each` quantifier without changing
+    /// filter equality or runtime matching.
+    pub fn set_set_quantifier_surface(
+        &mut self,
+        surface: Option<crate::effect::SetQuantifierSurface>,
+    ) {
+        self.union_surface = self.union_surface.with_set_quantifier(surface);
+    }
+
+    pub const fn set_quantifier_surface(&self) -> Option<crate::effect::SetQuantifierSurface> {
+        self.union_surface.set_quantifier()
+    }
+
     /// Preserve an explicit Oracle `card`/`cards` noun without changing the
     /// zones or object characteristics used for matching.
     pub fn set_explicit_card_noun(&mut self, explicit_card_noun: bool) {
@@ -770,15 +1027,23 @@ impl ObjectFilter {
         self.union_surface.explicit_card_noun()
     }
 
-    /// Preserve whether Oracle used `counter`/`counters` and `it`/`them` for
-    /// a positive counter requirement. This changes rendering only.
-    pub fn set_counter_requirement_surface(&mut self, plural_noun: bool, plural_subject: bool) {
-        self.union_surface = self
-            .union_surface
-            .with_counter_requirement_surface(plural_noun, plural_subject);
+    /// Preserve whether Oracle used `one or more`, `counter`/`counters`, and
+    /// `it`/`them` for a positive counter requirement. This changes rendering
+    /// only.
+    pub fn set_counter_requirement_surface(
+        &mut self,
+        one_or_more: bool,
+        plural_noun: bool,
+        plural_subject: bool,
+    ) {
+        self.union_surface = self.union_surface.with_counter_requirement_surface(
+            one_or_more,
+            plural_noun,
+            plural_subject,
+        );
     }
 
-    pub const fn counter_requirement_surface(&self) -> (bool, bool) {
+    pub const fn counter_requirement_surface(&self) -> (bool, bool, bool) {
         self.union_surface.counter_requirement_surface()
     }
 
@@ -824,6 +1089,32 @@ impl ObjectFilter {
         self.union_surface.prior_effect_action()
     }
 
+    /// Preserve the authored additional-cost noun without changing runtime
+    /// filter matching.
+    pub fn set_additional_cost_object_surface(
+        &mut self,
+        surface: Option<AdditionalCostObjectSurface>,
+    ) {
+        self.union_surface = self.union_surface.with_additional_cost_object(surface);
+    }
+
+    /// Preserve the authored noun of a same-name antecedent without changing
+    /// the tagged runtime relationship.
+    pub fn set_same_name_antecedent_surface(
+        &mut self,
+        surface: Option<SameNameAntecedentSurface>,
+    ) {
+        self.union_surface = self.union_surface.with_same_name_antecedent(surface);
+    }
+
+    pub const fn same_name_antecedent_surface(&self) -> Option<SameNameAntecedentSurface> {
+        self.union_surface.same_name_antecedent()
+    }
+
+    pub const fn additional_cost_object_surface(&self) -> Option<AdditionalCostObjectSurface> {
+        self.union_surface.additional_cost_object()
+    }
+
     pub fn uses_power_or_toughness_characteristics(&self) -> bool {
         self.power.is_some()
             || self.power_parity.is_some()
@@ -858,6 +1149,7 @@ impl ObjectFilter {
             || self.required_colors.is_some()
             || self.chosen_color
             || self.chosen_land_type
+            || self.has_basic_land_type
             || self.has_nonbasic_land_type
             || self.chosen_creature_type
             || self.chosen_card_type
@@ -1556,10 +1848,21 @@ impl ObjectFilter {
             return description;
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
+            let explicit_branch_articles = self.has_explicit_union_branch_articles();
             let mut description = describe_filter_union_list(
-                self.any_of.iter().map(ObjectFilter::description).collect(),
+                self.any_of
+                    .iter()
+                    .map(ObjectFilter::description)
+                    .map(|description| {
+                        if explicit_branch_articles {
+                            ensure_indefinite_article(description)
+                        } else {
+                            description
+                        }
+                    })
+                    .collect(),
                 self.union_connective(),
-                false,
+                explicit_branch_articles,
             );
             if let Some(attached_to) = &self.attached_to_object {
                 description.push_str(&format!(
@@ -1661,6 +1964,9 @@ impl ObjectFilter {
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -1692,6 +1998,18 @@ impl ObjectFilter {
                     }
                     controller_suffix =
                         Some("that player or that object's controller controls".to_string())
+                }
+                PlayerFilter::Excluding { base, excluded }
+                    if matches!(base.as_ref(), PlayerFilter::Any)
+                        && matches!(
+                            excluded.as_ref(),
+                            PlayerFilter::ControllerOf(ObjectRef::Tagged(_) | ObjectRef::Target)
+                        ) =>
+                {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("another player controls".to_string());
                 }
                 PlayerFilter::Excluding { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
@@ -1757,6 +2075,9 @@ impl ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -1862,6 +2183,9 @@ impl ObjectFilter {
         if self.chosen_land_type {
             post_noun_qualifiers.push("of the chosen land type".to_string());
         }
+        if self.has_basic_land_type {
+            post_noun_qualifiers.push("with a basic land type".to_string());
+        }
         if self.has_nonbasic_land_type {
             post_noun_qualifiers.push("with a nonbasic land type".to_string());
         }
@@ -1895,27 +2219,30 @@ impl ObjectFilter {
         }
         for constraint in &self.tagged_constraints {
             match constraint.relation {
-                TaggedOpbjectRelation::IsTaggedObject => match constraint.tag.as_str() {
-                    "it" => parts.push("that".to_string()),
-                    "enchanted" => parts.push("enchanted".to_string()),
-                    "equipped" => parts.push("equipped".to_string()),
-                    "convoked_this_spell" => {
-                        post_noun_qualifiers.push("that convoked this spell".to_string());
+                TaggedOpbjectRelation::IsTaggedObject
+                | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
+                    match constraint.tag.as_str() {
+                        "it" => parts.push("that".to_string()),
+                        "enchanted" => parts.push("enchanted".to_string()),
+                        "equipped" => parts.push("equipped".to_string()),
+                        "convoked_this_spell" => {
+                            post_noun_qualifiers.push("that convoked this spell".to_string());
+                        }
+                        "improvised_this_spell" => {
+                            post_noun_qualifiers.push("that improvised this spell".to_string());
+                        }
+                        "crewed_it_this_turn" => {
+                            post_noun_qualifiers.push("that crewed it this turn".to_string());
+                        }
+                        "saddled_it_this_turn" => {
+                            post_noun_qualifiers.push("that saddled it this turn".to_string());
+                        }
+                        tag if tag == crate::SOURCE_EXILED_TAG => {
+                            post_noun_qualifiers.push("exiled with this permanent".to_string());
+                        }
+                        _ => {}
                     }
-                    "improvised_this_spell" => {
-                        post_noun_qualifiers.push("that improvised this spell".to_string());
-                    }
-                    "crewed_it_this_turn" => {
-                        post_noun_qualifiers.push("that crewed it this turn".to_string());
-                    }
-                    "saddled_it_this_turn" => {
-                        post_noun_qualifiers.push("that saddled it this turn".to_string());
-                    }
-                    tag if tag == crate::SOURCE_EXILED_TAG => {
-                        post_noun_qualifiers.push("exiled with this permanent".to_string());
-                    }
-                    _ => {}
-                },
+                }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
                     parts.push("other".to_string());
                 }
@@ -1925,16 +2252,21 @@ impl ObjectFilter {
                             "with the same name as a card exiled with this permanent".to_string(),
                         );
                     } else {
-                        let antecedent = match constraint.tag.as_str() {
-                            // The implicit object tag is established by choosing or revealing a
-                            // card. Keeping the lexical kind avoids an ambiguous pronoun across a
-                            // following search through multiple zones.
-                            "__it__" => "that card",
-                            // A triggering spell is commonly followed by a same-name search or
-                            // graveyard count. Battlefield trigger subjects remain permanents.
-                            "triggering" if self.zone != Some(Zone::Battlefield) => "that spell",
-                            _ => "it",
-                        };
+                        let antecedent = self
+                            .same_name_antecedent_surface()
+                            .map(SameNameAntecedentSurface::phrase)
+                            .unwrap_or_else(|| match constraint.tag.as_str() {
+                                // The implicit object tag is established by choosing or revealing
+                                // a card. Keeping the lexical kind avoids an ambiguous pronoun
+                                // across a following search through multiple zones.
+                                "__it__" => "that card",
+                                // A triggering spell is commonly followed by a same-name search or
+                                // graveyard count. Battlefield trigger subjects remain permanents.
+                                "triggering" if self.zone != Some(Zone::Battlefield) => {
+                                    "that spell"
+                                }
+                                _ => "it",
+                            });
                         post_noun_qualifiers.push(format!("with the same name as {antecedent}"));
                     }
                 }
@@ -1946,7 +2278,12 @@ impl ObjectFilter {
                     post_noun_qualifiers.push("controlled by its controller".to_string());
                 }
                 TaggedOpbjectRelation::SameManaValueAsTagged => {
-                    if constraint.tag.as_str().starts_with("sacrifice_cost_") {
+                    if let Some(surface) = self.additional_cost_object_surface() {
+                        post_noun_qualifiers.push(format!(
+                            "with the same mana value as {}",
+                            surface.description()
+                        ));
+                    } else if constraint.tag.as_str().starts_with("sacrifice_cost_") {
                         post_noun_qualifiers.push(
                             "with the same mana value as the sacrificed creature".to_string(),
                         );
@@ -1968,7 +2305,14 @@ impl ObjectFilter {
                     post_noun_qualifiers.push("with lesser mana value than it".to_string());
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
-                    post_noun_qualifiers.push("that shares a color with it".to_string());
+                    if let Some(surface) = self.additional_cost_object_surface() {
+                        post_noun_qualifiers.push(format!(
+                            "that shares a color with {}",
+                            surface.description()
+                        ));
+                    } else {
+                        post_noun_qualifiers.push("that shares a color with it".to_string());
+                    }
                 }
                 TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
                     post_noun_qualifiers.push(
@@ -1977,7 +2321,15 @@ impl ObjectFilter {
                     );
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithTagged => {
-                    post_noun_qualifiers.push("that shares a creature type with it".to_string());
+                    if let Some(surface) = self.additional_cost_object_surface() {
+                        post_noun_qualifiers.push(format!(
+                            "that shares a creature type with {}",
+                            surface.description()
+                        ));
+                    } else {
+                        post_noun_qualifiers
+                            .push("that shares a creature type with it".to_string());
+                    }
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithEachTagged => {
                     post_noun_qualifiers.push(
@@ -1993,7 +2345,16 @@ impl ObjectFilter {
                         );
                         continue;
                     }
-                    if constraint.tag.as_str().starts_with("sacrificed_") {
+                    if let Some(surface) = self.additional_cost_object_surface() {
+                        post_noun_qualifiers.push(format!(
+                            "that shares a card type with {}",
+                            surface.description()
+                        ));
+                        continue;
+                    }
+                    if constraint.tag.as_str().starts_with("sacrificed_")
+                        || constraint.tag.as_str().starts_with("sacrifice_cost_")
+                    {
                         post_noun_qualifiers.push(
                             "that shares a card type with the sacrificed permanent".to_string(),
                         );
@@ -2002,7 +2363,15 @@ impl ObjectFilter {
                     post_noun_qualifiers.push("that shares a card type with it".to_string());
                 }
                 TaggedOpbjectRelation::SharesPermanentType => {
-                    post_noun_qualifiers.push("that shares a permanent type with it".to_string());
+                    if let Some(surface) = self.additional_cost_object_surface() {
+                        post_noun_qualifiers.push(format!(
+                            "that shares a permanent type with {}",
+                            surface.description()
+                        ));
+                    } else {
+                        post_noun_qualifiers
+                            .push("that shares a permanent type with it".to_string());
+                    }
                 }
                 TaggedOpbjectRelation::AttachedToTaggedObject => {
                     post_noun_qualifiers.push("attached to it".to_string());
@@ -2236,6 +2605,7 @@ impl ObjectFilter {
                     | Some(Zone::Library)
                     | Some(Zone::Exile)
                     | Some(Zone::Command)
+                    | Some(Zone::Ante)
                     | Some(Zone::OutsideGame) => "card",
                     _ => "source",
                 }
@@ -2257,6 +2627,7 @@ impl ObjectFilter {
                     | Some(Zone::Library)
                     | Some(Zone::Exile)
                     | Some(Zone::Command)
+                    | Some(Zone::Ante)
                     | Some(Zone::OutsideGame) => "card",
                 }
             };
@@ -2573,9 +2944,10 @@ impl ObjectFilter {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
         }
         if let Some(counter_requirement) = self.with_counter {
-            let (plural_noun, plural_subject) = self.counter_requirement_surface();
+            let (one_or_more, plural_noun, plural_subject) = self.counter_requirement_surface();
             parts.push(format!(
-                "with {} on {}",
+                "with {}{} on {}",
+                if one_or_more { "one or more " } else { "" },
                 describe_counter_constraint(counter_requirement, plural_noun),
                 if plural_subject { "them" } else { "it" }
             ));
@@ -2619,6 +2991,7 @@ impl ObjectFilter {
                 Zone::Exile => Some("exile"),
                 Zone::Stack => None,
                 Zone::Command => Some("command zone"),
+                Zone::Ante => Some("ante"),
                 Zone::OutsideGame => Some("outside the game"),
             };
             if zone == Zone::Exile && has_source_exiled_constraint {
@@ -2679,6 +3052,15 @@ impl ObjectFilter {
                 .map(SourceReferenceSurface::display_text)
                 .unwrap_or_else(|| "this permanent".to_string());
             parts.push(format!("put onto the battlefield with {source}"));
+        }
+
+        if self.created_with_source {
+            let source = self
+                .created_with_source_surface
+                .as_ref()
+                .map(SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            parts.push(format!("created with {source}"));
         }
 
         if self.entered_graveyard_from_battlefield_this_turn && self.zone == Some(Zone::Graveyard) {
@@ -2900,7 +3282,7 @@ fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<Strin
         return None;
     }
 
-    let selector = describe_filter_union_list(selectors, filter.union_connective(), false);
+    let selector = describe_filter_union_list(selectors, filter.union_connective(), true);
     let placeholder = if outer.has_explicit_card_noun()
         || matches!(
             outer.zone,
@@ -3028,6 +3410,11 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
+            "an opponent of {} who controls more {} than they do's",
+            describe_player_filter(player),
+            pluralize_count_terminal_word(&filter.description())
+        ),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -3107,6 +3494,11 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { player, filter } => format!(
+            "opponent of {} who controls more {} than they do",
+            describe_player_filter(player),
+            pluralize_count_terminal_word(&filter.description())
+        ),
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -3895,7 +4287,7 @@ mod tests {
             .you_control()
             .with_counter_type(CounterType::PlusOnePlusOne);
         let mut surfaced_filter = semantic_filter.clone();
-        surfaced_filter.set_counter_requirement_surface(true, true);
+        surfaced_filter.set_counter_requirement_surface(false, true, true);
 
         assert_eq!(semantic_filter, surfaced_filter);
         assert_eq!(
@@ -3908,8 +4300,21 @@ mod tests {
         );
 
         let mut any_counter = ObjectFilter::permanent().with_any_counter();
-        any_counter.set_counter_requirement_surface(true, true);
+        any_counter.set_counter_requirement_surface(false, true, true);
         assert_eq!(any_counter.description(), "permanent with counters on them");
+    }
+
+    #[test]
+    fn one_or_more_counter_surface_renders_without_changing_filter_equality() {
+        let semantic_filter = ObjectFilter::planeswalker().with_counter_type(CounterType::Loyalty);
+        let mut one_or_more = semantic_filter.clone();
+        one_or_more.set_counter_requirement_surface(true, true, false);
+
+        assert_eq!(semantic_filter, one_or_more);
+        assert_eq!(
+            one_or_more.description(),
+            "planeswalker with one or more loyalty counters on it"
+        );
     }
 
     #[test]

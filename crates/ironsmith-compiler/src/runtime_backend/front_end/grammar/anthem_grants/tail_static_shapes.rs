@@ -9,9 +9,16 @@ use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BasePowerToughnessConditionShape<'a> {
+    None,
+    Tokens(&'a [OwnedLexToken]),
+    YourTurn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BasePowerToughnessShape<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) condition_tokens: Option<&'a [OwnedLexToken]>,
+    pub(crate) condition: BasePowerToughnessConditionShape<'a>,
     pub(crate) power: i32,
     pub(crate) toughness: i32,
 }
@@ -74,14 +81,14 @@ pub(crate) fn parse_base_power_toughness_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BasePowerToughnessShape<'_>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    let (condition_tokens, clause_tokens) = split_leading_as_long_as_condition(tokens)?;
+    let (condition, clause_tokens) = split_leading_base_power_toughness_condition(tokens)?;
     let mut shape = primitives::parse_all(
         clause_tokens,
         parse_base_power_toughness_lexed,
         "base-power-toughness",
     )
     .ok()?;
-    shape.condition_tokens = condition_tokens;
+    shape.condition = condition;
     Some(shape)
 }
 
@@ -263,19 +270,32 @@ fn parse_base_power_toughness_lexed<'a>(
     }
     Ok(BasePowerToughnessShape {
         subject_tokens,
-        condition_tokens: None,
+        condition: BasePowerToughnessConditionShape::None,
         power,
         toughness,
     })
 }
 
-fn split_leading_as_long_as_condition(
+fn split_leading_base_power_toughness_condition(
     tokens: &[OwnedLexToken],
-) -> Option<(Option<&[OwnedLexToken]>, &[OwnedLexToken])> {
+) -> Option<(BasePowerToughnessConditionShape<'_>, &[OwnedLexToken])> {
+    if let Some((_, clause_tokens)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["during", "your", "turn"]),
+            primitives::comma(),
+        )
+            .void(),
+    ) {
+        let clause_tokens = trim_lexed_commas(clause_tokens);
+        return (!clause_tokens.is_empty())
+            .then_some((BasePowerToughnessConditionShape::YourTurn, clause_tokens));
+    }
+
     let Some((_, after_prefix)) =
         primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"]))
     else {
-        return Some((None, tokens));
+        return Some((BasePowerToughnessConditionShape::None, tokens));
     };
     let (condition_tokens, clause_tokens) =
         primitives::split_lexed_once_on_separator(after_prefix, || primitives::comma().void())?;
@@ -284,7 +304,10 @@ fn split_leading_as_long_as_condition(
     if condition_tokens.is_empty() || clause_tokens.is_empty() {
         return None;
     }
-    Some((Some(condition_tokens), clause_tokens))
+    Some((
+        BasePowerToughnessConditionShape::Tokens(condition_tokens),
+        clause_tokens,
+    ))
 }
 
 fn parse_base_power_toughness_grant_lexed<'a>(

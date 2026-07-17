@@ -158,6 +158,7 @@ fn absorb_predicate_into_trigger(
                 TriggerSpec::SpellCast {
                     filter: trigger_filter,
                     caster,
+                    timing,
                     during_turn,
                     min_spells_this_turn,
                     exact_spells_this_turn,
@@ -169,6 +170,7 @@ fn absorb_predicate_into_trigger(
                         TriggerSpec::SpellCast {
                             filter: Some(merged_filter),
                             caster,
+                            timing,
                             during_turn,
                             min_spells_this_turn,
                             exact_spells_this_turn,

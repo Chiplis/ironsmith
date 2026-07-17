@@ -1,4 +1,6 @@
 use super::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
@@ -30,14 +32,15 @@ pub fn check_and_apply_sbas_with(
 ) -> Result<(), GameLoopError> {
     use crate::decisions::make_decision;
     use crate::rules::state_based::{
-        StateBasedActionContext, apply_legend_rule_choice_from_group,
-        apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
-        legend_rule_specs_from_actions,
+        StateBasedAction, StateBasedActionContext, apply_legend_rule_choice_from_group,
+        apply_sector_designation_choices_from_group, apply_state_based_actions_from_actions_with,
+        check_state_based_actions_with_context, legend_rule_specs_from_actions,
     };
 
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
     game.refresh_continuous_state();
+    let mut seen_mandatory_states = std::collections::HashSet::new();
 
     loop {
         if restore_unattached_bestow_creatures(game) {
@@ -50,14 +53,92 @@ pub fn check_and_apply_sbas_with(
         let all_effects = view.effects_arc();
         drop(view);
         if actions.is_empty() {
+            game.clear_pending_sector_designations();
             game.clear_empty_library_draw_attempts_since_sba();
             game.clear_deathtouch_damage_since_sba();
             break;
         }
 
+        // CR 704.5u requires every sector choice to be made against the same
+        // pre-commit game state. Keep partial asynchronous answers in GameState
+        // so the native priority loop and external/WASM driver resume the same
+        // immutable proposal instead of replaying or partially committing it.
+        let sector_action = actions.iter().find_map(|action| match action {
+            StateBasedAction::SectorDesignationChoices { source, creatures } => {
+                Some((*source, creatures.clone()))
+            }
+            _ => None,
+        });
+        if let Some((source, creatures)) = sector_action {
+            seen_mandatory_states.clear();
+            let mut pending = match game.take_pending_sector_designations() {
+                Some(pending) if pending.source == source && pending.creatures == creatures => {
+                    pending
+                }
+                _ => crate::game_state::PendingSectorDesignationState {
+                    source,
+                    creatures,
+                    choices: Vec::new(),
+                },
+            };
+            let options = crate::marker::SectorDesignation::ALL
+                .into_iter()
+                .enumerate()
+                .map(|(index, sector)| {
+                    crate::decisions::context::SelectableOption::new(index, sector.description())
+                })
+                .collect::<Vec<_>>();
+            while pending.choices.len() < pending.creatures.len() {
+                let (player, creature) = pending.creatures[pending.choices.len()];
+                let name = game
+                    .object(creature)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| "this creature".to_string());
+                let context = crate::decisions::context::SelectOptionsContext::new(
+                    player,
+                    Some(pending.source),
+                    format!("Choose a sector for {name}"),
+                    options.clone(),
+                    1,
+                    1,
+                );
+                let index = decision_maker
+                    .decide_options(game, &context)
+                    .first()
+                    .copied()
+                    .unwrap_or(0);
+                if decision_maker.awaiting_choice() {
+                    game.set_pending_sector_designations(pending);
+                    return Ok(());
+                }
+                pending.choices.push(
+                    crate::marker::SectorDesignation::from_option_index(index)
+                        .unwrap_or(crate::marker::SectorDesignation::Alpha),
+                );
+            }
+            apply_sector_designation_choices_from_group(
+                game,
+                pending.source,
+                &pending.creatures,
+                &pending.choices,
+            );
+            continue;
+        }
+        game.clear_pending_sector_designations();
+
         // Handle legend rule decisions first
         let legend_specs = legend_rule_specs_from_actions(&actions);
         let had_legend_decisions = !legend_specs.is_empty();
+        if had_legend_decisions {
+            // A player choice participates in this procedure, so it cannot prove
+            // a mandatory-action draw. Start a fresh candidate after the choice.
+            seen_mandatory_states.clear();
+        } else {
+            let fingerprint = sba_control_fingerprint(game, &actions);
+            if !seen_mandatory_states.insert(fingerprint) {
+                return Err(GameLoopError::MandatoryLoopDraw);
+            }
+        }
         for (player, spec) in legend_specs {
             let legend_group = spec.legends.clone();
             let keep_id: ObjectId = make_decision(game, decision_maker, player, None, spec);
@@ -96,6 +177,9 @@ pub fn check_and_apply_sbas_with(
                 decision_maker,
             )
         };
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         game.clear_deathtouch_damage_since_sba();
         // SBA moves queue primitive ZoneChangeEvent via move_object; consume them now.
         drain_pending_trigger_events(game, trigger_queue);
@@ -111,6 +195,22 @@ pub fn check_and_apply_sbas_with(
     }
 
     Ok(())
+}
+
+fn sba_control_fingerprint(
+    game: &GameState,
+    actions: &[crate::rules::state_based::StateBasedAction],
+) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    format!("{actions:?}").hash(&mut hasher);
+    format!("{:?}", game.players).hash(&mut hasher);
+    format!("{:?}", game.turn).hash(&mut hasher);
+    for object_id in game.object_ids_in_deterministic_order() {
+        if let Some(object) = game.object(object_id) {
+            format!("{object:?}").hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }
 
 fn restore_unattached_bestow_creatures(game: &mut GameState) -> bool {
@@ -165,64 +265,230 @@ pub fn put_triggers_on_stack(
 
 /// Put triggered abilities from the queue onto the stack with target selection.
 ///
-/// This handles the full flow of putting triggers on the stack:
-/// 1. Group triggers by controller (APNAP order)
-/// 2. For each trigger, handle target selection if needed
-/// 3. Push the trigger onto the stack with targets
+/// This handles the full CR 603.3b flow, including the separate APNAP pass for
+/// abilities whose trigger condition is another ability triggering.
 pub fn put_triggers_on_stack_with_dm(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
     game.refresh_continuous_state();
+    let mut announced_counts = std::collections::HashMap::<
+        (crate::ids::ObjectId, crate::triggers::TriggerIdentity),
+        u32,
+    >::new();
 
-    // Triggered mana abilities resolve immediately and never use the stack.
-    // Flush them first so only non-mana triggers remain to be stacked.
-    resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker);
+    loop {
+        drain_pending_trigger_events(game, trigger_queue);
+        drain_ability_triggered_events(game, trigger_queue, &mut announced_counts)?;
+
+        // Triggered mana abilities resolve immediately and never use the stack.
+        resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker)?;
+        announced_counts.retain(|(source, trigger_identity), _| {
+            trigger_queue
+                .entries
+                .iter()
+                .any(|entry| entry.source == *source && entry.trigger_identity == *trigger_identity)
+        });
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+
+        // Immediate mana-trigger resolution can itself create events/triggers.
+        if !game.effect_store.pending_trigger_events.is_empty()
+            || trigger_queue.has_ability_triggered_events()
+        {
+            continue;
+        }
+
+        let mut ordinary = Vec::new();
+        let mut triggered_by_ability = Vec::new();
+        for trigger in trigger_queue.take_all() {
+            if trigger.triggering_event.kind() == crate::events::EventKind::AbilityTriggered {
+                triggered_by_ability.push(trigger);
+            } else {
+                ordinary.push(trigger);
+            }
+        }
+
+        if ordinary.is_empty() && triggered_by_ability.is_empty() {
+            return Ok(());
+        }
+
+        // First complete APNAP pass: trigger conditions other than another
+        // ability triggering.
+        if stack_trigger_pass(game, trigger_queue, decision_maker, ordinary) {
+            for trigger in triggered_by_ability {
+                trigger_queue.requeue(trigger);
+            }
+            return Ok(());
+        }
+
+        // Second complete APNAP pass: all remaining trigger-on-trigger entries.
+        if stack_trigger_pass(game, trigger_queue, decision_maker, triggered_by_ability) {
+            return Ok(());
+        }
+        announced_counts.clear();
+
+        // Putting abilities on the stack (including target selection) can cause
+        // new triggers. CR 603.3b requires another SBA/stacking cycle before
+        // priority is granted.
+        check_and_apply_sbas_with(game, trigger_queue, decision_maker)?;
+        if decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+    }
+}
+
+fn drain_ability_triggered_events(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    announced_counts: &mut std::collections::HashMap<
+        (crate::ids::ObjectId, crate::triggers::TriggerIdentity),
+        u32,
+    >,
+) -> Result<(), GameLoopError> {
+    let mut seen_generations = std::collections::HashSet::new();
+    loop {
+        let pending = trigger_queue.take_ability_triggered_events();
+        if pending.is_empty() {
+            return Ok(());
+        }
+
+        let pending = pending
+            .into_iter()
+            .filter_map(|(event, trigger_limit)| {
+                let ability_event = event.downcast::<crate::events::AbilityTriggeredEvent>()?;
+                if let Some(trigger_limit) = trigger_limit {
+                    let key = (ability_event.source, ability_event.trigger_identity);
+                    let already_fired = game.trigger_fire_count_this_turn(
+                        ability_event.source,
+                        ability_event.trigger_identity,
+                    );
+                    let announced = announced_counts.get(&key).copied().unwrap_or(0);
+                    if already_fired.saturating_add(announced) >= trigger_limit {
+                        return None;
+                    }
+                    *announced_counts.entry(key).or_default() += 1;
+                }
+                Some(event)
+            })
+            .collect::<Vec<_>>();
+
+        let generation = pending
+            .iter()
+            .filter_map(|event| event.downcast::<crate::events::AbilityTriggeredEvent>())
+            .map(|event| (event.source_stable_id, event.trigger_identity))
+            .collect::<std::collections::HashSet<_>>();
+        if generation
+            .iter()
+            .any(|identity| seen_generations.contains(identity))
+        {
+            return Err(GameLoopError::MandatoryLoopDraw);
+        }
+        seen_generations.extend(generation);
+
+        for event in pending {
+            let parent = game.ensure_trigger_event_provenance(event);
+            let provenance = game.alloc_child_event_provenance(
+                parent.provenance(),
+                crate::events::EventKind::AbilityTriggered,
+            );
+            queue_triggers_from_event(
+                game,
+                trigger_queue,
+                parent.with_provenance(provenance),
+                true,
+            );
+        }
+    }
+}
+
+/// Stack one CR 603.3b APNAP pass. Returns true when an interactive decision
+/// paused the pass and all unstacked entries were restored without re-emitting
+/// their AbilityTriggered events.
+fn stack_trigger_pass(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+    triggers: Vec<TriggeredAbilityEntry>,
+) -> bool {
+    if triggers.is_empty() {
+        return false;
+    }
 
     // Group triggers by controller, then let each controller order their own
     // simultaneous triggers before applying APNAP stack placement.
     let mut grouped: std::collections::HashMap<PlayerId, Vec<TriggeredAbilityEntry>> =
         std::collections::HashMap::new();
 
-    for trigger in trigger_queue.take_all() {
-        grouped.entry(trigger.controller).or_default().push(trigger);
+    for trigger in triggers {
+        // CR 800.4d: triggered abilities controlled by a player who left the
+        // game are never put onto the stack.
+        if game
+            .player(trigger.controller)
+            .is_some_and(|player| player.is_in_game())
+        {
+            let decision_player = game
+                .primary_player_for(trigger.controller)
+                .unwrap_or(trigger.controller);
+            grouped.entry(decision_player).or_default().push(trigger);
+        }
     }
 
-    let mut controller_order = players_in_apnap_order(game);
-    // Controllers outside APNAP order (players who have left the game) are appended
-    // in index order — HashMap key order would differ across peers.
-    let mut extra_controllers: Vec<PlayerId> = grouped
-        .keys()
-        .copied()
-        .filter(|controller| !controller_order.contains(controller))
-        .collect();
-    extra_controllers.sort_by_key(|controller| controller.index());
-    controller_order.extend(extra_controllers);
+    let controller_order = players_in_apnap_order(game);
 
     for (controller_index, controller) in controller_order.iter().copied().enumerate() {
         let Some(triggers) = grouped.remove(&controller) else {
             continue;
         };
-        let ordered = order_triggers_for_controller(game, decision_maker, triggers);
+        let ordered = order_triggers_for_controller(game, decision_maker, controller, triggers);
         if decision_maker.awaiting_choice() {
             for trigger in ordered {
-                trigger_queue.add(trigger);
+                trigger_queue.requeue(trigger);
             }
             for remaining_controller in controller_order.iter().copied().skip(controller_index + 1)
             {
                 if let Some(remaining_triggers) = grouped.remove(&remaining_controller) {
                     for trigger in remaining_triggers {
-                        trigger_queue.add(trigger);
+                        trigger_queue.requeue(trigger);
                     }
                 }
             }
-            return Ok(());
+            return true;
         }
         let ordered_for_stacking: Vec<_> = ordered.into_iter().rev().collect();
         for (index, trigger) in ordered_for_stacking.iter().enumerate() {
             if !can_stack_trigger_this_turn(game, &trigger) {
                 continue;
+            }
+
+            let origin_marker = game.grand_melee().map(|state| state.focused_marker());
+            let destination_marker =
+                match grand_melee_trigger_stack_destination(game, decision_maker, trigger) {
+                    TriggerStackDestination::Selected(marker) => marker,
+                    TriggerStackDestination::AwaitingChoice => {
+                        for deferred in ordered_for_stacking.iter().skip(index).rev() {
+                            trigger_queue.requeue(deferred.clone());
+                        }
+                        for remaining_controller in
+                            controller_order.iter().copied().skip(controller_index + 1)
+                        {
+                            if let Some(remaining_triggers) = grouped.remove(&remaining_controller)
+                            {
+                                for trigger in remaining_triggers {
+                                    trigger_queue.requeue(trigger);
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                };
+            if destination_marker != origin_marker {
+                game.select_grand_melee_turn_marker(
+                    destination_marker.expect("Grand Melee destination marker"),
+                )
+                .expect("eligible Grand Melee trigger destination remains active");
             }
             if let Some(entry) = create_triggered_stack_entry_with_targets(
                 game,
@@ -231,19 +497,25 @@ pub fn put_triggers_on_stack_with_dm(
                 trigger_queue,
             ) {
                 if decision_maker.awaiting_choice() {
+                    if destination_marker != origin_marker
+                        && let Some(origin_marker) = origin_marker
+                    {
+                        game.select_grand_melee_turn_marker(origin_marker)
+                            .expect("original Grand Melee trigger lane remains active");
+                    }
                     for deferred in ordered_for_stacking.iter().skip(index).rev() {
-                        trigger_queue.add(deferred.clone());
+                        trigger_queue.requeue(deferred.clone());
                     }
                     for remaining_controller in
                         controller_order.iter().copied().skip(controller_index + 1)
                     {
                         if let Some(remaining_triggers) = grouped.remove(&remaining_controller) {
                             for trigger in remaining_triggers {
-                                trigger_queue.add(trigger);
+                                trigger_queue.requeue(trigger);
                             }
                         }
                     }
-                    return Ok(());
+                    return true;
                 }
                 game.record_trigger_fired(trigger.source, trigger.trigger_identity);
                 let targets = entry.targets.clone();
@@ -260,28 +532,128 @@ pub fn put_triggers_on_stack_with_dm(
                     true,
                     provenance,
                 );
+                if destination_marker != origin_marker
+                    && let Some(origin_marker) = origin_marker
+                {
+                    game.select_grand_melee_turn_marker(origin_marker)
+                        .expect("original Grand Melee trigger lane remains active");
+                }
             } else if decision_maker.awaiting_choice() {
+                if destination_marker != origin_marker
+                    && let Some(origin_marker) = origin_marker
+                {
+                    game.select_grand_melee_turn_marker(origin_marker)
+                        .expect("original Grand Melee trigger lane remains active");
+                }
                 for deferred in ordered_for_stacking.iter().skip(index).rev() {
-                    trigger_queue.add(deferred.clone());
+                    trigger_queue.requeue(deferred.clone());
                 }
                 for remaining_controller in
                     controller_order.iter().copied().skip(controller_index + 1)
                 {
                     if let Some(remaining_triggers) = grouped.remove(&remaining_controller) {
                         for trigger in remaining_triggers {
-                            trigger_queue.add(trigger);
+                            trigger_queue.requeue(trigger);
                         }
                     }
                 }
-                return Ok(());
+                return true;
+            } else if destination_marker != origin_marker
+                && let Some(origin_marker) = origin_marker
+            {
+                game.select_grand_melee_turn_marker(origin_marker)
+                    .expect("original Grand Melee trigger lane remains active");
             }
         }
     }
 
-    Ok(())
+    false
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TriggerStackDestination {
+    Selected(Option<u32>),
+    AwaitingChoice,
+}
+
+/// Apply CR 807.5b before targets are chosen so the selected marker's range
+/// and stack objects define the legal target set. A causal stack object always
+/// binds the trigger to its own lane; otherwise a controller with priority for
+/// multiple marker stacks explicitly chooses one.
+fn grand_melee_trigger_stack_destination(
+    game: &GameState,
+    decision_maker: &mut dyn DecisionMaker,
+    trigger: &TriggeredAbilityEntry,
+) -> TriggerStackDestination {
+    let Some(state) = game.grand_melee() else {
+        return TriggerStackDestination::Selected(None);
+    };
+
+    if let Some(marker) = game.grand_melee_stack_marker_for_cause(
+        trigger.triggering_event.source_object(),
+        trigger.triggering_event.provenance(),
+    ) {
+        return TriggerStackDestination::Selected(Some(marker));
+    }
+
+    let markers = game.grand_melee_priority_markers_for(trigger.controller);
+    match markers.as_slice() {
+        [] => TriggerStackDestination::Selected(Some(state.focused_marker())),
+        [marker] => TriggerStackDestination::Selected(Some(*marker)),
+        _ => {
+            let options = markers
+                .iter()
+                .enumerate()
+                .map(|(index, marker)| {
+                    crate::decisions::context::SelectableOption::new(
+                        index,
+                        format!("Turn marker {marker} stack"),
+                    )
+                })
+                .collect();
+            let context = crate::decisions::context::SelectOptionsContext::new(
+                trigger.controller,
+                Some(trigger.source),
+                format!(
+                    "Choose the Grand Melee stack for {}'s triggered ability",
+                    trigger.source_name
+                ),
+                options,
+                1,
+                1,
+            );
+            let selected = decision_maker
+                .decide_options(game, &context)
+                .first()
+                .copied()
+                .unwrap_or(0);
+            if decision_maker.awaiting_choice() {
+                TriggerStackDestination::AwaitingChoice
+            } else {
+                TriggerStackDestination::Selected(Some(
+                    markers.get(selected).copied().unwrap_or(markers[0]),
+                ))
+            }
+        }
+    }
 }
 
 fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
+    if game.shared_team_turns_enabled() {
+        return game
+            .team_apnap_player_order()
+            .into_iter()
+            .filter_map(|player| {
+                let team = game.team_index_for(player)?;
+                game.primary_player_for_team(team)
+            })
+            .fold(Vec::new(), |mut players, player| {
+                if !players.contains(&player) {
+                    players.push(player);
+                }
+                players
+            });
+    }
     if game.turn_store.turn_order.is_empty() {
         return Vec::new();
     }
@@ -341,13 +713,13 @@ fn uniquify_trigger_labels(labels: &mut [String]) {
 fn order_triggers_for_controller(
     game: &GameState,
     decision_maker: &mut dyn DecisionMaker,
+    decision_player: PlayerId,
     triggers: Vec<TriggeredAbilityEntry>,
 ) -> Vec<TriggeredAbilityEntry> {
     if triggers.len() <= 1 {
         return triggers;
     }
 
-    let controller = triggers[0].controller;
     let description = "Order triggered abilities. The leftmost item becomes the top of your stack.";
     let mut labels: Vec<String> = triggers.iter().map(describe_trigger_for_ordering).collect();
     uniquify_trigger_labels(&mut labels);
@@ -365,7 +737,7 @@ fn order_triggers_for_controller(
     let ctx = crate::decisions::context::enrich_display_hints(
         game,
         crate::decisions::context::DecisionContext::Order(
-            crate::decisions::context::OrderContext::new(controller, None, description, items),
+            crate::decisions::context::OrderContext::new(decision_player, None, description, items),
         ),
     )
     .into_order();
@@ -533,21 +905,21 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
-) {
+) -> Result<(), GameLoopError> {
+    let mut mandatory_loop = super::mandatory_loop::MandatoryLoopTracker::default();
     loop {
         let mut pending = trigger_queue.take_all();
         if pending.is_empty() {
             break;
         }
 
-        let active_player = game.turn.active_player;
         let mut active_mana_triggers = Vec::new();
         let mut other_mana_triggers = Vec::new();
         let mut remaining_triggers = Vec::new();
 
         for trigger in pending.drain(..) {
             if is_triggered_mana_ability(game, &trigger) {
-                if trigger.controller == active_player {
+                if game.is_active_player(trigger.controller) {
                     active_mana_triggers.push(trigger);
                 } else {
                     other_mana_triggers.push(trigger);
@@ -576,6 +948,11 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
                 decision_maker,
                 trigger_queue,
             ) {
+                let resolved =
+                    super::mandatory_loop::MandatoryProcedureObservation::from_stack_entry(
+                        game, &entry,
+                    );
+                let queued_before_resolution = trigger_queue.entries.len();
                 game.record_trigger_fired(trigger.source, trigger.trigger_identity);
                 resolve_triggered_stack_entry_immediately(
                     game,
@@ -583,6 +960,20 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
                     decision_maker,
                     entry,
                 );
+                let queued = trigger_queue
+                    .entries
+                    .iter()
+                    .skip(queued_before_resolution)
+                    .map(|entry| {
+                        super::mandatory_loop::MandatoryProcedureObservation::from_trigger_entry(
+                            game, entry,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                if let Some(controllers) = mandatory_loop.observe_resolution(resolved, queued) {
+                    game.mark_mandatory_loop_draw_for(controllers);
+                    return Err(GameLoopError::MandatoryLoopDraw);
+                }
             }
         }
 
@@ -591,6 +982,8 @@ pub(super) fn resolve_triggered_mana_abilities_with_dm(
         remaining_triggers.extend(trigger_queue.take_all());
         trigger_queue.entries.extend(remaining_triggers);
     }
+
+    Ok(())
 }
 
 pub(super) fn can_stack_trigger_this_turn(
@@ -601,20 +994,15 @@ pub(super) fn can_stack_trigger_this_turn(
         return true;
     };
 
-    match condition {
-        crate::ConditionExpr::FirstTimeThisTurn
-        | crate::ConditionExpr::MaxTimesEachTurn(_)
-        | crate::ConditionExpr::DoThisMaxTimesEachTurn(_) => verify_intervening_if(
-            game,
-            condition,
-            trigger.controller,
-            &trigger.triggering_event,
-            trigger.source,
-            Some(trigger.trigger_identity),
-            None,
-        ),
-        _ => true,
-    }
+    verify_intervening_if(
+        game,
+        condition,
+        trigger.controller,
+        &trigger.triggering_event,
+        trigger.source,
+        Some(trigger.trigger_identity),
+        None,
+    )
 }
 
 fn resolve_trigger_modal_count(
@@ -872,6 +1260,7 @@ fn target_requirements_from_explicit_choices(
 
             TargetRequirement {
                 spec: resolved_target_spec,
+                chooser: None,
                 legal_targets,
                 legal_target_sets,
                 description: format!("target for {}", trigger.source_name),
@@ -947,6 +1336,8 @@ fn refresh_trigger_program_target_requirements(
                 attacking_player,
                 &view,
             );
+        requirement.legal_target_sets =
+            crate::targeting::legal_target_sets_for_spec(game, &spec, &requirement.legal_targets);
         requirement.spec = spec;
     }
 }
@@ -976,26 +1367,83 @@ fn add_triggering_object_tag(
     }
 }
 
-fn choose_trigger_targets(
+fn resolve_trigger_target_chooser(
     game: &GameState,
     trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
+    chooser: Option<&crate::target::PlayerFilter>,
+) -> Option<PlayerId> {
+    let Some(chooser) = chooser else {
+        return Some(trigger.controller);
+    };
+
+    let mut filter_ctx = game
+        .filter_context_for(trigger.controller, Some(trigger.source))
+        .with_active_player(game.turn.active_player)
+        .with_tagged_objects(&entry.tagged_objects);
+    filter_ctx.defending_player = entry.defending_player;
+    filter_ctx.chosen_player = entry.chosen_player;
+    filter_ctx.attacking_player = entry
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.object_id())
+        .and_then(|object_id| game.object(object_id))
+        .map(|object| game.controller_of(object));
+
+    let matches = game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game())
+        .filter_map(|player| {
+            crate::filter::player_filter_matches_game(chooser, player.id, game, &filter_ctx)
+                .then_some(player.id)
+        })
+        .collect::<Vec<_>>();
+    if let [resolved] = matches.as_slice() {
+        return Some(*resolved);
+    }
+    if matches.is_empty() && game.limited_range_of_influence().is_some() {
+        filter_ctx.players_in_range = None;
+        return game.closest_in_game_player_to_left_matching(trigger.controller, |candidate| {
+            crate::filter::player_filter_matches_game(chooser, candidate, game, &filter_ctx)
+        });
+    }
+    None
+}
+
+fn choose_trigger_targets_with_one_chooser(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    chooser: PlayerId,
     requirements: &[TargetRequirement],
     decision_maker: &mut dyn DecisionMaker,
 ) -> Option<(Vec<Target>, Vec<crate::game_state::TargetAssignment>)> {
-    if requirements.is_empty() {
-        return Some((Vec::new(), Vec::new()));
+    let mut requirement_contexts = trigger_target_requirement_contexts(requirements);
+    if !game.source_snapshot_is_exempt_from_range(
+        Some(trigger.source),
+        trigger.source_snapshot.as_ref(),
+    ) {
+        for requirement in &mut requirement_contexts {
+            requirement.legal_targets.retain(|target| match target {
+                Target::Player(player) => game.player_is_within_range(chooser, *player),
+                Target::Object(object) => {
+                    game.object_is_within_range(chooser, *object, Some(trigger.source))
+                }
+            });
+            requirement.legal_target_sets.retain(|set| {
+                set.iter()
+                    .all(|target| requirement.legal_targets.contains(target))
+            });
+        }
     }
-
-    if requirements
+    if requirement_contexts
         .iter()
         .any(|requirement| requirement.legal_targets.len() < requirement.min_targets)
     {
         return None;
     }
-
-    let requirement_contexts = trigger_target_requirement_contexts(requirements);
     let ctx = crate::decisions::context::TargetsContext::new(
-        trigger.controller,
+        chooser,
         trigger.source,
         format!("{}'s triggered ability", trigger.source_name),
         requirement_contexts.clone(),
@@ -1020,6 +1468,114 @@ fn choose_trigger_targets(
             range,
         })
         .collect();
+
+    Some((selected_targets, assignments))
+}
+
+fn choose_trigger_targets(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
+    requirements: &[TargetRequirement],
+    decision_maker: &mut dyn DecisionMaker,
+) -> Option<(Vec<Target>, Vec<crate::game_state::TargetAssignment>)> {
+    if requirements.is_empty() {
+        return Some((Vec::new(), Vec::new()));
+    }
+
+    if requirements
+        .iter()
+        .any(|requirement| requirement.legal_targets.len() < requirement.min_targets)
+    {
+        return None;
+    }
+
+    let choosers = requirements
+        .iter()
+        .map(|requirement| {
+            resolve_trigger_target_chooser(game, trigger, entry, requirement.chooser.as_ref())
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let first_chooser = *choosers.first()?;
+    if choosers.iter().all(|chooser| *chooser == first_chooser) {
+        return choose_trigger_targets_with_one_chooser(
+            game,
+            trigger,
+            first_chooser,
+            requirements,
+            decision_maker,
+        );
+    }
+
+    // Multiple players can be assigned distinct target decisions within one
+    // trigger. Prompt each requirement's chooser in authored order, retaining
+    // the existing distinct-player constraint across those prompts.
+    let mut selected_targets = Vec::new();
+    let mut assignments = Vec::with_capacity(requirements.len());
+    let mut selected_distinct_players = std::collections::HashMap::<usize, Vec<PlayerId>>::new();
+    for (requirement, chooser) in requirements.iter().zip(choosers) {
+        let mut requirement_ctx =
+            trigger_target_requirement_contexts(std::slice::from_ref(requirement));
+        let context = requirement_ctx.first_mut()?;
+        if !game.source_snapshot_is_exempt_from_range(
+            Some(trigger.source),
+            trigger.source_snapshot.as_ref(),
+        ) {
+            context.legal_targets.retain(|target| match target {
+                Target::Player(player) => game.player_is_within_range(chooser, *player),
+                Target::Object(object) => {
+                    game.object_is_within_range(chooser, *object, Some(trigger.source))
+                }
+            });
+            context.legal_target_sets.retain(|set| {
+                set.iter()
+                    .all(|target| context.legal_targets.contains(target))
+            });
+        }
+        if context.legal_targets.len() < context.min_targets {
+            return None;
+        }
+        if let Some(group) = requirement.distinct_player_group
+            && let Some(already_selected) = selected_distinct_players.get(&group)
+        {
+            context.legal_targets.retain(|target| {
+                !matches!(target, Target::Player(player) if already_selected.contains(player))
+            });
+            context.legal_target_sets.retain(|set| {
+                set.iter().all(|target| {
+                    !matches!(target, Target::Player(player) if already_selected.contains(player))
+                })
+            });
+        }
+
+        let ctx = crate::decisions::context::TargetsContext::new(
+            chooser,
+            trigger.source,
+            format!("{}'s triggered ability", trigger.source_name),
+            requirement_ctx.clone(),
+        );
+        let proposed = decision_maker.decide_targets(game, &ctx);
+        if decision_maker.awaiting_choice() {
+            return None;
+        }
+        let chosen =
+            crate::targeting::normalize_targets_for_requirements(&requirement_ctx, proposed)?;
+        let start = selected_targets.len();
+        if let Some(group) = requirement.distinct_player_group {
+            selected_distinct_players
+                .entry(group)
+                .or_default()
+                .extend(chosen.iter().filter_map(|target| match target {
+                    Target::Player(player) => Some(*player),
+                    Target::Object(_) => None,
+                }));
+        }
+        selected_targets.extend(chosen);
+        assignments.push(crate::game_state::TargetAssignment {
+            spec: requirement.spec.clone(),
+            range: start..selected_targets.len(),
+        });
+    }
 
     Some((selected_targets, assignments))
 }
@@ -1082,7 +1638,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
     };
 
     let (chosen_targets, target_assignments) =
-        choose_trigger_targets(game, trigger, &requirements, decision_maker)?;
+        choose_trigger_targets(game, trigger, &entry, &requirements, decision_maker)?;
     if decision_maker.awaiting_choice() {
         return None;
     }
@@ -1214,6 +1770,11 @@ pub(super) fn triggered_to_stack_entry_with_effects(
                     entry = entry.with_defending_player(game.controller_of(planeswalker));
                 }
             }
+            AttackEventTarget::Battle(battle_id) => {
+                if let Some(protector) = game.battle_protector(battle_id) {
+                    entry = entry.with_defending_player(protector);
+                }
+            }
         }
     }
     if trigger.triggering_event.kind() == EventKind::CreatureAttackedAndUnblocked
@@ -1228,6 +1789,11 @@ pub(super) fn triggered_to_stack_entry_with_effects(
             AttackEventTarget::Planeswalker(planeswalker_id) => {
                 if let Some(planeswalker) = game.object(planeswalker_id) {
                     entry = entry.with_defending_player(game.controller_of(planeswalker));
+                }
+            }
+            AttackEventTarget::Battle(battle_id) => {
+                if let Some(protector) = game.battle_protector(battle_id) {
+                    entry = entry.with_defending_player(protector);
                 }
             }
         }
@@ -1247,6 +1813,11 @@ pub(super) fn triggered_to_stack_entry_with_effects(
                     entry = entry.with_defending_player(game.controller_of(planeswalker));
                 }
             }
+            AttackEventTarget::Battle(battle_id) => {
+                if let Some(protector) = game.battle_protector(battle_id) {
+                    entry = entry.with_defending_player(protector);
+                }
+            }
         }
     }
     if trigger.triggering_event.kind() == EventKind::Damage
@@ -1261,6 +1832,9 @@ pub(super) fn triggered_to_stack_entry_with_effects(
 
     if trigger.ability.trigger.saga_chapters().is_some() {
         entry = entry.with_chapter_ability_source(trigger.source);
+    }
+    if crate::triggers::check::is_intrinsic_siege_defeat_trigger(trigger) {
+        entry = entry.with_battle_defeat_source(trigger.source);
     }
 
     entry
@@ -1280,6 +1854,7 @@ fn combat_damage_defending_player(
                 AttackTarget::Planeswalker(planeswalker) => game
                     .object(*planeswalker)
                     .map(|object| game.controller_of(object)),
+                AttackTarget::Battle(battle) => game.battle_protector(*battle),
             }
         }
     }
@@ -1342,6 +1917,88 @@ mod tests {
             );
             vec![Target::Object(self.target)]
         }
+    }
+
+    #[derive(Default)]
+    struct PausingSectorDecisionMaker {
+        response: Option<usize>,
+        awaiting: bool,
+        prompted_player: Option<PlayerId>,
+    }
+
+    impl PausingSectorDecisionMaker {
+        fn respond(&mut self, option: usize) {
+            self.response = Some(option);
+            self.awaiting = false;
+        }
+    }
+
+    impl DecisionMaker for PausingSectorDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if let Some(response) = self.response.take() {
+                return vec![response];
+            }
+            self.prompted_player = Some(ctx.player);
+            self.awaiting = true;
+            Vec::new()
+        }
+
+        fn awaiting_choice(&self) -> bool {
+            self.awaiting
+        }
+    }
+
+    #[test]
+    fn u036_priority_driver_resumes_sector_batch_without_partial_commit() {
+        use crate::ability::Ability;
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::cards::CardDefinitionBuilder;
+        use crate::ids::CardId;
+        use crate::marker::SectorDesignation::{Beta, Gamma};
+        use crate::static_abilities::StaticAbility;
+        use crate::types::CardType;
+        use crate::zone::Zone;
+
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let sculptor = CardDefinitionBuilder::new(CardId::new(), "Space Sculptor")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::static_ability(StaticAbility::space_sculptor()))
+            .build();
+        game.create_object_from_definition(&sculptor, alice, Zone::Battlefield);
+        let creature = |name: &str| {
+            CardBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build()
+        };
+        let alice_creature =
+            game.create_object_from_card(&creature("Alice Creature"), alice, Zone::Battlefield);
+        let bob_creature =
+            game.create_object_from_card(&creature("Bob Creature"), bob, Zone::Battlefield);
+        let mut queue = TriggerQueue::new();
+        let mut dm = PausingSectorDecisionMaker::default();
+
+        check_and_apply_sbas_with(&mut game, &mut queue, &mut dm).expect("first prompt");
+        assert_eq!(dm.prompted_player, Some(bob));
+        assert_eq!(game.sector_designation(alice_creature), None);
+        assert_eq!(game.sector_designation(bob_creature), None);
+
+        dm.respond(1);
+        check_and_apply_sbas_with(&mut game, &mut queue, &mut dm).expect("second prompt");
+        assert_eq!(dm.prompted_player, Some(alice));
+        assert_eq!(game.sector_designation(alice_creature), None);
+        assert_eq!(game.sector_designation(bob_creature), None);
+
+        dm.respond(2);
+        check_and_apply_sbas_with(&mut game, &mut queue, &mut dm).expect("atomic commit");
+        assert_eq!(game.sector_designation(bob_creature), Some(Beta));
+        assert_eq!(game.sector_designation(alice_creature), Some(Gamma));
     }
 
     struct PendingLegendChoiceDm {
@@ -1567,6 +2224,227 @@ mod tests {
         assert_eq!(
             game.object(exiled_id).map(|object| object.zone),
             Some(Zone::Exile)
+        );
+    }
+
+    #[test]
+    fn multiplayer_800_4d_discards_queued_trigger_controlled_by_player_who_left() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let watcher = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_104),
+            "Departed Trigger Controller",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::player_loses_game(crate::target::PlayerFilter::Opponent),
+            vec![Effect::gain_life(1)],
+        ))
+        .build();
+        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+        assert!(game.mark_player_lost(bob));
+        let event = game
+            .take_pending_trigger_events()
+            .into_iter()
+            .find(|event| event.kind() == crate::events::EventKind::PlayerLosesGame)
+            .expect("Bob's loss should produce an event");
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &event) {
+            trigger_queue.add(trigger);
+        }
+        assert_eq!(trigger_queue.entries.len(), 1);
+        assert!(game.leave_game(alice));
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+
+        put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+            .expect("discarding an ineligible trigger should succeed");
+
+        assert!(trigger_queue.is_empty());
+        assert!(game.stack.is_empty());
+    }
+
+    #[test]
+    fn ability_triggered_event_uses_second_stacking_pass_without_self_recursion() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let ordinary = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_113),
+            "Ordinary Upkeep Trigger",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
+            vec![Effect::gain_life(1)],
+        ))
+        .build();
+        game.create_object_from_definition(&ordinary, alice, Zone::Battlefield);
+
+        let watcher = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_114),
+            "Ability Trigger Watcher",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::another_ability_triggers(),
+            vec![Effect::gain_life(2)],
+        ))
+        .build();
+        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &event) {
+            trigger_queue.add(trigger);
+        }
+        assert_eq!(trigger_queue.entries.len(), 1);
+
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("both stacking passes should complete");
+
+        let names = game
+            .stack
+            .iter()
+            .map(|entry| entry.source_name.as_deref().unwrap_or("?"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["Ordinary Upkeep Trigger", "Ability Trigger Watcher"],
+            "ordinary triggers stack in the first pass and trigger-on-trigger abilities in the second"
+        );
+        assert!(trigger_queue.is_empty());
+        assert!(
+            !trigger_queue.has_ability_triggered_events(),
+            "the watcher's own trigger must not recursively trigger itself"
+        );
+    }
+
+    #[test]
+    fn ability_triggered_second_pass_follows_complete_first_pass_apnap_order() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+
+        for (card_id, name, controller) in [
+            (91_115, "Alice Ordinary", alice),
+            (91_116, "Bob Ordinary", bob),
+        ] {
+            let ordinary = crate::cards::CardDefinitionBuilder::new(
+                crate::ids::CardId::from_raw(card_id),
+                name,
+            )
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(crate::ability::Ability::triggered(
+                crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::Any),
+                vec![Effect::gain_life(1)],
+            ))
+            .build();
+            game.create_object_from_definition(&ordinary, controller, Zone::Battlefield);
+        }
+
+        let watcher = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_117),
+            "Alice Ability Watcher",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::another_ability_triggers(),
+            vec![Effect::gain_life(2)],
+        ))
+        .build();
+        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &event) {
+            trigger_queue.add(trigger);
+        }
+
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("two-pass APNAP stacking should complete");
+
+        let names = game
+            .stack
+            .iter()
+            .map(|entry| entry.source_name.as_deref().unwrap_or("?"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "Alice Ordinary",
+                "Bob Ordinary",
+                "Alice Ability Watcher",
+                "Alice Ability Watcher",
+            ],
+            "both controllers' ordinary triggers must stack before the active player's trigger-on-trigger entries"
+        );
+    }
+
+    #[test]
+    fn ability_triggered_events_respect_trigger_frequency_before_second_pass() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let mut limited_ability = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::beginning_of_upkeep(crate::target::PlayerFilter::You),
+            vec![Effect::gain_life(1)],
+        );
+        let crate::ability::AbilityKind::Triggered(triggered) = &mut limited_ability.kind else {
+            unreachable!();
+        };
+        triggered.intervening_if = Some(crate::ConditionExpr::MaxTimesEachTurn(1));
+
+        let ordinary = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_118),
+            "Limited Ordinary Trigger",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(limited_ability)
+        .build();
+        game.create_object_from_definition(&ordinary, alice, Zone::Battlefield);
+
+        let watcher = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_119),
+            "Limited Ability Watcher",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::another_ability_triggers(),
+            vec![Effect::gain_life(2)],
+        ))
+        .build();
+        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let mut trigger_queue = TriggerQueue::new();
+        for _ in 0..2 {
+            for trigger in crate::triggers::check_triggers(&game, &event) {
+                trigger_queue.add(trigger);
+            }
+        }
+
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("frequency-limited two-pass stacking should complete");
+        let names = game
+            .stack
+            .iter()
+            .map(|entry| entry.source_name.as_deref().unwrap_or("?"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec!["Limited Ordinary Trigger", "Limited Ability Watcher"],
+            "a suppressed extra occurrence must not emit a spurious AbilityTriggered event"
         );
     }
 }

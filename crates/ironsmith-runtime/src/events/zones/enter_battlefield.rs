@@ -45,6 +45,8 @@ pub struct EnterBattlefieldEvent {
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// If set, the object enters under this player's control.
     pub controller_override: Option<PlayerId>,
+    /// As-entry choices already collected against this provisional object.
+    pub(crate) prepared_choices: Option<crate::game_state::PreparedEtbChoices>,
 }
 
 impl EnterBattlefieldEvent {
@@ -65,6 +67,7 @@ impl EnterBattlefieldEvent {
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
             controller_override: None,
+            prepared_choices: None,
         }
     }
 
@@ -85,6 +88,7 @@ impl EnterBattlefieldEvent {
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
             controller_override: None,
+            prepared_choices: None,
         }
     }
 
@@ -217,6 +221,120 @@ impl EnterBattlefieldEvent {
             controller_override: Some(controller),
             ..self.clone()
         }
+    }
+
+    /// Build the battlefield state used to decide whether another replacement
+    /// or "can't" effect applies to this evolving entry proposal.
+    ///
+    /// CR 614.12 and 614.17d require this view to include higher-priority copy
+    /// and control changes, earlier entry modifications, the entrant's own
+    /// battlefield static effects, and continuous effects already present.
+    /// The returned state is isolated from the live game and never commits the
+    /// zone change.
+    pub(crate) fn prospective_game_state(&self, game: &GameState) -> Option<GameState> {
+        let mut prospective = game.clone();
+        let source_object = self
+            .enters_as_copy_of
+            .and_then(|source| game.object(source).cloned());
+        let copiable_values = self.enters_as_copy_of.and_then(|source| {
+            let effects = game.all_continuous_effects();
+            crate::continuous::copiable_values_with_effects(
+                source,
+                game.objects_map(),
+                &effects,
+                &game.battlefield,
+                game.commander_objects(),
+                game,
+            )
+        });
+
+        {
+            let object = prospective.object_mut(self.object)?;
+            object.zone = Zone::Battlefield;
+            object.attached_to = None;
+            object.attachments.clear();
+            object.counters.clear();
+
+            if let Some(source) = source_object.as_ref() {
+                object.copy_copiable_values_from(source);
+            }
+            if let Some(values) = copiable_values {
+                object.copy_copiable_values_from_values(&values);
+            }
+            if let Some(name) = &self.copy_name_override {
+                object.name = name.clone().into();
+            }
+            for card_type in &self.added_card_types {
+                if !object.card_types.contains(card_type) {
+                    object.card_types.push(*card_type);
+                }
+            }
+            object
+                .supertypes
+                .retain(|supertype| !self.removed_supertypes.contains(supertype));
+            for subtype in &self.added_subtypes {
+                if !object.subtypes.contains(subtype) {
+                    object.subtypes.push(*subtype);
+                }
+            }
+            for ability in &self.added_abilities {
+                if !object.abilities.contains(ability) {
+                    object.abilities_mut().push(ability.clone());
+                }
+            }
+            if let Some((power, toughness)) = self.set_base_power_toughness {
+                object.base_power = Some(crate::card::PtValue::Fixed(power));
+                object.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+            }
+            for (counter_type, count) in &self.enters_with_counters {
+                if *count > 0 {
+                    object.counters.insert(*counter_type, *count);
+                }
+            }
+        }
+
+        if !prospective.battlefield.contains(&self.object) {
+            prospective.battlefield.push(self.object);
+        }
+        if let Some(controller) = self.controller_override {
+            prospective.set_current_controller(self.object, controller);
+        }
+        if let Some(choices) = &self.prepared_choices {
+            if let Some(color) = choices.chosen_color {
+                prospective.set_chosen_color(self.object, color);
+            }
+            if let Some(subtype) = choices.chosen_basic_land_type {
+                prospective.set_chosen_basic_land_type(self.object, subtype);
+            }
+            if let Some(subtype) = choices.chosen_land_type {
+                prospective.set_chosen_land_type(self.object, subtype);
+            }
+            if let Some(subtype) = choices.chosen_creature_type {
+                prospective.set_chosen_creature_type(self.object, subtype);
+            }
+            if let Some(card_type) = choices.chosen_card_type {
+                prospective.set_chosen_card_type(self.object, card_type);
+            }
+            if let Some(player) = choices.chosen_player {
+                prospective.set_chosen_player(self.object, player);
+            }
+            if let Some(option) = &choices.chosen_named_option {
+                prospective.set_chosen_named_option(self.object, option.clone());
+            }
+            for (power, toughness, granted_abilities) in &choices.power_toughness_choices {
+                if let Some(object) = prospective.object_mut(self.object) {
+                    object.base_power = Some(crate::card::PtValue::Fixed(*power));
+                    object.base_toughness = Some(crate::card::PtValue::Fixed(*toughness));
+                    for granted in granted_abilities {
+                        let ability = Ability::static_ability(granted.clone());
+                        if !object.abilities.contains(&ability) {
+                            object.abilities_mut().push(ability);
+                        }
+                    }
+                }
+            }
+        }
+        Some(prospective)
     }
 
     /// Get the total count of a specific counter type.

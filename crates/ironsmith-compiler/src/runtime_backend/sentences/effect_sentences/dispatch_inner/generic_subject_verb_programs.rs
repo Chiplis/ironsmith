@@ -6,7 +6,10 @@ enum GenericPermissionVerb {
 fn parse_source_exiled_owner_library_bottom_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
-    let shape = effect_grammar::control_copy_attach_shapes::parse_source_exiled_owner_library_bottom_shape(tokens)?;
+    let shape =
+        effect_grammar::control_copy_attach_shapes::parse_source_exiled_owner_library_bottom_shape(
+            tokens,
+        )?;
     let source_words = crate::runtime_backend::token_word_refs(shape.source_tokens);
     let source_surface =
         crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
@@ -31,11 +34,14 @@ fn parse_source_exiled_owner_library_bottom_subject_verb(
             false,
             None,
         )
-        .with_exiled_with_source_surface(Some(ironsmith_core::ExiledWithSourceMoveSurface {
-            subject: ironsmith_core::ExiledWithSourceSubjectSurface::OwnerOfEachCard,
-            source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(source_surface),
-            destination: ironsmith_core::ExiledWithSourceDestinationSurface::TheirOwner,
-        })),
+        .with_exiled_with_source_surface(Some(
+            ironsmith_core::ExiledWithSourceMoveSurface {
+                verb: ironsmith_core::ExiledWithSourceMoveVerbSurface::Put,
+                subject: ironsmith_core::ExiledWithSourceSubjectSurface::OwnerOfEachCard,
+                source: ironsmith_core::ExiledWithSourceReferenceSurface::Source(source_surface),
+                destination: ironsmith_core::ExiledWithSourceDestinationSurface::TheirOwner,
+            },
+        )),
     )
 }
 
@@ -1111,6 +1117,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
             effects,
         )));
     }
+    if let Some(effects) = parse_cant_blocked_then_base_pt_subject_verb(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Cant subject=target recognizer=cant-blocked-base-pt",
+            effects,
+        )));
+    }
     if let Some(effects) = parse_source_gets_filter_gains_subject_verb(tokens)? {
         return Ok(Some((
             "subject-verb verb=Get subject=source recognizer=source-pump-filter-gain",
@@ -1354,6 +1366,40 @@ fn parse_target_gets_unblockable_subject_verb(
             crate::effect::Restriction::be_blocked(blocked_filter),
             Until::EndOfTurn,
             None,
+        ),
+    ]))
+}
+
+fn parse_cant_blocked_then_base_pt_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = effect_grammar::parse_cant_blocked_base_power_toughness_tokens(tokens) else {
+        return Ok(None);
+    };
+    let target = parse_target_phrase(shape.subject_tokens)?;
+    let Some(mut blocked_filter) = target_ast_to_object_filter(target.clone()) else {
+        return Ok(None);
+    };
+    if !blocked_filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == IT_TAG)
+    {
+        blocked_filter = blocked_filter
+            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    }
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::be_blocked(blocked_filter),
+            Until::EndOfTurn,
+            None,
+        ),
+        EffectAst::subject_verb_set_base_power_toughness(
+            shape.power,
+            shape.toughness,
+            target,
+            Until::EndOfTurn,
         ),
     ]))
 }
@@ -1826,10 +1872,7 @@ fn parse_generic_consult_reveal_until_subject_verb(
     if !matches!(
         parts.effects.last(),
         Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary {
-                mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
-                ..
-            },
+            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
             ..
         }))
     ) {
@@ -3107,8 +3150,14 @@ mod generic_subject_verb_program_tests {
 
         assert!(debug.contains("LookAtTopCards"), "{debug}");
         assert!(debug.contains("ChooseObjects"), "{debug}");
-        assert!(debug.contains("PutTaggedRemainderOnBottomOfLibrary"), "{debug}");
-        assert!(debug.matches("player: TargetOpponent").count() >= 2, "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+        assert!(
+            debug.matches("player: TargetOpponent").count() >= 2,
+            "{debug}"
+        );
     }
 
     #[test]
@@ -3128,6 +3177,30 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("MoveToZone"), "{debug}");
         assert!(debug.contains("Hand"), "{debug}");
         assert!(debug.contains("revealed"), "{debug}");
+    }
+
+    #[test]
+    fn undying_flames_exile_until_uses_typed_consult_traversal() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Exile cards from the top of your library until you exile a nonland card.",
+            0,
+        )
+        .expect("Undying Flames consult text should lex");
+        let effects = parse_generic_consult_reveal_until_subject_verb(&tokens)
+            .expect("Undying Flames consult parser should not error")
+            .expect("Undying Flames consult parser should match");
+
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ConsultTopOfLibrary {
+                    mode: crate::cards::builders::LibraryConsultModeAst::Exile,
+                    filter,
+                    ..
+                },
+                ..
+            })] if filter.excluded_card_types.contains(&crate::types::CardType::Land)
+        ));
     }
 
     #[test]

@@ -1811,6 +1811,26 @@ fn evaluate_turn_history_condition(
         TurnHistoryCondition::SourceAttackedThisTurn { .. } => {
             game.creature_attacked_this_turn(ctx.source)
         }
+        TurnHistoryCondition::TriggeringObjectEnlistedThisCombat => {
+            let triggering_stable_id = triggering_snapshot().map(|snapshot| snapshot.stable_id);
+            triggering_stable_id.is_some_and(|stable_id| {
+                game.turn_store
+                    .turn_history
+                    .projected_records()
+                    .filter_map(|record| {
+                        record.event.downcast::<crate::events::KeywordActionEvent>()
+                    })
+                    .any(|event| {
+                        event.action == crate::events::KeywordActionKind::Enlist
+                            && event.combat_phase
+                                == Some(game.turn_store.combat_phases_started_this_turn)
+                            && event
+                                .snapshot
+                                .as_ref()
+                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                    })
+            })
+        }
         TurnHistoryCondition::TriggeringObjectWasCast => {
             triggering_snapshot().is_some_and(|snapshot| {
                 game.turn_store
@@ -1874,36 +1894,36 @@ fn evaluate_turn_history_condition(
             else {
                 return false;
             };
-            game.turn_store
-                .previous_turn_history
-                .projected_records()
-                .any(|record| {
-                    record
-                        .event
-                        .downcast::<crate::events::combat::CreatureAttackedEvent>()
-                        .is_some_and(|attack| {
-                            matches!(
-                                attack.target,
-                                crate::triggers::AttackEventTarget::Player(player)
-                                    if player == ctx.controller
-                            ) && record
-                                .object_snapshot
-                                .as_ref()
-                                .is_some_and(|snapshot| snapshot.controller == triggering_player)
-                        })
-                })
+            let Some(history) = game.last_turn_history_for_player(triggering_player) else {
+                return false;
+            };
+            history.projected_records().any(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                    .is_some_and(|attack| {
+                        matches!(
+                            attack.target,
+                            crate::triggers::AttackEventTarget::Player(player)
+                                if player == ctx.controller
+                        ) && record
+                            .object_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.controller == triggering_player)
+                    })
+            })
         }
         TurnHistoryCondition::PlayerLostLifeLastTurn(player) => {
             let players = matching_players(player);
-            game.turn_store
-                .previous_turn_history
-                .total_life_lost_for_players(&players)
-                > 0
+            players.iter().any(|player| {
+                game.last_turn_history_for_player(*player)
+                    .is_some_and(|history| history.total_life_lost_for_players(&[*player]) > 0)
+            })
         }
         TurnHistoryCondition::TriggeringPlayersTurn { .. } => ctx
             .triggering_event
             .and_then(|event| event.trigger_player().or_else(|| event.player()))
-            .is_some_and(|player| player == game.turn.active_player),
+            .is_some_and(|player| game.is_active_player(player)),
         TurnHistoryCondition::ControllerTeamGainedLifeThisTurn => {
             let mut team = vec![ctx.controller];
             team.extend(
@@ -2070,9 +2090,16 @@ fn evaluate_condition_shared_core(
             filter,
             ctx.filter_source,
         )),
-        Condition::YourTurn => Some(game.turn.active_player == ctx.controller),
+        Condition::YourTurn => Some(game.is_active_player(ctx.controller)),
+        Condition::SourceControllersMainPhase => Some(
+            game.is_active_player(ctx.controller)
+                && matches!(
+                    game.turn.phase,
+                    crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
+                ),
+        ),
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
-            Some(game.turn.active_player == ctx.controller && game.turn.turn_number <= *count)
+            Some(game.is_active_player(ctx.controller) && game.turn.turn_number <= *count)
         }
         Condition::CreatureDiedThisTurn => Some(
             game.turn_store
@@ -2183,6 +2210,7 @@ fn evaluate_condition_shared_core(
             game.turn.phase == crate::game_state::Phase::Combat
                 && game.turn_store.combat_phases_started_this_turn == 1,
         ),
+        Condition::SourceIsRenowned => Some(game.is_renowned(ctx.source)),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Some(game.turn_store.spells_cast_last_turn_total >= *count)
         }
@@ -2389,6 +2417,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CardsInHandOrMore(..) => {}
         Condition::YouHaveCardInHandMatching(..) => {}
         Condition::YourTurn => {}
+        Condition::SourceControllersMainPhase => {}
         Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
         Condition::CreatureDiedThisTurn => {}
         Condition::CreatureDiedThisTurnOrMore(..) => {}
@@ -2436,6 +2465,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceCrewedByExactly { .. } => {}
         Condition::SourceDevouredCreaturesOrMore(..) => {}
         Condition::SourceIsMonstrous => {}
+        Condition::SourceIsRenowned => {}
         Condition::SourceIsFaceDown => {}
         Condition::SourceMatches(..) => {}
         Condition::AttachedToSourceMatches(..) => {}
@@ -2526,6 +2556,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
         Condition::PlayerHasPoisonCountersOrMore { .. } => {}
+        Condition::PlayerHasCountersOrMore { .. } => {}
         Condition::PlayerIsMonarch { .. } => {}
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
@@ -2860,6 +2891,16 @@ pub fn evaluate_condition_external(
                 .into_iter()
                 .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
         }
+        Condition::PlayerHasCountersOrMore {
+            player,
+            counter_type,
+            count,
+        } => matching_condition_players_external(game, ctx, player)
+            .into_iter()
+            .any(|player_id| {
+                game.player(player_id)
+                    .is_some_and(|player| player.counter_count(*counter_type) >= *count)
+            }),
         Condition::PlayerIsMonarch { player } => {
             matching_condition_players_external(game, ctx, player)
                 .into_iter()
@@ -3185,7 +3226,7 @@ pub fn evaluate_condition_external(
                     matches!(game.turn.phase, crate::game_state::Phase::Combat)
                 }
                 crate::ability::ActivationTiming::SorcerySpeed => {
-                    game.turn.active_player == ctx.controller
+                    game.is_active_player(ctx.controller)
                         && matches!(
                             game.turn.phase,
                             crate::game_state::Phase::FirstMain
@@ -3200,14 +3241,14 @@ pub fn evaluate_condition_external(
                     game.ability_activation_count_this_turn(ctx.source, ability_index) == 0
                 }
                 crate::ability::ActivationTiming::DuringYourTurn => {
-                    game.turn.active_player == ctx.controller
+                    game.is_active_player(ctx.controller)
                 }
                 crate::ability::ActivationTiming::DuringOpponentsTurn => {
-                    game.turn.active_player != ctx.controller
+                    !game.is_active_player(ctx.controller)
                 }
                 crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                     game.object(ctx.source)
-                        .is_some_and(|object| object.owner == game.turn.active_player)
+                        .is_some_and(|object| game.is_active_player(object.owner))
                         && game.turn.phase == crate::game_state::Phase::Beginning
                         && game.turn.step == Some(crate::game_state::Step::Upkeep)
                 }
@@ -3439,6 +3480,8 @@ pub fn evaluate_condition_external(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::SourceControllersMainPhase
+        | Condition::SourceIsRenowned
         | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
@@ -4092,6 +4135,16 @@ fn evaluate_condition_simple(
                 .into_iter()
                 .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
         }
+        Condition::PlayerHasCountersOrMore {
+            player,
+            counter_type,
+            count,
+        } => matching_condition_players_simple(game, controller, player)
+            .into_iter()
+            .any(|player_id| {
+                game.player(player_id)
+                    .is_some_and(|player| player.counter_count(*counter_type) >= *count)
+            }),
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let filter_ctx = game.filter_context_for(controller, Some(source));
             let players: Vec<PlayerId> = match player {
@@ -4260,6 +4313,8 @@ fn evaluate_condition_simple(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::SourceControllersMainPhase
+        | Condition::SourceIsRenowned
         | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
@@ -4309,7 +4364,7 @@ fn resolve_condition_player_simple(
     match player {
         PlayerFilter::You => Some(controller),
         PlayerFilter::Specific(id) => Some(*id),
-        PlayerFilter::Active => Some(game.turn.active_player),
+        PlayerFilter::Active => game.active_player_id(),
         PlayerFilter::NotYou => game.players.iter().find_map(|p| {
             if p.id != controller && p.is_in_game() {
                 Some(p.id)
@@ -4366,6 +4421,7 @@ fn resolve_condition_player_simple(
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(
@@ -4836,6 +4892,16 @@ fn evaluate_condition(
                 .into_iter()
                 .any(|player_id| player_poison_counters_or_more(game, player_id, *count)))
         }
+        Condition::PlayerHasCountersOrMore {
+            player,
+            counter_type,
+            count,
+        } => Ok(matching_condition_players_exec(game, ctx, player)?
+            .into_iter()
+            .any(|player_id| {
+                game.player(player_id)
+                    .is_some_and(|player| player.counter_count(*counter_type) >= *count)
+            })),
         Condition::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let filter_ctx = ctx.filter_context(game);
             let player_ids: Vec<PlayerId> = match player {
@@ -5496,6 +5562,8 @@ fn evaluate_condition(
         | Condition::CardsInHandOrMore(_)
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
+        | Condition::SourceControllersMainPhase
+        | Condition::SourceIsRenowned
         | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn

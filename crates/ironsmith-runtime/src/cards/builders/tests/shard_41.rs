@@ -389,3 +389,173 @@ pub(super) fn mass_exile_deploy_and_return_keeps_one_linked_collection_program()
         "Exile all creatures. Each player may put any number of creature cards from their hand onto the battlefield. Then put all cards exiled this way into their owners' hands. Exile Worlds Within Worlds.",
     );
 }
+
+#[test]
+pub(super) fn accumulated_choice_sets_keep_their_authored_partitions_and_complements() {
+    for (card, expected) in [
+        (
+            "Celestial Judgment",
+            "For each different power among creatures on the battlefield, choose a creature with that power. Destroy each creature not chosen this way.",
+        ),
+        (
+            "Fortunate Few",
+            "Choose a nonland permanent you don't control, then each other player chooses a nonland permanent they don't control that hasn't been chosen this way. Destroy all other nonland permanents.",
+        ),
+        (
+            "Mist of Stagnation",
+            "At the beginning of each player's upkeep, that player chooses a permanent for each card in their graveyard, then untaps those permanents.",
+        ),
+        (
+            "Raiding Party",
+            "Sacrifice an Orc: Each player may tap any number of untapped white creatures they control. For each creature tapped this way, that player chooses up to two Plains. Then destroy all Plains that weren't chosen this way by any player.",
+        ),
+    ] {
+        assert_compiled_clause(card, expected);
+    }
+}
+
+#[test]
+pub(super) fn umbilicus_compiled_text_preserves_life_payment_and_decline_branch() {
+    assert_compiled_clause(
+        "Umbilicus",
+        "At the beginning of each player's upkeep, that player may pay 2 life. If they don't, they return a permanent they control to its owner's hand.",
+    );
+}
+
+#[test]
+pub(super) fn dispelling_exhale_links_beheld_subtype_to_its_optional_cost() {
+    assert_oracle_card_parses_strict("Dispelling Exhale");
+    let definition = parse_oracle_card_definition("Dispelling Exhale");
+    let expected_ref = crate::cost::OptionalCostRef::with_discriminator(
+        crate::cost::OptionalCostKind::Behold,
+        "Dragon",
+    );
+    let [optional_cost] = definition.optional_costs.as_slice() else {
+        panic!(
+            "Dispelling Exhale must have one optional Behold cost: {:?}",
+            definition.optional_costs
+        );
+    };
+    assert_eq!(optional_cost.cost_ref(), expected_ref);
+
+    let spell = definition
+        .spell_effect
+        .as_ref()
+        .expect("Dispelling Exhale must retain its spell resolution");
+    assert!(
+        spell
+            .segments
+            .iter()
+            .flat_map(|segment| &segment.self_replacements)
+            .any(|branch| branch.condition
+                == crate::effect::Condition::ThisSpellPaidLabel(expected_ref.clone())),
+        "Dispelling Exhale's replacement must query the same typed Behold cost: {spell:#?}"
+    );
+
+    let compiled = compiled_text_lines(&definition);
+    assert!(
+        compiled.iter().any(
+            |line| line == "As an additional cost to cast this spell, you may behold a Dragon."
+        ),
+        "Dispelling Exhale must preserve Behold verb and subtype casing: {compiled:#?}"
+    );
+    assert!(
+        compiled.iter().any(|line| line
+            == "Counter target spell unless its controller pays {2}. If a Dragon was beheld, counter that spell unless its controller pays {4} instead."),
+        "Dispelling Exhale must render the typed Behold condition and linked replacement target: {compiled:#?}"
+    );
+}
+
+#[test]
+pub(super) fn self_replacement_branches_reuse_their_typed_target_identity() {
+    for (card, expected, repeated_target) in [
+        (
+            "Dispelling Exhale",
+            "counter that spell unless its controller pays {4} instead",
+            "counter target spell unless its controller pays {4}",
+        ),
+        (
+            "Elder Cathar",
+            "put two +1/+1 counters on it instead",
+            "put two +1/+1 counters on target creature",
+        ),
+        (
+            "Grey Knight Paragon",
+            "exile it instead",
+            "exile target attacking creature",
+        ),
+        (
+            "Kellan's Lightblades",
+            "destroy that creature instead",
+            "destroy target attacking or blocking creature",
+        ),
+        (
+            "Rona's Vortex",
+            "put that permanent on the bottom of its owner's library instead",
+            "put target creature or planeswalker you don't control on the bottom",
+        ),
+        (
+            "Torch the Tower",
+            "it deals 3 damage to that permanent and you scry 1",
+            "deals 3 damage to target creature or planeswalker",
+        ),
+        (
+            "Urza's Rage",
+            "it deals 10 damage to that permanent or player and the damage can't be prevented",
+            "deals 10 damage to any target",
+        ),
+        (
+            "Wakandan Royal Guard",
+            "put two +1/+1 counters on it instead",
+            "put two +1/+1 counters on target creature",
+        ),
+        (
+            "Will of the All-Hunter",
+            "put two +1/+1 counters on it instead",
+            "put two +1/+1 counters on target creature",
+        ),
+        (
+            "Zuko's Conviction",
+            "put that card onto the battlefield tapped instead",
+            "put target creature card in your graveyard onto the battlefield",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(card);
+        let definition = parse_oracle_card_definition(card);
+        let compiled = compiled_text_lines(&definition).join("\n");
+        assert!(
+            compiled.contains(expected),
+            "{card} must render the replacement against the already-chosen target (`{expected}`): {compiled}"
+        );
+        assert!(
+            !compiled.contains(repeated_target),
+            "{card} must not introduce a second target in its replacement branch (`{repeated_target}`): {compiled}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn urzas_rage_keeps_pre_resolution_order_and_unpreventable_replacement() {
+    assert_oracle_card_parses_strict("Urza's Rage");
+    let definition = parse_oracle_card_definition("Urza's Rage");
+    let compiled = compiled_text_lines(&definition);
+    let kicker = compiled
+        .iter()
+        .position(|line| line == "Kicker {8}{R}")
+        .expect("Urza's Rage must retain kicker");
+    let uncounterable = compiled
+        .iter()
+        .position(|line| line == "This spell can't be countered.")
+        .expect("Urza's Rage must retain its casting restriction");
+    let damage = compiled
+        .iter()
+        .position(|line| {
+            line == "Urza's Rage deals 3 damage to any target. If this spell was kicked, instead it deals 10 damage to that permanent or player and the damage can't be prevented."
+        })
+        .expect("Urza's Rage must retain its typed replacement damage rider");
+
+    assert!(
+        kicker < uncounterable && uncounterable < damage,
+        "{compiled:#?}"
+    );
+}

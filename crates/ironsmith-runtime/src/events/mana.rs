@@ -226,3 +226,52 @@ impl GameEventType for ManaAddedEvent {
         self
     }
 }
+
+/// A concrete, provenance-preserving mana unit was spent on a transaction.
+#[derive(Debug, Clone)]
+pub struct ManaUnitSpentEvent {
+    pub player: PlayerId,
+    pub mana_source: ObjectId,
+    pub payment_source: Option<ObjectId>,
+    pub symbol: ManaSymbol,
+    pub purpose: crate::ability::ManaPaymentPurpose,
+    pub source_snapshot: Option<ObjectSnapshot>,
+}
+
+impl GameEventType for ManaUnitSpentEvent {
+    fn event_kind(&self) -> EventKind {
+        EventKind::ManaSpent
+    }
+
+    fn affected_player(&self, _game: &GameState) -> PlayerId {
+        self.player
+    }
+
+    fn with_target_replaced(&self, _old: &Target, _new: &Target) -> Option<Box<dyn GameEventType>> {
+        None
+    }
+
+    fn source_object(&self) -> Option<ObjectId> {
+        Some(self.mana_source)
+    }
+
+    fn object_id(&self) -> Option<ObjectId> {
+        self.payment_source
+    }
+
+    fn player(&self) -> Option<PlayerId> {
+        Some(self.player)
+    }
+
+    fn snapshot(&self) -> Option<&ObjectSnapshot> {
+        self.source_snapshot.as_ref()
+    }
+
+    fn display(&self) -> String {
+        "Mana unit spent".to_string()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}

@@ -37,6 +37,7 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CopiableValues {
     pub name: String,
+    pub mana_cost: Option<ManaCost>,
     pub compiled_card_text: String,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
@@ -44,6 +45,7 @@ pub struct CopiableValues {
     pub subtypes: Vec<Subtype>,
     pub supertypes: Vec<Supertype>,
     pub colors: ColorSet,
+    pub loyalty: Option<u32>,
     pub abilities: Arc<Vec<Ability>>,
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
 }
@@ -53,6 +55,7 @@ impl CopiableValues {
         let bestow_restore = obj.bestow_cast_state.as_ref();
         Self {
             name: obj.name.to_owned_string(),
+            mana_cost: obj.mana_cost_owned(),
             compiled_card_text: obj.compiled_card_text.to_string(),
             power: obj.base_power.as_ref().map(|power| power.base_value()),
             toughness: obj
@@ -67,6 +70,7 @@ impl CopiableValues {
                 .unwrap_or_else(|| obj.subtypes.to_vec()),
             supertypes: obj.supertypes.to_vec(),
             colors: obj.colors(),
+            loyalty: obj.base_loyalty,
             abilities: obj.abilities.clone(),
             aura_attach_filter: if let Some(restore) = bestow_restore {
                 restore
@@ -82,6 +86,7 @@ impl CopiableValues {
     pub fn from_calculated(chars: &CalculatedCharacteristics) -> Self {
         Self {
             name: chars.name.to_owned_string(),
+            mana_cost: chars.mana_cost.clone(),
             compiled_card_text: chars.compiled_card_text.to_string(),
             power: chars.power,
             toughness: chars.toughness,
@@ -89,6 +94,7 @@ impl CopiableValues {
             subtypes: chars.subtypes.to_vec(),
             supertypes: chars.supertypes.to_vec(),
             colors: chars.colors,
+            loyalty: chars.loyalty,
             abilities: Arc::new(chars.abilities.to_vec()),
             aura_attach_filter: chars.aura_attach_filter.clone(),
         }
@@ -378,6 +384,7 @@ impl ObjectSnapshot {
                 snapshot.first_printed_set_name = None;
             }
             snapshot.name = calculated.name.to_string();
+            snapshot.mana_cost = calculated.mana_cost.clone();
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;

@@ -1036,6 +1036,35 @@ pub(super) fn rewrite_effect_sentence_parser_merges_quoted_token_rule_reminder()
 }
 
 #[test]
+pub(super) fn rewrite_effect_sentence_parser_keeps_create_around_quoted_token_trigger() {
+    let tokens = lex_line(
+        "Create two 0/2 blue Illusion creature tokens with \"Whenever this token blocks a creature, that creature doesn't untap during its controller's next untap step.\"",
+        0,
+    )
+    .expect("quoted token trigger should lex");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("quoted token trigger should attach to its create effect");
+
+    let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+        panic!("expected one token creation effect, got {effects:#?}");
+    };
+    let super::super::ast::SubjectVerbActionAst::CreateTokenWithMods {
+        count,
+        granted_abilities,
+        ..
+    } = &subject_verb.action
+    else {
+        panic!("expected typed token creation action, got {subject_verb:#?}");
+    };
+    assert_eq!(*count, Value::Fixed(2));
+
+    let debug = format!("{granted_abilities:#?}");
+    assert!(debug.contains("ThisBlocksObject"), "{debug}");
+    assert!(debug.contains("Cant"), "{debug}");
+    assert!(debug.contains("ControllersNextUntapStep"), "{debug}");
+}
+
+#[test]
 pub(super) fn rewrite_cant_be_regenerated_followup_detector_matches_plain_it_clause() {
     let tokens = lex_line("It can't be regenerated.", 0)
         .expect("rewrite lexer should classify can't-be-regenerated followup");

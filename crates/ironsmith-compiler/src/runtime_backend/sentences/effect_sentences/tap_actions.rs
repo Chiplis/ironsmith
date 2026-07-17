@@ -1,3 +1,4 @@
+use super::super::super::front_end::grammar::effects::misc_action_shapes::parse_chosen_object_set_filter_tokens;
 use super::super::super::front_end::grammar::effects::{
     TapControlRelation, parse_tap_control_relation_tokens, parse_tap_or_untap_all_shape_tokens,
     parse_tap_or_untap_target_tokens, parse_tap_quantified_filter_tokens,
@@ -37,6 +38,14 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     }
     if let Some(effect) = parse_tap_or_untap_all(tokens)? {
         return Ok(effect);
+    }
+    if let Some(filter_tokens) = parse_chosen_object_set_filter_tokens(tokens) {
+        let mut filter = parse_object_filter(filter_tokens, false)?;
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        return Ok(EffectAst::subject_verb_tap_all(filter));
     }
     if let Some(filter_tokens) = parse_tap_quantified_filter_tokens(tokens) {
         let filter = parse_object_filter(filter_tokens, false)?;

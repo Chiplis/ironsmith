@@ -40,7 +40,8 @@ pub(crate) use mana_usage::{
 pub(crate) use spell_countered_trigger::parse_spell_countered_trigger_spec_lexed;
 pub(crate) use static_shapes::{
     is_draw_replacement_double_line_lexed, is_draw_replacement_skip_empty_library_line_lexed,
-    is_land_reveal_enters_static_line_lexed, is_opening_hand_begin_game_static_line_lexed,
+    is_draw_replacement_win_empty_library_line_lexed, is_land_reveal_enters_static_line_lexed,
+    is_opening_hand_begin_game_static_line_lexed,
     is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed,
     is_prevent_all_combat_damage_to_matching_permanents_line_lexed,
     is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed,

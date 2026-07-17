@@ -15,7 +15,7 @@ use crate::continuous::ContinuousEffect;
 use crate::effect::Value;
 use crate::events::EventKind;
 use crate::filter::ObjectRef;
-use crate::filter::{Comparison, ObjectFilter};
+use crate::filter::{Comparison, ObjectFilter, player_filter_matches_game};
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::resolution::ResolutionProgram;
@@ -30,6 +30,22 @@ use super::TriggerEvent;
 use super::matcher_trait::TriggerContext;
 
 const SPEED_RULE_SOURCE_NAME: &str = "Start your engines";
+const SIEGE_DEFEAT_TRIGGER_ID: &str = "intrinsic_siege_defeat";
+
+fn trigger_event_is_in_range(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    controller: PlayerId,
+    source: ObjectId,
+    source_snapshot: Option<&ObjectSnapshot>,
+) -> bool {
+    game.trigger_event_is_entirely_within_range(
+        controller,
+        trigger_event.inner(),
+        Some(source),
+        source_snapshot,
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TriggerRegistryKey {
@@ -89,6 +105,14 @@ pub(crate) fn speed_rule_source_id() -> ObjectId {
 
 pub(crate) fn is_speed_rule_trigger(entry: &TriggeredAbilityEntry) -> bool {
     entry.source == speed_rule_source_id() && entry.source_name == SPEED_RULE_SOURCE_NAME
+}
+
+pub(crate) fn is_intrinsic_siege_defeat_trigger(entry: &TriggeredAbilityEntry) -> bool {
+    entry
+        .ability
+        .trigger
+        .downcast_ref::<crate::triggers::CustomTrigger>()
+        .is_some_and(|trigger| trigger.id == SIEGE_DEFEAT_TRIGGER_ID)
 }
 
 fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) -> Option<u32> {
@@ -354,6 +378,8 @@ pub enum TriggeredAbilitySourceKind {
     #[default]
     Object,
     DungeonRoom,
+    /// An inherent triggered ability created by the rules rather than an object.
+    GameRule,
 }
 
 /// A delayed trigger that waits for a specific event to occur.
@@ -371,6 +397,9 @@ pub struct DelayedTrigger {
     pub not_before_turn: Option<u32>,
     /// Optional turn number after which this delayed trigger expires.
     pub expires_at_turn: Option<u32>,
+    /// Registration expires before events on its controller's first turn
+    /// whose turn number is greater than this anchor.
+    pub expires_before_controller_turn_after: Option<u32>,
     /// Whether this delayed trigger expires as the current combat ends.
     pub expires_at_end_of_combat: bool,
     /// Specific objects this trigger targets.
@@ -398,6 +427,8 @@ pub struct DelayedTrigger {
 pub struct TriggerQueue {
     /// Pending triggered abilities.
     pub entries: Vec<TriggeredAbilityEntry>,
+    /// Ability-triggered events generated when entries first become pending.
+    ability_triggered_events: Vec<(TriggerEvent, Option<u32>)>,
 }
 
 const ATTACHED_SOURCE_TAG: &str = "attached_source";
@@ -410,7 +441,41 @@ impl TriggerQueue {
 
     /// Add a triggered ability to the queue.
     pub fn add(&mut self, entry: TriggeredAbilityEntry) {
+        let source_snapshot = entry.source_snapshot.clone();
+        let mut event = TriggerEvent::new(
+            crate::events::AbilityTriggeredEvent::new(
+                entry.source,
+                entry.source_stable_id,
+                entry.controller,
+                entry.trigger_identity,
+            )
+            .with_source_snapshot(source_snapshot.clone()),
+            entry.triggering_event.provenance(),
+        );
+        if let Some(source_snapshot) = source_snapshot {
+            event = event.with_source_snapshot(source_snapshot);
+        }
+        let trigger_limit = match entry.ability.intervening_if.as_ref() {
+            Some(crate::ConditionExpr::FirstTimeThisTurn) => Some(1),
+            Some(crate::ConditionExpr::MaxTimesEachTurn(limit))
+            | Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)) => Some(*limit),
+            _ => None,
+        };
+        self.ability_triggered_events.push((event, trigger_limit));
         self.entries.push(entry);
+    }
+
+    /// Restore an already-announced trigger after an interactive choice paused stacking.
+    pub(crate) fn requeue(&mut self, entry: TriggeredAbilityEntry) {
+        self.entries.push(entry);
+    }
+
+    pub(crate) fn take_ability_triggered_events(&mut self) -> Vec<(TriggerEvent, Option<u32>)> {
+        std::mem::take(&mut self.ability_triggered_events)
+    }
+
+    pub(crate) fn has_ability_triggered_events(&self) -> bool {
+        !self.ability_triggered_events.is_empty()
     }
 
     /// Returns true if the queue is empty.
@@ -421,6 +486,7 @@ impl TriggerQueue {
     /// Clear all entries from the queue.
     pub fn clear(&mut self) {
         self.entries.clear();
+        self.ability_triggered_events.clear();
     }
 
     /// Take all entries, leaving the queue empty.
@@ -648,7 +714,9 @@ fn additional_trigger_copies_for_entry(
 ) -> usize {
     let mut copies = 0usize;
 
-    for &obj_id in &game.battlefield {
+    let mut trigger_sources = game.battlefield.clone();
+    trigger_sources.extend_from_slice(game.face_up_planar_objects());
+    for obj_id in trigger_sources {
         if game.is_phased_out(obj_id) {
             continue;
         }
@@ -1191,7 +1259,7 @@ pub(crate) fn check_triggers_batch(
 
     let view = crate::derived_view::DerivedGameView::new(game);
     let registry = battlefield_trigger_registry(game, &view);
-    trigger_events
+    let mut batches = trigger_events
         .iter()
         .zip(should_check)
         .map(|(trigger_event, should_check)| {
@@ -1201,7 +1269,64 @@ pub(crate) fn check_triggers_batch(
                 Vec::new()
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    // CR 805.4d does not turn an ordinary "each upkeep" trigger into one
+    // trigger per teammate. Multiple events produce multiple triggers only
+    // when the condition, intervening-if clause, choices, or effect refers
+    // back to that particular player. Keep every authored copy from the first
+    // (primary-player fallback) event while suppressing copies caused solely
+    // by the additional active-player event envelopes.
+    if game.shared_team_turns_enabled()
+        && trigger_events.iter().all(|event| {
+            matches!(
+                event.kind(),
+                EventKind::BeginningOfUpkeep
+                    | EventKind::BeginningOfDrawStep
+                    | EventKind::BeginningOfPrecombatMainPhase
+                    | EventKind::BeginningOfCombat
+                    | EventKind::BeginningOfPostcombatMainPhase
+                    | EventKind::BeginningOfEndStep
+            )
+        })
+    {
+        let mut seen_in_prior_events = HashSet::new();
+        for batch in &mut batches {
+            let prior = seen_in_prior_events.clone();
+            let mut present_in_this_event = HashSet::new();
+            batch.retain(|entry| {
+                if triggered_ability_refers_to_trigger_player(&entry.ability) {
+                    return true;
+                }
+                let key = (entry.source_stable_id, entry.trigger_identity);
+                present_in_this_event.insert(key);
+                !prior.contains(&key)
+            });
+            seen_in_prior_events.extend(present_in_this_event);
+        }
+    }
+
+    batches
+}
+
+fn triggered_ability_refers_to_trigger_player(ability: &TriggeredAbility) -> bool {
+    fn contains_player_reference(value: &impl std::fmt::Debug) -> bool {
+        let debug = format!("{value:?}");
+        debug.contains("IteratedPlayer")
+            || debug.contains("TaggedPlayer(\"__it__\")")
+            || debug.contains("TaggedPlayer(TagKey(\"__it__\"))")
+    }
+
+    ability
+        .effects
+        .all_effects()
+        .iter()
+        .any(contains_player_reference)
+        || ability.choices.iter().any(contains_player_reference)
+        || ability
+            .intervening_if
+            .as_ref()
+            .is_some_and(contains_player_reference)
 }
 
 fn snapshot_may_subscribe_to_event(snapshot: &ObjectSnapshot, event_kind: EventKind) -> bool {
@@ -1227,7 +1352,216 @@ fn trigger_event_can_have_synthetic_triggers(trigger_event: &TriggerEvent) -> bo
             | crate::events::traits::EventKind::BeginningOfUpkeep
             | crate::events::traits::EventKind::CreatureAttacked
             | crate::events::traits::EventKind::CreatureBlocked
+            | crate::events::traits::EventKind::MarkersChanged
     )
+}
+
+fn add_flanking_triggers(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let Some(blocked) = trigger_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
+    else {
+        return;
+    };
+
+    let blocker_has_flanking = blocked.blocker_snapshot.as_ref().map_or_else(
+        || {
+            view.static_abilities_rc(blocked.blocker)
+                .is_some_and(|abilities| {
+                    abilities
+                        .iter()
+                        .any(|ability| ability.id() == StaticAbilityId::Flanking)
+                })
+        },
+        |snapshot| {
+            snapshot.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::Flanking
+                )
+            })
+        },
+    );
+    if blocker_has_flanking {
+        return;
+    }
+
+    let flanking_instances = blocked.attacker_snapshot.as_ref().map_or_else(
+        || {
+            view.static_abilities_rc(blocked.attacker)
+                .map(|abilities| {
+                    abilities
+                        .iter()
+                        .filter(|ability| ability.id() == StaticAbilityId::Flanking)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        },
+        |snapshot| {
+            snapshot
+                .abilities
+                .iter()
+                .filter_map(|ability| match &ability.kind {
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::Flanking =>
+                    {
+                        Some(static_ability.clone())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        },
+    );
+    if flanking_instances.is_empty() {
+        return;
+    }
+
+    let source_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
+        game.object(blocked.attacker)
+            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    });
+    let Some((controller, source_stable_id, source_name)) = source_snapshot
+        .as_ref()
+        .map(|snapshot| {
+            (
+                snapshot.controller,
+                snapshot.stable_id,
+                snapshot.name.to_string(),
+            )
+        })
+        .or_else(|| {
+            game.object(blocked.attacker).map(|object| {
+                (
+                    game.controller_of(object),
+                    object.stable_id,
+                    object.name.to_string(),
+                )
+            })
+        })
+    else {
+        return;
+    };
+
+    let blocker_filter = ObjectFilter::creature().without_static_ability(StaticAbilityId::Flanking);
+    let ability = TriggeredAbility {
+        trigger: Trigger::this_becomes_blocked_by_object(blocker_filter),
+        effects: ResolutionProgram::from_effects(vec![Effect::pump(
+            -1,
+            -1,
+            ChooseSpec::SpecificObject(blocked.blocker),
+            crate::effect::Until::EndOfTurn,
+        )]),
+        choices: Vec::new(),
+        intervening_if: None,
+        presentation_label: None,
+    };
+    let structural_identity = compute_trigger_identity(&ability);
+
+    for flanking in flanking_instances {
+        let mut hasher = DefaultHasher::new();
+        structural_identity.hash(&mut hasher);
+        flanking.instance_id().hash(&mut hasher);
+        triggered.push(TriggeredAbilityEntry {
+            source: blocked.attacker,
+            controller,
+            x_value: None,
+            event_value_amount: None,
+            ability: ability.clone(),
+            triggering_event: trigger_event.clone(),
+            source_stable_id,
+            source_name: source_name.clone(),
+            source_snapshot: source_snapshot.clone(),
+            tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+            source_kind: TriggeredAbilitySourceKind::Object,
+            trigger_identity: TriggerIdentity(hasher.finish()),
+        });
+    }
+}
+
+fn add_intrinsic_siege_defeat_trigger(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    _view: &crate::derived_view::DerivedGameView<'_>,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let Some(markers) = trigger_event.downcast::<crate::events::MarkersChangedEvent>() else {
+        return;
+    };
+    if markers.change_type != crate::events::MarkerChangeType::Removed
+        || markers.marker.as_counter() != Some(crate::CounterType::Defense)
+        || markers.amount == 0
+    {
+        return;
+    }
+    let Some(source) = markers.location.as_object() else {
+        return;
+    };
+    let source_snapshot = trigger_event
+        .lookback_source_snapshots()
+        .iter()
+        .find(|snapshot| snapshot.object_id == source)
+        .cloned()
+        .or_else(|| {
+            game.object(source).map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+            })
+        });
+    let Some(source_snapshot) = source_snapshot else {
+        return;
+    };
+    let last_defense_counter_was_removed = markers
+        .count_after
+        .map(|count| count == 0)
+        .unwrap_or_else(|| game.counter_count(source, crate::CounterType::Defense) == 0);
+    if source_snapshot.zone != Zone::Battlefield
+        || !source_snapshot.card_types.contains(&CardType::Battle)
+        || !source_snapshot.subtypes.contains(&Subtype::Siege)
+        || !last_defense_counter_was_removed
+    {
+        return;
+    }
+
+    let ability = TriggeredAbility {
+        trigger: Trigger::custom(
+            SIEGE_DEFEAT_TRIGGER_ID,
+            "When the last defense counter is removed from this battle".to_string(),
+        ),
+        effects: ResolutionProgram::from_effects(vec![
+            Effect::new(crate::effects::MoveToZoneEffect::to_exile(
+                ChooseSpec::Source,
+            )),
+            Effect::may_single(Effect::new(
+                crate::effects::CastSourceEffect::new()
+                    .without_paying_mana_cost()
+                    .require_exile()
+                    .other_face(),
+            )),
+        ]),
+        choices: vec![],
+        intervening_if: None,
+        presentation_label: None,
+    };
+    let controller = source_snapshot.controller;
+    let trigger_identity = compute_trigger_identity(&ability);
+    triggered.push(TriggeredAbilityEntry {
+        source,
+        controller,
+        x_value: None,
+        event_value_amount: None,
+        ability,
+        triggering_event: trigger_event.clone(),
+        source_stable_id: source_snapshot.stable_id,
+        source_name: source_snapshot.name.to_string(),
+        source_snapshot: Some(source_snapshot),
+        tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+        source_kind: TriggeredAbilitySourceKind::Object,
+        trigger_identity,
+    });
 }
 
 fn for_each_public_nonbattlefield_trigger_object_id(
@@ -1506,8 +1840,6 @@ fn check_battlefield_trigger_subscriber(
         .calculated_characteristics(obj_id)
         .map(|chars| chars.controller)
         .unwrap_or_else(|| game.controller_of(obj));
-    let ctx = TriggerContext::for_source(obj_id, controller, game);
-
     let calculated_abilities = view
         .abilities_rc(obj_id)
         .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
@@ -1517,6 +1849,9 @@ fn check_battlefield_trigger_subscriber(
     let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
         return;
     };
+    let trigger_identity = compute_trigger_identity(trigger_ability);
+    let ctx = TriggerContext::for_source(obj_id, controller, game)
+        .with_trigger_identity(trigger_identity);
 
     if !ability.functions_in(&obj.zone) {
         return;
@@ -1527,7 +1862,9 @@ fn check_battlefield_trigger_subscriber(
     if skip_post_event_source_discovery(trigger_event, trigger_ability) {
         return;
     }
-    if !trigger_ability.trigger.matches(trigger_event, &ctx) {
+    if !trigger_event_is_in_range(game, trigger_event, controller, obj_id, None)
+        || !trigger_ability.trigger.matches(trigger_event, &ctx)
+    {
         return;
     }
 
@@ -1545,7 +1882,6 @@ fn check_battlefield_trigger_subscriber(
     let event_value_amount = trigger_ability
         .trigger
         .event_value_amount(trigger_event, &ctx);
-    let trigger_identity = compute_trigger_identity(trigger_ability);
     if let Some(ref condition) = trigger_ability.intervening_if
         && !verify_intervening_if(
             game,
@@ -1605,8 +1941,6 @@ fn battlefield_trigger_subscriber_matches_event(
         .calculated_characteristics(obj_id)
         .map(|chars| chars.controller)
         .unwrap_or_else(|| game.controller_of(obj));
-    let ctx = TriggerContext::for_source(obj_id, controller, game);
-
     let calculated_abilities = view
         .abilities_rc(obj_id)
         .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
@@ -1616,6 +1950,9 @@ fn battlefield_trigger_subscriber_matches_event(
     let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
         return false;
     };
+    let trigger_identity = compute_trigger_identity(trigger_ability);
+    let ctx = TriggerContext::for_source(obj_id, controller, game)
+        .with_trigger_identity(trigger_identity);
 
     if !ability.functions_in(&obj.zone) {
         return false;
@@ -1626,7 +1963,9 @@ fn battlefield_trigger_subscriber_matches_event(
     if skip_post_event_source_discovery(trigger_event, trigger_ability) {
         return false;
     }
-    if !trigger_ability.trigger.matches(trigger_event, &ctx) {
+    if !trigger_event_is_in_range(game, trigger_event, controller, obj_id, None)
+        || !trigger_ability.trigger.matches(trigger_event, &ctx)
+    {
         return false;
     }
 
@@ -1739,6 +2078,14 @@ fn skip_post_event_source_discovery(
     trigger_event: &TriggerEvent,
     trigger_ability: &TriggeredAbility,
 ) -> bool {
+    if trigger_event
+        .downcast::<crate::events::KeywordActionEvent>()
+        .is_some_and(|event| event.action == crate::events::KeywordActionKind::Planeswalk)
+    {
+        // Planeswalking can trigger abilities on both the plane left behind
+        // (from LKI) and the newly face-up plane (from the current state).
+        return false;
+    }
     trigger_ability.trigger.looks_back_for_source(trigger_event)
 }
 
@@ -1767,13 +2114,22 @@ fn collect_lookback_source_triggers(
             }
 
             let filter_ctx = lookback_source_filter_context(game, trigger_event, source_snapshot);
+            let trigger_identity = compute_trigger_identity(trigger_ability);
             let ctx = TriggerContext::new(
                 source_snapshot.object_id,
                 source_snapshot.controller,
                 filter_ctx,
                 game,
-            );
-            if !trigger_ability.trigger.matches(trigger_event, &ctx) {
+            )
+            .with_trigger_identity(trigger_identity);
+            if !trigger_event_is_in_range(
+                game,
+                trigger_event,
+                source_snapshot.controller,
+                source_snapshot.object_id,
+                Some(source_snapshot),
+            ) || !trigger_ability.trigger.matches(trigger_event, &ctx)
+            {
                 continue;
             }
 
@@ -1786,7 +2142,6 @@ fn collect_lookback_source_triggers(
             let event_value_amount = trigger_ability
                 .trigger
                 .event_value_amount(trigger_event, &ctx);
-            let trigger_identity = compute_trigger_identity(trigger_ability);
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
                     game,
@@ -1914,8 +2269,17 @@ fn check_triggers_with_view_and_registry(
                 continue;
             }
 
-            let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
-            if trigger_ability.trigger.matches(trigger_event, &ctx) {
+            let trigger_identity = compute_trigger_identity(trigger_ability);
+            let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game)
+                .with_trigger_identity(trigger_identity);
+            if trigger_event_is_in_range(
+                game,
+                trigger_event,
+                snapshot.controller,
+                snapshot.object_id,
+                Some(snapshot),
+            ) && trigger_ability.trigger.matches(trigger_event, &ctx)
+            {
                 let trigger_count = trigger_ability
                     .trigger
                     .trigger_count_with_context(trigger_event, &ctx);
@@ -1925,7 +2289,6 @@ fn check_triggers_with_view_and_registry(
                 let event_value_amount = trigger_ability
                     .trigger
                     .event_value_amount(trigger_event, &ctx);
-                let trigger_identity = compute_trigger_identity(trigger_ability);
                 if let Some(ref condition) = trigger_ability.intervening_if
                     && !verify_intervening_if(
                         game,
@@ -1986,8 +2349,17 @@ fn check_triggers_with_view_and_registry(
                 continue;
             }
 
-            let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game);
-            if trigger_ability.trigger.matches(trigger_event, &ctx) {
+            let trigger_identity = compute_trigger_identity(trigger_ability);
+            let ctx = TriggerContext::for_source(snapshot.object_id, snapshot.controller, game)
+                .with_trigger_identity(trigger_identity);
+            if trigger_event_is_in_range(
+                game,
+                trigger_event,
+                snapshot.controller,
+                snapshot.object_id,
+                Some(snapshot),
+            ) && trigger_ability.trigger.matches(trigger_event, &ctx)
+            {
                 let trigger_count = trigger_ability
                     .trigger
                     .trigger_count_with_context(trigger_event, &ctx);
@@ -1997,7 +2369,6 @@ fn check_triggers_with_view_and_registry(
                 let event_value_amount = trigger_ability
                     .trigger
                     .event_value_amount(trigger_event, &ctx);
-                let trigger_identity = compute_trigger_identity(trigger_ability);
                 if let Some(ref condition) = trigger_ability.intervening_if
                     && !verify_intervening_if(
                         game,
@@ -2056,6 +2427,10 @@ fn check_triggers_with_view_and_registry(
     // Note: Undying/Persist/Miracle triggers are handled through the normal trigger system.
     // They function from the graveyard/hand (where the object is after the event) and use
     // the triggering_event to get stable_id and other context at execution time.
+
+    // Flanking is printed as a static keyword but creates one triggered ability per
+    // keyword instance and per attacker-blocker relationship (CR 702.25, 509.3d).
+    add_flanking_triggers(game, trigger_event, view, &mut triggered);
 
     // Cascade: When a spell with cascade is cast, it triggers once for each cascade instance.
     // We model this as a synthetic trigger on SpellCast so it goes on the stack normally.
@@ -2214,6 +2589,7 @@ fn check_triggers_with_view_and_registry(
         }
     }
 
+    add_intrinsic_siege_defeat_trigger(game, trigger_event, view, &mut triggered);
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
@@ -2269,44 +2645,45 @@ fn add_speed_increase_triggers(
         return;
     }
 
-    let controller = game.turn.active_player;
-    if loss.player == controller
-        || game.speed_increase_triggered_this_turn(controller)
-        || !matches!(game.player_speed(controller), Some(1..=3))
-    {
-        return;
+    for controller in game.active_players() {
+        if !game.are_opponents(controller, loss.player)
+            || game.speed_increase_triggered_this_turn(controller)
+            || !matches!(game.player_speed(controller), Some(1..=3))
+        {
+            continue;
+        }
+
+        let ability = TriggeredAbility {
+            trigger: Trigger::custom(
+                "speed-inherent",
+                "Whenever one or more opponents lose life during your turn".to_string(),
+            ),
+            effects: ResolutionProgram::from_effects(vec![Effect::increase_speed(
+                crate::effect::Value::Fixed(1),
+                PlayerFilter::You,
+            )]),
+            choices: vec![],
+            intervening_if: None,
+            presentation_label: None,
+        };
+        let trigger_identity = compute_trigger_identity(&ability);
+        let source = speed_rule_source_id();
+
+        triggered.push(TriggeredAbilityEntry {
+            source,
+            controller,
+            x_value: None,
+            event_value_amount: None,
+            ability,
+            triggering_event: trigger_event.clone(),
+            source_stable_id: StableId::from_raw(0),
+            source_name: SPEED_RULE_SOURCE_NAME.to_string(),
+            source_snapshot: None,
+            tagged_objects: HashMap::new(),
+            source_kind: TriggeredAbilitySourceKind::Object,
+            trigger_identity,
+        });
     }
-
-    let ability = TriggeredAbility {
-        trigger: Trigger::custom(
-            "speed-inherent",
-            "Whenever one or more opponents lose life during your turn".to_string(),
-        ),
-        effects: ResolutionProgram::from_effects(vec![Effect::increase_speed(
-            crate::effect::Value::Fixed(1),
-            PlayerFilter::You,
-        )]),
-        choices: vec![],
-        intervening_if: None,
-        presentation_label: None,
-    };
-    let trigger_identity = compute_trigger_identity(&ability);
-    let source = speed_rule_source_id();
-
-    triggered.push(TriggeredAbilityEntry {
-        source,
-        controller,
-        x_value: None,
-        event_value_amount: None,
-        ability,
-        triggering_event: trigger_event.clone(),
-        source_stable_id: StableId::from_raw(0),
-        source_name: SPEED_RULE_SOURCE_NAME.to_string(),
-        source_snapshot: None,
-        tagged_objects: HashMap::new(),
-        source_kind: TriggeredAbilitySourceKind::Object,
-        trigger_identity,
-    });
 }
 
 fn state_trigger_event(source: ObjectId) -> TriggerEvent {
@@ -2476,6 +2853,15 @@ pub fn check_delayed_triggers(
             to_remove.push(idx);
             continue;
         }
+        if delayed
+            .expires_before_controller_turn_after
+            .is_some_and(|anchor| {
+                game.turn.turn_number > anchor && game.is_active_player(delayed.controller)
+            })
+        {
+            to_remove.push(idx);
+            continue;
+        }
         if delayed.expires_at_end_of_combat
             && trigger_event.kind() == crate::events::EventKind::EndOfCombat
         {
@@ -2503,8 +2889,17 @@ pub fn check_delayed_triggers(
                 delayed.controller,
                 game,
                 &delayed.tagged_objects,
-            );
-            if !delayed.trigger.matches(trigger_event, &ctx) {
+            )
+            .with_trigger_identity(trigger_identity);
+            let range_source = delayed.ability_source.unwrap_or(source);
+            if !trigger_event_is_in_range(
+                game,
+                trigger_event,
+                delayed.controller,
+                range_source,
+                None,
+            ) || !delayed.trigger.matches(trigger_event, &ctx)
+            {
                 continue;
             }
 
@@ -2622,8 +3017,6 @@ fn check_triggers_in_zone(
         return;
     };
 
-    let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game);
-
     let calculated_abilities = view
         .abilities_rc(obj_id)
         .unwrap_or_else(|| Rc::new(obj.abilities_vec()));
@@ -2632,6 +3025,9 @@ fn check_triggers_in_zone(
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
         };
+        let trigger_identity = compute_trigger_identity(trigger_ability);
+        let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game)
+            .with_trigger_identity(trigger_identity);
 
         if !ability.functions_in(&obj.zone) {
             continue;
@@ -2641,7 +3037,9 @@ fn check_triggers_in_zone(
             continue;
         }
 
-        if trigger_ability.trigger.matches(trigger_event, &ctx) {
+        if trigger_event_is_in_range(game, trigger_event, game.controller_of(obj), obj_id, None)
+            && trigger_ability.trigger.matches(trigger_event, &ctx)
+        {
             let trigger_count = trigger_ability
                 .trigger
                 .trigger_count_with_context(trigger_event, &ctx);
@@ -2651,7 +3049,6 @@ fn check_triggers_in_zone(
             let event_value_amount = trigger_ability
                 .trigger
                 .event_value_amount(trigger_event, &ctx);
-            let trigger_identity = compute_trigger_identity(trigger_ability);
             if let Some(ref condition) = trigger_ability.intervening_if
                 && !verify_intervening_if(
                     game,
@@ -2709,7 +3106,7 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::Any => true,
         PlayerFilter::You => player == controller,
         PlayerFilter::NotYou => player != controller,
-        PlayerFilter::Opponent => player != controller,
+        PlayerFilter::Opponent => game.are_opponents(controller, player),
         PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => true,
         PlayerFilter::Specific(id) => player == *id,
         PlayerFilter::MostLifeTied => game
@@ -2765,6 +3162,11 @@ pub fn player_filter_matches_with_context(
                     .zip(game.player(controller))
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
+        PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+            let mut filter_ctx = game.filter_context_for(controller, None);
+            filter_ctx.defending_player = defending_player;
+            player_filter_matches_game(spec, player, game, &filter_ctx)
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -2782,7 +3184,7 @@ pub fn player_filter_matches_with_context(
             }),
         PlayerFilter::ChosenPlayer => false,
         PlayerFilter::TaggedPlayer(_) => false,
-        PlayerFilter::Teammate => false,
+        PlayerFilter::Teammate => game.are_teammates(controller, player),
         PlayerFilter::Attacking => false,
         PlayerFilter::DamagedPlayer => false,
         PlayerFilter::EffectController => player == controller,
@@ -2810,7 +3212,7 @@ pub fn player_filter_matches_with_context(
                 .is_some_and(|obj| player == obj.owner),
             ObjectRef::Target | ObjectRef::Tagged(_) => false,
         },
-        PlayerFilter::Active => player == game.turn.active_player,
+        PlayerFilter::Active => game.is_active_player(player),
         PlayerFilter::Defending => defending_player == Some(player),
         PlayerFilter::IteratedPlayer => false,
         PlayerFilter::TargetPlayerOrControllerOfTarget => false,
@@ -2829,44 +3231,71 @@ pub fn player_filter_matches_with_context(
 
 /// Generate phase/step trigger events based on current game state.
 pub fn generate_step_trigger_events(game: &GameState) -> Option<TriggerEvent> {
+    generate_step_trigger_events_for_active_players(game)
+        .into_iter()
+        .next()
+}
+
+/// Generate one player-attributed event for every active team member. Events
+/// without an active-player parameter (currently end of combat) remain single.
+pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<TriggerEvent> {
     use crate::events::phase::{
         BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,
         BeginningOfPostcombatMainPhaseEvent, BeginningOfPrecombatMainPhaseEvent,
         BeginningOfUpkeepEvent, EndOfCombatEvent,
     };
 
-    let active = game.turn.active_player;
-
+    let events = |make: fn(PlayerId) -> TriggerEvent| {
+        let mut players = game.turn_players();
+        if let Some(primary) = game.singular_active_player(None)
+            && let Some(index) = players.iter().position(|player| *player == primary)
+        {
+            players.rotate_left(index);
+        }
+        players.into_iter().map(make).collect::<Vec<_>>()
+    };
     match (game.turn.phase, game.turn.step) {
-        (Phase::Beginning, Some(Step::Upkeep)) => Some(TriggerEvent::new_with_provenance(
-            BeginningOfUpkeepEvent::new(active),
-            crate::provenance::ProvNodeId::default(),
-        )),
-        (Phase::Beginning, Some(Step::Draw)) => Some(TriggerEvent::new_with_provenance(
-            BeginningOfDrawStepEvent::new(active),
-            crate::provenance::ProvNodeId::default(),
-        )),
-        (Phase::FirstMain, None) => Some(TriggerEvent::new_with_provenance(
-            BeginningOfPrecombatMainPhaseEvent::new(active),
-            crate::provenance::ProvNodeId::default(),
-        )),
-        (Phase::Combat, Some(Step::BeginCombat)) => Some(TriggerEvent::new_with_provenance(
-            BeginningOfCombatEvent::new(active),
-            crate::provenance::ProvNodeId::default(),
-        )),
-        (Phase::Combat, Some(Step::EndCombat)) => Some(TriggerEvent::new_with_provenance(
+        (Phase::Beginning, Some(Step::Upkeep)) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfUpkeepEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::Beginning, Some(Step::Draw)) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfDrawStepEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::FirstMain, None) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfPrecombatMainPhaseEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::Combat, Some(Step::BeginCombat)) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfCombatEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::Combat, Some(Step::EndCombat)) => vec![TriggerEvent::new_with_provenance(
             EndOfCombatEvent::new(),
             crate::provenance::ProvNodeId::default(),
-        )),
-        (Phase::NextMain, None) => Some(TriggerEvent::new_with_provenance(
-            BeginningOfPostcombatMainPhaseEvent::new(active),
-            crate::provenance::ProvNodeId::default(),
-        )),
-        (Phase::Ending, Some(Step::End)) => Some(TriggerEvent::new_with_provenance(
-            BeginningOfEndStepEvent::new(active),
-            crate::provenance::ProvNodeId::default(),
-        )),
-        _ => None,
+        )],
+        (Phase::NextMain, None) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfPostcombatMainPhaseEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::Ending, Some(Step::End)) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfEndStepEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        _ => Vec::new(),
     }
 }
 
@@ -2888,6 +3317,9 @@ pub fn verify_intervening_if(
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
                     .object(planeswalker_id)
                     .map(|planeswalker| game.controller_of(planeswalker)),
+                crate::triggers::AttackEventTarget::Battle(battle_id) => {
+                    game.battle_protector(battle_id)
+                }
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureAttackedAndUnblocked {
         event
@@ -2897,6 +3329,9 @@ pub fn verify_intervening_if(
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
                     .object(planeswalker_id)
                     .map(|planeswalker| game.controller_of(planeswalker)),
+                crate::triggers::AttackEventTarget::Battle(battle_id) => {
+                    game.battle_protector(battle_id)
+                }
             })
     } else if event.kind() == crate::events::traits::EventKind::CreatureBecameBlocked {
         event
@@ -2907,6 +3342,9 @@ pub fn verify_intervening_if(
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id) => game
                     .object(planeswalker_id)
                     .map(|planeswalker| game.controller_of(planeswalker)),
+                crate::triggers::AttackEventTarget::Battle(battle_id) => {
+                    game.battle_protector(battle_id)
+                }
             })
     } else {
         None
@@ -3034,6 +3472,209 @@ mod tests {
             )
             .with_condition(condition),
         );
+    }
+
+    fn creature_blocked_event_with_current_snapshots(
+        game: &GameState,
+        blocker: crate::ids::ObjectId,
+        attacker: crate::ids::ObjectId,
+    ) -> TriggerEvent {
+        let blocker_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(blocker).expect("blocker should exist"),
+            game,
+        );
+        let attacker_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(attacker).expect("attacker should exist"),
+            game,
+        );
+        TriggerEvent::new_with_provenance(
+            CreatureBlockedEvent::with_snapshots(
+                blocker,
+                attacker,
+                blocker_snapshot,
+                attacker_snapshot,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        )
+    }
+
+    #[test]
+    fn each_flanking_instance_queues_a_non_targeting_trigger_locked_to_the_blocker() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = make_battlefield_creature(&mut game, alice, "Double Flanker");
+        let blocker = make_battlefield_creature(&mut game, bob, "Ordinary Blocker");
+        for _ in 0..2 {
+            game.object_mut(attacker)
+                .expect("attacker should exist")
+                .abilities_mut()
+                .push(crate::ability::Ability::static_ability(
+                    StaticAbility::flanking(),
+                ));
+        }
+        game.refresh_continuous_state();
+
+        let triggered = check_triggers(
+            &game,
+            &creature_blocked_event_with_current_snapshots(&game, blocker, attacker),
+        );
+
+        assert_eq!(triggered.len(), 2, "each Flanking instance triggers");
+        assert_ne!(
+            triggered[0].trigger_identity, triggered[1].trigger_identity,
+            "distinct static-ability instances retain independent trigger identities"
+        );
+        for entry in triggered {
+            assert!(entry.ability.choices.is_empty(), "Flanking does not target");
+            let effects = entry.ability.effects.all_effects();
+            let shrink = effects
+                .iter()
+                .find_map(|effect| {
+                    effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>()
+                })
+                .expect("Flanking should shrink the blocking creature");
+            assert_eq!(shrink.target, ChooseSpec::SpecificObject(blocker));
+            assert_eq!(shrink.power, Value::Fixed(-1));
+            assert_eq!(shrink.toughness, Value::Fixed(-1));
+            assert_eq!(shrink.duration, crate::effect::Until::EndOfTurn);
+        }
+    }
+
+    #[test]
+    fn flanking_uses_the_blockers_declaration_snapshot() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = make_battlefield_creature(&mut game, alice, "Flanker");
+        let blocker = make_battlefield_creature(&mut game, bob, "Changing Blocker");
+        game.object_mut(attacker)
+            .expect("attacker should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::flanking(),
+            ));
+        game.refresh_continuous_state();
+        let event = creature_blocked_event_with_current_snapshots(&game, blocker, attacker);
+
+        game.object_mut(blocker)
+            .expect("blocker should exist")
+            .abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                StaticAbility::flanking(),
+            ));
+        game.refresh_continuous_state();
+
+        assert_eq!(
+            check_triggers(&game, &event).len(),
+            1,
+            "gaining Flanking after declaration cannot undo the trigger"
+        );
+
+        let event_with_flanking =
+            creature_blocked_event_with_current_snapshots(&game, blocker, attacker);
+        game.object_mut(blocker)
+            .expect("blocker should exist")
+            .abilities_mut()
+            .retain(|ability| {
+                !matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::Flanking
+                )
+            });
+        game.refresh_continuous_state();
+
+        assert!(
+            check_triggers(&game, &event_with_flanking).is_empty(),
+            "losing Flanking after declaration cannot create a trigger"
+        );
+    }
+
+    #[test]
+    fn separate_flanking_triggers_resolve_independent_shrink_effects() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = make_battlefield_creature(&mut game, alice, "Double Flanker");
+        let blocker = make_battlefield_creature(&mut game, bob, "Ordinary Blocker");
+        for _ in 0..2 {
+            game.object_mut(attacker)
+                .expect("attacker should exist")
+                .abilities_mut()
+                .push(crate::ability::Ability::static_ability(
+                    StaticAbility::flanking(),
+                ));
+        }
+        game.refresh_continuous_state();
+        let event = creature_blocked_event_with_current_snapshots(&game, blocker, attacker);
+        let triggered = check_triggers(&game, &event);
+        assert_eq!(triggered.len(), 2);
+
+        for entry in triggered {
+            let effects = entry
+                .ability
+                .effects
+                .all_effects()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut ctx =
+                crate::effects::ExecutionContext::new_default(entry.source, entry.controller)
+                    .with_triggering_event(entry.triggering_event.clone());
+            if let Some(snapshot) = entry.source_snapshot {
+                ctx = ctx.with_source_snapshot(snapshot);
+            }
+            for effect in effects {
+                crate::effects::execute_effect(&mut game, &effect, &mut ctx)
+                    .expect("Flanking shrink should resolve");
+            }
+        }
+
+        let blocker_chars = game
+            .calculated_characteristics(blocker)
+            .expect("blocker should have calculated characteristics");
+        assert_eq!(blocker_chars.power, Some(0));
+        assert_eq!(blocker_chars.toughness, Some(0));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn cavalry_master_preserves_printed_and_granted_flanking_instances() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let master = CardDefinitionBuilder::new(CardId::new(), "Cavalry Master")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text("Flanking\nOther creatures you control with flanking have flanking.")
+            .expect("Cavalry Master should parse");
+        let cavalry = CardDefinitionBuilder::new(CardId::new(), "Benalish Cavalry")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .parse_text("Flanking")
+            .expect("printed Flanking should parse");
+        game.create_object_from_definition(&master, alice, Zone::Battlefield);
+        let attacker = game.create_object_from_definition(&cavalry, alice, Zone::Battlefield);
+        let blocker = make_battlefield_creature(&mut game, bob, "Ordinary Blocker");
+        game.refresh_continuous_state();
+
+        let view = crate::derived_view::DerivedGameView::from_refreshed_state(&game);
+        let flanking = view
+            .static_abilities_rc(attacker)
+            .expect("attacker should have calculated static abilities")
+            .iter()
+            .filter(|ability| ability.id() == StaticAbilityId::Flanking)
+            .map(|ability| ability.instance_id())
+            .collect::<Vec<_>>();
+        assert_eq!(flanking.len(), 2, "printed and granted Flanking coexist");
+        assert_ne!(flanking[0], flanking[1]);
+
+        let triggered = check_triggers(
+            &game,
+            &creature_blocked_event_with_current_snapshots(&game, blocker, attacker),
+        );
+        assert_eq!(triggered.len(), 2, "both Flanking instances trigger");
     }
 
     #[test]
@@ -3883,6 +4524,7 @@ mod tests {
                     Trigger::new(crate::triggers::SpellCastTrigger::qualified(
                         None,
                         PlayerFilter::Opponent,
+                        None,
                         Some(PlayerFilter::You),
                         None,
                         None,
@@ -4055,7 +4697,7 @@ mod tests {
             alice,
             spell_id,
             crate::target::ObjectFilter::noncreature_spell().cast_by(crate::PlayerFilter::You),
-            StaticAbility::cascade(),
+            StaticAbility::cascade().into(),
             1,
         );
 
@@ -4092,7 +4734,7 @@ mod tests {
             alice,
             spell_id,
             crate::target::ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
-            StaticAbility::cant_be_countered_ability(),
+            StaticAbility::cant_be_countered_ability().into(),
             1,
         );
 
@@ -4656,5 +5298,49 @@ mod tests {
             to_opponent.is_empty(),
             "trigger should not fire when a different player is dealt damage"
         );
+    }
+
+    #[test]
+    fn shared_upkeep_events_duplicate_only_triggers_that_refer_to_that_player() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Diana".into(),
+            ],
+            20,
+        );
+        let [alice, bob, charlie, diana] = [
+            PlayerId::from_index(0),
+            PlayerId::from_index(1),
+            PlayerId::from_index(2),
+            PlayerId::from_index(3),
+        ];
+        game.set_teams(vec![vec![alice, bob], vec![charlie, diana]])
+            .expect("teams");
+        game.enable_shared_team_turns().expect("shared turns");
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        let source = make_battlefield_creature(&mut game, charlie, "Upkeep Probe");
+        let abilities = game.object_mut(source).expect("source").abilities_mut();
+        abilities.push(crate::ability::Ability::triggered(
+            Trigger::beginning_of_upkeep(PlayerFilter::Any),
+            vec![Effect::gain_life(1)],
+        ));
+        abilities.push(crate::ability::Ability::triggered(
+            Trigger::beginning_of_upkeep(PlayerFilter::Any),
+            vec![Effect::gain_life_player(
+                1,
+                ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+            )],
+        ));
+
+        let events = generate_step_trigger_events_for_active_players(&game);
+        let batches = check_triggers_batch(&game, &events);
+        assert_eq!(events[0].player(), Some(bob), "primary fallback is first");
+        assert_eq!(batches.iter().map(Vec::len).sum::<usize>(), 3);
+        assert_eq!(batches[0].len(), 2);
+        assert_eq!(batches[1].len(), 1);
     }
 }

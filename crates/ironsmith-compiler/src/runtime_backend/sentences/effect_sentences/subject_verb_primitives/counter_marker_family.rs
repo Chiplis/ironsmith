@@ -361,17 +361,40 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     let Some(shape) = counter_shapes::parse_return_with_counters_tokens(clause.tokens()) else {
         return Ok(None);
     };
-    let mut effects = vec![EffectAst::subject_verb_return_to_battlefield(
-        parse_target_phrase(shape.target_tokens)?,
-        shape.destination.tapped,
-        shape.destination.transformed,
-        false,
-        shape.destination.controller,
-        None,
-    )];
+    let target = parse_target_phrase(shape.target_tokens)?;
+    let return_effect = if shape.destination.attacking {
+        if shape.destination.transformed {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported transformed attacking return-with-counter destination (clause: '{}')",
+                clause.text()
+            )));
+        }
+        EffectAst::subject_verb_move_to_zone_with_attacking(
+            target,
+            Zone::Battlefield,
+            false,
+            shape.destination.controller,
+            shape.destination.tapped,
+            true,
+            false,
+            None,
+        )
+        .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+    } else {
+        EffectAst::subject_verb_return_to_battlefield(
+            target,
+            shape.destination.tapped,
+            shape.destination.transformed,
+            false,
+            shape.destination.controller,
+            None,
+        )
+    };
+    let mut effects = vec![return_effect];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in shape.descriptors {
-        let count = Value::Fixed(descriptor.count as i32);
+        let count = Value::Fixed(descriptor.count as i32)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
         let count = if descriptor.additional {
             count.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
         } else {
@@ -413,7 +436,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     else {
         return Ok(None);
     };
-    if shape.destination.tapped {
+    if shape.destination.tapped || shape.destination.attacking {
         return Ok(None);
     }
 
@@ -441,14 +464,18 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
             false,
             None,
         )
-    };
+    }
+    .with_exiled_with_source_surface(
+        super::super::verb_handlers::parse_exiled_with_source_move_surface(clause.tokens()),
+    );
     let mut effects = vec![move_effect];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     if shape.destination.transformed {
         effects.push(EffectAst::subject_verb_transform(tagged_target.clone()));
     }
     for descriptor in shape.descriptors {
-        let count = Value::Fixed(descriptor.count as i32);
+        let count = Value::Fixed(descriptor.count as i32)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
         let count = if descriptor.additional {
             count.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
         } else {

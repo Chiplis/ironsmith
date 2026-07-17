@@ -162,6 +162,14 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
             )
         } else {
             let source_subject = self.display_subject.as_deref().unwrap_or("this creature");
+            if self.other_count == 1
+                && self
+                    .other_filter
+                    .as_ref()
+                    .is_some_and(|filter| filter.other)
+            {
+                return format!("Whenever {source_subject} and {subject} attack");
+            }
             let count = ironsmith_core::cardinal_word(self.other_count as u32)
                 .unwrap_or_else(|| self.other_count.to_string());
             format!("Whenever {source_subject} and at least {count} other {subject} attack",)
@@ -303,6 +311,24 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever Paladin Elizabeth Taggerdy and at least two other creatures attack"
+        );
+    }
+
+    #[test]
+    fn named_source_and_another_filtered_attacker_preserves_oracle_surface() {
+        let trigger = ThisAttacksWithNOthersTrigger::with_display_subject(
+            1,
+            Some("Merry".to_string()),
+            Some(
+                ObjectFilter::creature()
+                    .with_supertype(crate::types::Supertype::Legendary)
+                    .other(),
+            ),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever Merry and another legendary creature attack"
         );
     }
 

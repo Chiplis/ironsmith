@@ -14,6 +14,7 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
   ) || DEFAULT_PLAYER_ACCENT;
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
+  const anteCards = Array.isArray(player.ante_cards) ? player.ante_cards : [];
   const sideboardCards = Array.isArray(player.sideboard_cards) ? player.sideboard_cards : [];
 
   const battlefieldCount = (player.battlefield || []).reduce((total, card) => {
@@ -68,6 +69,11 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
         <span className="bg-background/70 px-1.5 rounded-none" title="CZ">
           Cmd <span className="font-bold text-foreground">{player.command_size ?? commandCards.length}</span>
         </span>
+        {anteCards.length > 0 && (
+          <span className="bg-background/70 px-1.5 rounded-none" title="Ante">
+            Ante <span className="font-bold text-foreground">{player.ante_size ?? anteCards.length}</span>
+          </span>
+        )}
         {sideboardCards.length > 0 && (
           <span className="bg-background/70 px-1.5 rounded-none" title="Sideboard">
             SB <span className="font-bold text-foreground">{sideboardCards.length}</span>

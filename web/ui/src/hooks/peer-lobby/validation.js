@@ -74,6 +74,7 @@ import {
   useCallback,
   validationCommandersForMatchPayload,
   validationDecksForMatchPayload,
+  validationPlanarDecksForMatchPayload,
   validationSideboardsForMatchPayload,
   verifyAuditPayload,
   verifySignedMatchGenesis,
@@ -4205,6 +4206,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        : validationDecksForMatchPayload(payload);
 	      const startSideboards = validationSideboardsForMatchPayload(payload);
 	      const startCommanders = validationCommandersForMatchPayload(payload);
+	      const startPlanarDecks = validationPlanarDecksForMatchPayload(payload);
 
 	      await currentGame.startMatch({
 	        playerNames: payload.players.map((player) => player.name),
@@ -4214,6 +4216,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
 	        decks: startDecks,
 	        sideboards: startSideboards,
 	        commanders: startCommanders,
+	        planarDecks: startPlanarDecks,
 	        hiddenDeckManifests: verifiedMode ? payload.runtimeHiddenDeckManifests : undefined,
 	        openingHandSize: payload.openingHandSize ?? DEFAULT_OPENING_HAND_SIZE,
 	      });

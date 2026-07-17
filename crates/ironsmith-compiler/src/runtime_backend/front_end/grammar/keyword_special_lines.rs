@@ -23,6 +23,12 @@ pub(crate) enum OptionalKeywordCostKind {
 pub(crate) struct OptionalKeywordAdditionalCostShape<'a> {
     pub(crate) kind: OptionalKeywordCostKind,
     pub(crate) cost_tokens: &'a [OwnedLexToken],
+    pub(crate) behold_subtype: Option<crate::types::Subtype>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BeholdAndExileAdditionalCostShape {
+    pub(crate) subtype: crate::types::Subtype,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,12 +99,39 @@ pub(crate) fn parse_optional_cost_with_cast_trigger_tokens(
 pub(crate) fn parse_optional_keyword_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<OptionalKeywordAdditionalCostShape<'_>> {
-    primitives::parse_all(
+    let mut shape = primitives::parse_all(
         tokens,
         parse_optional_keyword_additional_cost_lexed,
         "optional-keyword-additional-cost",
     )
-    .ok()
+    .ok()?;
+    if shape.kind == OptionalKeywordCostKind::Behold {
+        let parsed =
+            super::activation_costs::parse_behold_segment_tokens(shape.cost_tokens).ok()?;
+        let super::activation_costs::ActivationCostSegmentCst::Behold { subtype, .. } = parsed
+        else {
+            return None;
+        };
+        shape.behold_subtype = Some(subtype);
+    }
+    Some(shape)
+}
+
+pub(crate) fn parse_behold_and_exile_additional_cost_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<BeholdAndExileAdditionalCostShape> {
+    let behold_tokens = primitives::parse_all(
+        tokens,
+        parse_behold_and_exile_additional_cost_lexed,
+        "behold-and-exile-additional-cost",
+    )
+    .ok()?;
+    let parsed = super::activation_costs::parse_behold_segment_tokens(behold_tokens).ok()?;
+    let super::activation_costs::ActivationCostSegmentCst::Behold { subtype, count } = parsed
+    else {
+        return None;
+    };
+    (count == 1).then_some(BeholdAndExileAdditionalCostShape { subtype })
 }
 
 fn parse_partner_with_name_shape_lexed<'a>(
@@ -252,7 +285,39 @@ fn parse_optional_keyword_additional_cost_lexed<'a>(
         OptionalKeywordCostKind::Blight
     };
     primitives::sentence_end().parse_next(input)?;
-    Ok(OptionalKeywordAdditionalCostShape { kind, cost_tokens })
+    Ok(OptionalKeywordAdditionalCostShape {
+        kind,
+        cost_tokens,
+        behold_subtype: None,
+    })
+}
+
+fn parse_behold_and_exile_additional_cost_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<&'a [OwnedLexToken]> {
+    primitives::phrase(&[
+        "as",
+        "an",
+        "additional",
+        "cost",
+        "to",
+        "cast",
+        "this",
+        "spell",
+    ])
+    .parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    let behold_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["and", "exile", "it"])),
+    )
+    .void()
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["and", "exile", "it"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(behold_tokens)
 }
 
 #[cfg(test)]

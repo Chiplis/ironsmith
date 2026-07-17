@@ -34,6 +34,7 @@ mod for_players;
 mod if_effect;
 mod local_rewrite;
 mod mana_restricted;
+mod mana_retained;
 mod may;
 mod mechanic_actions;
 mod reflexive_trigger;
@@ -78,12 +79,13 @@ pub use for_players::ForPlayersEffect;
 pub use if_effect::IfEffect;
 pub use local_rewrite::LocalRewriteEffect;
 pub use mana_restricted::ManaRestrictedEffect;
+pub use mana_retained::ManaRetainedEffect;
 pub use may::MayEffect;
 pub use mechanic_actions::{
     AdaptEffect, AmplifyEffect, BackupEffect, BolsterEffect, CastEncodedCardCopyEffect,
     CipherEffect, CounterAbilityEffect, DevourEffect, ExploreEffect, ManifestCardFromHandEffect,
-    ManifestDreadEffect, ManifestTopCardOfLibraryEffect, OpenAttractionEffect, PopulateEffect,
-    SupportEffect,
+    ManifestDreadEffect, ManifestObjectsEffect, ManifestTopCardOfLibraryEffect,
+    OpenAttractionEffect, PopulateEffect, SupportEffect,
 };
 pub use reflexive_trigger::ReflexiveTriggerEffect;
 pub use repeat_effects::RepeatEffectsEffect;

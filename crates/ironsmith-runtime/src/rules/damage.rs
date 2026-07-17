@@ -16,7 +16,7 @@ use crate::types::CardType;
 /// The target of damage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamageTarget {
-    /// Damage to a creature or planeswalker.
+    /// Damage to a creature, planeswalker, or battle.
     Permanent,
     /// Damage to a player.
     Player(PlayerId),
@@ -190,7 +190,8 @@ pub(crate) fn apply_processed_damage_assignment(
                 .unwrap_or_else(|| obj.card_types.to_vec());
             let is_creature = current_card_types.contains(&CardType::Creature);
             let is_planeswalker = current_card_types.contains(&CardType::Planeswalker);
-            if !is_creature && !is_planeswalker {
+            let is_battle = current_card_types.contains(&CardType::Battle);
+            if !is_creature && !is_planeswalker && !is_battle {
                 return AppliedDamageAssignment::default();
             }
 
@@ -205,6 +206,25 @@ pub(crate) fn apply_processed_damage_assignment(
                 if let Some((_, event)) = game.remove_counters(
                     object_id,
                     crate::CounterType::Loyalty,
+                    amount,
+                    Some(source),
+                    source_controller,
+                ) {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+            }
+
+            if is_battle {
+                let source_controller = game
+                    .object(source)
+                    .map(|obj| {
+                        game.current_controller(source)
+                            .unwrap_or_else(|| game.controller_of(obj))
+                    })
+                    .or(cause.source_controller);
+                if let Some((_, event)) = game.remove_counters(
+                    object_id,
+                    crate::CounterType::Defense,
                     amount,
                     Some(source),
                     source_controller,
@@ -544,11 +564,12 @@ pub(crate) fn lethal_damage_threshold_for_creature(
 mod tests {
     use super::*;
     use crate::ability::Ability;
-    use crate::card::PtValue;
+    use crate::card::{CardBuilder, PtValue};
     use crate::cost::OptionalCostsPaid;
     use crate::events::EventKind;
     use crate::game_state::GameState;
-    use crate::ids::{ObjectId, StableId};
+    use crate::ids::{CardId, ObjectId, StableId};
+    use crate::object::CounterType;
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -586,6 +607,8 @@ mod tests {
             base_toughness: Some(PtValue::Fixed(toughness)),
             base_loyalty: None,
             base_defense: None,
+            hand_modifier: 0,
+            life_modifier: 0,
             abilities: std::sync::Arc::new(vec![]),
             counters: HashMap::new(),
             attached_to: None,
@@ -698,6 +721,50 @@ mod tests {
                 .any(|event| event.kind() == EventKind::MarkersChanged),
             "infect damage to a player should queue MarkersChangedEvent"
         );
+    }
+
+    #[test]
+    fn damage_to_battle_removes_defense_counters_and_queues_event() {
+        let mut game = test_game_state();
+        let alice = PlayerId::from_index(0);
+        let source_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Attacker")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let battle_id = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Battle")
+                .card_types(vec![CardType::Battle])
+                .defense(5)
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let result = apply_processed_damage_assignment(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(battle_id),
+            2,
+            SourceDamageKeywords::default(),
+            crate::events::cause::EventCause::from_effect(source_id, alice),
+        );
+
+        assert!(result.applied);
+        assert_eq!(game.counter_count(battle_id, CounterType::Defense), 3);
+        assert!(game.take_pending_trigger_events().iter().any(|event| {
+            event
+                .downcast::<crate::events::MarkersChangedEvent>()
+                .is_some_and(|changed| {
+                    changed.change_type == crate::events::MarkerChangeType::Removed
+                        && changed.marker.as_counter() == Some(CounterType::Defense)
+                        && changed.location.as_object() == Some(battle_id)
+                        && changed.amount == 2
+                })
+        }));
     }
 
     #[test]

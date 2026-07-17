@@ -62,8 +62,12 @@ pub(crate) fn parse_type_color_addition_shape(
                 primitives::phrase(&["in", "addition", "to", "its", "other"]),
                 primitives::phrase(&["in", "addition", "to", "their", "other"]),
             ))
-        })?;
+        })
+        .unwrap_or((after_be, &[]));
     let descriptor_tokens = trim_lexed_commas(descriptor_tokens);
+    if descriptor_tokens.is_empty() {
+        return None;
+    }
     if scope_tokens.is_empty() {
         return Some(TypeColorAdditionShape {
             descriptor_tokens,
@@ -191,5 +195,20 @@ mod tests {
         let tokens = lex("are Equipment in addition to their other types");
         let shape = parse_type_color_addition_shape(&tokens).expect("plural addition");
         assert_eq!(shape.scopes.len(), 1);
+    }
+
+    #[test]
+    fn parses_unscoped_color_setting_tail() {
+        let tokens = lex("is black");
+        let shape = parse_type_color_addition_shape(&tokens).expect("unscoped color tail");
+        assert!(shape.scopes.is_empty());
+        assert_eq!(
+            shape
+                .descriptor_tokens
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            ["black"]
+        );
     }
 }

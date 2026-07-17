@@ -58,8 +58,19 @@ pub(crate) fn rewrite_lower_level_ability_ast(
             }
             ParsedLevelAbilityItemAst::KeywordActions(actions) => {
                 for action in actions {
-                    if let Some(ability) = rewrite_static_ability_for_keyword_action(action) {
+                    if let Some(ability) = rewrite_static_ability_for_keyword_action(action.clone())
+                    {
                         lowered.abilities.push(ability);
+                    } else {
+                        let display = action.display_text();
+                        let object_abilities =
+                            rewrite_lower_keyword_action_to_object_abilities(action)?;
+                        lowered.abilities.extend(
+                            crate::runtime_backend::families::static_ability_helpers::object_abilities_to_static_carriers(
+                                object_abilities,
+                                display,
+                            )?,
+                        );
                     }
                 }
             }

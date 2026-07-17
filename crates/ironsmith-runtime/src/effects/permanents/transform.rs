@@ -1,6 +1,5 @@
 //! Transform effect implementation.
 
-use crate::card::LinkedFaceLayout;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_tagged_object_id};
@@ -10,7 +9,6 @@ use crate::game_state::GameState;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
-use crate::types::CardType;
 use crate::zone::Zone;
 pub use ironsmith_core::TransformEffect;
 
@@ -132,9 +130,7 @@ fn execute_transform_like_action(
     let Some(target) = game.object(target_id) else {
         return Ok(EffectOutcome::resolved());
     };
-    if target.zone != Zone::Battlefield
-        || target.linked_face_layout != LinkedFaceLayout::TransformLike
-    {
+    if target.zone != Zone::Battlefield {
         return Ok(EffectOutcome::resolved());
     }
     if matches!(action, TransformLikeAction::Transform)
@@ -144,21 +140,9 @@ fn execute_transform_like_action(
         return Ok(EffectOutcome::resolved());
     }
 
-    let Some(other_def) = game
-        .linked_face_definition_by_name_or_id(target.other_face_name.as_deref(), target.other_face)
-    else {
-        return Ok(EffectOutcome::resolved());
-    };
-    if other_def.card.card_types.contains(&CardType::Instant)
-        || other_def.card.card_types.contains(&CardType::Sorcery)
-    {
+    if !game.transform_permanent(target_id) {
         return Ok(EffectOutcome::resolved());
     }
-
-    if let Some(obj) = game.object_mut(target_id) {
-        obj.apply_definition_face(&other_def);
-    }
-    game.mark_transformed(target_id);
 
     Ok(EffectOutcome::resolved().with_event(action.event(target_id, ctx.provenance)))
 }

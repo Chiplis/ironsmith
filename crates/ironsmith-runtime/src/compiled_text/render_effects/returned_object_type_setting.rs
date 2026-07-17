@@ -210,13 +210,19 @@ pub(super) fn describe_returned_object_set_to_enchantment(effects: &[Effect]) ->
 pub(super) fn describe_returned_object_exact_types_with_quoted_ability(
     effects: &[Effect],
 ) -> Option<String> {
-    let [return_effect, set_type_effect, add_subtype_effect, grant_effect] = effects else {
+    let [
+        return_effect,
+        set_type_effect,
+        add_subtype_effect,
+        grant_effect,
+    ] = effects
+    else {
         return None;
     };
 
     let returned_tag = outer_object_tag(return_effect)?;
-    let returned = unwrap_render_wrappers(return_effect)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let returned =
+        unwrap_render_wrappers(return_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if returned.zone != Zone::Battlefield || returned.to_top || returned.enters_face_down {
         return None;
     }
@@ -245,10 +251,7 @@ pub(super) fn describe_returned_object_exact_types_with_quoted_ability(
         return None;
     };
 
-    let mut descriptor = subtypes
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
+    let mut descriptor = subtypes.iter().map(ToString::to_string).collect::<Vec<_>>();
     descriptor.extend(
         card_types
             .iter()
@@ -275,6 +278,55 @@ pub(super) fn describe_returned_object_exact_types_with_quoted_ability(
     Some(format!(
         "{returned}. It's {descriptor} with \"{ability},\" and it loses all other card types"
     ))
+}
+
+/// Render a battlefield return followed by a permanent animation using the
+/// producer's cardinality. The shared result tag proves that the animation
+/// applies to exactly the object or collection returned by the first effect.
+pub(super) fn describe_returned_battlefield_object_then_animated(
+    effects: &[Effect],
+) -> Option<String> {
+    let [return_effect, animation_effect] = effects else {
+        return None;
+    };
+
+    describe_returned_battlefield_object_then_animated_pair(return_effect, animation_effect)
+}
+
+pub(super) fn describe_returned_battlefield_object_then_animated_pair(
+    return_effect: &Effect,
+    animation_effect: &Effect,
+) -> Option<String> {
+    let returned_tag = outer_object_tag(return_effect)?;
+    let returned = unwrap_render_wrappers(return_effect);
+    let plural =
+        if let Some(move_to_zone) = returned.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            (move_to_zone.zone == Zone::Battlefield)
+                .then(|| choose_spec_allows_multiple(&move_to_zone.target))?
+        } else if let Some(return_from_graveyard) =
+            returned.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+        {
+            choose_spec_allows_multiple(&return_from_graveyard.target)
+        } else {
+            return None;
+        };
+
+    let animation = unwrap_render_wrappers(animation_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if animation.until != Until::Forever
+        || !animation
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| choose_spec_is_exact_tag(spec, returned_tag))
+    {
+        return None;
+    }
+    let animation = describe_returned_object_animation_effect(animation, plural)?;
+    let returned = describe_effect(return_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!("{returned}. {animation}"))
 }
 
 #[cfg(test)]

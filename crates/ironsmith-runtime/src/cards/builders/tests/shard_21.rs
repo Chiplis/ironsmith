@@ -110,6 +110,11 @@ pub(super) fn parse_oracle_breaching_dragonstorm_consult_cast_else_hand() {
         rendered.contains("into your hand") || rendered.contains("owner's hand"),
         "expected Breaching Dragonstorm to keep the fallback move to hand, got {rendered}"
     );
+    assert!(
+        rendered.contains("if that spell's mana value is 8 or less")
+            && rendered.contains("if you don't, put that card into your hand"),
+        "expected Breaching Dragonstorm's tagged consult result to retain its spell and owner references, got {rendered}"
+    );
 }
 
 #[test]
@@ -542,9 +547,11 @@ pub(super) fn parse_oracle_hurkyl_master_wizard_card_type_gather_regression() {
     let rendered_lower = rendered.to_ascii_lowercase();
 
     assert!(
-        rendered_lower.contains("reveal the top five cards of your library")
-            || rendered_lower.contains("look at the top five cards of your library"),
-        "expected Hurkyl to keep the top-five reveal, got {rendered}"
+        rendered_lower.contains(
+            "reveal the top five cards of your library. for each card type among noncreature spells you cast this turn, you may put a card of that type from among the revealed cards into your hand. put the rest on the bottom of your library in a random order"
+        ) && !rendered_lower.contains("look at the top five cards")
+            && !rendered_lower.contains("reveal them"),
+        "expected Hurkyl to keep one public top-five reveal and its exact partition, got {rendered}"
     );
     assert!(
         !rendered.contains("__sentence_helper"),
@@ -554,12 +561,251 @@ pub(super) fn parse_oracle_hurkyl_master_wizard_card_type_gather_regression() {
     let debug = format!("{:?}", def.abilities);
     assert!(
         debug.contains("LookAtTopCardsEffect")
+            && debug.contains("reveal: true")
             && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
         "expected looked-card gather lowering for Hurkyl, got {debug}"
     );
     assert!(
-        !debug.contains("RevealTopEffect") && !debug.contains("ForEachObject"),
-        "expected Hurkyl to avoid the old reveal-top/foreach-object lowering, got {debug}"
+        !debug.contains("RevealTaggedEffect")
+            && !debug.contains("RevealTopEffect")
+            && !debug.contains("ForEachObject"),
+        "expected Hurkyl to avoid split reveal and old foreach-object lowering, got {debug}"
+    );
+}
+
+#[test]
+pub(super) fn exact_singleton_looked_hand_cards_compact_the_selected_set_and_complement() {
+    for (name, order) in [
+        ("Geometer's Arthropod", "in a random order"),
+        ("Machinate", "in any order"),
+        ("Shrine of Piercing Vision", "in any order"),
+        ("Teferi, Who Slows the Sunset", "in any order"),
+        ("Worldly Counsel", "in any order"),
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        let debug = format!("{:?}", def);
+
+        assert!(
+            debug.contains("LookAtTopCardsEffect")
+                && debug.contains("ChooseObjectsEffect")
+                && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+            "expected {name} to retain one looked pool, selected tag, and exact complement, got {debug}"
+        );
+        let expected = format!(
+            "put one of those cards into your hand and the rest on the bottom of your library {order}"
+        );
+        assert!(
+            rendered.contains(&expected)
+                && !rendered.contains("put a card from among them into your hand"),
+            "expected {name} to compact its exact singleton hand partition, got {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn geometers_arthropod_uses_canonical_bare_x_spell_trigger_surface() {
+    let def = parse_oracle_card_definition("Geometer's Arthropod");
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        "Whenever you cast a spell with {X} in its mana cost, look at the top X cards of your library. Put one of those cards into your hand and the rest on the bottom of your library in a random order."
+    );
+}
+
+#[test]
+pub(super) fn teferi_who_slows_the_sunset_preserves_target_slots_and_emblem_quotes() {
+    let def = parse_oracle_card_definition("Teferi, Who Slows the Sunset");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        debug.matches("TargetOnlyEffect").count(),
+        3,
+        "expected Teferi's +1 to retain three independent target declarations, got {debug}"
+    );
+    assert!(
+        debug.matches("TagAllEffect").count() >= 3 && debug.contains("__chosen_objects__"),
+        "expected Teferi's three declarations to accumulate into one chosen set, got {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Untap the chosen permanents you control. Tap the chosen permanents you don't control. You gain 2 life."
+        ),
+        "expected Teferi's controller-partitioned chosen set to survive rendering, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Untap all permanents you control")
+            && !rendered.contains("Tap all permanents you don't control"),
+        "expected Teferi's +1 not to widen the chosen target set to all permanents, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "−7: You get an emblem with \"Untap all permanents you control during each opponent's untap step\" and \"You draw a card during each opponent's draw step.\""
+        ),
+        "expected Teferi's emblem abilities to retain separate quotes, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn up_to_one_top_cards_compact_the_selected_set_and_random_complement() {
+    for name in [
+        "Nael, Avizoa Aeronaut",
+        "Slimefoot's Survey",
+        "Thassa's Oracle",
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        let debug = format!("{:?}", def);
+
+        assert!(
+            debug.contains("LookAtTopCardsEffect")
+                && debug.contains("ChooseObjectsEffect")
+                && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+            "expected {name} to retain one looked pool, optional selected tag, and exact complement, got {debug}"
+        );
+        assert!(
+            rendered.contains(
+                "put up to one of them on top of your library and the rest on the bottom of your library in a random order"
+            ) && !rendered.contains("for each card chosen this way"),
+            "expected {name} to compact its up-to-one top partition, got {rendered}"
+        );
+    }
+
+    let slimefoot = parse_oracle_card_definition("Slimefoot's Survey");
+    let slimefoot_rendered = unprocessed_compiled_lines(&slimefoot)
+        .join(" ")
+        .to_ascii_lowercase();
+    let slimefoot_debug = format!("{slimefoot:?}");
+    assert!(
+        slimefoot_debug.contains("has_basic_land_type: true"),
+        "expected Slimefoot's Survey to retain the basic-land-type predicate, got {slimefoot_debug}"
+    );
+    assert!(
+        slimefoot_rendered.contains(
+            "search your library for up to two land cards with a basic land type, put them onto the battlefield tapped, then shuffle"
+        ) && !slimefoot_rendered.contains("up to two basic land cards"),
+        "expected Slimefoot's Survey to distinguish basic land types from the Basic supertype, got {slimefoot_rendered}"
+    );
+}
+
+#[test]
+pub(super) fn looked_battlefield_cards_compact_optional_selection_wrappers() {
+    let aethermage = parse_oracle_card_definition("Aethermage's Touch");
+    let aethermage_rendered = crate::compiled_text::compiled_text_lines(&aethermage)
+        .join(" ")
+        .to_ascii_lowercase();
+    let aethermage_debug = format!("{:?}", aethermage.spell_effect);
+    assert!(
+        aethermage_debug.contains("LookAtTopCardsEffect")
+            && aethermage_debug.contains("reveal: true")
+            && aethermage_debug.contains("MayEffect")
+            && aethermage_debug.contains("ChooseObjectsEffect")
+            && aethermage_debug.contains("ForEachTaggedEffect")
+            && aethermage_debug.contains("ApplyContinuousEffect")
+            && aethermage_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Aethermage's Touch to retain its segmented reveal, optional tagged move, grant, and exact complement, got {aethermage_debug}"
+    );
+    assert!(
+        aethermage_rendered.contains("reveal the top four cards of your library")
+            && aethermage_rendered
+                .contains("you may put a creature card from among them onto the battlefield")
+            && aethermage_rendered.contains(
+                "it gains \"at the beginning of your end step, return this creature to its owner's hand.\""
+            )
+            && aethermage_rendered
+                .contains("put the rest on the bottom of your library in any order")
+            && !aethermage_rendered.contains("you may choose a creature card")
+            && !aethermage_rendered.contains("for each card chosen this way"),
+        "expected Aethermage's Touch to compact its optional battlefield partition, got {aethermage_rendered}"
+    );
+
+    let ajani = parse_oracle_card_definition("Ajani, Outland Chaperone");
+    let ajani_rendered = crate::compiled_text::compiled_text_lines(&ajani)
+        .join(" ")
+        .to_ascii_lowercase();
+    let ajani_debug = format!("{:?}", ajani.abilities);
+    assert!(
+        ajani_debug.contains("LookAtTopCardsEffect")
+            && ajani_debug.contains("ChooseObjectsEffect")
+            && ajani_debug.contains("ShuffleLibraryEffect"),
+        "expected Ajani to retain looked-card selection and shuffle effects, got {ajani_debug}"
+    );
+    assert!(
+        ajani_rendered.contains(
+            "look at the top x cards of your library, where x is your life total"
+        ) && ajani_rendered.contains(
+            "you may put any number of nonland permanent cards with mana value 3 or less from among them onto the battlefield"
+        ) && ajani_rendered.contains("then shuffle")
+            && !ajani_rendered.contains("for each card chosen this way"),
+        "expected Ajani to compact its optional battlefield selection, got {ajani_rendered}"
+    );
+
+    let knickknack = parse_oracle_card_definition("Knickknack Ouphe");
+    let knickknack_rendered = crate::compiled_text::compiled_text_lines(&knickknack)
+        .join(" ")
+        .to_ascii_lowercase();
+    let knickknack_debug = format!("{:?}", knickknack.abilities);
+    assert!(
+        knickknack_debug.contains("LookAtTopCardsEffect")
+            && knickknack_debug.contains("ChooseObjectsEffect")
+            && knickknack_debug.contains("ForEachTaggedEffect")
+            && knickknack_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Knickknack Ouphe to retain one revealed pool, its optional Aura subset, and the exact complement, got {knickknack_debug}"
+    );
+    assert!(
+        knickknack_rendered.contains("reveal the top x cards of your library")
+            && knickknack_rendered.contains(
+                "you may put any number of aura cards with mana value x or less from among them onto the battlefield"
+            )
+            && knickknack_rendered.contains(
+                "put all cards revealed this way that weren't put onto the battlefield on the bottom of your library in a random order"
+            )
+            && !knickknack_rendered.contains("put those cards on the bottom"),
+        "expected Knickknack Ouphe to render the revealed-set complement, got {knickknack_rendered}"
+    );
+}
+
+#[test]
+pub(super) fn mitotic_manipulation_restricts_the_deployed_card_to_matching_permanent_names() {
+    let def = parse_oracle_card_definition("Mitotic Manipulation");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let debug = format!("{:?}", def.spell_effect);
+
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("TagMatchingObjectsEffect")
+            && debug.contains("SameNameAsTagged")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected a looked pool, battlefield comparison set, restricted chosen subset, and exact complement, got {debug}"
+    );
+    assert_eq!(
+        rendered,
+        "Look at the top seven cards of your library. You may put one of those cards onto the battlefield if it has the same name as a permanent. Put the rest on the bottom of your library in any order."
+    );
+}
+
+#[test]
+pub(super) fn vivien_invocation_compacts_the_exact_remainder_before_its_reflexive_result() {
+    let def = parse_oracle_card_definition("Vivien's Invocation");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let debug = format!("{:?}", def.spell_effect);
+
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("WithIdEffect")
+            && debug.contains("ReflexiveTriggerEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected a tagged looked-card deployment, exact complement, and reflexive result, got {debug}"
+    );
+    assert_eq!(
+        rendered,
+        "Look at the top seven cards of your library. You may put a creature card from among them onto the battlefield. Put the rest on the bottom of your library in a random order. When a creature is put onto the battlefield this way, it deals damage equal to its power to target creature an opponent controls."
     );
 }
 
@@ -1113,27 +1359,22 @@ pub(super) fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
     assert!(
         raw.contains("BeginningOfUpkeepTrigger")
             && raw.contains("player: Any")
-            && raw.contains("AnOpponentControlsMoreThanPlayer")
+            && raw.contains("TargetOnlyEffect")
+            && raw.contains("chooser: Some(Active)")
+            && raw.contains("OpponentWithMoreControlledObjectsThan")
+            && raw.contains("player: Active")
             && raw.contains("ConsultTopOfLibraryEffect")
             && raw.contains("MayEffect")
             && raw.contains("zone: Battlefield")
-            && raw.contains("zone: Graveyard"),
-        "expected Oath of Druids to keep its upkeep consult structure, got {raw}"
+            && raw.contains("zone: Graveyard")
+            && !raw.contains("AnOpponentControlsMoreThanPlayer"),
+        "expected Oath of Druids to retain an active-player target choice and consult structure, got {raw}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
-    assert!(
-        rendered.contains("each player's upkeep")
-            && (rendered.contains("an opponent controls more creatures than that player")
-                || rendered.contains("controls more creatures than they do and is their opponent"))
-            && (rendered.contains("that player may reveal cards from the top of")
-                || rendered.contains("the first player may reveal cards from the top of"))
-            && rendered.contains("until they reveal a creature card")
-            && rendered.contains("that card onto the battlefield")
-            && rendered.contains("all other cards revealed this way into their graveyard"),
-        "expected Oath of Druids oracle-like text to stay close to the oracle, got {rendered}"
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard."
     );
 }
 
@@ -1738,6 +1979,12 @@ pub(super) fn parse_borne_upon_a_wind_flash_permission_clause() {
             && debug.contains("Flash")
             && debug.contains("DrawCardsEffect"),
         "expected temporary flash grant plus draw, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("You may cast spells this turn as though they had flash"),
+        "expected oracle-order temporary flash permission, got {rendered}"
     );
 }
 

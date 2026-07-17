@@ -3,9 +3,57 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::mana::ManaSymbol;
+use crate::object::CounterType;
+use crate::runtime_backend::front_end::lexer::parser_token_word_refs;
 
 use super::super::super::super::lexer::{LexStream, OwnedLexToken};
 use super::super::super::{leaf, primitives};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CounterLimitFact {
+    pub counter_type: CounterType,
+    pub maximum: u32,
+}
+
+/// Parse "this can't have more than N [kind] counters on it" without
+/// conflating the static cap with a prohibition on placing counters.
+pub(crate) fn parse_counter_limit_fact_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<CounterLimitFact> {
+    let words = parser_token_word_refs(tokens);
+    let cant_idx = words
+        .iter()
+        .position(|word| matches!(*word, "can't" | "cant" | "cannot"))?;
+    if !matches!(
+        words.get(..cant_idx)?,
+        ["this"] | ["this", "permanent"] | ["this", "creature"] | ["this", "token"]
+    ) || words.get(cant_idx + 1..cant_idx + 4)? != ["have", "more", "than"]
+    {
+        return None;
+    }
+
+    let maximum_idx = cant_idx + 4;
+    let maximum = leaf::parse_number_complete(words.get(maximum_idx)?).ok()?;
+    let counter_noun_idx = words
+        .iter()
+        .enumerate()
+        .skip(maximum_idx + 1)
+        .find_map(|(idx, word)| matches!(*word, "counter" | "counters").then_some(idx))?;
+    let tail = words.get(counter_noun_idx + 1..)?;
+    if !matches!(
+        tail,
+        ["on", "it"] | ["on", "this"] | ["on", "this", "permanent"]
+    ) {
+        return None;
+    }
+    let counter_type = super::super::super::filters::parse_counter_type_words(
+        words.get(maximum_idx + 1..=counter_noun_idx)?,
+    )?;
+    Some(CounterLimitFact {
+        counter_type,
+        maximum,
+    })
+}
 
 /// A complete, self-contained restriction surface whose semantic meaning does
 /// not depend on a later filter or condition parser.
@@ -385,6 +433,22 @@ mod tests {
         for (raw, expected) in cases {
             assert_eq!(parse(raw), Some(expected), "fixture: {raw}");
         }
+    }
+
+    #[test]
+    fn parses_typed_source_counter_limit() {
+        let tokens = lex_line(
+            "This creature can't have more than seven dream counters on it.",
+            0,
+        )
+        .expect("lex counter limit");
+        assert_eq!(
+            parse_counter_limit_fact_tokens(&tokens),
+            Some(CounterLimitFact {
+                counter_type: CounterType::Dream,
+                maximum: 7,
+            })
+        );
     }
 
     #[test]

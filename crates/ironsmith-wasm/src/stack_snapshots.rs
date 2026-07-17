@@ -34,7 +34,22 @@ pub(super) fn deterministic_match_seed(
         &mut seed,
         match format {
             MatchFormatInput::Normal => "normal",
+            MatchFormatInput::FreeForAll => "free_for_all",
+            MatchFormatInput::GrandMelee => "grand_melee",
+            MatchFormatInput::TeamVsTeam => "team_vs_team",
+            MatchFormatInput::Emperor => "emperor",
+            MatchFormatInput::TwoHeadedGiant => "two_headed_giant",
+            MatchFormatInput::AlternatingTeams => "alternating_teams",
+            MatchFormatInput::Ante => "ante",
+            MatchFormatInput::Planechase => "planechase",
+            MatchFormatInput::Vanguard => "vanguard",
+            MatchFormatInput::Archenemy => "archenemy",
+            MatchFormatInput::SupervillainRumble => "supervillain_rumble",
+            MatchFormatInput::ArchenemyCommander => "archenemy_commander",
+            MatchFormatInput::ConspiracyDraft => "conspiracy_draft",
+            MatchFormatInput::CommanderDraft => "commander_draft",
             MatchFormatInput::Commander => "commander",
+            MatchFormatInput::Brawl => "brawl",
         },
     );
     mix_match_seed_u64(&mut seed, starting_life as i64 as u64);

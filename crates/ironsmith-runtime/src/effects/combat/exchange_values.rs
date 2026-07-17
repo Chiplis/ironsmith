@@ -187,10 +187,8 @@ impl ExchangeValuesEffect {
         let mut outcome = EffectOutcome::resolved();
         if next_value > current {
             let gained = process_life_gain_with_event(game, player, (next_value - current) as u32);
-            if gained > 0
-                && let Some(player_state) = game.player_mut(player)
-            {
-                player_state.gain_life(gained);
+            if gained > 0 {
+                game.gain_life(player, gained);
             }
             if gained > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
@@ -200,9 +198,7 @@ impl ExchangeValuesEffect {
             }
         } else {
             let lost = (current - next_value) as u32;
-            if let Some(player_state) = game.player_mut(player) {
-                player_state.lose_life(lost);
-            }
+            game.lose_life(player, lost);
             if lost > 0 {
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     crate::events::LifeLossEvent::from_effect(player, lost),

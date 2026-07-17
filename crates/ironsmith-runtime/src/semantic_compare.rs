@@ -540,6 +540,12 @@ fn normalize_clause_line(text: &str) -> String {
             "whenever this land attacks",
             "whenever this creature attacks",
         )
+        // A relative attacker subject and the pronoun it licenses denote the
+        // same triggering object.
+        .replace("the creature that attacked gains", "it gains")
+        .replace("The creature that attacked gains", "It gains")
+        .replace("that creature's power is", "its power is")
+        .replace("That creature's power is", "Its power is")
         // A completed sentence already establishes sequencing. Treat an
         // additional leading "then" on the following conditional as surface
         // punctuation, not a distinct semantic operation.
@@ -999,12 +1005,16 @@ fn is_keyword_only_phrase(phrase: &str) -> bool {
     }
     if lower == "sunburst"
         || lower.starts_with("bushido ")
+        || lower.starts_with("cleave ")
+        || lower.starts_with("frenzy ")
         || lower.starts_with("fading ")
         || lower.starts_with("fabricate ")
         || lower.starts_with("graft ")
         || lower.starts_with("modular ")
+        || lower.starts_with("poisonous ")
         || lower.starts_with("rampage ")
         || lower.starts_with("scavenge ")
+        || lower.starts_with("transfigure ")
         || lower.starts_with("transmute ")
         || lower.starts_with("toxic ")
         || lower.starts_with("vanishing ")

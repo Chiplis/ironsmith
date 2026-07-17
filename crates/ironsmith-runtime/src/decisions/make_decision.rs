@@ -370,15 +370,16 @@ pub fn publish_hidden_card_views_for_decision(
             }
             match view.visibility {
                 DecisionHiddenCardVisibility::PrivateToDecisionPlayer => {
-                    let viewer = game.controlling_player_for(ctx.player());
-                    let view_ctx = ViewCardsContext::new(
-                        viewer,
-                        subject,
-                        ctx.source(),
-                        zone,
-                        view.description.clone(),
-                    );
-                    dm.view_cards(game, viewer, &cards, &view_ctx);
+                    for viewer in game.private_information_viewers_for(ctx.player(), zone) {
+                        let view_ctx = ViewCardsContext::new(
+                            viewer,
+                            subject,
+                            ctx.source(),
+                            zone,
+                            view.description.clone(),
+                        );
+                        dm.view_cards(game, viewer, &cards, &view_ctx);
+                    }
                 }
                 DecisionHiddenCardVisibility::Public => {
                     for viewer_idx in 0..game.players.len() {
@@ -795,10 +796,89 @@ pub fn make_mana_color_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardBuilder;
+    use crate::decisions::context::{
+        DecisionHiddenCardVisibility, SelectObjectsContext, SelectableObject,
+    };
     use crate::decisions::specs::MaySpec;
+    use crate::game_state::{PlayerControlDuration, PlayerControlStart};
+    use crate::ids::CardId;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn controlled_player_private_views_share_only_in_game_information() {
+        #[derive(Default)]
+        struct CaptureViews {
+            viewers: Vec<PlayerId>,
+        }
+
+        impl DecisionMaker for CaptureViews {
+            fn view_cards(
+                &mut self,
+                _game: &GameState,
+                viewer: PlayerId,
+                _cards: &[ObjectId],
+                _ctx: &ViewCardsContext,
+            ) {
+                self.viewers.push(viewer);
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let hand_card = CardBuilder::new(CardId::from_raw(98_001), "Hand Probe").build();
+        let sideboard_card = CardBuilder::new(CardId::from_raw(98_002), "Sideboard Probe").build();
+        let hand_id = game.create_object_from_card(&hand_card, alice, Zone::Hand);
+        let sideboard_id = game.create_object_from_card(&sideboard_card, alice, Zone::OutsideGame);
+        game.add_player_control(
+            bob,
+            alice,
+            PlayerControlStart::Immediate,
+            PlayerControlDuration::UntilEndOfTurn,
+            None,
+        );
+
+        let hand_decision = DecisionContext::SelectObjects(
+            SelectObjectsContext::new(
+                alice,
+                None,
+                "Choose a hand card",
+                vec![SelectableObject::new(hand_id, "Hand Probe")],
+                1,
+                Some(1),
+            )
+            .with_hidden_card_view(
+                vec![hand_id],
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                "Hand",
+            ),
+        );
+        let mut views = CaptureViews::default();
+        publish_hidden_card_views_for_decision(&game, &mut views, &hand_decision);
+        assert_eq!(views.viewers, vec![bob, alice]);
+
+        let sideboard_decision = DecisionContext::SelectObjects(
+            SelectObjectsContext::new(
+                alice,
+                None,
+                "Choose a sideboard card",
+                vec![SelectableObject::new(sideboard_id, "Sideboard Probe")],
+                1,
+                Some(1),
+            )
+            .with_hidden_card_view(
+                vec![sideboard_id],
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                "Outside the game",
+            ),
+        );
+        views.viewers.clear();
+        publish_hidden_card_views_for_decision(&game, &mut views, &sideboard_decision);
+        assert_eq!(views.viewers, vec![alice]);
     }
 
     #[test]

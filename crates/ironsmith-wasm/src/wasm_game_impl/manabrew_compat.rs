@@ -103,7 +103,9 @@ fn scalar_string(value: Option<&Value>) -> Option<String> {
 
 fn manabrew_format(value: Option<&str>) -> MatchFormatInput {
     match value.unwrap_or_default().to_ascii_lowercase().as_str() {
-        "commander" | "brawl" | "oathbreaker" => MatchFormatInput::Commander,
+        "ante" => MatchFormatInput::Ante,
+        "brawl" => MatchFormatInput::Brawl,
+        "commander" | "oathbreaker" => MatchFormatInput::Commander,
         _ => MatchFormatInput::Normal,
     }
 }
@@ -316,7 +318,9 @@ fn manabrew_deck_sources(decks: &[Value]) -> Vec<ExternalCardSourceFile> {
 
 fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
     let format = manabrew_format(input.format.as_deref());
-    let opening_hand_size = input.opening_hand_size.unwrap_or(7);
+    let starting_life =
+        format.effective_starting_life(input.player_names.len(), input.starting_life);
+    let opening_hand_size = format.effective_opening_hand_size(input.opening_hand_size);
     let decks: Vec<Vec<String>> = input
         .decks
         .iter()
@@ -344,7 +348,7 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
     let seed = input.seed.unwrap_or_else(|| {
         deterministic_match_seed(
             &input.player_names,
-            input.starting_life,
+            starting_life,
             format,
             Some(&decks),
             Some(&commanders),
@@ -353,14 +357,21 @@ fn manabrew_match_setup(input: &ManabrewMatchConfigInput) -> MatchSetupInput {
     });
     MatchSetupInput {
         player_names: input.player_names.clone(),
-        starting_life: input.starting_life,
+        starting_life,
         seed,
         format,
         decks: Some(decks),
         sideboards: Some(sideboards),
         commanders: Some(commanders),
+        planar_decks: None,
+        vanguards: None,
+        scheme_decks: None,
+        conspiracies: None,
+        commander_draft: None,
         opening_hand_size: Some(opening_hand_size),
         hidden_deck_manifests: None,
+        free_for_all: None,
+        teams: None,
     }
 }
 
@@ -495,12 +506,14 @@ fn protocol_card(game: &GameState, id: ObjectId) -> Option<CardDto> {
             let target = match info.target {
                 AttackTarget::Player(player) => player_id(player),
                 AttackTarget::Planeswalker(object) => object_id(game, object),
+                AttackTarget::Battle(object) => object_id(game, object),
             };
             let defending_player = match info.target {
                 AttackTarget::Player(player) => Some(player_id(player)),
                 AttackTarget::Planeswalker(object) => game
                     .object(object)
                     .map(|object| player_id(game.controller_of(object))),
+                AttackTarget::Battle(object) => game.battle_protector(object).map(player_id),
             };
             (true, defending_player, Some(target))
         })
@@ -631,16 +644,25 @@ impl WasmGame {
                     && view.subject == object.owner
                     && (view.cards.contains(&id)
                         || view.card_stable_ids.contains(&object.stable_id))
-                    && (view.public || viewer == Some(view.viewer))
+                    && (view.public
+                        || viewer == Some(view.viewer)
+                        || (view.zone != Zone::OutsideGame
+                            && viewer == Some(self.game.controlling_player_for(view.viewer))))
             });
         if has_view_permission {
             return true;
         }
         match object.zone {
-            Zone::Hand => viewer == Some(object.owner),
+            Zone::OutsideGame => viewer == Some(object.owner),
+            Zone::Hand => {
+                viewer == Some(object.owner)
+                    || viewer == Some(self.game.controlling_player_for(object.owner))
+            }
             Zone::Library => false,
             Zone::Battlefield if self.game.is_face_down(id) => {
-                viewer == Some(self.game.controller_of(object))
+                let permanent_controller = self.game.controller_of(object);
+                viewer == Some(permanent_controller)
+                    || viewer == Some(self.game.controlling_player_for(permanent_controller))
             }
             Zone::Exile if self.game.is_face_down(id) => viewer.is_some_and(|viewer| {
                 self.game
@@ -917,15 +939,18 @@ impl WasmGame {
             | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
             LegalAction::PlayLand { land_id } => Some(*land_id),
             LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
-            LegalAction::SpecialAction(action) => Some(match action {
+            LegalAction::SpecialAction(action) => match action {
                 SpecialAction::PlayLand { card_id }
                 | SpecialAction::Suspend { card_id }
                 | SpecialAction::Foretell { card_id }
-                | SpecialAction::Plot { card_id } => *card_id,
+                | SpecialAction::Plot { card_id }
+                | SpecialAction::Companion { card_id } => Some(*card_id),
                 SpecialAction::TurnFaceUp { permanent_id, .. }
-                | SpecialAction::ActivateManaAbility { permanent_id, .. } => *permanent_id,
-                SpecialAction::UnlockRoomDoor { room_id } => *room_id,
-            }),
+                | SpecialAction::ActivateManaAbility { permanent_id, .. } => Some(*permanent_id),
+                SpecialAction::UnlockRoomDoor { room_id } => Some(*room_id),
+                SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => Some(*conspiracy_id),
+                SpecialAction::RollPlanarDie => None,
+            },
             LegalAction::PassPriority
             | LegalAction::KeepOpeningHand
             | LegalAction::TakeMulligan
@@ -1594,6 +1619,11 @@ impl WasmGame {
                                         object_id(&self.game, *object),
                                         self.game.current_name(*object).unwrap_or_default(),
                                         AttackTargetKind::Planeswalker,
+                                    ),
+                                    AttackTarget::Battle(object) => (
+                                        object_id(&self.game, *object),
+                                        self.game.current_name(*object).unwrap_or_default(),
+                                        AttackTargetKind::Battle,
                                     ),
                                 };
                                 targets.insert(id.clone(), target.clone());
@@ -2279,6 +2309,9 @@ impl WasmGame {
                                     AttackTarget::Planeswalker(object) => {
                                         AttackTargetInput::Planeswalker { object: object.0 }
                                     }
+                                    AttackTarget::Battle(object) => {
+                                        AttackTargetInput::Battle { object: object.0 }
+                                    }
                                 };
                             Ok(AttackerDeclarationInput {
                                 creature: creature.0,
@@ -2288,7 +2321,10 @@ impl WasmGame {
                     )
                     .collect::<Result<Vec<_>, ProtocolError>>()?;
                 Ok(ManabrewResponseAction::Dispatch(
-                    UiCommand::DeclareAttackers { declarations },
+                    UiCommand::DeclareAttackers {
+                        declarations,
+                        bands: Vec::new(),
+                    },
                 ))
             }
             (
@@ -2641,6 +2677,110 @@ mod manabrew_tests {
         game
     }
 
+    fn valid_brawl_decks() -> (Vec<Vec<String>>, Vec<Vec<String>>) {
+        (
+            vec![vec!["Plains".to_string(); 59]; 2],
+            vec![vec!["Geist of Saint Traft".to_string()]; 2],
+        )
+    }
+
+    #[test]
+    fn manabrew_brawl_import_uses_distinct_format_and_rules_life() {
+        let two_player = ManabrewMatchConfigInput {
+            player_names: vec!["Alice".to_string(), "Bob".to_string()],
+            starting_life: 40,
+            seed: Some(7),
+            game_id: None,
+            human_players: Vec::new(),
+            bot_players: Vec::new(),
+            format: Some("brawl".to_string()),
+            decks: Vec::new(),
+            commander_names: Vec::new(),
+            opening_hand_size: Some(7),
+        };
+        let setup = manabrew_match_setup(&two_player);
+        assert_eq!(setup.format, MatchFormatInput::Brawl);
+        assert_eq!(setup.starting_life, 25);
+
+        let mut multiplayer = two_player;
+        multiplayer.player_names.push("Cara".to_string());
+        let setup = manabrew_match_setup(&multiplayer);
+        assert_eq!(setup.starting_life, 30);
+    }
+
+    #[test]
+    fn brawl_setup_enforces_construction_and_runtime_profile() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        let (decks, commanders) = valid_brawl_decks();
+        game.validate_brawl_setup(&decks, &commanders)
+            .expect("59 Plains plus Geist should be a legal Brawl construction");
+
+        let config = MatchSetupInput {
+            player_names: vec!["Alice".to_string(), "Bob".to_string()],
+            starting_life: 40,
+            seed: 7,
+            format: MatchFormatInput::Brawl,
+            decks: Some(decks.clone()),
+            sideboards: None,
+            commanders: Some(commanders.clone()),
+            planar_decks: None,
+            vanguards: None,
+            scheme_decks: None,
+            conspiracies: None,
+            commander_draft: None,
+            opening_hand_size: Some(0),
+            hidden_deck_manifests: None,
+            free_for_all: None,
+            teams: None,
+        };
+        game.apply_match_setup(config)
+            .expect("legal Brawl match should start");
+
+        assert_eq!(game.match_format, MatchFormatInput::Brawl);
+        assert!(game.game.players.iter().all(|player| player.life == 25));
+        assert!(!game.game.commander_damage_loss_enabled());
+        assert_eq!(
+            game.pregame
+                .as_ref()
+                .expect("pregame should be active")
+                .free_mulligan_count(),
+            1
+        );
+        assert!(
+            game.game
+                .players
+                .iter()
+                .all(|player| { player.library.len() == 59 && player.commanders.len() == 1 })
+        );
+
+        let mut oversized = decks.clone();
+        oversized[0].push("Plains".to_string());
+        assert!(game.validate_brawl_setup(&oversized, &commanders).is_err());
+
+        let mut duplicate_nonbasic = decks.clone();
+        duplicate_nonbasic[0] = vec!["Plains".to_string(); 57];
+        duplicate_nonbasic[0].extend(["Sol Ring".to_string(), "Sol Ring".to_string()]);
+        assert!(
+            game.validate_brawl_setup(&duplicate_nonbasic, &commanders)
+                .is_err()
+        );
+
+        let mut off_identity = decks;
+        off_identity[0] = vec!["Plains".to_string(); 58];
+        off_identity[0].push("Lightning Bolt".to_string());
+        assert!(
+            game.validate_brawl_setup(&off_identity, &commanders)
+                .is_err()
+        );
+
+        let invalid_commanders = vec![vec!["Sol Ring".to_string()]; 2];
+        assert!(
+            game.validate_brawl_setup(&valid_brawl_decks().0, &invalid_commanders)
+                .is_err()
+        );
+    }
+
     fn open_prompt(input: PromptInput, binding: ManabrewPromptBinding) -> ManabrewOpenPrompt {
         ManabrewOpenPrompt {
             prompt_id: 1,
@@ -2819,6 +2959,38 @@ mod manabrew_tests {
             .find(|zone| zone.zone == ZoneKind::Exile && zone.owner_id == "player-1")
             .expect("Bob exile exists");
         assert!(matches!(bob_exile.cards.as_slice(), [CardView::Visible(_)]));
+    }
+
+    #[test]
+    fn controlled_player_manabrew_visibility_respects_outside_game_exception() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = ironsmith::card::CardBuilder::new(
+            ironsmith::ids::CardId::from_raw(990_002),
+            "Controlled Information Probe",
+        )
+        .build();
+        let hand = game.game.create_object_from_card(&card, alice, Zone::Hand);
+        let outside = game
+            .game
+            .create_object_from_card(&card, alice, Zone::OutsideGame);
+        let exiled = game.game.create_object_from_card(&card, alice, Zone::Exile);
+        game.game.set_face_down(exiled);
+        game.game.grant_face_down_exile_view(exiled, alice);
+
+        let control_token = game.game.add_scoped_player_control(bob, alice, None);
+        assert!(game.manabrew_card_is_visible(hand, Some(alice)));
+        assert!(game.manabrew_card_is_visible(hand, Some(bob)));
+        assert!(game.manabrew_card_is_visible(exiled, Some(alice)));
+        assert!(game.manabrew_card_is_visible(exiled, Some(bob)));
+        assert!(game.manabrew_card_is_visible(outside, Some(alice)));
+        assert!(!game.manabrew_card_is_visible(outside, Some(bob)));
+
+        game.game.remove_scoped_player_control(control_token);
+        assert!(!game.manabrew_card_is_visible(hand, Some(bob)));
+        assert!(!game.manabrew_card_is_visible(exiled, Some(bob)));
     }
 
     #[test]

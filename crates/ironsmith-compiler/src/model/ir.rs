@@ -133,6 +133,7 @@ pub struct RewriteLevelItem<Parsed> {
 pub struct RewriteSagaChapterLine<Effect> {
     pub info: LineInfo,
     pub chapters: Vec<u32>,
+    pub presentation_label: Option<String>,
     pub text: String,
     pub effects_ast: Vec<Effect>,
 }

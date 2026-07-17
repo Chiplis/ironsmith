@@ -5,8 +5,8 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
     AbilityActivatedTrigger, AttacksTrigger, CountMode, DealsDamageToTrigger, DealsDamageTrigger,
     PermanentBecomesTappedTrigger, PlayerRelation, SpellCastTrigger, ThisAttacksTrigger,
-    ThisDealsDamageToTrigger, ThisDealsDamageTrigger, TransformsTrigger, Trigger, TriggerEvent,
-    ZoneChangeTrigger, ZonePattern,
+    ThisBlocksTrigger, ThisDealsDamageToTrigger, ThisDealsDamageTrigger, TransformsTrigger,
+    Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern,
 };
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -141,6 +141,30 @@ impl OrTrigger {
     /// Create an OrTrigger from exactly two triggers.
     pub fn two(a: Trigger, b: Trigger) -> Self {
         Self::new(vec![a, b])
+    }
+
+    fn self_attacks_or_blocks_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        // Explicit inner introductions may intentionally differ. The parser
+        // puts the authored introduction on the outer Or trigger, so the
+        // ordinary source-scoped pair has no inner surface to erase here.
+        if first.intro_surface().is_some() || second.intro_surface().is_some() {
+            return None;
+        }
+        let action = if first.downcast_ref::<ThisAttacksTrigger>().is_some()
+            && second.downcast_ref::<ThisBlocksTrigger>().is_some()
+        {
+            "attacks or blocks"
+        } else if first.downcast_ref::<ThisBlocksTrigger>().is_some()
+            && second.downcast_ref::<ThisAttacksTrigger>().is_some()
+        {
+            "blocks or attacks"
+        } else {
+            return None;
+        };
+        Some(format!("Whenever this creature {action}"))
     }
 
     fn self_enters_or_attacks_display(&self) -> Option<String> {
@@ -790,6 +814,9 @@ impl TriggerMatcher for OrTrigger {
         if self.triggers.len() == 1 {
             return self.triggers[0].display();
         }
+        if let Some(display) = self.self_attacks_or_blocks_display() {
+            return display;
+        }
         if let Some(display) = self.self_enters_or_attacks_display() {
             return display;
         }
@@ -926,6 +953,32 @@ mod tests {
             trigger.display(),
             "Whenever your commander enters or attacks"
         );
+    }
+
+    #[test]
+    fn display_compacts_this_creature_attacks_or_blocks_with_outer_intro() {
+        let trigger = Trigger::or(vec![Trigger::this_attacks(), Trigger::this_blocks()])
+            .with_intro_surface(crate::triggers::TriggerIntroSurface::When);
+        assert_eq!(trigger.display(), "When this creature attacks or blocks");
+
+        let reversed = OrTrigger::two(Trigger::this_blocks(), Trigger::this_attacks());
+        assert_eq!(
+            reversed.display(),
+            "Whenever this creature blocks or attacks"
+        );
+    }
+
+    #[test]
+    fn display_does_not_compact_mixed_inner_introductions() {
+        let trigger = OrTrigger::two(
+            Trigger::this_attacks().with_intro_surface(crate::triggers::TriggerIntroSurface::When),
+            Trigger::this_blocks()
+                .with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever),
+        );
+        let display = trigger.display();
+        assert_ne!(display, "Whenever this creature attacks or blocks");
+        assert!(display.contains("this creature attacks"), "{display}");
+        assert!(display.contains("this creature blocks"), "{display}");
     }
 
     #[test]

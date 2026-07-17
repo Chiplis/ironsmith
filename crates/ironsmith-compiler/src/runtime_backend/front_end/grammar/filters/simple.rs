@@ -138,7 +138,7 @@ pub(crate) fn parse_simple_object_filter_lexed(
 /// artifacts. `ObjectFilter::any_of` already carries the required inclusive-union
 /// semantics, so keep the shared domain on the outer filter and put each type arm (and
 /// its local exclusions) in a nested selector.
-pub(super) fn preserve_branch_scoped_card_type_union(
+pub(crate) fn preserve_branch_scoped_card_type_union(
     filter: &mut ObjectFilter,
     tokens: &[OwnedLexToken],
     other: bool,

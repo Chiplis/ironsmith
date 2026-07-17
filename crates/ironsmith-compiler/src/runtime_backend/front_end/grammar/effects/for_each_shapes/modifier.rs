@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::runtime_backend::front_end::grammar::{leaf, permission_shapes, primitives};
-use crate::runtime_backend::front_end::lexer::OwnedLexToken;
+use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenKind};
 use crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens;
 
 #[derive(Debug, Clone, Copy)]
@@ -20,6 +20,48 @@ pub(crate) struct ModifierTailShape<'a> {
     pub(crate) duration: Until,
     pub(crate) condition: Option<ConditionExpr>,
     pub(crate) action: ModifierTailAction<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FixedPtAlternativeShape<'a> {
+    pub(crate) first_modifier: OwnedLexToken,
+    pub(crate) second_modifier: OwnedLexToken,
+    pub(crate) trailing_tokens: &'a [OwnedLexToken],
+}
+
+fn normalized_pt_modifier_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<(OwnedLexToken, &[OwnedLexToken])> {
+    let first = tokens.first()?;
+    if leaf::parse_leaf_pt_modifier_values_complete(first.parser_text()).is_ok() {
+        return Some((first.clone(), &tokens[1..]));
+    }
+
+    let sign = match first.kind {
+        TokenKind::Dash => "-",
+        TokenKind::Plus => "+",
+        _ => return None,
+    };
+    let unsigned = tokens.get(1)?.as_word()?;
+    let modifier = format!("{sign}{unsigned}");
+    leaf::parse_leaf_pt_modifier_values_complete(&modifier).ok()?;
+    Some((OwnedLexToken::word(modifier, first.span()), &tokens[2..]))
+}
+
+pub(crate) fn parse_fixed_pt_alternative_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<FixedPtAlternativeShape<'_>> {
+    let (first_modifier, rest) = normalized_pt_modifier_prefix(tokens)?;
+    let (or_token, rest) = rest.split_first()?;
+    if or_token.as_word() != Some("or") {
+        return None;
+    }
+    let (second_modifier, trailing_tokens) = normalized_pt_modifier_prefix(rest)?;
+    Some(FixedPtAlternativeShape {
+        first_modifier,
+        second_modifier,
+        trailing_tokens,
+    })
 }
 
 fn contains_any(tokens: &[OwnedLexToken], words: &[&'static str]) -> bool {
@@ -63,13 +105,10 @@ fn accepted_alternative_modifier(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, rest)) = primitives::parse_prefix(tokens, primitives::kw("or")) else {
         return false;
     };
-    let Some(token) = rest.first() else {
+    let Some((_, tail)) = normalized_pt_modifier_prefix(rest) else {
         return false;
     };
-    if leaf::parse_leaf_pt_modifier_values_complete(token.parser_text()).is_err() {
-        return false;
-    }
-    let tail = trim_edge_punctuation_tokens(rest.get(1..).unwrap_or_default());
+    let tail = trim_edge_punctuation_tokens(tail);
     tail.is_empty() || is_eot_tail(tail)
 }
 
@@ -157,5 +196,16 @@ mod tests {
             parse_modifier_tail_shape(&dynamic).action,
             ModifierTailAction::DynamicForEach(_)
         ));
+    }
+
+    #[test]
+    fn splits_two_signed_pt_modifiers_and_their_shared_tail() {
+        let tokens = lex_line("+1/-1 or -1/+1 until end of turn", 0).unwrap();
+        let shape = parse_fixed_pt_alternative_shape(&tokens)
+            .expect("inline P/T alternative should have two modifier branches");
+
+        assert_eq!(shape.first_modifier.parser_text(), "+1/-1");
+        assert_eq!(shape.second_modifier.parser_text(), "-1/+1");
+        assert!(is_eot_tail(shape.trailing_tokens));
     }
 }

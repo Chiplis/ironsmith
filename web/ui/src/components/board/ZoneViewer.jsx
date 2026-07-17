@@ -7,6 +7,7 @@ const VIEWABLE_ZONES = [
   { id: "graveyard", label: "GY", i18nKey: "zone.graveyard" },
   { id: "exile", label: "Exile", i18nKey: "zone.exile" },
   { id: "command", label: "CZ", i18nKey: "zone.command" },
+  { id: "ante", label: "Ante", i18nKey: "zone.ante" },
 ];
 
 const TOGGLEABLE_ZONES = VIEWABLE_ZONES.filter((zone) => zone.id !== "battlefield");

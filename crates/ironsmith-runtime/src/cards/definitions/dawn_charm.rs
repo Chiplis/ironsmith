@@ -99,6 +99,7 @@ mod tests {
             defending_player: None,
             chosen_player: None,
             chapter_ability_source: None,
+            battle_defeat_source: None,
             source_stable_id: None,
             source_snapshot: None,
             source_name: Some(name.to_string()),

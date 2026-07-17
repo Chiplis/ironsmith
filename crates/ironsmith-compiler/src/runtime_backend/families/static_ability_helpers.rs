@@ -1,5 +1,7 @@
 use crate::ability::{Ability, PresentationKeyword, PresentationLabel};
-use crate::cards::builders::{CardTextError, GrantedAbilityAst, KeywordAction};
+use crate::cards::builders::{
+    CardDefinitionBuilder, CardTextError, GrantedAbilityAst, KeywordAction,
+};
 use crate::cost::TotalCost;
 use crate::effect::Effect;
 use crate::filter::ObjectFilter;
@@ -10,6 +12,82 @@ use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
 
 use super::lowering_support::rewrite_lower_parsed_ability;
+
+/// Expands marker-backed gameplay keywords to the complete object-ability set
+/// used by a printed instance of the same keyword.
+pub(crate) fn executable_object_abilities_for_keyword_action(
+    action: &KeywordAction,
+) -> Option<Vec<Ability>> {
+    if !matches!(
+        action,
+        KeywordAction::Afterlife(_)
+            | KeywordAction::Fabricate(_)
+            | KeywordAction::Undying
+            | KeywordAction::Persist
+            | KeywordAction::Prowess
+            | KeywordAction::Exalted
+            | KeywordAction::Storm
+            | KeywordAction::Gravestorm
+            | KeywordAction::Toxic(_)
+            | KeywordAction::Poisonous(_)
+            | KeywordAction::BattleCry
+            | KeywordAction::Dethrone
+            | KeywordAction::Evolve
+            | KeywordAction::Ingest
+            | KeywordAction::Mentor
+            | KeywordAction::Training
+            | KeywordAction::Riot
+            | KeywordAction::Renown(_)
+            | KeywordAction::Modular(_)
+            | KeywordAction::Graft(_)
+            | KeywordAction::Soulbond
+            | KeywordAction::Soulshift(_)
+            | KeywordAction::SoulshiftValue(_)
+            | KeywordAction::Outlast(_)
+            | KeywordAction::Unearth(_)
+            | KeywordAction::Eternalize(_)
+            | KeywordAction::Ninjutsu(_)
+            | KeywordAction::Extort
+            | KeywordAction::Sunburst
+            | KeywordAction::Firebending(_)
+            | KeywordAction::FirebendingValue { .. }
+            | KeywordAction::Fading(_)
+            | KeywordAction::Vanishing(_)
+            | KeywordAction::Rampage(_)
+            | KeywordAction::Bushido(_)
+            | KeywordAction::Frenzy(_)
+            | KeywordAction::Annihilator(_)
+    ) {
+        return None;
+    }
+
+    if matches!(action, KeywordAction::Sunburst) {
+        let creature_condition = crate::ConditionExpr::SourceMatches(ObjectFilter::creature());
+        let noncreature_condition = crate::ConditionExpr::Not(Box::new(creature_condition.clone()));
+        return Some(vec![
+            Ability::static_ability(StaticAbility::keyword_marker("sunburst")),
+            Ability::static_ability(
+                StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::PlusOnePlusOne,
+                    crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
+                )
+                .with_condition(creature_condition),
+            ),
+            Ability::static_ability(
+                StaticAbility::enters_with_counters_value(
+                    crate::object::CounterType::Charge,
+                    crate::effect::Value::ColorsOfManaSpentToCastThisSpell,
+                )
+                .with_condition(noncreature_condition),
+            ),
+        ]);
+    }
+
+    let builder = CardDefinitionBuilder::new(crate::CardId::new(), "keyword grant template")
+        .card_types(vec![crate::types::CardType::Creature])
+        .apply_keyword_action(action.clone());
+    Some(builder.abilities)
+}
 
 pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option<StaticAbility> {
     if !action.lowers_to_static_ability() {
@@ -48,81 +126,45 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         KeywordAction::Wither => Some(StaticAbility::wither()),
         KeywordAction::Afflict(_) => None,
         KeywordAction::Amplify(_) => None,
-        KeywordAction::Afterlife(amount) => {
-            Some(StaticAbility::keyword_marker(format!("afterlife {amount}")))
-        }
-        KeywordAction::Fabricate(amount) => {
-            Some(StaticAbility::keyword_marker(format!("fabricate {amount}")))
-        }
+        KeywordAction::Afterlife(_) | KeywordAction::Fabricate(_) => None,
         KeywordAction::Infect => Some(StaticAbility::infect()),
-        KeywordAction::Undying => Some(StaticAbility::keyword_marker("undying".to_string())),
-        KeywordAction::Persist => Some(StaticAbility::keyword_marker("persist".to_string())),
-        KeywordAction::Prowess => Some(StaticAbility::keyword_marker("prowess".to_string())),
-        KeywordAction::Exalted => Some(StaticAbility::keyword_marker("exalted".to_string())),
+        KeywordAction::Undying
+        | KeywordAction::Persist
+        | KeywordAction::Prowess
+        | KeywordAction::Exalted => None,
         KeywordAction::Cascade => Some(StaticAbility::cascade()),
-        KeywordAction::Storm => Some(StaticAbility::keyword_marker("storm".to_string())),
-        KeywordAction::Toxic(amount) => {
-            Some(StaticAbility::keyword_marker(format!("toxic {amount}")))
-        }
-        KeywordAction::BattleCry => Some(StaticAbility::keyword_marker("battle cry".to_string())),
-        KeywordAction::Dethrone => Some(StaticAbility::keyword_marker("dethrone".to_string())),
-        KeywordAction::Evolve => Some(StaticAbility::keyword_marker("evolve".to_string())),
-        KeywordAction::Ingest => Some(StaticAbility::keyword_marker("ingest".to_string())),
-        KeywordAction::Mentor => Some(StaticAbility::keyword_marker("mentor".to_string())),
+        KeywordAction::Storm
+        | KeywordAction::Gravestorm
+        | KeywordAction::Toxic(_)
+        | KeywordAction::Poisonous(_)
+        | KeywordAction::BattleCry
+        | KeywordAction::Dethrone
+        | KeywordAction::Evolve
+        | KeywordAction::Ingest
+        | KeywordAction::Mentor => None,
         KeywordAction::Skulk => Some(StaticAbility::skulk()),
-        KeywordAction::Training => Some(StaticAbility::keyword_marker("training".to_string())),
-        KeywordAction::Riot => Some(StaticAbility::keyword_marker("riot".to_string())),
+        KeywordAction::Training | KeywordAction::Riot => None,
         KeywordAction::Unleash => Some(StaticAbility::unleash()),
-        KeywordAction::Renown(amount) => {
-            Some(StaticAbility::keyword_marker(format!("renown {amount}")))
-        }
-        KeywordAction::Modular(amount) => {
-            Some(StaticAbility::keyword_marker(format!("modular {amount}")))
-        }
-        KeywordAction::Graft(amount) => {
-            Some(StaticAbility::keyword_marker(format!("graft {amount}")))
-        }
-        KeywordAction::Soulbond => Some(StaticAbility::keyword_marker("soulbond".to_string())),
-        KeywordAction::Soulshift(amount) => {
-            Some(StaticAbility::keyword_marker(format!("soulshift {amount}")))
-        }
-        KeywordAction::SoulshiftValue(value) => Some(StaticAbility::keyword_marker(format!(
-            "soulshift X, where X is {}",
-            crate::payload::describe_soulshift_value(&value)
-        ))),
-        KeywordAction::Outlast(cost) => Some(StaticAbility::keyword_marker(format!(
-            "outlast {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Unearth(cost) => Some(StaticAbility::keyword_marker(format!(
-            "unearth {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Eternalize(cost) => Some(StaticAbility::keyword_marker(format!(
-            "eternalize {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Ninjutsu(cost) => Some(StaticAbility::keyword_marker(format!(
-            "ninjutsu {}",
-            cost.to_oracle()
-        ))),
-        KeywordAction::Extort => Some(StaticAbility::keyword_marker("extort".to_string())),
+        KeywordAction::Renown(_)
+        | KeywordAction::Modular(_)
+        | KeywordAction::Graft(_)
+        | KeywordAction::Soulbond
+        | KeywordAction::Soulshift(_)
+        | KeywordAction::SoulshiftValue(_)
+        | KeywordAction::Outlast(_)
+        | KeywordAction::Unearth(_)
+        | KeywordAction::Eternalize(_)
+        | KeywordAction::Ninjutsu(_)
+        | KeywordAction::Extort => None,
         KeywordAction::Partner => Some(StaticAbility::partner()),
         KeywordAction::StartYourEngines => Some(StaticAbility::start_your_engines()),
         KeywordAction::Assist => Some(StaticAbility::assist()),
         KeywordAction::SplitSecond => Some(StaticAbility::split_second()),
         KeywordAction::Rebound => Some(StaticAbility::rebound()),
-        KeywordAction::Sunburst => Some(StaticAbility::keyword_marker("sunburst".to_string())),
+        KeywordAction::Sunburst => None,
         KeywordAction::ReadAhead => Some(StaticAbility::read_ahead()),
-        KeywordAction::Firebending(amount) => Some(StaticAbility::keyword_marker(format!(
-            "firebending {amount}"
-        ))),
-        KeywordAction::Fading(amount) => {
-            Some(StaticAbility::keyword_marker(format!("fading {amount}")))
-        }
-        KeywordAction::Vanishing(amount) => {
-            Some(StaticAbility::keyword_marker(format!("vanishing {amount}")))
-        }
+        KeywordAction::Firebending(_) | KeywordAction::FirebendingValue { .. } => None,
+        KeywordAction::Fading(_) | KeywordAction::Vanishing(_) => None,
         KeywordAction::Fear => Some(StaticAbility::fear()),
         KeywordAction::Intimidate => Some(StaticAbility::intimidate()),
         KeywordAction::Shadow => Some(StaticAbility::shadow()),
@@ -148,12 +190,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
         KeywordAction::Tribute(amount) => Some(StaticAbility::tribute(amount)),
-        KeywordAction::Rampage(amount) => {
-            Some(StaticAbility::keyword_marker(format!("rampage {amount}")))
-        }
-        KeywordAction::Bushido(amount) => {
-            Some(StaticAbility::keyword_marker(format!("bushido {amount}")))
-        }
+        KeywordAction::Rampage(_) | KeywordAction::Bushido(_) | KeywordAction::Frenzy(_) => None,
         KeywordAction::Changeling => Some(StaticAbility::changeling()),
         KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
@@ -189,9 +226,8 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
         )),
         KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
         KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
-        KeywordAction::Annihilator(amount) => Some(StaticAbility::keyword_marker(format!(
-            "annihilator {amount}"
-        ))),
+        KeywordAction::Annihilator(_) => None,
+        KeywordAction::Dredge(amount) => Some(StaticAbility::dredge(amount)),
         KeywordAction::StaticMarker(name) => Some(StaticAbility::keyword_marker(name)),
         KeywordAction::StaticMarkerText(text) => Some(StaticAbility::keyword_marker(text)),
         KeywordAction::Marker(name) => Some(StaticAbility::keyword_fallback_text(name)),
@@ -477,6 +513,12 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
 ) -> Result<Vec<Ability>, CardTextError> {
     let mut lowered = Vec::new();
     for ability in abilities {
+        if let GrantedAbilityAst::KeywordAction(action) = ability {
+            if let Some(executable) = executable_object_abilities_for_keyword_action(action) {
+                lowered.extend(executable);
+                continue;
+            }
+        }
         match ability {
             GrantedAbilityAst::KeywordAction(KeywordAction::Afflict(amount)) => {
                 lowered.push(afflict_triggered_ability(*amount));
@@ -503,4 +545,132 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
         }
     }
     Ok(lowered)
+}
+
+/// Stores a complete object-ability set in a context whose schema only accepts
+/// static abilities. Purely static sets stay direct; sets containing triggered
+/// or activated abilities use a source-filtered executable grant carrier.
+pub(crate) fn object_abilities_to_static_carriers(
+    abilities: Vec<Ability>,
+    display: String,
+) -> Result<Vec<StaticAbility>, CardTextError> {
+    if abilities
+        .iter()
+        .all(|ability| matches!(ability.kind, crate::ability::AbilityKind::Static(_)))
+    {
+        return Ok(abilities
+            .into_iter()
+            .filter_map(|ability| match ability.kind {
+                crate::ability::AbilityKind::Static(static_ability) => Some(static_ability),
+                _ => None,
+            })
+            .collect());
+    }
+
+    let mut abilities = abilities.into_iter();
+    let first = abilities.next().ok_or_else(|| {
+        CardTextError::InvariantViolation("keyword grant produced no abilities".to_string())
+    })?;
+    Ok(vec![StaticAbility::new(
+        crate::static_abilities::GrantObjectAbilityForFilter::new(
+            ObjectFilter::source(),
+            first,
+            display,
+        )
+        .with_additional_abilities(abilities.collect()),
+    )])
+}
+
+#[cfg(test)]
+mod dynamic_keyword_grant_tests {
+    use super::*;
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::types::CardType;
+
+    const EXECUTABLE_MARKER_BACKED_KEYWORDS: &[&str] = &[
+        "afterlife 2",
+        "fabricate 2",
+        "prowess",
+        "storm",
+        "toxic 2",
+        "battle cry",
+        "dethrone",
+        "evolve",
+        "ingest",
+        "mentor",
+        "training",
+        "riot",
+        "renown 2",
+        "modular 2",
+        "graft 2",
+        "soulbond",
+        "soulshift 2",
+        "outlast {1}{W}",
+        "unearth {1}{B}",
+        "eternalize {2}{B}",
+        "ninjutsu {1}{U}",
+        "extort",
+        "sunburst",
+        "fading 2",
+        "vanishing 2",
+        "rampage 2",
+        "bushido 2",
+        "frenzy 2",
+        "poisonous 2",
+        "annihilator 2",
+    ];
+
+    fn parsed_keyword_action(keyword: &str) -> KeywordAction {
+        let tokens = crate::runtime_backend::lexer::lex_line(keyword, 0)
+            .unwrap_or_else(|error| panic!("{keyword}: {error}"));
+        let mut actions = super::super::keyword_static::parse_ability_line(&tokens)
+            .unwrap_or_else(|| panic!("{keyword} should parse as a keyword action"));
+        assert_eq!(actions.len(), 1, "{keyword} should parse as one action");
+        actions.pop().expect("one keyword action")
+    }
+
+    #[test]
+    fn every_marker_backed_gameplay_keyword_grant_lowers_to_printed_object_abilities() {
+        for keyword in EXECUTABLE_MARKER_BACKED_KEYWORDS {
+            let action = parsed_keyword_action(keyword);
+            let expected = executable_object_abilities_for_keyword_action(&action)
+                .unwrap_or_else(|| panic!("{keyword} should have an executable expansion"));
+            assert!(
+                expected.iter().any(|ability| !matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                )),
+                "{keyword} must not expand to presentation markers only"
+            );
+
+            let definition = CardDefinitionBuilder::new(crate::CardId::new(), "Grant Probe")
+                .card_types(vec![CardType::Instant])
+                .parse_text(format!(
+                    "Target creature gains {keyword} until end of turn."
+                ))
+                .unwrap_or_else(|error| panic!("dynamic {keyword} grant should compile: {error}"));
+            let debug = format!("{:#?}", definition.spell_effect);
+            let lowered_count =
+                debug.matches("AddAbilityGeneric").count() + debug.matches("AddAbility(").count();
+            assert_eq!(
+                lowered_count,
+                expected.len(),
+                "dynamic {keyword} grant must carry the complete printed ability set: {debug}"
+            );
+        }
+    }
+
+    #[test]
+    fn firebending_grants_lower_to_the_executable_attack_trigger() {
+        let definition =
+            CardDefinitionBuilder::new(crate::CardId::new(), "Firebending Grant Probe")
+                .card_types(vec![CardType::Instant])
+                .parse_text("Target creature gains firebending 2 until end of turn.")
+                .expect("Firebending grants should lower to executable object abilities");
+        let debug = format!("{definition:#?}");
+        assert!(debug.contains("ThisAttacks"), "{debug}");
+        assert!(debug.contains("ManaRetainedEffect"), "{debug}");
+        assert!(debug.contains("Firebend"), "{debug}");
+    }
 }

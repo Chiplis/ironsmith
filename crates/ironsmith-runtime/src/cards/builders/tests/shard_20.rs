@@ -1975,6 +1975,76 @@ pub(super) fn parse_dauthi_voidwalker_full_text_without_parser_fallback() {
         abilities_debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
         "expected Dauthi activation to preserve the free-cast clause, got {abilities_debug}"
     );
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Choose an exiled card an opponent owns with a void counter on it. You may play it this turn without paying its mana cost"
+        ),
+        "expected Dauthi's linked choice and permissions to render as one clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn filtered_zone_play_permission_cards_render_structurally() {
+    let abandoned = CardDefinitionBuilder::new(CardId::new(), "Abandoned Sarcophagus Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "You may cast spells that have a cycling ability from your graveyard.\nIf a card that has a cycling ability would be put into your graveyard from anywhere and it wasn't cycled, exile it instead.",
+        )
+        .expect("cycling graveyard permissions should parse");
+    let abandoned_rendered = unprocessed_compiled_lines(&abandoned).join("\n");
+    assert!(
+        abandoned_rendered
+            .contains("You may cast spells that have a cycling ability from your graveyard"),
+        "{abandoned_rendered}"
+    );
+    assert!(
+        abandoned_rendered.contains(
+            "If a card that has a cycling ability would be put into your graveyard from anywhere and it wasn't cycled, exile it instead"
+        ),
+        "{abandoned_rendered}"
+    );
+    assert!(!abandoned_rendered.contains("have play from zone"));
+
+    let draugr_permission = "You may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells";
+    let draugr = CardDefinitionBuilder::new(CardId::new(), "Draugr Necromancer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(&format!(
+            "If a nontoken creature an opponent controls would die, exile that card with an ice counter on it instead.\n{draugr_permission}."
+        ))
+        .expect("countered-exile snow permission should parse");
+    let draugr_rendered = unprocessed_compiled_lines(&draugr).join("\n");
+    assert!(
+        draugr_rendered.contains(draugr_permission),
+        "{draugr_rendered}"
+    );
+    assert_eq!(draugr_rendered.matches(draugr_permission).count(), 1);
+    assert!(!draugr_rendered.contains("have play from zone"));
+
+    let haldan_permission = "You may play lands and cast noncreature spells from among cards you exiled that have fetch counters on them, and you may spend mana as though it were mana of any color to cast those spells";
+    let haldan = CardDefinitionBuilder::new(CardId::new(), "Haldan Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(&format!("{haldan_permission}."))
+        .expect("source-linked countered-exile permission should parse");
+    let haldan_rendered = unprocessed_compiled_lines(&haldan).join("\n");
+    assert!(
+        haldan_rendered.contains(haldan_permission),
+        "{haldan_rendered}"
+    );
+    assert_eq!(haldan_rendered.matches(haldan_permission).count(), 1);
+    assert!(!haldan_rendered.contains("have play from zone"));
+
+    let liliana = CardDefinitionBuilder::new(CardId::new(), "Liliana Variant")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text("−3: You may cast Zombie spells from your graveyard this turn.")
+        .expect("temporary Zombie graveyard permission should parse");
+    let liliana_rendered = unprocessed_compiled_lines(&liliana).join("\n");
+    assert!(
+        liliana_rendered.contains("−3: You may cast Zombie spells from your graveyard"),
+        "{liliana_rendered}"
+    );
+    assert!(!liliana_rendered.contains("have play from zone"));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3578,7 +3648,7 @@ pub(super) fn parse_oracle_inkmoth_nexus_animation_keeps_types_and_keywords() {
 
     assert!(
         rendered.contains(
-            "{1}: This land becomes a phyrexian blinkmoth artifact creature with base power and toughness 1/1 and flying and infect until end of turn. It's still a land"
+            "{1}: This land becomes a 1/1 phyrexian blinkmoth artifact creature with flying and infect until end of turn. It's still a land"
         ),
         "expected Inkmoth Nexus source animation to preserve artifact type, subtypes, keywords, and still-land text, got {rendered}"
     );
@@ -3638,7 +3708,7 @@ pub(super) fn parse_oracle_mutavault_animation_keeps_all_creature_types() {
 
     assert!(
         rendered.contains(
-            "{1}: This land becomes a creature with base power and toughness 2/2 and all creature types until end of turn. It's still a land"
+            "{1}: This land becomes a 2/2 creature with all creature types until end of turn. It's still a land"
         ),
         "expected Mutavault source animation to preserve all creature types and still-land text, got {rendered}"
     );

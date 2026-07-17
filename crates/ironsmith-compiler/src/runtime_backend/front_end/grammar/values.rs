@@ -63,7 +63,23 @@ struct ValueManaValueSegmentShape {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlayersWhoControlDomainShape {
+    Players,
+    Opponents,
+}
+
+impl PlayersWhoControlDomainShape {
+    fn player_filter(self) -> PlayerFilter {
+        match self {
+            Self::Players => PlayerFilter::Any,
+            Self::Opponents => PlayerFilter::Opponent,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PlayersWhoControlMoreValueShape<'a> {
+    players: PlayersWhoControlDomainShape,
     filter_tokens: &'a [OwnedLexToken],
     minimum_difference_token: Option<&'a [OwnedLexToken]>,
 }
@@ -77,13 +93,20 @@ fn parse_players_who_control_more_value_shape_lexed<'a>(
     opt(primitives::phrase(&["where", "x", "is"])).parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     opt(primitives::phrase(&["number", "of"])).parse_next(input)?;
-    primitives::phrase(&["players", "who", "control"]).parse_next(input)?;
-    let minimum_difference_token =
-        if opt(primitives::phrase(&["at", "least"])).parse_next(input)?.is_some() {
-            Some(any.void().take().parse_next(input)?)
-        } else {
-            None
-        };
+    let players = alt((
+        primitives::kw("players").value(PlayersWhoControlDomainShape::Players),
+        primitives::kw("opponents").value(PlayersWhoControlDomainShape::Opponents),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["who", "control"]).parse_next(input)?;
+    let minimum_difference_token = if opt(primitives::phrase(&["at", "least"]))
+        .parse_next(input)?
+        .is_some()
+    {
+        Some(any.void().take().parse_next(input)?)
+    } else {
+        None
+    };
     primitives::kw("more").parse_next(input)?;
     let filter_tokens = repeat_till(1.., any.void(), peek(primitives::phrase(&["than", "you"])))
         .map(|((), _)| ())
@@ -92,6 +115,7 @@ fn parse_players_who_control_more_value_shape_lexed<'a>(
     primitives::phrase(&["than", "you"]).parse_next(input)?;
     eof.void().parse_next(input)?;
     Ok(PlayersWhoControlMoreValueShape {
+        players,
         filter_tokens,
         minimum_difference_token,
     })
@@ -100,6 +124,7 @@ fn parse_players_who_control_more_value_shape_lexed<'a>(
 fn parse_players_who_control_more_value_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayersWhoControlMoreValueShape<'_>> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
     primitives::parse_all(
         tokens,
         parse_players_who_control_more_value_shape_lexed,
@@ -326,6 +351,7 @@ fn matches_exact_value_phrase_lexed(
 }
 
 pub(crate) fn parse_max_cards_in_hand_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
     [
         (
             &[
@@ -358,8 +384,9 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
 ) -> Option<Value> {
     let shape = parse_players_who_control_more_value_shape(tokens)?;
     let filter = parse_object_filter_lexed(shape.filter_tokens, false).ok()?;
+    let players = shape.players.player_filter();
     let Some(minimum_difference_token) = shape.minimum_difference_token else {
-        return Some(Value::PlayersWhoControlMoreThanYou(filter));
+        return Some(Value::PlayersWhoControlMoreThanYou { players, filter });
     };
     let [minimum_difference_token] = minimum_difference_token else {
         return None;
@@ -367,6 +394,7 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     let minimum_difference = parse_number_word_u32(minimum_difference_token.parser_text())
         .or_else(|| minimum_difference_token.parser_text().parse::<u32>().ok())?;
     Some(Value::PlayersWhoControlAtLeastMoreThanYou {
+        players,
         filter,
         minimum_difference,
     })
@@ -814,6 +842,60 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         })
     };
 
+    let difference_prefix_len = if tail.starts_with(&["the", "difference", "between"]) {
+        Some(3)
+    } else if tail.starts_with(&["difference", "between"]) {
+        Some(2)
+    } else {
+        None
+    };
+    if let Some(prefix_len) = difference_prefix_len
+        && let Some(and_offset) = tail[prefix_len..].iter().position(|word| *word == "and")
+    {
+        let and_idx = prefix_len + and_offset;
+        let parse_difference_segment = |start: usize, end: usize| -> Option<Value> {
+            let segment = &tail[start..end];
+            if segment.first().copied() == Some("that")
+                && segment
+                    .iter()
+                    .any(|word| matches!(*word, "spell" | "spells" | "spell's"))
+                && segment.ends_with(&["mana", "value"])
+            {
+                return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
+                    TagKey::from("triggering"),
+                ))));
+            }
+            if segment.first().copied() == Some("that")
+                && segment.len() > 3
+                && segment.ends_with(&["mana", "value"])
+            {
+                let mut reference_words = segment[..segment.len() - 2].to_vec();
+                if let Some(noun) = reference_words.last_mut()
+                    && noun.ends_with('s')
+                {
+                    *noun = noun.trim_end_matches('s');
+                }
+                let surface = reference_words.join(" ");
+                return Some(Value::ManaValueOf(Box::new(
+                    ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                        ChooseSpecSurfaceHint::SourceReference(
+                            crate::target::SourceReferenceSurface::ThisPermanentType(surface),
+                        ),
+                    ),
+                )));
+            }
+            parse_amount_segment(start, end)
+        };
+        if and_idx > prefix_len
+            && and_idx + 1 < tail.len()
+            && let Some(left) = parse_difference_segment(prefix_len, and_idx)
+            && let Some(right) = parse_difference_segment(and_idx + 1, tail.len())
+        {
+            let absolute = Value::absolute_difference(left, right);
+            return Some(absolute.with_surface_hint(ValueSurfaceHint::Difference));
+        }
+    }
+
     let mut plus_idx = None;
     for (idx, word) in tail.iter().copied().enumerate() {
         if word == PLUS_WORD {
@@ -855,10 +937,50 @@ mod migrated_shape_tests {
             "the number of players who control more lands than you",
         ))
         .unwrap();
-        let Value::PlayersWhoControlMoreThanYou(filter) = parsed else {
+        let Value::PlayersWhoControlMoreThanYou { players, filter } = parsed else {
             panic!("expected players-who-control-more value");
         };
+        assert_eq!(players, PlayerFilter::Any);
         assert_eq!(filter.card_types, vec![CardType::Land]);
+    }
+
+    #[test]
+    fn parses_opponents_who_control_more_and_at_least_shapes() {
+        let parsed = parse_players_who_control_more_than_you_value_lexed(&lex(
+            "the number of opponents who control more creatures than you",
+        ))
+        .unwrap();
+        let Value::PlayersWhoControlMoreThanYou { players, filter } = parsed else {
+            panic!("expected opponents-who-control-more value");
+        };
+        assert_eq!(players, PlayerFilter::Opponent);
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+
+        let parsed = parse_players_who_control_more_than_you_value_lexed(&lex(
+            "the number of opponents who control at least two more lands than you",
+        ))
+        .unwrap();
+        let Value::PlayersWhoControlAtLeastMoreThanYou {
+            players,
+            filter,
+            minimum_difference,
+        } = parsed
+        else {
+            panic!("expected opponents-who-control-at-least-more value");
+        };
+        assert_eq!(players, PlayerFilter::Opponent);
+        assert_eq!(filter.card_types, vec![CardType::Land]);
+        assert_eq!(minimum_difference, 2);
+    }
+
+    #[test]
+    fn max_cards_in_hand_accepts_sentence_punctuation() {
+        assert_eq!(
+            parse_max_cards_in_hand_value_lexed(&lex(
+                "cards in the hand of the opponent with the most cards in hand."
+            )),
+            Some(Value::MaxCardsInHand(PlayerFilter::Opponent))
+        );
     }
 
     #[test]
@@ -879,6 +1001,23 @@ mod migrated_shape_tests {
                 subject: ValueManaValueSubjectShape::Tagged,
             })
         );
+    }
+
+    #[test]
+    fn lady_loki_parses_absolute_mana_value_difference() {
+        let value = parse_add_mana_equal_amount_value_lexed(&lex(
+            "equal to the difference between that spell's mana value and that nonland card's mana value",
+        ))
+        .expect("Lady Loki mana-value difference should parse");
+        let debug = format!("{value:#?}");
+
+        assert!(
+            value.has_surface_hint(ValueSurfaceHint::Difference),
+            "{debug}"
+        );
+        assert!(debug.contains("Min"), "{debug}");
+        assert!(debug.contains("triggering"), "{debug}");
+        assert!(debug.contains("__it__"), "{debug}");
     }
 
     #[test]

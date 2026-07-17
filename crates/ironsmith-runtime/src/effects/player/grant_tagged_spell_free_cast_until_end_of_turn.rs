@@ -5,6 +5,7 @@ use crate::alternative_cast::AlternativeCastingMethod;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
+use crate::effects::player::grant_by_spec::next_turn_number_for_player;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant_registry::GrantSource;
@@ -27,7 +28,7 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         let expires_end_of_turn = match self.duration {
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => game.turn.turn_number,
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
-                game.turn.turn_number.saturating_add(1)
+                next_turn_number_for_player(game, player_id)
             }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
                 game.turn.turn_number.saturating_add(1)
@@ -66,6 +67,9 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                     player: object.owner,
                     library_top_revision: game.library_top_revision(object.owner),
                 }
+            } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+            {
+                GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
             } else {
                 GrantSource::Effect {
                     source_id: ctx.source,
@@ -113,6 +117,39 @@ mod tests {
     use crate::target::{ObjectRef, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn next_turn_free_cast_permission_uses_a_queued_extra_turn() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(45), "Extra-turn Exile")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(exiled_id).expect("exiled card should exist"),
+            &game,
+        );
+        game.turn_store.extra_turns.push(alice);
+
+        let tag = crate::TagKey::from("next_turn_free_cast");
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(tag.clone(), vec![snapshot]);
+        let mut dm = SelectFirstDecisionMaker;
+        let source = ObjectId::from_raw(474);
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        let mut effect = GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(tag, PlayerFilter::You);
+        effect.duration = GrantPlayTaggedDuration::UntilYourNextTurnEnd;
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("next-turn free-cast permission should resolve");
+
+        assert_eq!(
+            game.effect_store.grant_registry.grants[0].source,
+            GrantSource::until_player_next_turn_end(source, alice, 2)
+        );
+    }
 
     #[test]
     fn release_to_the_wind_owner_free_cast_permission_tracks_exiled_card_zone() {

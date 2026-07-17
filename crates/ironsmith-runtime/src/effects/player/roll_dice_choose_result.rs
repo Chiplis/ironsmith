@@ -6,6 +6,8 @@ use crate::events::other::DieRolledEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
+use super::die_roll_transaction::roll_dice_with_modifiers;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RollDiceChooseResultEffect {
     pub player: PlayerFilter,
@@ -50,36 +52,15 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let mut results = Vec::with_capacity(self.count as usize);
-        let mut events = Vec::with_capacity(self.count as usize);
-        for _ in 0..self.count {
-            let result = if let Some(forced) = game.take_forced_die_roll() {
-                forced.clamp(1, self.sides)
-            } else {
-                let mut faces: Vec<u32> = (1..=self.sides).collect();
-                game.shuffle_slice(&mut faces);
-                faces[0]
-            };
-            game.turn_store.turn_history.record_die_roll(player, result);
-            game.record_ui_effect_event(
-                "die_roll",
-                Some(player),
-                None,
-                Vec::new(),
-                Some(i64::from(result)),
-                Some(format!("d{}", self.sides)),
-            );
-            events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                DieRolledEvent::new(player, ctx.source, result, self.sides),
-                ctx.provenance,
-            ));
-            results.push(result);
-        }
+        let Some(rolls) = roll_dice_with_modifiers(game, ctx, player, self.count, self.sides)?
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
 
-        let options = results
+        let options = rolls
             .iter()
             .enumerate()
-            .map(|(idx, result)| SelectableOption::new(idx, result.to_string()))
+            .map(|(idx, roll)| SelectableOption::new(idx, roll.result.to_string()))
             .collect::<Vec<_>>();
         let choice_ctx =
             SelectOptionsContext::new(player, Some(ctx.source), "Choose one result", options, 1, 1);
@@ -90,18 +71,40 @@ impl EffectExecutor for RollDiceChooseResultEffect {
         let chosen_idx = selected
             .into_iter()
             .next()
-            .filter(|idx| *idx < results.len())
+            .filter(|idx| *idx < rolls.len())
             .unwrap_or(0);
-        let chosen = results[chosen_idx];
-        let other = results
+        let chosen = rolls[chosen_idx];
+        let other = rolls
             .iter()
             .enumerate()
-            .find_map(|(idx, result)| (idx != chosen_idx).then_some(*result))
-            .unwrap_or(chosen);
+            .find_map(|(idx, roll)| (idx != chosen_idx).then_some(roll.result))
+            .unwrap_or(chosen.result);
 
-        Ok(EffectOutcome::count(chosen as i32)
-            .with_events(events)
-            .with_execution_fact(ExecutionFact::ChosenNumber(chosen))
+        game.turn_store
+            .turn_history
+            .record_die_roll(player, chosen.result);
+        game.record_ui_effect_event(
+            "die_roll",
+            Some(player),
+            None,
+            Vec::new(),
+            Some(i64::from(chosen.result)),
+            Some(format!("d{}", self.sides)),
+        );
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            DieRolledEvent::new_with_natural_result(
+                player,
+                ctx.source,
+                chosen.natural_result,
+                chosen.result,
+                self.sides,
+            ),
+            ctx.provenance,
+        );
+
+        Ok(EffectOutcome::count(chosen.result as i32)
+            .with_event(event)
+            .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result))
             .with_execution_fact(ExecutionFact::OtherNumber(other)))
     }
 }

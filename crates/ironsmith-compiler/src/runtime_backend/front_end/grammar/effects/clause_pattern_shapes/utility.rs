@@ -124,6 +124,14 @@ fn double_counter_source_surface(
     crate::runtime_backend::util::source_reference_surface_for_words(&words)
 }
 
+fn is_singular_typed_demonstrative(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    matches!(
+        words.as_slice(),
+        ["that", head] if crate::runtime_backend::util::is_demonstrative_object_head(head)
+    )
+}
+
 fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleCountersShape<'a>> {
     primitives::phrase(&["double", "the", "number", "of"]).parse_next(input)?;
     let counter_phrase_tokens = (
@@ -171,7 +179,10 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
         DoubleCounterHolderShape::You
     } else {
         primitives::kw("on").parse_next(input)?;
-        opt(alt((primitives::kw("each"), primitives::kw("all")))).parse_next(input)?;
+        let has_explicit_collection_quantifier =
+            opt(alt((primitives::kw("each"), primitives::kw("all"))))
+                .parse_next(input)?
+                .is_some();
         let holder_tokens =
             repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
                 .map(|((), _)| ())
@@ -183,10 +194,12 @@ fn parse_double_counters_lexed<'a>(input: &mut LexStream<'a>) -> WResult<DoubleC
                 tokens: holder_tokens,
                 surface,
             }
-        } else if marker_anywhere(
-            holder_tokens,
-            alt((primitives::kw("target"), primitives::kw("targets"))),
-        ) {
+        } else if !has_explicit_collection_quantifier
+            && (marker_anywhere(
+                holder_tokens,
+                alt((primitives::kw("target"), primitives::kw("targets"))),
+            ) || is_singular_typed_demonstrative(holder_tokens))
+        {
             DoubleCounterHolderShape::Target(holder_tokens)
         } else {
             DoubleCounterHolderShape::Filter(holder_tokens)

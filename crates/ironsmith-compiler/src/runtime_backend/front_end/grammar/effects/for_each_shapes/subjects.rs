@@ -24,6 +24,7 @@ pub(crate) struct ForEachTargetSubjectShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ForEachTargetPlayersShape<'a> {
     pub(crate) count: ChoiceCount,
+    pub(crate) target_tokens: &'a [OwnedLexToken],
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
 
@@ -161,10 +162,14 @@ pub(crate) fn parse_for_each_target_players_shape(
         after_target,
         alt((primitives::kw("player"), primitives::kw("players"))).void(),
     )?;
-    let (_, effect_tokens) = primitives::parse_prefix(after_player, primitives::kw("each"))?;
+    let (each_index, _, effect_tokens) =
+        primitives::find_prefix(after_player, || primitives::kw("each"))?;
+    let target_len = after_count.len().checked_sub(after_player.len())? + each_index;
+    let target_tokens = trim_lexed_commas(after_count.get(..target_len)?);
     let effect_tokens = trim_lexed_commas(effect_tokens);
-    (!effect_tokens.is_empty()).then_some(ForEachTargetPlayersShape {
+    (!target_tokens.is_empty() && !effect_tokens.is_empty()).then_some(ForEachTargetPlayersShape {
         count,
+        target_tokens,
         effect_tokens,
     })
 }

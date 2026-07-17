@@ -73,6 +73,19 @@ pub(crate) fn parse_untap_action_tokens(tokens: &[OwnedLexToken]) -> UntapAction
     }
 }
 
+pub(crate) fn parse_chosen_object_set_filter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let (_, filter_tokens) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["the", "chosen"]),
+            primitives::kw("chosen").void(),
+        )),
+    )?;
+    (!filter_tokens.is_empty()).then_some(filter_tokens)
+}
+
 pub(crate) fn parse_repeated_tagged_mana_payment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<RepeatedTaggedManaPayment> {
@@ -129,6 +142,13 @@ mod tests {
             UntapActionShape::Tagged {
                 filter_tokens: None
             }
+        );
+
+        let chosen = lex_line("the chosen permanents you control", 0).unwrap();
+        assert_eq!(
+            parse_chosen_object_set_filter_tokens(&chosen)
+                .map(crate::runtime_backend::token_word_refs),
+            Some(vec!["permanents", "you", "control"])
         );
 
         let those_creatures = lex_line("those creatures", 0).unwrap();

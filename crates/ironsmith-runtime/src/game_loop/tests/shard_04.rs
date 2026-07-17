@@ -19,6 +19,134 @@ use super::shard_17::*;
 use super::*;
 
 #[test]
+pub(super) fn triggering_permanent_controller_chooses_targets_using_ability_controller_legality() {
+    #[derive(Debug)]
+    struct RecordingChooser {
+        expected_target: ObjectId,
+        context: Option<crate::decisions::context::TargetsContext>,
+    }
+
+    impl DecisionMaker for RecordingChooser {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.context = Some(ctx.clone());
+            let target = Target::Object(self.expected_target);
+            ctx.requirements
+                .first()
+                .is_some_and(|requirement| requirement.legal_targets.contains(&target))
+                .then_some(target)
+                .into_iter()
+                .collect()
+        }
+    }
+
+    let mut game = GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source_def = CardDefinitionBuilder::new(CardId::new(), "Chooser Source")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let hexproof_def = CardDefinitionBuilder::new(CardId::new(), "Alice Hexproof Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .hexproof()
+        .build();
+    let creature_def = CardDefinitionBuilder::new(CardId::new(), "Plain Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let source = game.create_object_from_definition(&source_def, alice, Zone::Battlefield);
+    let alice_hexproof =
+        game.create_object_from_definition(&hexproof_def, alice, Zone::Battlefield);
+    let bob_creature = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
+    let charlie_creature =
+        game.create_object_from_definition(&creature_def, charlie, Zone::Battlefield);
+    let entering = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    let triggering_ref = crate::target::ObjectRef::Tagged(crate::tag::TagKey::from("triggering"));
+    let chooser = PlayerFilter::ControllerOf(triggering_ref.clone());
+    let mut filter = ObjectFilter::permanent();
+    filter.controller = Some(PlayerFilter::excluding(PlayerFilter::Any, chooser.clone()));
+    filter
+        .tagged_constraints
+        .push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::TagKey::from("triggering"),
+            relation: crate::target::TaggedOpbjectRelation::SharesCardType,
+        });
+    let target = ChooseSpec::target(ChooseSpec::Object(filter));
+    let ability = crate::ability::TriggeredAbility {
+        trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
+        effects: crate::resolution::ResolutionProgram::from_effects(vec![
+            Effect::new(crate::effects::TagTriggeringObjectEffect::new("triggering")),
+            Effect::new(crate::effects::TargetOnlyEffect::explicit(target).with_chooser(chooser)),
+        ]),
+        choices: Vec::new(),
+        intervening_if: None,
+        presentation_label: None,
+    };
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::zones::EnterBattlefieldEvent::new(entering, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let source_stable_id = game.object(source).expect("source").stable_id;
+    let mut trigger_queue = TriggerQueue::new();
+    trigger_queue.add(TriggeredAbilityEntry {
+        source,
+        controller: alice,
+        x_value: None,
+        event_value_amount: None,
+        ability: ability.clone(),
+        triggering_event: event,
+        source_stable_id,
+        source_name: "Chooser Source".to_string(),
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+        trigger_identity: crate::triggers::compute_trigger_identity(&ability),
+    });
+
+    let mut dm = RecordingChooser {
+        expected_target: alice_hexproof,
+        context: None,
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("trigger should be stacked");
+
+    let context = dm.context.expect("target prompt");
+    assert_eq!(
+        context.player, bob,
+        "the entering permanent's controller chooses"
+    );
+    let legal = &context.requirements[0].legal_targets;
+    assert!(
+        legal.contains(&Target::Object(alice_hexproof)),
+        "hexproof is checked against Alice, the ability controller"
+    );
+    assert!(legal.contains(&Target::Object(charlie_creature)));
+    assert!(!legal.contains(&Target::Object(bob_creature)));
+    assert!(!legal.contains(&Target::Object(entering)));
+    assert_eq!(
+        game.stack.last().map(|entry| entry.targets.as_slice()),
+        Some(&[Target::Object(alice_hexproof)][..])
+    );
+}
+
+#[test]
 pub(super) fn test_triggered_mana_ability_resolves_immediately_without_stack() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
@@ -1509,6 +1637,7 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
             x_value: None,
             not_before_turn: None,
             expires_at_turn: None,
+            expires_before_controller_turn_after: None,
             expires_at_end_of_combat: false,
             target_objects: vec![stangg_id],
             ability_source: None,

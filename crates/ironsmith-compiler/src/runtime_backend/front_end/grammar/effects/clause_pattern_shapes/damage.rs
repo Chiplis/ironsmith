@@ -97,9 +97,7 @@ fn source_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     .parse_next(input)
 }
 
-fn you_and_permanents_filter<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<(bool, ObjectFilter)> {
+fn you_and_permanents_filter<'a>(input: &mut LexStream<'a>) -> WResult<(bool, ObjectFilter)> {
     primitives::kw("you").parse_next(input)?;
     alt((
         primitives::kw("and/or").void(),
@@ -133,8 +131,7 @@ pub(crate) fn parse_you_and_permanents_filter_tokens(
 ) -> Option<ObjectFilter> {
     primitives::parse_all(
         tokens,
-        (you_and_permanents_filter, winnow::combinator::eof)
-            .map(|((_, filter), _)| filter),
+        (you_and_permanents_filter, winnow::combinator::eof).map(|((_, filter), _)| filter),
         "you and matching permanents",
     )
     .ok()
@@ -276,9 +273,7 @@ fn damage_source_choice_filter(tokens: &[OwnedLexToken]) -> Option<Option<Object
     }
     descriptor.extend_from_slice(&tokens[choice_index + 3..]);
     while descriptor.first().is_some_and(|token| {
-        token_is_word(token, "a")
-            || token_is_word(token, "an")
-            || token_is_word(token, "the")
+        token_is_word(token, "a") || token_is_word(token, "an") || token_is_word(token, "the")
     }) {
         descriptor.remove(0);
     }
@@ -337,15 +332,15 @@ fn classify_damage_target(tokens: &[OwnedLexToken]) -> DamageTargetShape<'_> {
     if tokens.is_empty() {
         DamageTargetShape::AnyTarget
     } else if primitives::parse_all(
-            tokens,
-            (
-                primitives::phrase(&["any", "target"]),
-                winnow::combinator::eof,
-            )
-                .void(),
-            "any damage target",
+        tokens,
+        (
+            primitives::phrase(&["any", "target"]),
+            winnow::combinator::eof,
         )
-        .is_ok()
+            .void(),
+        "any damage target",
+    )
+    .is_ok()
     {
         DamageTargetShape::Target(tokens)
     } else if primitives::parse_all(

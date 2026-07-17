@@ -325,6 +325,56 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
     })
 }
 
+/// Parses the common private-library split where at most one looked-at card
+/// is kept on top and the exact complement is randomized onto the bottom.
+///
+/// The selected set is a singleton, so Magic omits an ordering clause for
+/// its top placement.  Keep the ordinary partition grammar strict about
+/// explicit library ordering and admit that omission only for this bounded
+/// shape.  The bottom library reference may also be elided after the earlier
+/// "top of your library" reference (for example, "the rest on the bottom in
+/// a random order").
+fn looked_card_optional_one_top_remainder_bottom(
+    input: &mut LexStream<'_>,
+) -> WResult<LookedCardPartitionShape> {
+    primitives::kw("put").parse_next(input)?;
+    let selected_count = looked_partition_count.parse_next(input)?;
+    if selected_count != ChoiceCount::up_to(1) {
+        return Err(primitives::backtrack_err(
+            "looked-card top/bottom partition",
+            "an up-to-one selected set",
+        ));
+    }
+
+    primitives::kw("on").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("top").parse_next(input)?;
+    primitives::kw("of").parse_next(input)?;
+    looked_partition_library_reference.parse_next(input)?;
+
+    primitives::kw("and").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    alt((primitives::kw("rest"), primitives::kw("other")))
+        .void()
+        .parse_next(input)?;
+    primitives::kw("on").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("bottom").parse_next(input)?;
+    opt((primitives::kw("of"), looked_partition_library_reference)).parse_next(input)?;
+    let remainder_order = looked_partition_order.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+
+    Ok(LookedCardPartitionShape {
+        selected_count,
+        // A chooser order is semantically inert for a set of at most one but
+        // gives lowering the typed library-placement order it requires.
+        selected_destination: LookedPartitionDestination::LibraryTop(
+            LibraryBottomOrderAst::ChooserChooses,
+        ),
+        remainder_destination: LookedPartitionDestination::LibraryBottom(remainder_order),
+    })
+}
+
 /// Parses a complete two-way partition of a previously looked-at card set.
 ///
 /// Requiring the sentence to end after both destinations prevents this rule
@@ -334,7 +384,12 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
 pub(crate) fn parse_looked_card_partition_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LookedCardPartitionShape> {
-    looked_card_partition.parse(LexStream::new(tokens)).ok()
+    alt((
+        looked_card_optional_one_top_remainder_bottom,
+        looked_card_partition,
+    ))
+    .parse(LexStream::new(tokens))
+    .ok()
 }
 
 pub(crate) fn is_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
@@ -545,6 +600,23 @@ mod tests {
                 remainder_destination: LookedPartitionDestination::Graveyard,
             })
         );
+        for text in [
+            "Put up to one of them on top of your library and the rest on the bottom in a random order",
+            "Put up to one of them on top of your library and the rest on the bottom of your library in a random order",
+        ] {
+            assert_eq!(
+                parse_looked_card_partition_shape(&lex(text)),
+                Some(LookedCardPartitionShape {
+                    selected_count: ChoiceCount::up_to(1),
+                    selected_destination: LookedPartitionDestination::LibraryTop(
+                        LibraryBottomOrderAst::ChooserChooses
+                    ),
+                    remainder_destination: LookedPartitionDestination::LibraryBottom(
+                        LibraryBottomOrderAst::Random
+                    ),
+                })
+            );
+        }
     }
 
     #[test]

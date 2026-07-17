@@ -910,6 +910,63 @@ pub(super) fn additional_draw_cards_preserve_the_oracle_modifier_in_compiled_tex
     );
 }
 
+#[test]
+pub(super) fn named_partner_with_stays_separate_from_adjacent_intrinsic_keywords() {
+    let cases = [
+        (
+            "Regna, the Redeemer",
+            "Partner with Krav, the Unredeemed",
+            "Flying",
+        ),
+        (
+            "Silvar, Devourer of the Free",
+            "Partner with Trynn, Champion of Freedom",
+            "Menace",
+        ),
+    ];
+
+    for (name, partner_line, keyword_line) in cases {
+        let rendered = canonical_compiled_lines(&parse_oracle_card_definition(name));
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.trim_end_matches('.') == partner_line),
+            "{name} should preserve the named Partner-with line and its casing, got {rendered:?}"
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.trim_end_matches('.') == keyword_line),
+            "{name} should keep its adjacent intrinsic keyword on a separate line, got {rendered:?}"
+        );
+        assert!(
+            rendered.iter().all(|line| {
+                !(line.contains("Partner with ")
+                    && line
+                        .to_ascii_lowercase()
+                        .contains(&format!(", {}", keyword_line.to_ascii_lowercase())))
+            }),
+            "{name} should not merge Partner-with with {keyword_line}, got {rendered:?}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn lord_skitters_blessing_keeps_both_you_subjects_in_additional_draw_clause() {
+    let rendered =
+        canonical_compiled_lines(&parse_oracle_card_definition("Lord Skitter's Blessing"))
+            .join("\n");
+
+    assert!(
+        rendered.contains("you lose 1 life and you draw an additional card"),
+        "Lord Skitter's Blessing should retain both explicit player subjects, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("you lose 1 life and draw an additional card"),
+        "Lord Skitter's Blessing should not elide the second player subject, got {rendered}"
+    );
+}
+
 pub(super) fn record_stoic_sphinx_spell_cast_event(
     game: &mut crate::game_state::GameState,
     caster: PlayerId,

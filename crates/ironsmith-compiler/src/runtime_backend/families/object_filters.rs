@@ -1,8 +1,8 @@
 use crate::cards::builders::CardTextError;
 use crate::filter::ObjectFilterUnionConnective;
 #[cfg(test)]
-use crate::{CardType, PlayerFilter, Subtype, TaggedOpbjectRelation, Zone};
-use crate::{ColorSet, ObjectFilter};
+use crate::{CardType, PlayerFilter, Subtype, Zone};
+use crate::{ColorSet, ObjectFilter, TaggedOpbjectRelation};
 
 pub(crate) use super::grammar::filters::parse_simple_object_filter_words;
 use super::grammar::filters::{
@@ -10,20 +10,50 @@ use super::grammar::filters::{
     parse_extremum_object_filter_words, parse_filter_distinct_names_tokens,
     parse_filter_lexed_envelope, parse_filter_tail_decoration_split_words,
     parse_filter_tail_decoration_tokens, parse_filter_word_envelope,
-    parse_simple_object_filter_lexed, preserve_filter_counter_constraint_surface_tokens,
+    parse_simple_object_filter_lexed, preserve_branch_scoped_card_type_union,
+    preserve_filter_counter_constraint_surface_tokens,
     preserve_filter_counter_constraint_surface_words,
 };
 use super::grammar::primitives::split_lexed_slices_on_or;
 use super::lexer::{
     OwnedLexToken, TokenWordView, parser_token_word_refs, render_token_slice, token_slice_at_is,
 };
-use super::util::non_article_word_refs;
+use super::util::{
+    apply_filter_keyword_constraint, non_article_word_refs, parse_filter_keyword_constraint_words,
+};
 
 #[cfg(test)]
 const OBJECT_FILTER_ENCHANTED_TAG: &str = "enchanted";
 
 const ORIGINAL_PRINTING_SET_PREFIX: &[&str] =
     &["with", "a", "name", "originally", "printed", "in", "the"];
+const SACRIFICED_AS_IT_ENTERED_SUFFIX: &[&str] = &["sacrificed", "as", "it", "entered"];
+
+fn split_sacrificed_as_it_entered_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    if words.len() <= SACRIFICED_AS_IT_ENTERED_SUFFIX.len()
+        || !words.ends_with(SACRIFICED_AS_IT_ENTERED_SUFFIX)
+    {
+        return None;
+    }
+    let base_word_count = words.len() - SACRIFICED_AS_IT_ENTERED_SUFFIX.len();
+    let base_token_end = word_view.token_boundary_for_word_or_end(base_word_count)?;
+    Some(super::util::trim_commas(&tokens[..base_token_end]))
+}
+
+fn apply_sacrificed_as_it_entered_relation(
+    mut filter: ObjectFilter,
+    present: bool,
+) -> ObjectFilter {
+    if present {
+        filter = filter.match_tagged(
+            "sacrificed_0",
+            TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered,
+        );
+    }
+    filter
+}
 
 fn original_printing_set_word_span(words: &[&str]) -> Option<(usize, std::ops::Range<usize>)> {
     if words.last().copied() != Some("expansion") {
@@ -104,6 +134,104 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     }
 }
 
+/// Parse an explicitly generic card noun whose only characteristic is a
+/// typed tail decoration, such as "a card with doctor's companion". Sending
+/// the whole phrase through the characteristic grammar lets words inside the
+/// ability name masquerade as card characteristics (for example, `doctor's`
+/// as the Doctor subtype) before the same tail is also recognized as an
+/// ability marker.
+fn parse_generic_card_tail_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let words = non_article_word_refs(&words);
+    if words.len() > 2
+        && matches!(words[0], "card" | "cards")
+        && matches!(words[1], "with" | "without")
+        && let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(&words[2..])
+        && consumed == words.len() - 2
+    {
+        let mut filter = ObjectFilter::default();
+        filter.set_explicit_card_noun(true);
+        apply_filter_keyword_constraint(&mut filter, constraint, words[1] == "without");
+        return Some(filter);
+    }
+
+    let split = parse_filter_tail_decoration_tokens(tokens)?;
+    let base_words = parser_token_word_refs(&split.base_tokens);
+    let base_words = non_article_word_refs(&base_words);
+    if !matches!(base_words.as_slice(), ["card"] | ["cards"]) {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.set_explicit_card_noun(true);
+    apply_filter_tail_decoration(&mut filter, split.decoration);
+    Some(filter)
+}
+
+fn normalize_generic_card_ability_tail(tokens: &[OwnedLexToken], filter: &mut ObjectFilter) {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let words = non_article_word_refs(&words);
+    let generic_card_tail = words.len() > 2
+        && matches!(words[0], "card" | "cards")
+        && matches!(words[1], "with" | "without");
+    let has_typed_ability_constraint = !filter.static_abilities.is_empty()
+        || !filter.excluded_static_abilities.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty();
+    if !generic_card_tail || !has_typed_ability_constraint {
+        return;
+    }
+
+    // The noun before the tail is deliberately untyped. Characteristic words
+    // found inside an ability name therefore cannot also constrain the card's
+    // type (for example, Doctor in "doctor's companion").
+    filter.zone = None;
+    filter.card_types.clear();
+    filter.all_card_types.clear();
+    filter.excluded_card_types.clear();
+    filter.subtypes.clear();
+    filter.excluded_subtypes.clear();
+    filter.supertypes.clear();
+    filter.excluded_supertypes.clear();
+    filter.set_explicit_card_noun(true);
+}
+
+/// Parse an explicit union whose Oracle text repeats a complete card noun for
+/// every arm, such as "a Doctor card, a card with cycling, or a Vehicle card."
+/// The ordinary characteristic-union grammar intentionally merges shorter
+/// forms like "an instant or sorcery card"; repeated complete nouns instead
+/// need independent filters so branch-local predicates are not lost.
+fn parse_explicit_card_filter_disjunction(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let segments = split_lexed_slices_on_or(tokens);
+    if segments.len() < 2
+        || !segments.iter().all(|segment| {
+            let words = parser_token_word_refs(segment);
+            words
+                .first()
+                .is_some_and(|word| matches!(*word, "a" | "an"))
+                && words.iter().any(|word| matches!(*word, "card" | "cards"))
+        })
+    {
+        return Ok(None);
+    }
+
+    let mut arms = Vec::with_capacity(segments.len());
+    for segment in segments {
+        arms.push(parse_object_filter(segment, other)?);
+    }
+
+    let mut union = ObjectFilter {
+        any_of: arms,
+        ..ObjectFilter::default()
+    };
+    preserve_union_surface(&mut union, tokens);
+    union.set_explicit_union_branch_articles(true);
+    Ok(Some(union))
+}
+
 pub(super) fn slice_has<T: PartialEq>(items: &[T], expected: &T) -> bool {
     crate::slice_primitives::contains(items, expected)
 }
@@ -163,6 +291,17 @@ pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
+        return Ok(filter);
+    }
+    if let Some(filter) = parse_generic_card_tail_filter(tokens) {
+        return Ok(filter);
+    }
+    let (entry_sacrifice_tokens, sacrificed_as_it_entered) =
+        split_sacrificed_as_it_entered_tokens(tokens)
+            .map(|tokens| (tokens, true))
+            .unwrap_or_else(|| (tokens.to_vec(), false));
+    let tokens = entry_sacrifice_tokens.as_slice();
     let (original_printing_tokens, original_printing_set) =
         split_original_printing_set_tokens(tokens)
             .map(|(tokens, set_name)| (tokens, Some(set_name)))
@@ -175,38 +314,57 @@ pub(crate) fn parse_object_filter(
             &split.base_tokens,
             other,
         )?;
+        preserve_branch_scoped_card_type_union(&mut filter, &split.base_tokens, other);
         apply_filter_tail_decoration(&mut filter, split.decoration);
         filter
     } else {
-        super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)?
+        let mut filter =
+            super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)?;
+        preserve_branch_scoped_card_type_union(&mut filter, tokens, other);
+        filter
     };
     filter = envelope.decorations.apply_distinct_names_only(filter);
     preserve_union_surface(&mut filter, tokens);
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
-    Ok(apply_original_printing_set(filter, original_printing_set))
+    normalize_generic_card_ability_tail(tokens, &mut filter);
+    Ok(apply_sacrificed_as_it_entered_relation(
+        apply_original_printing_set(filter, original_printing_set),
+        sacrificed_as_it_entered,
+    ))
 }
 
 pub(crate) fn parse_object_filter_words(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    let (entry_sacrifice_words, sacrificed_as_it_entered) = if word_refs.len()
+        > SACRIFICED_AS_IT_ENTERED_SUFFIX.len()
+        && word_refs.ends_with(SACRIFICED_AS_IT_ENTERED_SUFFIX)
+    {
+        (
+            &word_refs[..word_refs.len() - SACRIFICED_AS_IT_ENTERED_SUFFIX.len()],
+            true,
+        )
+    } else {
+        (word_refs, false)
+    };
     let (original_printing_words, original_printing_set) =
-        split_original_printing_set_words(word_refs)
+        split_original_printing_set_words(entry_sacrifice_words)
             .map(|(words, set_name)| (words, Some(set_name)))
-            .unwrap_or((word_refs, None));
+            .unwrap_or((entry_sacrifice_words, None));
     let envelope = parse_filter_word_envelope(original_printing_words);
     if let Some(mut filter) = parse_extremum_object_filter_words(&envelope.core_words, other)? {
         preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
-        return Ok(apply_original_printing_set(
-            envelope.decorations.apply(filter),
-            original_printing_set,
+        return Ok(apply_sacrificed_as_it_entered_relation(
+            apply_original_printing_set(envelope.decorations.apply(filter), original_printing_set),
+            sacrificed_as_it_entered,
         ));
     }
     if let Some(mut filter) = parse_simple_object_filter_words(&envelope.core_words, other) {
         preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
-        return Ok(apply_original_printing_set(
-            envelope.decorations.apply(filter),
-            original_printing_set,
+        return Ok(apply_sacrificed_as_it_entered_relation(
+            apply_original_printing_set(envelope.decorations.apply(filter), original_printing_set),
+            sacrificed_as_it_entered,
         ));
     }
     if let Some(split) = parse_filter_tail_decoration_split_words(&envelope.core_words)
@@ -214,9 +372,9 @@ pub(crate) fn parse_object_filter_words(
     {
         apply_filter_tail_decoration(&mut filter, split.decoration);
         preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
-        return Ok(apply_original_printing_set(
-            envelope.decorations.apply(filter),
-            original_printing_set,
+        return Ok(apply_sacrificed_as_it_entered_relation(
+            apply_original_printing_set(envelope.decorations.apply(filter), original_printing_set),
+            sacrificed_as_it_entered,
         ));
     }
 
@@ -224,13 +382,19 @@ pub(crate) fn parse_object_filter_words(
     // historical-printing suffix has already been preserved as a typed field.
     let tokens = super::lexer::synthetic_word_tokens(original_printing_words.iter().copied());
     let filter = parse_object_filter_lexed(&tokens, other)?;
-    Ok(apply_original_printing_set(filter, original_printing_set))
+    Ok(apply_sacrificed_as_it_entered_relation(
+        apply_original_printing_set(filter, original_printing_set),
+        sacrificed_as_it_entered,
+    ))
 }
 
 pub(crate) fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
+        return Ok(filter);
+    }
     let (original_printing_tokens, original_printing_set) =
         split_original_printing_set_tokens(tokens)
             .map(|(tokens, set_name)| (tokens, Some(set_name)))
@@ -454,6 +618,45 @@ mod tests {
     use crate::runtime_backend::util::tokenize_line;
 
     #[test]
+    fn explicit_card_filter_disjunction_preserves_branch_local_predicates() {
+        let tokens = tokenize_line(
+            "a Doctor card, a card with doctor's companion, or a Vehicle card",
+            0,
+        );
+
+        let filter = parse_object_filter(&tokens, false)
+            .expect("explicit repeated-card filter union should parse");
+
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert_eq!(filter.any_of[0].subtypes, [Subtype::Doctor]);
+        assert!(filter.any_of[1].subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(filter.any_of[1].zone, None, "{filter:#?}");
+        assert_eq!(
+            filter.any_of[1].ability_markers,
+            ["doctor's companion".to_string()]
+        );
+        assert_eq!(filter.any_of[2].subtypes, [Subtype::Vehicle]);
+        assert_eq!(
+            filter.description(),
+            "a Doctor card, a card with doctor's companion, or a Vehicle card"
+        );
+    }
+
+    #[test]
+    fn lexed_generic_card_ability_tail_does_not_invent_a_subtype() {
+        let tokens =
+            crate::runtime_backend::front_end::lexer::lex_line("a card with doctor's companion", 0)
+                .expect("generic card ability filter should lex");
+        let filter =
+            parse_object_filter(&tokens, false).expect("generic card ability filter should parse");
+
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(filter.zone, None, "{filter:#?}");
+        assert_eq!(filter.ability_markers, ["doctor's companion".to_string()]);
+        assert_eq!(filter.description(), "card with doctor's companion");
+    }
+
+    #[test]
     fn parsed_card_noun_remains_visible_after_context_clears_the_zone() {
         let tokens = tokenize_line("instant or sorcery card", 0);
         let mut filter =
@@ -587,6 +790,22 @@ mod tests {
         assert_eq!(filter.owner, Some(PlayerFilter::NotYou));
         assert_eq!(filter.zone, Some(Zone::Battlefield));
         assert_eq!(filter.card_types, vec![CardType::Land]);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_distinguishes_basic_land_type_from_basic_supertype() {
+        for text in [
+            "land card with a basic land type",
+            "land cards that each have a basic land type",
+        ] {
+            let tokens = tokenize_line(text, 0);
+            let filter = parse_object_filter_lexed(&tokens, false).expect("basic-land-type filter");
+
+            assert_eq!(filter.card_types, vec![CardType::Land], "{filter:#?}");
+            assert!(filter.has_basic_land_type, "{filter:#?}");
+            assert!(filter.supertypes.is_empty(), "{filter:#?}");
+            assert_eq!(filter.description(), "land with a basic land type");
+        }
     }
 
     #[test]

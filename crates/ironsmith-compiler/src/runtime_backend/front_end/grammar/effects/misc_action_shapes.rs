@@ -50,6 +50,7 @@ pub(crate) struct SkipActionShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EndActionShape {
     Turn,
+    CombatPhase,
     EndStepLoseGame,
 }
 
@@ -188,6 +189,12 @@ pub(crate) fn parse_skip_action_tokens(
 }
 
 pub(crate) fn parse_end_action_tokens(tokens: &[OwnedLexToken]) -> Option<EndActionShape> {
+    if [&["the", "combat", "phase"][..], &["combat", "phase"]]
+        .iter()
+        .any(|expected| permission_shapes::exact_tokens(tokens, expected))
+    {
+        return Some(EndActionShape::CombatPhase);
+    }
     if [&["the", "turn"][..], &["turn"]]
         .iter()
         .any(|expected| permission_shapes::exact_tokens(tokens, expected))
@@ -317,6 +324,7 @@ pub(crate) fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieS
 fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {
     Some(match player {
         PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+        PlayerAst::Active => PlayerFilter::Active,
         PlayerAst::Opponent => PlayerFilter::Opponent,
         PlayerAst::NotYou => PlayerFilter::NotYou,
         PlayerAst::Any => PlayerFilter::Any,

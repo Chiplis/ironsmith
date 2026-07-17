@@ -123,3 +123,18 @@ fn parses_not_chosen_this_way_as_the_complement_set() {
     assert_eq!(words(filter_tokens), vec!["creature"]);
     assert_eq!(relation, TaggedDestroyRelation::ExceptMatching);
 }
+
+#[test]
+fn parses_not_chosen_by_any_player_as_the_complement_set() {
+    let tokens = lex_line("all Plains that weren't chosen this way by any player", 0).unwrap();
+    let DestroyClauseKind::All(DestroyAllShape::ChosenThisWay {
+        filter_tokens,
+        relation,
+    }) = parse_destroy_clause_shape(&tokens).kind
+    else {
+        panic!("expected tagged destroy-all complement");
+    };
+
+    assert_eq!(words(filter_tokens), vec!["plains"]);
+    assert_eq!(relation, TaggedDestroyRelation::ExceptMatching);
+}

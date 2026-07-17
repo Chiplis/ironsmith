@@ -11,8 +11,7 @@ use crate::effects::cards::search_overrides::{
     finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
 };
 use crate::effects::helpers::{
-    resolve_player_filter, resolve_player_filter_to_list, resolve_value,
-    view_hidden_candidate_objects,
+    resolve_player_filter_to_list, resolve_value, view_hidden_candidate_objects,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::SearchLibraryEvent;
@@ -1042,7 +1041,8 @@ pub(crate) fn run_choose_objects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let chooser_id = resolve_player_filter(game, &effect.chooser, ctx)?;
+    let chooser_id =
+        crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
 
     let search_zones = search_zones(effect)?;
     let library_owner = if effect.is_search && search_zones.as_slice() == [Zone::Library] {
@@ -1078,7 +1078,7 @@ pub(crate) fn run_choose_objects(
     }
     let search_control = begin_opposition_agent_search_control(game, chooser_id, search_override);
     let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let search_viewer = game.controlling_player_for(chooser_id);
+        let search_viewer = chooser_id;
         if let Some(owner) = library_owner {
             let library_cards = game
                 .player(owner)
@@ -1108,6 +1108,13 @@ pub(crate) fn run_choose_objects(
         });
 
         let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+        if !game
+            .source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref())
+        {
+            candidates.retain(|object| {
+                game.object_is_within_range(chooser_id, *object, Some(ctx.source))
+            });
+        }
         let hidden_library_candidates =
             if effect.is_search && search_zones.as_slice() == [Zone::Library] {
                 library_owner
@@ -1374,7 +1381,7 @@ pub(crate) fn run_choose_objects(
             .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
             .collect();
         if search_zones.iter().any(Zone::is_hidden) {
-            ctx.remember_face_down_exile_viewers(&chosen, game.controlling_player_for(chooser_id));
+            ctx.remember_face_down_exile_viewers(&chosen, chooser_id);
         }
 
         let (objects_for_tags, outcome_objects) = if let Some(search) = search_override {

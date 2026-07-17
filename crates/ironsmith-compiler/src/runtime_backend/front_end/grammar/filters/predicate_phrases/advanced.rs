@@ -23,6 +23,15 @@ fn parse_turn_history_intervening_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
 
+    if surface::exact_words(
+        &clause.word_refs(),
+        &["it", "enlisted", "a", "creature", "this", "combat"],
+    ) {
+        return Ok(Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::TriggeringObjectEnlistedThisCombat,
+        )));
+    }
+
     // "a player cast two or more spells last turn"
     {
         let atoms = [
@@ -33,10 +42,18 @@ fn parse_turn_history_intervening_predicate(
             WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
         ];
         if let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) {
-            let player = matched.capture_clause("player", clause).expect("player capture");
-            let spells = matched.capture_clause("spells", clause).expect("spells capture");
-            let window = matched.capture_clause("window", clause).expect("window capture");
-            let amount = matched.capture_clause("amount", clause).expect("amount capture");
+            let player = matched
+                .capture_clause("player", clause)
+                .expect("player capture");
+            let spells = matched
+                .capture_clause("spells", clause)
+                .expect("spells capture");
+            let window = matched
+                .capture_clause("window", clause)
+                .expect("window capture");
+            let amount = matched
+                .capture_clause("amount", clause)
+                .expect("amount capture");
             if surface::exact_any(player, &[&["a", "player"], &["player"]])
                 && surface::exact(spells, &["spells"])
                 && is_last_turn_clause(window)
@@ -67,8 +84,12 @@ fn parse_turn_history_intervening_predicate(
             WinnowSequence::modifier("window", WinnowCaptureKind::Rest),
         ];
         if let Some(matched) = WinnowSequence::new(&atoms).parse_full(clause) {
-            let source = matched.capture_clause("source", clause).expect("source capture");
-            let window = matched.capture_clause("window", clause).expect("window capture");
+            let source = matched
+                .capture_clause("source", clause)
+                .expect("source capture");
+            let window = matched
+                .capture_clause("window", clause)
+                .expect("window capture");
             if is_source_reference_clause(source) && is_this_turn_clause(window) {
                 let crewers = matched
                     .capture_clause("crewers", clause)
@@ -115,58 +136,68 @@ fn parse_turn_history_intervening_predicate(
         &words,
         &["you", "did", "not", "cast", "it", "from", "your", "hand"],
     ) {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(Zone::Hand),
-        )))));
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(
+                Zone::Hand,
+            )),
+        ))));
     }
     if surface::exact_words(&words, &["it", "wasnt", "cast"])
         || surface::exact_words(&words, &["it", "was", "not", "cast"])
     {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::TriggeringObjectWasCast,
-        )))));
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringObjectWasCast),
+        ))));
     }
-    if surface::exact_words(&words, &["you", "didnt", "play", "a", "land", "this", "turn"])
-        || surface::exact_words(
-            &words,
-            &["you", "did", "not", "play", "a", "land", "this", "turn"],
-        )
-    {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::PlayerPlayedLandThisTurn(PlayerAst::You),
-        )))));
+    if surface::exact_words(
+        &words,
+        &["you", "didnt", "play", "a", "land", "this", "turn"],
+    ) || surface::exact_words(
+        &words,
+        &["you", "did", "not", "play", "a", "land", "this", "turn"],
+    ) {
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::PlayerPlayedLandThisTurn(
+                PlayerAst::You,
+            )),
+        ))));
     }
     if surface::exact_words(&words, &["it", "didnt", "die"])
         || surface::exact_words(&words, &["it", "did", "not", "die"])
     {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::TriggeringObjectDied,
-        )))));
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringObjectDied),
+        ))));
     }
     if surface::exact_words(
         &words,
-        &["you", "didnt", "play", "a", "card", "from", "exile", "this", "turn"],
+        &[
+            "you", "didnt", "play", "a", "card", "from", "exile", "this", "turn",
+        ],
     ) || surface::exact_words(
         &words,
-        &["you", "did", "not", "play", "a", "card", "from", "exile", "this", "turn"],
+        &[
+            "you", "did", "not", "play", "a", "card", "from", "exile", "this", "turn",
+        ],
     ) {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::PlayerPlayedCardFromZoneThisTurn {
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::PlayerPlayedCardFromZoneThisTurn {
                 player: PlayerAst::You,
                 zone: Zone::Exile,
-            },
-        )))));
+            }),
+        ))));
     }
     if surface::exact_words(
         &words,
-        &["that", "player", "attacked", "you", "during", "their", "last", "turn"],
+        &[
+            "that", "player", "attacked", "you", "during", "their", "last", "turn",
+        ],
     ) {
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn,
         )));
     }
-    if surface::exact_words(&words, &["an", "opponent", "lost", "life", "last", "turn"])
-    {
+    if surface::exact_words(&words, &["an", "opponent", "lost", "life", "last", "turn"]) {
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::PlayerLostLifeLastTurn(PlayerAst::Opponent),
         )));
@@ -176,8 +207,7 @@ fn parse_turn_history_intervening_predicate(
             TurnHistoryPredicateAst::PlayerLostLifeLastTurn(PlayerAst::You),
         )));
     }
-    if surface::exact_words(&words, &["your", "team", "gained", "life", "this", "turn"])
-    {
+    if surface::exact_words(&words, &["your", "team", "gained", "life", "this", "turn"]) {
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::ControllerTeamGainedLifeThisTurn,
         )));
@@ -192,8 +222,8 @@ fn parse_turn_history_intervening_predicate(
     if surface::exact_words(
         &words,
         &[
-            "none", "of", "them", "were", "cast", "or", "no", "mana", "was", "spent",
-            "to", "cast", "them",
+            "none", "of", "them", "were", "cast", "or", "no", "mana", "was", "spent", "to", "cast",
+            "them",
         ],
     ) {
         return Ok(Some(PredicateAst::TurnHistory(
@@ -203,16 +233,16 @@ fn parse_turn_history_intervening_predicate(
     if surface::exact_words(
         &words,
         &[
-            "the", "amount", "of", "mana", "spent", "to", "cast", "it", "was", "less",
-            "than", "its", "mana", "value",
+            "the", "amount", "of", "mana", "spent", "to", "cast", "it", "was", "less", "than",
+            "its", "mana", "value",
         ],
     ) {
         return Ok(Some(PredicateAst::ValueComparison {
             left: Value::ManaSpentToCastTriggeringObject,
             operator: ValueComparisonOperator::LessThan,
-            right: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
-                TagKey::from("triggering"),
-            ))),
+            right: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
+                "triggering",
+            )))),
         }));
     }
     if surface::exact_words(
@@ -227,29 +257,23 @@ fn parse_turn_history_intervening_predicate(
         )));
     }
     if surface::exact_words(&words, &["it", "isnt", "a", "mana", "ability"])
-        || surface::exact_words(
-            &words,
-            &["it", "is", "not", "a", "mana", "ability"],
-        )
+        || surface::exact_words(&words, &["it", "is", "not", "a", "mana", "ability"])
     {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::TriggeringAbilityIsManaAbility,
-        )))));
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringAbilityIsManaAbility),
+        ))));
     }
 
     // "mana from a Treasure was spent to cast it or activate it"
     if words.len() >= 11
         && words[..2] == ["mana", "from"]
-        && words[words.len() - 8..]
-            == ["was", "spent", "to", "cast", "it", "or", "activate", "it"]
+        && words[words.len() - 8..] == ["was", "spent", "to", "cast", "it", "or", "activate", "it"]
     {
         let source_word_count = words.len() - 10;
         if let Some(source_clause) = clause.between_word_range(2, 2 + source_word_count) {
             let source_filter = parse_object_filter(source_clause.tokens(), false)?;
             return Ok(Some(PredicateAst::TurnHistory(
-                TurnHistoryPredicateAst::ManaFromSourceSpentOnTriggeringAction {
-                    source_filter,
-                },
+                TurnHistoryPredicateAst::ManaFromSourceSpentOnTriggeringAction { source_filter },
             )));
         }
     }
@@ -273,9 +297,25 @@ fn parse_turn_history_intervening_predicate(
     if surface::exact_words(
         &words,
         &[
-            "at", "least", "one", "other", "wall", "creature", "is", "blocking", "that",
-            "creature", "and", "no", "non", "wall", "creatures", "are", "blocking",
-            "that", "creature",
+            "at",
+            "least",
+            "one",
+            "other",
+            "wall",
+            "creature",
+            "is",
+            "blocking",
+            "that",
+            "creature",
+            "and",
+            "no",
+            "non",
+            "wall",
+            "creatures",
+            "are",
+            "blocking",
+            "that",
+            "creature",
         ],
     ) {
         let required_clause = clause
@@ -297,23 +337,26 @@ fn parse_turn_history_intervening_predicate(
     if surface::exact_words(&words, &["its", "not", "their", "turn"])
         || surface::exact_words(&words, &["it", "is", "not", "their", "turn"])
     {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::TriggeringPlayersTurn {
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringPlayersTurn {
                 definite_player: false,
-            },
-        )))));
+            }),
+        ))));
     }
-    if surface::exact_words(&words, &["its", "not", "that", "players", "turn"])
-        || surface::exact_words(
-            &words,
+    if surface::exact_any(
+        clause,
+        &[
+            &["its", "not", "that", "players", "turn"],
+            &["it", "isnt", "that", "players", "turn"],
+            &["it", "isn't", "that", "players", "turn"],
             &["it", "is", "not", "that", "players", "turn"],
-        )
-    {
-        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TurnHistory(
-            TurnHistoryPredicateAst::TriggeringPlayersTurn {
+        ],
+    ) {
+        return Ok(Some(PredicateAst::Not(Box::new(
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringPlayersTurn {
                 definite_player: true,
-            },
-        )))));
+            }),
+        ))));
     }
 
     Ok(None)
@@ -412,6 +455,7 @@ pub(super) fn parse_while_conjoined_predicate(
 pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
+        PlayerAst::Active => Some(PlayerFilter::Active),
         PlayerAst::Any => Some(PlayerFilter::Any),
         PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
@@ -477,6 +521,7 @@ pub(super) fn parse_world_state_or_timing_predicate(
     parse_initiative_choice_predicate_shape(tokens)
         .or_else(|| parse_night_state_predicate_shape(tokens))
         .or_else(|| parse_first_combat_phase_predicate_shape(tokens))
+        .or_else(|| parse_source_controllers_main_phase_predicate_shape(tokens))
         .or_else(|| parse_cast_this_spell_during_main_phase_shape(tokens))
 }
 
@@ -636,6 +681,20 @@ pub(super) fn parse_cast_this_spell_during_main_phase_shape(
 
 pub(super) fn is_your_main_phase_clause(clause: LexedClause<'_>) -> bool {
     surface::exact(clause, &["your", "main", "phase"])
+}
+
+pub(super) fn parse_source_controllers_main_phase_predicate_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    surface::exact_any(
+        clause,
+        &[
+            &["its", "your", "main", "phase"],
+            &["it", "is", "your", "main", "phase"],
+        ],
+    )
+    .then_some(PredicateAst::SourceControllersMainPhase)
 }
 
 pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1196,6 +1255,7 @@ pub(super) fn is_predicate_reference_value(value: &Value) -> bool {
             | Value::CountersOn(_, _)
             | Value::PowerOf(_)
             | Value::ToughnessOf(_)
+            | Value::ManaValueOf(_)
             | Value::SourcePower
             | Value::SourceToughness
             | Value::ManaSpentToCastTriggeringObject
@@ -2335,10 +2395,16 @@ pub(super) fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option
     let subtype_clause = matched.capture_clause("subtype", clause)?;
     let subtype_tokens = strip_leading_article_tokens(subtype_clause.tokens());
     let subtype_words = LexedClause::new(subtype_tokens).word_refs();
-    if subtype_words.len() != 1 || parse_subtype_word(subtype_words[0]).is_none() {
+    if subtype_words.len() != 1 {
         return None;
     }
-    Some(PredicateAst::ThisSpellPaidLabel("Behold".into()))
+    let subtype = parse_subtype_word(subtype_words[0])?;
+    Some(PredicateAst::ThisSpellPaidLabel(
+        crate::cost::OptionalCostRef::with_discriminator(
+            crate::cost::OptionalCostKind::Behold,
+            subtype.to_string(),
+        ),
+    ))
 }
 
 pub(super) fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2644,14 +2710,14 @@ pub(super) fn tagged_creature_role_clause(clause: LexedClause<'_>) -> Option<&'s
     None
 }
 
-pub(super) fn parse_sacrificed_permanent_state_predicate(
+pub(super) fn parse_additional_cost_object_state_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let optional_article = [WinnowSequence::any_word(&["a", "an", "the"])];
     let atoms = [
         WinnowSequence::optional(&optional_article),
-        WinnowSequence::word("sacrificed"),
+        WinnowSequence::action("cost_action", WinnowCaptureKind::WordCount(1)),
         WinnowSequence::subject("subject", WinnowCaptureKind::WordCount(1)),
         WinnowSequence::word("was"),
         WinnowSequence::modifier("descriptor", WinnowCaptureKind::Rest),
@@ -2665,6 +2731,17 @@ pub(super) fn parse_sacrificed_permanent_state_predicate(
             CardTextError::ParseError("missing subject in sacrificed predicate".to_string())
         })?;
     let Some(subject_token) = subject.token(0) else {
+        return Ok(None);
+    };
+    let cost_action = matched
+        .capture_clause_by_role(WinnowCaptureRole::Action, clause)
+        .and_then(|action| action.token(0))
+        .and_then(|token| match token.parser_text() {
+            "sacrificed" => Some(ironsmith_core::AdditionalCostObjectAction::Sacrificed),
+            "exiled" => Some(ironsmith_core::AdditionalCostObjectAction::Exiled),
+            _ => None,
+        });
+    let Some(cost_action) = cost_action else {
         return Ok(None);
     };
     let subject_card_type = parse_card_type(subject_token.parser_text())
@@ -2692,10 +2769,19 @@ pub(super) fn parse_sacrificed_permanent_state_predicate(
     {
         filter.card_types.push(card_type);
     }
-    if filter.zone.is_none() && token_word_is(subject_token, PERMANENT_WORD) {
-        filter.zone = Some(Zone::Battlefield);
-    }
-    Ok(Some(PredicateAst::ItMatches(filter)))
+    let subject_kind = match subject_card_type {
+        Some(CardType::Creature) => ironsmith_core::SacrificedObjectKind::Creature,
+        Some(CardType::Artifact) => ironsmith_core::SacrificedObjectKind::Artifact,
+        Some(CardType::Enchantment) => ironsmith_core::SacrificedObjectKind::Enchantment,
+        _ => ironsmith_core::SacrificedObjectKind::Permanent,
+    };
+    filter.set_additional_cost_object_surface(Some(
+        ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
+    ));
+    Ok(Some(PredicateAst::TaggedMatches(
+        TagKey::from(ADDITIONAL_COST_OBJECT_TAG),
+        filter,
+    )))
 }
 
 pub(super) fn parse_tagged_exiled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3771,7 +3857,12 @@ pub(super) fn parse_revealed_or_controlled_subtype_predicate(
     let subtype = parse_subtype_word(revealed_token.parser_text())?;
 
     Some(PredicateAst::Or(
-        Box::new(PredicateAst::ThisSpellPaidLabel("Behold".into())),
+        Box::new(PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::with_discriminator(
+                crate::cost::OptionalCostKind::Behold,
+                subtype.to_string(),
+            ),
+        )),
         Box::new(PredicateAst::PlayerControls {
             player: PlayerAst::You,
             filter: ObjectFilter::default().with_subtype(subtype),
@@ -3826,6 +3917,88 @@ pub(super) fn parse_subtype_card_descriptor_clause(
         .as_word()
         .and_then(parse_subtype_word)?;
     Some(ObjectFilter::default().with_subtype(subtype))
+}
+
+/// Parse independently articulated existential objects that share a graveyard
+/// suffix, such as "there is an instant card and a sorcery card in your
+/// graveyard." The repeated articles make this two existential requirements,
+/// not one disjunctive type filter.
+pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let outer_atoms = [
+        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::object("descriptors", WinnowCaptureKind::UntilPhrase(&["in"])),
+        WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),
+        WinnowSequence::modifier("location", WinnowCaptureKind::Rest),
+    ];
+    let Some(outer) = WinnowSequence::new(&outer_atoms).parse_full(clause) else {
+        return Ok(None);
+    };
+    let existential = outer
+        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
+        .ok_or_else(|| CardTextError::ParseError("missing existential subject".to_string()))?;
+    if !is_card_graveyard_existential_clause(existential) {
+        return Ok(None);
+    }
+    let location = outer
+        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
+        .ok_or_else(|| CardTextError::ParseError("missing existential location".to_string()))?;
+    if !surface::exact(location, &["your", "graveyard"]) {
+        return Ok(None);
+    }
+
+    let descriptors = outer
+        .capture_clause("descriptors", clause)
+        .ok_or_else(|| CardTextError::ParseError("missing existential objects".to_string()))?;
+    let descriptor_atoms = [
+        WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["and"])),
+        WinnowSequence::word("and"),
+        WinnowSequence::object("right", WinnowCaptureKind::Rest),
+    ];
+    let Some(split) = WinnowSequence::new(&descriptor_atoms).parse_full(descriptors) else {
+        return Ok(None);
+    };
+    let left = split
+        .capture_clause("left", descriptors)
+        .ok_or_else(|| CardTextError::ParseError("missing left existential object".to_string()))?
+        .trimmed();
+    let right = split
+        .capture_clause("right", descriptors)
+        .ok_or_else(|| CardTextError::ParseError("missing right existential object".to_string()))?
+        .trimmed();
+
+    let is_independently_articled_card = |object: LexedClause<'_>| {
+        object
+            .token(0)
+            .is_some_and(|token| is_article(token.parser_text()))
+            && object
+                .tokens()
+                .iter()
+                .any(|token| token_word_is_any(token, CARD_OR_CARDS_WORDS))
+    };
+    if !is_independently_articled_card(left) || !is_independently_articled_card(right) {
+        return Ok(None);
+    }
+
+    let mut left_filter = parse_object_filter(left.tokens(), false)?;
+    let mut right_filter = parse_object_filter(right.tokens(), false)?;
+    for filter in [&mut left_filter, &mut right_filter] {
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+    }
+
+    Ok(Some(PredicateAst::And(
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: left_filter,
+        }),
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: right_filter,
+        }),
+    )))
 }
 
 pub(super) fn parse_card_in_your_graveyard_predicate(
@@ -4280,6 +4453,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_conjoined_cards_in_your_graveyard_predicate(predicate_tokens)? {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_card_in_your_graveyard_predicate(predicate_tokens) {
         return Ok(predicate);
     }
@@ -4542,7 +4719,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_sacrificed_permanent_state_predicate(predicate_tokens)? {
+    if let Some(predicate) = parse_additional_cost_object_state_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 

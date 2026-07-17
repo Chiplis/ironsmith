@@ -36,7 +36,7 @@ const TOP_LEFT_INSPECTOR_ZONE_GAP = 6;
 const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
 const HAND_LANE_HOVER_FUZZ = 6;
 const HAND_LANE_BOTTOM_EXIT_FUZZ = 96;
-const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command"];
+const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command", "ante"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
 const INSPECTOR_SHADER_REVEAL_CONSUME_MS = 2500;
 
@@ -48,6 +48,7 @@ const ZONE_TRANSITION_LABELS = {
   stack: "Stack",
   exile: "Exile",
   command: "Command",
+  ante: "Ante",
   outside_game: "Outside",
   hidden: "Hidden",
 };
@@ -64,6 +65,7 @@ function objectExistsInState(state, objectId) {
       player?.graveyard_cards || [],
       player?.exile_cards || [],
       player?.command_cards || [],
+      player?.ante_cards || [],
     ];
     for (const cards of zones) {
       for (const card of cards) {
@@ -78,6 +80,10 @@ function objectExistsInState(state, objectId) {
   for (const entry of getVisibleStackObjects(state)) {
     if (String(entry?.id) === needle) return true;
     if (String(entry?.inspect_object_id) === needle) return true;
+  }
+
+  for (const card of state?.planechase?.face_up || []) {
+    if (String(card?.id) === needle) return true;
   }
 
   if ((state?.viewed_cards?.card_ids || []).some((id) => String(id) === needle)) {
@@ -145,6 +151,8 @@ function getTrackedZoneCards(player, zone) {
       return player?.exile_cards || [];
     case "command":
       return player?.command_cards || [];
+    case "ante":
+      return player?.ante_cards || [];
     default:
       return [];
   }
@@ -303,8 +311,8 @@ function chooseFallbackTransitionMatch(previousEntry, candidateEntries) {
   if (candidateEntries.length === 1) return candidateEntries[0];
 
   const preferredZones = previousEntry?.zone === "battlefield"
-    ? ["graveyard", "exile", "command", "hand", "battlefield"]
-    : [previousEntry?.zone, "graveyard", "exile", "command", "hand", "battlefield"];
+    ? ["graveyard", "exile", "command", "ante", "hand", "battlefield"]
+    : [previousEntry?.zone, "graveyard", "exile", "command", "ante", "hand", "battlefield"];
 
   for (const zone of preferredZones) {
     const match = candidateEntries.find((entry) => entry.zone === zone);

@@ -35,18 +35,30 @@ impl WouldEnterBattlefieldMatcher {
         Self::new(ObjectFilter::permanent())
     }
 
-    fn matches_would_enter_object(&self, object_id: ObjectId, ctx: &EventContext) -> bool {
-        let Some(obj) = ctx.game.object(object_id) else {
+    fn matches_in_prospective_game(
+        &self,
+        object_id: ObjectId,
+        prospective_game: &crate::game_state::GameState,
+        ctx: &EventContext,
+    ) -> bool {
+        let Some(obj) = prospective_game.object(object_id) else {
             return false;
         };
+        let view = crate::derived_view::DerivedGameView::new(prospective_game);
+        self.filter
+            .matches_with_view(obj, &ctx.filter_ctx, prospective_game, &view)
+    }
 
-        // Evaluate against the object's prospective battlefield characteristics.
-        // Replacement effects trigger before zone change is finalized, so the
-        // object may still be in hand/stack/graveyard when this matcher runs.
-        let mut prospective = obj.clone();
-        prospective.zone = Zone::Battlefield;
+    fn matches_would_enter_event(&self, event: &EnterBattlefieldEvent, ctx: &EventContext) -> bool {
+        if let Some(prospective_game) = ctx.prospective_etb_game {
+            return self.matches_in_prospective_game(event.object, prospective_game, ctx);
+        }
 
-        self.filter.matches(&prospective, &ctx.filter_ctx, ctx.game)
+        event
+            .prospective_game_state(ctx.game)
+            .is_some_and(|prospective_game| {
+                self.matches_in_prospective_game(event.object, &prospective_game, ctx)
+            })
     }
 }
 
@@ -60,16 +72,18 @@ impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
                 if zone_change.to != Zone::Battlefield {
                     return false;
                 }
-                zone_change
-                    .objects
-                    .first()
-                    .is_some_and(|&id| self.matches_would_enter_object(id, ctx))
+                zone_change.objects.iter().copied().any(|object| {
+                    self.matches_would_enter_event(
+                        &EnterBattlefieldEvent::new(object, zone_change.from),
+                        ctx,
+                    )
+                })
             }
             EventKind::EnterBattlefield => {
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
                     return false;
                 };
-                self.matches_would_enter_object(etb.object, ctx)
+                self.matches_would_enter_event(etb, ctx)
             }
             _ => false,
         }
@@ -420,9 +434,54 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             .and_then(|&id| ctx.game.object(id))
         {
             self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                || self.matches_merged_card_component_only(zone_change, ctx)
         } else {
             false
         }
+    }
+
+    fn matches_merged_card_component_only(
+        &self,
+        zone_change: &ZoneChangeEvent,
+        ctx: &EventContext,
+    ) -> bool {
+        if zone_change.from == Zone::Stack
+            || self.from_zone.is_some_and(|zone| zone_change.from != zone)
+            || self.to_zone.is_some_and(|zone| zone_change.to != zone)
+            || self.cause_filter.as_ref().is_some_and(|cause_filter| {
+                !cause_filter.matches(&zone_change.cause, ctx.game, ctx.controller)
+            })
+            || (self.require_cause_source_match
+                && !zone_change
+                    .cause
+                    .source
+                    .is_some_and(|source| zone_change.objects.contains(&source)))
+        {
+            return false;
+        }
+
+        let Some(object) = zone_change
+            .objects
+            .first()
+            .and_then(|object_id| ctx.game.object(*object_id))
+        else {
+            return false;
+        };
+        if object.kind != crate::object::ObjectKind::Token
+            || self.filter.matches(object, &ctx.filter_ctx, ctx.game)
+        {
+            return false;
+        }
+        ctx.game
+            .merged_permanent(object.stable_id)
+            .is_some_and(|merged| {
+                merged.components.iter().any(|component| {
+                    component.object.kind == crate::object::ObjectKind::Card
+                        && self
+                            .filter
+                            .matches(&component.object, &ctx.filter_ctx, ctx.game)
+                })
+            })
     }
 
     fn display(&self) -> String {

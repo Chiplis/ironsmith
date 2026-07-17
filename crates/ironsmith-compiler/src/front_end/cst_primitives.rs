@@ -31,6 +31,7 @@ pub enum KeywordLineKindCst {
     Reinforce,
     Squad,
     Transmute,
+    Transfigure,
     Entwine,
     Escalate,
     Eternalize,

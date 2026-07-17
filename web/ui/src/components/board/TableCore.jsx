@@ -8,6 +8,7 @@ import OpenDecklistModal from "./OpenDecklistModal";
 import PuzzleSetupView from "./PuzzleSetupView";
 import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
 import MobileBattleScene from "./MobileBattleScene";
+import PlanarZone from "./PlanarZone";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
@@ -263,24 +264,34 @@ export default function TableCore({
       ) : null}
     </div>
   ) : null;
+  const planarZoneElement = (
+    <PlanarZone
+      state={state}
+      selectedObjectId={selectedObjectId}
+      onInspect={onInspect}
+    />
+  );
   if (landscapeMobileViewport) {
     return (
-      <MobileBattleScene
-        me={me}
-        opponents={opponents}
-        selectedObjectId={selectedObjectId}
-        onInspect={onInspect}
-        focusedStackObjectId={focusedStackObjectId}
-        onFocusStackObject={onFocusStackObject}
-        legalTargetPlayerIds={legalTargetPlayerIds}
-        legalTargetObjectIds={legalTargetObjectIds}
-        mobileOpponentIndex={mobileOpponentIndex}
-        setMobileOpponentIndex={setMobileOpponentIndex}
-        mobileViewMode={mobileViewMode}
-        setMobileViewMode={setMobileViewMode}
-        mobilePhaseStops={mobilePhaseStops}
-        setMobilePhaseStops={setMobilePhaseStops}
-      />
+      <div className="relative h-full min-h-0">
+        <MobileBattleScene
+          me={me}
+          opponents={opponents}
+          selectedObjectId={selectedObjectId}
+          onInspect={onInspect}
+          focusedStackObjectId={focusedStackObjectId}
+          onFocusStackObject={onFocusStackObject}
+          legalTargetPlayerIds={legalTargetPlayerIds}
+          legalTargetObjectIds={legalTargetObjectIds}
+          mobileOpponentIndex={mobileOpponentIndex}
+          setMobileOpponentIndex={setMobileOpponentIndex}
+          mobileViewMode={mobileViewMode}
+          setMobileViewMode={setMobileViewMode}
+          mobilePhaseStops={mobilePhaseStops}
+          setMobilePhaseStops={setMobilePhaseStops}
+        />
+        {planarZoneElement}
+      </div>
     );
   }
 
@@ -313,6 +324,7 @@ export default function TableCore({
         activeOpponentIndex={mobileOpponentIndex}
         setActiveOpponentIndex={setMobileOpponentIndex}
       />
+      {planarZoneElement}
       {!mergeActionBarIntoMyZone && sharedMiddleElement}
       {!mergeActionBarIntoMyZone && !sharedMiddleElement && middleToolbarElement}
       <MyZone

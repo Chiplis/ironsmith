@@ -1,5 +1,5 @@
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_to_list};
+use crate::effects::helpers::resolve_player_filter_to_list;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -51,6 +51,7 @@ impl ChoosePlayerEffect {
         &self,
         game: &GameState,
         ctx: &ExecutionContext,
+        chooser: PlayerId,
     ) -> Result<Vec<PlayerId>, ExecutionError> {
         let mut filter_ctx: FilterContext = ctx.filter_context(game);
         for excluded_tag in &self.excluded_tags {
@@ -75,6 +76,11 @@ impl ChoosePlayerEffect {
                 players.retain(|player| !excluded_players.contains(player));
             }
         }
+        if !game
+            .source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref())
+        {
+            players.retain(|player| game.player_is_within_range(chooser, *player));
+        }
         players.sort_by_key(|player| player.0);
         players.dedup();
         Ok(players)
@@ -95,8 +101,9 @@ impl EffectExecutor for ChoosePlayerEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
-        let candidates = self.candidate_players(game, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
+        let candidates = self.candidate_players(game, ctx, chooser)?;
         let Some(chosen) = (if self.random {
             let mut shuffled = candidates.clone();
             game.shuffle_slice(&mut shuffled);
@@ -157,9 +164,11 @@ impl CostExecutableEffect for ChoosePlayerEffect {
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
         let ctx = ExecutionContext::new_default(source, controller);
-        let candidates = self.candidate_players(game, &ctx).map_err(|err| {
-            CostValidationError::Other(format!("unable to choose player: {err:?}"))
-        })?;
+        let candidates = self
+            .candidate_players(game, &ctx, controller)
+            .map_err(|err| {
+                CostValidationError::Other(format!("unable to choose player: {err:?}"))
+            })?;
         if candidates.is_empty() {
             Err(CostValidationError::Other(
                 "no legal player choices available".to_string(),

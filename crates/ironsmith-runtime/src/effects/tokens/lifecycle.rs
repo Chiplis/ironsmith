@@ -114,6 +114,17 @@ pub(crate) fn apply_token_battlefield_entry(
     enters_tapped: bool,
     events: &mut Vec<TriggerEvent>,
 ) -> Result<(), ExecutionError> {
+    let source_stable_id = game
+        .object(ctx.source)
+        .map(|source| source.stable_id)
+        .or_else(|| ctx.source_snapshot.as_ref().map(|source| source.stable_id));
+    let token_stable_id = game.object(token_id).map(|token| token.stable_id);
+    if let (Some(source_stable_id), Some(token_stable_id)) =
+        (source_stable_id, token_stable_id)
+    {
+        game.add_token_created_with_source_link(source_stable_id, token_stable_id);
+    }
+
     if enters_tapped && !game.is_tapped(token_id) {
         game.tap(token_id);
     }

@@ -62,6 +62,39 @@ fn original_printing_set_filter_matches_card_metadata_and_snapshots() {
 }
 
 #[test]
+fn created_with_source_filter_matches_stable_creation_provenance() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_210), "Source")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let candidate_card =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_211), "Candidate")
+            .card_types(vec![CardType::Creature])
+            .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+    let linked = game.create_object_from_card(&candidate_card, alice, Zone::Battlefield);
+    let unrelated = game.create_object_from_card(&candidate_card, alice, Zone::Battlefield);
+    let source_stable = game.object(source).unwrap().stable_id;
+    let linked_stable = game.object(linked).unwrap().stable_id;
+    game.add_token_created_with_source_link(source_stable, linked_stable);
+
+    let filter = ObjectFilter {
+        created_with_source: true,
+        ..ObjectFilter::default()
+    };
+    let context = FilterContext::new(alice).with_source(source);
+    let linked_object = game.object(linked).unwrap();
+    assert!(filter.matches(linked_object, &context, &game));
+    assert!(filter.matches_snapshot(
+        &ObjectSnapshot::from_object(linked_object, &game),
+        &context,
+        &game
+    ));
+    assert!(!filter.matches(game.object(unrelated).unwrap(), &context, &game));
+}
+
+#[test]
 fn blocked_by_tagged_filter_matches_current_combat_relationship() {
     let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -1104,6 +1137,43 @@ fn nonbasic_land_type_filter_checks_subtypes_not_the_basic_supertype() {
     assert!(filter.matches(&desert, &ctx, &game));
     assert!(!filter.matches(&dual, &ctx, &game));
     assert!(!filter.matches(&basic, &ctx, &game));
+}
+
+#[test]
+fn basic_land_type_filter_checks_subtypes_not_the_basic_supertype() {
+    use crate::card::CardBuilder;
+    use crate::game_state::GameState;
+    use crate::ids::{CardId, ObjectId};
+    use crate::object::Object;
+    use crate::types::{Subtype, Supertype};
+
+    let player = PlayerId::from_index(0);
+    let game = GameState::new(vec!["Alice".to_string()], 20);
+    let filter = ObjectFilter {
+        has_basic_land_type: true,
+        ..Default::default()
+    };
+    let desert = CardBuilder::new(CardId::from_raw(21), "Desert")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Desert])
+        .build();
+    let dual = CardBuilder::new(CardId::from_raw(22), "Steam Vents")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island, Subtype::Mountain])
+        .build();
+    let basic = CardBuilder::new(CardId::from_raw(23), "Forest")
+        .card_types(vec![CardType::Land])
+        .supertypes(vec![Supertype::Basic])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let desert = Object::from_card(ObjectId::from_raw(21), &desert, player, Zone::Battlefield);
+    let dual = Object::from_card(ObjectId::from_raw(22), &dual, player, Zone::Battlefield);
+    let basic = Object::from_card(ObjectId::from_raw(23), &basic, player, Zone::Battlefield);
+    let ctx = FilterContext::new(player);
+
+    assert!(!filter.matches(&desert, &ctx, &game));
+    assert!(filter.matches(&dual, &ctx, &game));
+    assert!(filter.matches(&basic, &ctx, &game));
 }
 
 #[test]

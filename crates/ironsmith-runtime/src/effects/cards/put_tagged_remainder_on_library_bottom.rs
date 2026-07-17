@@ -1,5 +1,4 @@
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, consult_helpers::*};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -11,7 +10,8 @@ impl EffectExecutor for PutTaggedRemainderOnLibraryBottomEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser = resolve_player_filter(game, &self.player, ctx)?;
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.player, ctx)?;
         move_tagged_remainder_to_library_bottom(
             game,
             ctx,

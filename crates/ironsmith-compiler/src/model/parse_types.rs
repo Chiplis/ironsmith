@@ -11,6 +11,7 @@ pub enum DamageBySpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlayerAst {
     You,
+    Active,
     Any,
     Chosen,
     Defending,

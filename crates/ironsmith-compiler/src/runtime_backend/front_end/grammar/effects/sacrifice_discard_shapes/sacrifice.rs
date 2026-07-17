@@ -7,6 +7,7 @@ use super::super::super::{leaf, primitives};
 use super::common;
 
 const TAGGED_REFERENCES: &[&[&str]] = &[&["it"], &["that", "card"], &["that", "token"]];
+const ONE_OF_TAGGED_SET_REFERENCES: &[&[&str]] = &[&["one", "of", "them"]];
 const CHOICE_SUFFIXES: &[&[&str]] = &[
     &["of", "their", "choice"],
     &["of", "your", "choice"],
@@ -67,6 +68,7 @@ pub(crate) struct SacrificeAggregateShape<'a> {
 pub(crate) enum SacrificeTaggedReferenceKind {
     ItOrCard,
     Token,
+    OneOfTaggedSet,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -155,7 +157,8 @@ pub(crate) fn parse_sacrifice_clause_shape(tokens: &[OwnedLexToken]) -> Sacrific
         full_body_tokens,
         unless_token_offset: Some(unless_token_offset),
         unless_kind,
-        sacrifice_references_it: common::exact_any(&body_words, TAGGED_REFERENCES),
+        sacrifice_references_it: common::exact_any(&body_words, TAGGED_REFERENCES)
+            || common::exact_any(&body_words, ONE_OF_TAGGED_SET_REFERENCES),
         has_graveyard_history: common::all_present(
             &body_words,
             &["for", "each", "graveyard", "turn"],
@@ -209,7 +212,14 @@ pub(crate) fn parse_sacrifice_half_rounded_up_shape(
 pub(crate) fn parse_sacrifice_count_shape(tokens: &[OwnedLexToken]) -> SacrificeCountShape<'_> {
     let mut count = 1u32;
     let mut rest = tokens;
-    if let Some(prefix) = leaf::parse_leaf_number_prefix_tokens(rest)
+    // `one of them` names one member of the previously established object
+    // set; its `one` is not an ordinary count prefix. Keep the complete
+    // phrase intact so `parse_sacrifice_object_shape` can preserve the set
+    // choice semantics instead of degrading it to a bare `them` reference.
+    let one_of_tagged_set =
+        primitives::parse_prefix(rest, primitives::phrase(&["one", "of", "them"]).void()).is_some();
+    if !one_of_tagged_set
+        && let Some(prefix) = leaf::parse_leaf_number_prefix_tokens(rest)
         && let Some((value, used)) = prefix.into_fixed()
     {
         count = value;
@@ -224,7 +234,8 @@ pub(crate) fn parse_sacrifice_count_shape(tokens: &[OwnedLexToken]) -> Sacrifice
         rest = after_another;
     }
 
-    if count == 1
+    if !one_of_tagged_set
+        && count == 1
         && let Some(prefix) = leaf::parse_leaf_number_prefix_tokens(rest)
         && let Some((value, used)) = prefix.into_fixed()
     {
@@ -264,6 +275,8 @@ pub(crate) fn parse_sacrifice_object_shape(tokens: &[OwnedLexToken]) -> Sacrific
     let words = parser_token_word_refs(filter_tokens);
     let tagged_reference = if common::exact(&words, &["that", "token"]) {
         Some(SacrificeTaggedReferenceKind::Token)
+    } else if common::exact_any(&words, ONE_OF_TAGGED_SET_REFERENCES) {
+        Some(SacrificeTaggedReferenceKind::OneOfTaggedSet)
     } else if common::exact_any(&words, TAGGED_REFERENCES) {
         Some(SacrificeTaggedReferenceKind::ItOrCard)
     } else {
@@ -318,6 +331,21 @@ mod tests {
         assert_eq!(
             parser_token_word_refs(shape.filter_tokens),
             ["that", "token"]
+        );
+    }
+
+    #[test]
+    fn sacrifice_object_shape_distinguishes_one_member_of_tagged_set() {
+        let tokens = lex_line("one of them", 0).unwrap();
+        let shape = parse_sacrifice_object_shape(&tokens);
+
+        assert_eq!(
+            shape.tagged_reference,
+            Some(SacrificeTaggedReferenceKind::OneOfTaggedSet)
+        );
+        assert_eq!(
+            parser_token_word_refs(shape.filter_tokens),
+            ["one", "of", "them"]
         );
     }
 

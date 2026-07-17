@@ -15,12 +15,25 @@ use crate::zone::Zone;
 pub struct ShuffleHandAndGraveyardIntoLibraryEffect {
     /// Which player's hand, graveyard, and library to use.
     pub player: PlayerFilter,
+    /// Also move permanents owned by that player from the battlefield.
+    pub include_owned_permanents: bool,
 }
 
 impl ShuffleHandAndGraveyardIntoLibraryEffect {
     /// Create a new effect for the provided player filter.
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            include_owned_permanents: false,
+        }
+    }
+
+    /// Include permanents the player owns as well as their hand and graveyard.
+    pub fn including_owned_permanents(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            include_owned_permanents: true,
+        }
     }
 }
 
@@ -36,11 +49,30 @@ impl EffectExecutor for ShuffleHandAndGraveyardIntoLibraryEffect {
             .player(player_id)
             .map(|player| (player.hand.clone(), player.graveyard.clone()))
             .unwrap_or_default();
+        let owned_permanents = if self.include_owned_permanents {
+            game.battlefield
+                .iter()
+                .copied()
+                .filter(|object_id| {
+                    game.object(*object_id)
+                        .is_some_and(|object| object.owner == player_id)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
 
-        for card_id in hand_cards.into_iter().chain(graveyard_cards) {
+        for card_id in hand_cards
+            .into_iter()
+            .chain(graveyard_cards)
+            .chain(owned_permanents)
+        {
+            let destination = ctx
+                .simultaneous_zone_destination(card_id)
+                .unwrap_or(Zone::Library);
             let _ = game.move_object_with_commander_options(
                 card_id,
-                Zone::Library,
+                destination,
                 ctx.cause.clone(),
                 &mut *ctx.decision_maker,
             );
@@ -124,5 +156,29 @@ mod tests {
                 .iter()
                 .any(|event| event.downcast::<ShuffleLibraryEvent>().is_some())
         );
+    }
+
+    #[test]
+    fn including_owned_permanents_moves_owned_but_not_controlled_permanents() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let alice_permanent = create_card_in_zone(&mut game, alice, Zone::Battlefield, "Alice's");
+        let bob_permanent = create_card_in_zone(&mut game, bob, Zone::Battlefield, "Bob's");
+        game.set_current_controller(alice_permanent, bob);
+        game.set_current_controller(bob_permanent, alice);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ShuffleHandAndGraveyardIntoLibraryEffect::including_owned_permanents(PlayerFilter::You)
+            .execute(&mut game, &mut ctx)
+            .expect("combined shuffle should resolve");
+
+        assert!(game.object(alice_permanent).is_none());
+        assert!(
+            game.object(bob_permanent)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+        );
+        assert_eq!(game.player(alice).expect("alice").library.len(), 1);
     }
 }

@@ -8,6 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::filter::{FilterContext, ObjectFilterExt as _};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::{
@@ -54,6 +55,8 @@ pub enum AttackTarget {
     Player(PlayerId),
     /// Attacking a planeswalker.
     Planeswalker(ObjectId),
+    /// Attacking a battle.
+    Battle(ObjectId),
 }
 
 impl std::fmt::Display for AttackTarget {
@@ -61,6 +64,7 @@ impl std::fmt::Display for AttackTarget {
         match self {
             AttackTarget::Player(id) => write!(f, "player {}", id.0),
             AttackTarget::Planeswalker(id) => write!(f, "planeswalker #{}", id.0),
+            AttackTarget::Battle(id) => write!(f, "battle #{}", id.0),
         }
     }
 }
@@ -273,6 +277,7 @@ pub fn end_combat(combat: &mut CombatState) {
     combat.attackers.clear();
     combat.blockers.clear();
     combat.damage_assignment_order.clear();
+    combat.attacking_bands.clear();
     combat.had_to_attack_this_combat.clear();
 }
 
@@ -404,9 +409,17 @@ pub fn declare_attackers(
         ) {
             return Err(CombatError::NotACreature(*creature_id));
         }
+        if game.object_has_card_type_with_effects(
+            *creature_id,
+            crate::types::CardType::Battle,
+            &all_effects,
+        ) {
+            return Err(CombatError::CreatureCannotAttack(*creature_id));
+        }
 
         // Must be controlled by active player
-        if game.controller_of(creature) != active_player {
+        let attacking_player = game.controller_of(creature);
+        if !game.is_active_player(attacking_player) {
             return Err(CombatError::NotControlledBy {
                 creature: *creature_id,
                 expected: active_player,
@@ -444,7 +457,35 @@ pub fn declare_attackers(
                 }
                 game.controller_of(pw)
             }
+            AttackTarget::Battle(battle_id) => {
+                let battle = game
+                    .object(*battle_id)
+                    .ok_or_else(|| CombatError::InvalidAttackTarget(target.clone()))?;
+                if battle.zone != Zone::Battlefield
+                    || !game.object_has_card_type_with_effects(
+                        *battle_id,
+                        crate::types::CardType::Battle,
+                        &all_effects,
+                    )
+                {
+                    return Err(CombatError::InvalidAttackTarget(target.clone()));
+                }
+                let protector = game
+                    .battle_protector(*battle_id)
+                    .ok_or_else(|| CombatError::InvalidAttackTarget(target.clone()))?;
+                if !game.are_opponents(attacking_player, protector) {
+                    return Err(CombatError::InvalidAttackTarget(target.clone()));
+                }
+                protector
+            }
         };
+
+        if !game.player_is_within_range(attacking_player, defending_player) {
+            return Err(CombatError::InvalidAttackTarget(target.clone()));
+        }
+        if !game.attack_direction_allows_defender(attacking_player, defending_player) {
+            return Err(CombatError::InvalidAttackTarget(target.clone()));
+        }
 
         // Must be able to attack (no defender, no summoning sickness unless haste, etc.)
         // Check both rules-based restrictions and effect-based restrictions.
@@ -482,7 +523,7 @@ pub fn declare_attackers(
 
         // Validate attack target
         match target {
-            AttackTarget::Player(_) | AttackTarget::Planeswalker(_) => {}
+            AttackTarget::Player(_) | AttackTarget::Planeswalker(_) | AttackTarget::Battle(_) => {}
         }
     }
 
@@ -505,6 +546,9 @@ pub fn declare_attackers(
                     .ok_or_else(|| CombatError::InvalidAttackTarget(target.clone()))?;
                 game.controller_of(pw)
             }
+            AttackTarget::Battle(battle_id) => game
+                .battle_protector(*battle_id)
+                .ok_or_else(|| CombatError::InvalidAttackTarget(target.clone()))?,
         };
         *attackers_per_defender.entry(defending_player).or_insert(0) += 1;
     }
@@ -612,7 +656,18 @@ pub fn declare_blockers(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
 ) -> Result<(), CombatError> {
-    declare_blockers_internal(game, combat, declarations, true)
+    declare_blockers_internal(game, combat, declarations, true, None)
+}
+
+/// Validate one defending player's declaration while retaining declarations
+/// already completed by earlier defenders in APNAP order.
+pub(crate) fn declare_blockers_for_defending_player(
+    game: &GameState,
+    combat: &mut CombatState,
+    declarations: Vec<(ObjectId, ObjectId)>,
+    defending_player: PlayerId,
+) -> Result<(), CombatError> {
+    declare_blockers_internal(game, combat, declarations, true, Some(defending_player))
 }
 
 fn declare_blockers_internal(
@@ -620,6 +675,7 @@ fn declare_blockers_internal(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
     enforce_requirements: bool,
+    requirement_player: Option<PlayerId>,
 ) -> Result<(), CombatError> {
     let all_effects = game.all_continuous_effects();
 
@@ -655,6 +711,16 @@ fn declare_blockers_internal(
         ) {
             return Err(CombatError::NotACreature(*blocker_id));
         }
+        if game.object_has_card_type_with_effects(
+            *blocker_id,
+            crate::types::CardType::Battle,
+            &all_effects,
+        ) {
+            return Err(CombatError::CreatureCannotBlock {
+                blocker: *blocker_id,
+                attacker: *attacker_id,
+            });
+        }
 
         // Must be untapped
         if game.is_tapped(*blocker_id) {
@@ -670,9 +736,11 @@ fn declare_blockers_internal(
             .object(*attacker_id)
             .ok_or(CombatError::NotOnBattlefield(*attacker_id))?;
 
-        if defending_player_for_attacker(game, combat, *attacker_id)
-            != Some(game.controller_of(blocker))
-        {
+        if defending_player_for_attacker(game, combat, *attacker_id).is_none_or(|defender| {
+            defender != game.controller_of(blocker)
+                && !(game.shared_team_turns_enabled()
+                    && game.are_teammates(defender, game.controller_of(blocker)))
+        }) {
             return Err(CombatError::CreatureCannotBlock {
                 blocker: *blocker_id,
                 attacker: *attacker_id,
@@ -771,7 +839,15 @@ fn declare_blockers_internal(
     }
 
     if enforce_requirements {
-        let requirements = blocking_requirements(game, combat, &all_effects);
+        let requirements = blocking_requirements(game, combat, &all_effects)
+            .into_iter()
+            .filter(|requirement| {
+                requirement_player.is_none_or(|player| {
+                    blocking_requirement_defending_player(game, combat, *requirement)
+                        == Some(player)
+                })
+            })
+            .collect::<Vec<_>>();
         let requirements_obeyed = blocking_requirement_score(
             combat,
             &requirements,
@@ -962,6 +1038,22 @@ fn blocking_requirement_score(
         .count()
 }
 
+fn blocking_requirement_defending_player(
+    game: &GameState,
+    combat: &CombatState,
+    requirement: BlockingRequirement,
+) -> Option<PlayerId> {
+    match requirement {
+        BlockingRequirement::AttackerMustBeBlocked(attacker) => {
+            defending_player_for_attacker(game, combat, attacker)
+        }
+        BlockingRequirement::BlockerMustBlock(blocker)
+        | BlockingRequirement::BlockerMustBlockAttacker { blocker, .. } => game
+            .object(blocker)
+            .map(|object| game.controller_of(object)),
+    }
+}
+
 fn legal_block_edge(
     game: &GameState,
     combat: &CombatState,
@@ -976,11 +1068,19 @@ fn legal_block_edge(
     blocker.zone == Zone::Battlefield
         && attacker.zone == Zone::Battlefield
         && is_attacking(combat, attacker_id)
-        && defending_player_for_attacker(game, combat, attacker_id)
-            == Some(game.controller_of(blocker))
+        && defending_player_for_attacker(game, combat, attacker_id).is_some_and(|defender| {
+            defender == game.controller_of(blocker)
+                || (game.shared_team_turns_enabled()
+                    && game.are_teammates(defender, game.controller_of(blocker)))
+        })
         && game.object_has_card_type_with_effects(
             blocker_id,
             crate::types::CardType::Creature,
+            effects,
+        )
+        && !game.object_has_card_type_with_effects(
+            blocker_id,
+            crate::types::CardType::Battle,
             effects,
         )
         && !game.is_tapped(blocker_id)
@@ -1107,8 +1207,14 @@ fn block_declaration_obeying_more_requirements_exists(
         );
         if score > baseline {
             let mut candidate_combat = combat.clone();
-            if declare_blockers_internal(game, &mut candidate_combat, declarations.clone(), false)
-                .is_ok()
+            if declare_blockers_internal(
+                game,
+                &mut candidate_combat,
+                declarations.clone(),
+                false,
+                None,
+            )
+            .is_ok()
             {
                 return true;
             }
@@ -1250,10 +1356,8 @@ fn first_unsatisfied_block_requirement_error(
 
 /// Records an attacking band for the current combat.
 ///
-/// This covers rule 702.22c for ordinary banding: a band may contain one or
-/// more attacking creatures with banding and up to one attacking creature
-/// without banding. "Bands with other" has extra quality constraints and is
-/// intentionally not modeled here yet.
+/// This covers both forms in rule 702.22c: ordinary banding and a shared
+/// "bands with other [quality]" quality.
 pub fn set_attacking_band(
     game: &GameState,
     combat: &mut CombatState,
@@ -1287,7 +1391,8 @@ pub fn set_attacking_band(
         .iter()
         .filter(|&&member| creature_has_banding(game, member))
         .count();
-    if banding_count == 0 || deduped.len().saturating_sub(banding_count) > 1 {
+    let ordinary_band = banding_count > 0 && deduped.len().saturating_sub(banding_count) <= 1;
+    if !ordinary_band && !group_shares_bands_with_other_quality(game, &deduped) {
         return Err(CombatError::CreatureCannotAttack(deduped[0]));
     }
 
@@ -1311,6 +1416,76 @@ fn creature_has_banding(game: &GameState, creature: ObjectId) -> bool {
     static_abilities_for_object(game, creature, &all_effects)
         .iter()
         .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Banding)
+}
+
+fn bands_with_other_filter_matches_group(
+    game: &GameState,
+    source: ObjectId,
+    filter: &crate::target::ObjectFilter,
+    members: &[ObjectId],
+) -> bool {
+    let Some(controller) = game.controller_of_id(source) else {
+        return false;
+    };
+    let context = FilterContext::new(controller)
+        .with_source(source)
+        .with_active_player(game.turn.active_player);
+    members.iter().all(|member| {
+        game.object(*member)
+            .is_some_and(|object| filter.matches(object, &context, game))
+    })
+}
+
+fn group_shares_bands_with_other_quality(game: &GameState, members: &[ObjectId]) -> bool {
+    if members.len() < 2 {
+        return false;
+    }
+    let all_effects = game.all_continuous_effects();
+    members.iter().any(|source| {
+        static_abilities_for_object(game, *source, &all_effects)
+            .iter()
+            .filter_map(StaticAbility::bands_with_other_filter)
+            .any(|filter| bands_with_other_filter_matches_group(game, *source, filter, members))
+    })
+}
+
+/// Return the player who chooses a combat-damage division for `source`.
+///
+/// Rules 702.22j-k reverse the normal chooser when the recipients include a
+/// creature with banding, or a qualifying pair for "bands with other."
+pub fn combat_damage_assignment_player(
+    game: &GameState,
+    combat: &CombatState,
+    source: ObjectId,
+) -> Option<PlayerId> {
+    if is_attacking(combat, source) {
+        let blockers = combat.blockers.get(&source).cloned().unwrap_or_default();
+        if blockers
+            .iter()
+            .any(|blocker| creature_has_banding(game, *blocker))
+            || group_shares_bands_with_other_quality(game, &blockers)
+        {
+            return defending_player_for_attacker(game, combat, source);
+        }
+        return game.controller_of_id(source);
+    }
+
+    let attackers = combat
+        .blockers
+        .iter()
+        .filter_map(|(attacker, blockers)| blockers.contains(&source).then_some(*attacker))
+        .collect::<Vec<_>>();
+    if attackers.is_empty() {
+        return None;
+    }
+    if attackers
+        .iter()
+        .any(|attacker| creature_has_banding(game, *attacker))
+        || group_shares_bands_with_other_quality(game, &attackers)
+    {
+        return Some(game.turn.active_player);
+    }
+    game.controller_of_id(source)
 }
 
 fn propagate_banding_blocks(
@@ -1492,7 +1667,18 @@ pub fn defending_player_for_attack_target(
     match target {
         AttackTarget::Player(player) => Some(*player),
         AttackTarget::Planeswalker(planeswalker) => game.controller_of_id(*planeswalker),
+        AttackTarget::Battle(battle) => game.battle_protector(*battle),
     }
+}
+
+/// Returns all attackers targeting a specific battle.
+pub fn attackers_targeting_battle(combat: &CombatState, battle: ObjectId) -> Vec<ObjectId> {
+    combat
+        .attackers
+        .iter()
+        .filter(|info| matches!(&info.target, AttackTarget::Battle(id) if *id == battle))
+        .map(|info| info.creature)
+        .collect()
 }
 
 /// Return the defending player associated with an attacking creature.
@@ -2234,6 +2420,373 @@ mod tests {
         assert!(
             result.is_ok(),
             "expected three attackers against another defender to be legal"
+        );
+    }
+
+    #[test]
+    fn attacking_band_allows_one_nonbanding_creature() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bander =
+            game.create_object_from_card(&creature_card("Bander", 2, 2), alice, Zone::Battlefield);
+        let companion = game.create_object_from_card(
+            &creature_card("Companion", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(bander)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::banding()));
+        let mut combat = CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: bander,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: companion,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..Default::default()
+        };
+
+        set_attacking_band(&game, &mut combat, vec![bander, companion]).unwrap();
+        assert_eq!(combat.attacking_bands, vec![vec![bander, companion]]);
+    }
+
+    #[test]
+    fn bands_with_other_quality_can_form_an_attacking_band() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let leader = game.create_object_from_card(
+            &creature_card("Pack Leader", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let ally = game.create_object_from_card(
+            &creature_card("Pack Ally", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(leader)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::bands_with_other(
+                crate::target::ObjectFilter::creature(),
+                "bands with other creatures",
+            )));
+        let mut combat = CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: leader,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: ally,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..Default::default()
+        };
+
+        set_attacking_band(&game, &mut combat, vec![leader, ally]).unwrap();
+        assert_eq!(combat.attacking_bands, vec![vec![leader, ally]]);
+    }
+
+    #[test]
+    fn losing_banding_also_removes_bands_with_other() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let leader = game.create_object_from_card(
+            &creature_card("Pack Leader", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let ally = game.create_object_from_card(
+            &creature_card("Pack Ally", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(leader)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::bands_with_other(
+                crate::target::ObjectFilter::creature(),
+                "bands with other creatures",
+            )));
+        let remover = game.create_object_from_card(
+            &enchantment_card("Banding Remover"),
+            bob,
+            Zone::Battlefield,
+        );
+        game.object_mut(remover)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::remove_ability(
+                crate::target::ObjectFilter::specific(leader),
+                StaticAbility::banding(),
+            )));
+        game.refresh_continuous_state();
+        let mut combat = CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: leader,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: ally,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert!(set_attacking_band(&game, &mut combat, vec![leader, ally]).is_err());
+    }
+
+    #[test]
+    fn blocking_one_member_blocks_the_entire_attacking_band() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let bander =
+            game.create_object_from_card(&creature_card("Bander", 2, 2), alice, Zone::Battlefield);
+        let companion = game.create_object_from_card(
+            &creature_card("Companion", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let blocker =
+            game.create_object_from_card(&creature_card("Blocker", 2, 2), bob, Zone::Battlefield);
+        game.object_mut(bander)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::banding()));
+        game.remove_summoning_sickness(bander);
+        game.remove_summoning_sickness(companion);
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![
+                (bander, AttackTarget::Player(bob)),
+                (companion, AttackTarget::Player(bob)),
+            ],
+        )
+        .unwrap();
+        set_attacking_band(&game, &mut combat, vec![bander, companion]).unwrap();
+
+        declare_blockers(&mut game, &mut combat, vec![(blocker, bander)]).unwrap();
+        assert_eq!(combat.blockers.get(&bander), Some(&vec![blocker]));
+        assert_eq!(combat.blockers.get(&companion), Some(&vec![blocker]));
+    }
+
+    #[test]
+    fn banding_reverses_combat_damage_assignment_choosers() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(
+            &creature_card("Attacking Bander", 3, 3),
+            alice,
+            Zone::Battlefield,
+        );
+        let blocker = game.create_object_from_card(
+            &creature_card("Blocking Bander", 3, 3),
+            bob,
+            Zone::Battlefield,
+        );
+        for creature in [attacker, blocker] {
+            game.object_mut(creature)
+                .unwrap()
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::banding()));
+        }
+        let combat = CombatState {
+            attackers: vec![AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            blockers: HashMap::from([(attacker, vec![blocker])]),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            combat_damage_assignment_player(&game, &combat, attacker),
+            Some(bob)
+        );
+        assert_eq!(
+            combat_damage_assignment_player(&game, &combat, blocker),
+            Some(alice)
+        );
+        game.combat = Some(combat);
+        assert!(
+            game.set_combat_damage_assignment_for_player(alice, attacker, blocker, 3)
+                .is_err()
+        );
+        game.set_combat_damage_assignment_for_player(bob, attacker, blocker, 3)
+            .expect("the defending player chooses the banded assignment");
+    }
+
+    #[test]
+    fn bands_with_other_pair_reverses_attacker_damage_assignment_chooser() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(
+            &creature_card("Attacker", 4, 4),
+            alice,
+            Zone::Battlefield,
+        );
+        let first = game.create_object_from_card(
+            &creature_card("First Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        let second = game.create_object_from_card(
+            &creature_card("Second Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        game.object_mut(first)
+            .unwrap()
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::bands_with_other(
+                crate::target::ObjectFilter::creature(),
+                "bands with other creatures",
+            )));
+        let combat = CombatState {
+            attackers: vec![AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            blockers: HashMap::from([(attacker, vec![first, second])]),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            combat_damage_assignment_player(&game, &combat, attacker),
+            Some(bob)
+        );
+    }
+
+    fn siege_card(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Battle])
+            .subtypes(vec![Subtype::Siege])
+            .defense(3)
+            .build()
+    }
+
+    #[test]
+    fn siege_can_be_attacked_by_its_controller_but_not_its_protector() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let siege = game.create_object_from_card(&siege_card("Siege"), alice, Zone::Battlefield);
+        assert_eq!(game.battle_protector(siege), Some(bob));
+
+        let alice_attacker = game.create_object_from_card(
+            &creature_card("Alice Attacker", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(alice_attacker);
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![(alice_attacker, AttackTarget::Battle(siege))],
+        )
+        .expect("the Siege controller may attack the protected battle");
+
+        let bob_attacker = game.create_object_from_card(
+            &creature_card("Bob Attacker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(bob_attacker);
+        game.turn.active_player = bob;
+        let mut bob_combat = CombatState::default();
+        assert!(
+            declare_attackers(
+                &mut game,
+                &mut bob_combat,
+                vec![(bob_attacker, AttackTarget::Battle(siege))],
+            )
+            .is_err(),
+            "a battle's protector cannot attack it"
+        );
+    }
+
+    #[test]
+    fn only_the_battle_protector_may_block_for_it() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let siege = game.create_object_from_card(&siege_card("Siege"), alice, Zone::Battlefield);
+        let attacker = game.create_object_from_card(
+            &creature_card("Attacker", 2, 2),
+            alice,
+            Zone::Battlefield,
+        );
+        let protector_blocker = game.create_object_from_card(
+            &creature_card("Protector Blocker", 2, 2),
+            bob,
+            Zone::Battlefield,
+        );
+        let outsider_blocker = game.create_object_from_card(
+            &creature_card("Outsider Blocker", 2, 2),
+            charlie,
+            Zone::Battlefield,
+        );
+        game.remove_summoning_sickness(attacker);
+        let mut combat = CombatState::default();
+        declare_attackers(
+            &mut game,
+            &mut combat,
+            vec![(attacker, AttackTarget::Battle(siege))],
+        )
+        .expect("battle attack");
+
+        assert!(
+            declare_blockers(
+                &mut game,
+                &mut combat.clone(),
+                vec![(outsider_blocker, attacker)],
+            )
+            .is_err()
+        );
+        declare_blockers(&mut game, &mut combat, vec![(protector_blocker, attacker)])
+            .expect("the protector may block for the battle");
+    }
+
+    #[test]
+    fn creature_battles_can_neither_attack_nor_block() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let battle_creature = CardBuilder::new(CardId::new(), "Battle Creature")
+            .card_types(vec![CardType::Battle, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .defense(3)
+            .build();
+        let object = game.create_object_from_card(&battle_creature, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(object);
+        let mut combat = CombatState::default();
+        assert!(
+            declare_attackers(
+                &mut game,
+                &mut combat,
+                vec![(object, AttackTarget::Player(bob))],
+            )
+            .is_err()
         );
     }
 }

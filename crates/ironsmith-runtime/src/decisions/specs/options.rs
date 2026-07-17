@@ -20,6 +20,7 @@ fn zone_description(zone: Zone) -> &'static str {
         Zone::Exile => "Exile",
         Zone::Stack => "Stack",
         Zone::Command => "Command Zone",
+        Zone::Ante => "Ante",
         Zone::OutsideGame => "Outside the Game",
     }
 }

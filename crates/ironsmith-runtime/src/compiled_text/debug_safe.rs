@@ -63,8 +63,16 @@ fn normalize_until_your_next_turn_duration_order(line: &str) -> String {
     // This reorder was tailored to loyalty abilities that set base power/toughness or
     // reduce casting cost (e.g. Will Kenrith). Don't hoist the duration for unrelated
     // clauses like "you gain protection from everything until your next turn".
-    let body_lower = body.to_ascii_lowercase();
-    if !body_lower.contains("base power and toughness") && !body_lower.contains("less to cast") {
+    // A trailing duration belongs only to the final coordinated action. Do
+    // not use an earlier animation clause as evidence that a later grant's
+    // duration should be hoisted over the whole triggered ability.
+    let scoped_body = body
+        .rsplit_once(", then ")
+        .map_or(body, |(_, final_action)| final_action);
+    let scoped_body_lower = scoped_body.to_ascii_lowercase();
+    if !scoped_body_lower.contains("base power and toughness")
+        && !scoped_body_lower.contains("less to cast")
+    {
         return line.to_string();
     }
     let (prefix, duration_body) = if let Some((head, tail)) = body.rsplit_once(". ") {
@@ -459,6 +467,19 @@ mod tests {
         assert_eq!(
             normalize_debug_safe_spelling_surface("You draw two cards."),
             "Draw two cards."
+        );
+    }
+
+    #[test]
+    fn trailing_haste_duration_stays_on_rootwise_final_clause() {
+        let text = "Survival — At the beginning of your second main phase, if this creature is tapped, put three +1/+1 counters on up to one target land you control, that land becomes an elemental creature with base power and toughness 0/0 in addition to its other types, then it gains haste until your next turn.";
+        assert_eq!(normalize_until_your_next_turn_duration_order(text), text);
+
+        assert_eq!(
+            normalize_until_your_next_turn_duration_order(
+                "0: Target artifact you control becomes a creature with base power and toughness 5/5 in addition to its other types until your next turn."
+            ),
+            "0: Until your next turn, target artifact you control becomes a creature with base power and toughness 5/5 in addition to its other types."
         );
     }
 }

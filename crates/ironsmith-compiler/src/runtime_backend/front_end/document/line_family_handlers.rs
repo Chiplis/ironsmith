@@ -1401,6 +1401,20 @@ fn is_keyword_action_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
         })
 }
 
+fn is_lose_game_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
+    parse_static_ability_ast_line_lexed(tokens)
+        .ok()
+        .flatten()
+        .is_some_and(|abilities| {
+            abilities.iter().any(|ability| {
+                matches!(
+                    ability,
+                    crate::cards::builders::StaticAbilityAst::LoseGameReplacement { .. }
+                )
+            })
+        })
+}
+
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -1447,6 +1461,7 @@ pub(super) fn run_statement_probe_line_family(
             )
         )
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
+        && !is_lose_game_replacement_static_line(&ctx.line.tokens)
         && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?
     {
         statement_line.info.semantic_facts.statement.presentation_label =

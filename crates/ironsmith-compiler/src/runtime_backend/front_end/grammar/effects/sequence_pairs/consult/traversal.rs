@@ -65,6 +65,30 @@ fn first_comma(tokens: &[OwnedLexToken]) -> Option<usize> {
     None
 }
 
+fn comma_starts_explicit_card_filter_union_arm(tokens: &[OwnedLexToken]) -> bool {
+    let arm_end = first_comma(tokens).unwrap_or(tokens.len());
+    let words = TokenWordView::new(trim_commas(&tokens[..arm_end])).word_refs();
+    let noun_start = match words.as_slice() {
+        ["a" | "an", ..] => 0,
+        ["or" | "and/or", "a" | "an", ..] => 1,
+        _ => return false,
+    };
+    words
+        .get(noun_start..)
+        .is_some_and(|arm| arm.iter().any(|word| matches!(*word, "card" | "cards")))
+}
+
+/// Find the comma separating a consult stop condition from its inline
+/// follow-up without treating commas inside an explicit repeated-card union as
+/// clause boundaries.
+fn first_consult_trailing_comma(tokens: &[OwnedLexToken]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.kind == TokenKind::Comma
+            && !comma_starts_explicit_card_filter_union_arm(&tokens[idx + 1..]))
+        .then_some(idx)
+    })
+}
+
 fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let ((), value_tokens) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
         primitives::phrase(&["where", "x", "is"])
@@ -167,6 +191,17 @@ fn counted_stop_prefix(
             LibraryConsultStopRuleAst::MatchCount(Value::EventValue(EventValueSpec::Amount)),
             trim_commas(rest),
         ));
+    }
+    // In an active stop condition, a leading indefinite article belongs to
+    // the card filter: "until you reveal a creature card" is a first-match
+    // stop, not an explicitly counted stop. Keeping the article is also
+    // semantically important for repeated complete-noun unions, whose branch
+    // scope and canonical list surface depend on every arm retaining `a`/`an`.
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        return None;
     }
     if let Some((count, rest)) =
         primitives::parse_prefix(tokens, leaf::parse_leaf_number_prefix_lexed)
@@ -307,13 +342,14 @@ pub(crate) fn parse_consult_traversal_shape(
     }
 
     let mut stop_tokens = trim_commas(&consult[until.end..]);
-    let (where_x, mut trailing_effect) = if let Some(comma) = first_comma(stop_tokens) {
-        let trailing = trim_commas(&stop_tokens[comma + 1..]);
-        stop_tokens = trim_commas(&stop_tokens[..comma]);
-        parse_consult_trailing(trailing)
-    } else {
-        (None, Vec::new())
-    };
+    let (where_x, mut trailing_effect) =
+        if let Some(comma) = first_consult_trailing_comma(stop_tokens) {
+            let trailing = trim_commas(&stop_tokens[comma + 1..]);
+            stop_tokens = trim_commas(&stop_tokens[..comma]);
+            parse_consult_trailing(trailing)
+        } else {
+            (None, Vec::new())
+        };
     let stop = parse_first_match_or_exposed_count_stop(stop_tokens, mode)
         .or_else(|| parse_passive_stop(stop_tokens, mode))
         .or_else(|| parse_active_stop(stop_tokens))?;

@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken,
-    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate,
+    OwnedLexToken, PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
     RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, TagKey, TargetAst,
     TextSpan, Verb,
 };
@@ -147,6 +147,7 @@ pub(crate) fn parse_verb_first_clause(
         "transform" => Verb::Transform,
         "convert" => Verb::Convert,
         "regenerate" => Verb::Regenerate,
+        "heal" | "heals" | "healed" => Verb::Heal,
         "mill" => Verb::Mill,
         "get" => Verb::Get,
         "remove" => Verb::Remove,
@@ -322,10 +323,9 @@ pub(crate) fn parse_copy_spell_clause(
             removed_supertypes(&copy_clause_shape),
         );
         if let Some(trailing_if) = trailing_if {
-            return Ok(Some(EffectAst::Conditional {
+            return Ok(Some(EffectAst::TrailingIf {
                 predicate: trailing_if.predicate,
-                if_true: vec![base],
-                if_false: Vec::new(),
+                effects: vec![base],
             }));
         }
         return Ok(Some(base));
@@ -451,6 +451,7 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
 #[cfg(test)]
 mod copy_all_tests {
     use super::*;
+    use crate::runtime_backend::ast::SubjectVerbEffectAst;
 
     #[test]
     fn parses_coordinated_copy_all_stack_sets_without_collapsing_them() {
@@ -523,11 +524,7 @@ fn parse_counter_ability_target_phrase(
 
 fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     if let Some(filter) = clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
-        return Ok(TargetAst::ObjectOrPlayer(
-            filter,
-            PlayerFilter::You,
-            None,
-        ));
+        return Ok(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None));
     }
     parse_target_phrase(tokens)
 }
@@ -929,10 +926,9 @@ pub(crate) fn parse_win_the_game_clause(
         }
         clause_shapes::WinGameShape::ConditionalTail => {
             if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
-                return Ok(Some(EffectAst::Conditional {
+                return Ok(Some(EffectAst::TrailingIf {
                     predicate: trailing_if.predicate,
-                    if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
-                    if_false: Vec::new(),
+                    effects: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],
                 }));
             }
             Ok(None)
@@ -962,22 +958,53 @@ pub(crate) fn parse_win_the_game_clause(
 fn parse_choose_target_prelude_targets(
     target_tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<TargetAst>>, CardTextError> {
-    let Some((first, second)) = grammar::split_lexed_once_on_separator(target_tokens, || {
-        use winnow::Parser as _;
-        grammar::kw("and").void()
-    }) else {
-        return Ok(None);
-    };
-    let first = trim_commas(first);
-    let second = trim_commas(second);
-    if first.is_empty() || second.is_empty() || !starts_with_target_indicator(&second) {
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    let mut index = 0;
+    while index < target_tokens.len() {
+        let mut next = if target_tokens[index].is_comma() {
+            index + 1
+        } else if target_tokens[index].is_word("and") || target_tokens[index].is_word("and/or") {
+            index + 1
+        } else {
+            index += 1;
+            continue;
+        };
+        if target_tokens[index].is_comma()
+            && target_tokens
+                .get(next)
+                .is_some_and(|token| token.is_word("and") || token.is_word("and/or"))
+        {
+            next += 1;
+        }
+        if next < target_tokens.len()
+            && starts_with_target_indicator(&target_tokens[next..])
+            && !trim_commas(&target_tokens[start..index]).is_empty()
+        {
+            ranges.push(start..index);
+            start = next;
+            index = next;
+            continue;
+        }
+        index += 1;
+    }
+    if ranges.is_empty() {
         return Ok(None);
     }
+    ranges.push(start..target_tokens.len());
 
-    Ok(Some(vec![
-        parse_target_phrase(&first)?,
-        parse_target_phrase(&second)?,
-    ]))
+    let mut targets = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        let part = trim_commas(&target_tokens[range]);
+        if part.is_empty() || !starts_with_target_indicator(&part) {
+            return Ok(None);
+        }
+        targets.push(parse_target_phrase(&part)?);
+    }
+    if targets.len() < 2 {
+        return Ok(None);
+    }
+    Ok(Some(targets))
 }
 
 fn parse_kicked_additional_targets_prelude(
@@ -989,7 +1016,7 @@ fn parse_kicked_additional_targets_prelude(
     let first_target_tokens = trim_commas(shape.first_target_tokens);
     let first_target = parse_target_phrase(&first_target_tokens)?;
     let count = Value::Add(Box::new(Value::Fixed(1)), Box::new(Value::KickCount));
-    Ok(Some(vec![EffectAst::subject_verb_target_only(
+    Ok(Some(vec![EffectAst::subject_verb_explicit_target_only(
         TargetAst::WithCountValue(Box::new(first_target), ChoiceCount::dynamic_x(), count),
     )]))
 }
@@ -1010,13 +1037,65 @@ pub(crate) fn parse_choose_target_prelude_sentence(
         return Ok(Some(
             targets
                 .into_iter()
-                .map(EffectAst::subject_verb_target_only)
+                .map(|target| EffectAst::TagAffected {
+                    effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+                    tag: TagKey::from(CHOSEN_OBJECTS_TAG),
+                })
                 .collect(),
         ));
     }
 
     let target = parse_target_phrase(target_tokens)?;
-    Ok(Some(vec![EffectAst::subject_verb_target_only(target)]))
+    Ok(Some(vec![EffectAst::subject_verb_explicit_target_only(
+        target,
+    )]))
+}
+
+#[cfg(test)]
+mod choose_target_prelude_tests {
+    use super::*;
+
+    #[test]
+    fn preserves_three_repeated_optional_target_slots_under_one_chosen_tag() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose up to one target artifact, up to one target creature, and up to one target land.",
+            0,
+        )
+        .expect("repeated target prelude should lex");
+        let effects = parse_choose_target_prelude_sentence(&tokens)
+            .expect("repeated target prelude should parse")
+            .expect("choose-target prelude parser should match");
+        assert_eq!(effects.len(), 3, "{effects:#?}");
+
+        for (effect, expected_type) in effects.iter().zip([
+            crate::CardType::Artifact,
+            crate::CardType::Creature,
+            crate::CardType::Land,
+        ]) {
+            let EffectAst::TagAffected { effect, tag } = effect else {
+                panic!("expected a shared chosen-set wrapper, got {effect:#?}");
+            };
+            assert_eq!(tag.as_str(), CHOSEN_OBJECTS_TAG);
+            let EffectAst::SubjectVerb(subject_verb) = effect.as_ref() else {
+                panic!("expected an explicit target-only action, got {effect:#?}");
+            };
+            let SubjectVerbActionAst::TargetOnly {
+                target,
+                explicit_declaration: true,
+            } = &subject_verb.action
+            else {
+                panic!("expected an explicit target-only action, got {subject_verb:#?}");
+            };
+            let TargetAst::WithCount(target, count) = target else {
+                panic!("expected an up-to-one target, got {target:#?}");
+            };
+            assert_eq!((count.min, count.max), (0, Some(1)), "{target:#?}");
+            let TargetAst::Object(filter, ..) = target.as_ref() else {
+                panic!("expected an object target, got {target:#?}");
+            };
+            assert_eq!(filter.card_types.as_slice(), [expected_type], "{filter:#?}");
+        }
+    }
 }
 
 fn parse_keyword_value_tokens(

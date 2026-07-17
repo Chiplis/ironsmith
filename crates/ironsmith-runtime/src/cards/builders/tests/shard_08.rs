@@ -56,22 +56,82 @@ pub(super) fn parse_tap_untapped_creatures_cost_preserves_tap_filter_cost() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn ordered_graveyard_compiled_text(name: &str, text: &str) -> String {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("ordered-graveyard card should parse");
+    crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_exile_graveyard_cost_activated_line_preserves_followup_effect() {
+pub(super) fn ordered_graveyard_alms_round_trips_top_card_activation_cost() {
+    let rendered = ordered_graveyard_compiled_text(
+        "Alms",
+        "{1}, Exile the top card of your graveyard: Prevent the next 1 damage that would be dealt to target creature this turn.",
+    );
+    assert!(
+        rendered.contains("exile the top card of your graveyard"),
+        "expected Alms to preserve its ordered graveyard cost, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn ordered_graveyard_barrow_ghoul_round_trips_top_creature_unless_action() {
+    let rendered = ordered_graveyard_compiled_text(
+        "Barrow Ghoul",
+        "At the beginning of your upkeep, sacrifice this creature unless you exile the top creature card of your graveyard.",
+    );
+    assert!(
+        rendered.contains("unless you exile the top creature card of your graveyard"),
+        "expected Barrow Ghoul to preserve its ordered graveyard alternative, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn ordered_graveyard_necratog_round_trips_top_creature_activation_cost() {
+    let rendered = ordered_graveyard_compiled_text(
+        "Necratog",
+        "Exile the top creature card of your graveyard: This creature gets +2/+2 until end of turn.",
+    );
+    assert!(
+        rendered.contains("exile the top creature card of your graveyard"),
+        "expected Necratog to preserve its ordered graveyard cost, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn ordered_graveyard_soldevi_digger_round_trips_bottom_library_move() {
+    let rendered = ordered_graveyard_compiled_text(
+        "Soldevi Digger",
+        "{2}: Put the top card of your graveyard on the bottom of your library.",
+    );
+    assert!(
+        rendered.contains("put the top card of your graveyard on the bottom of your library"),
+        "expected Soldevi Digger to preserve its ordered graveyard move, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn ordered_graveyard_zombie_scavengers_round_trips_top_creature_activation_cost() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Zombie Scavengers Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("Exile the top creature card of your graveyard: Regenerate this creature.")
         .expect("exile-graveyard cost activated ability should parse");
 
     let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
-    let activated_line = lines.join(" ");
+    let activated_line = lines.join(" ").to_ascii_lowercase();
     assert!(
-        activated_line.contains("Exile"),
-        "expected exile cost to remain in activated ability text, got {activated_line}"
-    );
-    assert!(
-        activated_line.contains("Regenerate"),
-        "expected post-colon regenerate effect to remain, got {activated_line}"
+        activated_line.contains("exile the top creature card of your graveyard")
+            && activated_line.contains("regenerate"),
+        "expected Zombie Scavengers to preserve its ordered cost and effect, got {activated_line}"
     );
 }
 
@@ -1581,6 +1641,29 @@ pub(super) fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn satoru_umezawa_keeps_named_ninjutsu_trigger_and_look_sequence() {
+    let def = parse_oracle_card_definition("Satoru Umezawa");
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered.first().map(String::as_str),
+        Some(
+            "Whenever you activate a ninjutsu ability, look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order. This ability triggers only once each turn."
+        )
+    );
+
+    let debug = format!("{def:#?}");
+    let compact_debug: String = debug.chars().filter(|ch| !ch.is_whitespace()).collect();
+    assert!(
+        debug.contains("AbilityActivatedTrigger")
+            && compact_debug.contains("ability_markers:[\"ninjutsu\"]")
+            && debug.contains("LookAtTopCardsEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "Satoru should retain the named trigger and complete looked-card pipeline: {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn splinters_technique_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Splinter's Technique");
 
@@ -2145,11 +2228,27 @@ Target player sacrifices a creature of their choice. If you revealed a Dragon ca
         .to_ascii_lowercase();
     assert!(
         rendered.contains("target player sacrifices a creature")
-            && (rendered.contains("if this spell's behold cost was paid or you control a dragon")
-                || rendered.contains("if you revealed a dragon card or controlled a dragon"))
+            && rendered.contains(
+                "if you revealed a dragon card or controlled a dragon as you cast this spell"
+            )
             && rendered.contains("you gain 4 life"),
         "expected Foul-Tongue Invocation to render behold-or-control condition, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn dragon_reveal_additional_cost_payoffs_keep_authored_cast_history_surface() {
+    for name in ["Draconic Roar", "Orator of Ojutai"] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains(
+                "If you revealed a Dragon card or controlled a Dragon as you cast this spell"
+            ) && !rendered.contains("behold cost"),
+            "expected {name} to retain the typed Dragon reveal/control cast-history condition, got {rendered}"
+        );
+    }
 }
 
 #[test]
@@ -3499,5 +3598,167 @@ pub(super) fn parse_discard_up_to_two_then_draw_that_many() {
             && debug.contains("Fixed(2)")
             && (debug.contains("EventValue(Amount)") || debug.contains("EffectValue(EffectId(")),
         "expected discard-count and draw-that-many lowering, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn processor_activation_compiled_text(name: &str, text: &str) -> String {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("processor activation should parse");
+    crate::compiled_text::unprocessed_compiled_lines(&def).join("\n")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cryptic_cruiser_preserves_processor_activation_cost_surface() {
+    let rendered = processor_activation_compiled_text(
+        "Cryptic Cruiser",
+        "Devoid\n{2}{U}, Put a card an opponent owns from exile into that player's graveyard: Tap target creature.",
+    );
+    assert!(
+        rendered.contains(
+            "{2}{U}, Put a card an opponent owns from exile into that player's graveyard: Tap target creature"
+        ),
+        "expected Cryptic Cruiser's processor cost, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn oracle_of_dust_preserves_processor_activation_cost_surface() {
+    let rendered = processor_activation_compiled_text(
+        "Oracle of Dust",
+        "Devoid\n{2}, Put a card an opponent owns from exile into that player's graveyard: Draw a card, then discard a card.",
+    );
+    assert!(
+        rendered.contains(
+            "{2}, Put a card an opponent owns from exile into that player's graveyard: Draw a card, then discard a card"
+        ),
+        "expected Oracle of Dust's processor cost, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn void_attendant_preserves_processor_activation_cost_surface() {
+    let rendered = processor_activation_compiled_text(
+        "Void Attendant",
+        "Devoid\n{1}{G}, Put a card an opponent owns from exile into that player's graveyard: Create a 1/1 colorless Eldrazi Scion creature token. It has \"Sacrifice this token: Add {C}.\"",
+    );
+    assert!(
+        rendered.contains(
+            "{1}{G}, Put a card an opponent owns from exile into that player's graveyard: Create a 1/1 colorless Eldrazi Scion creature token"
+        ),
+        "expected Void Attendant's processor cost, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn count_scaled_pump_compiled_text(
+    name: &str,
+    card_types: Vec<CardType>,
+    subtypes: Vec<Subtype>,
+    text: &str,
+) -> String {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .subtypes(subtypes)
+        .parse_text(text)
+        .expect("count-scaled pump should parse");
+    crate::compiled_text::unprocessed_compiled_lines(&def).join("\n")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn empyrial_armor_preserves_plus_one_for_each_hand_card_surface() {
+    let rendered = count_scaled_pump_compiled_text(
+        "Empyrial Armor",
+        vec![CardType::Enchantment],
+        vec![Subtype::Aura],
+        "Enchant creature\nEnchanted creature gets +1/+1 for each card in your hand.",
+    );
+    assert_eq!(
+        rendered,
+        "Enchant creature\nEnchanted creature gets +1/+1 for each card in your hand."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn empyrial_plate_preserves_plus_one_for_each_hand_card_surface() {
+    let rendered = count_scaled_pump_compiled_text(
+        "Empyrial Plate",
+        vec![CardType::Artifact],
+        vec![Subtype::Equipment],
+        "Equipped creature gets +1/+1 for each card in your hand.\nEquip {2}",
+    );
+    assert_eq!(
+        rendered,
+        "Equipped creature gets +1/+1 for each card in your hand.\nEquip {2}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn gran_pulse_ochu_preserves_plus_one_for_each_graveyard_permanent_surface() {
+    let rendered = count_scaled_pump_compiled_text(
+        "Gran Pulse Ochu",
+        vec![CardType::Creature],
+        vec![],
+        "Deathtouch\n{8}: Until end of turn, this creature gets +1/+1 for each permanent card in your graveyard.",
+    );
+    assert_eq!(
+        rendered,
+        "Deathtouch\n{8}: Until end of turn, this creature gets +1/+1 for each permanent card in your graveyard."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn adventure_creature_spell_trigger_compiled_text(name: &str, text: &str) -> String {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("Adventure creature spell trigger should parse");
+    crate::compiled_text::unprocessed_compiled_lines(&def).join("\n")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn edgewall_innkeeper_uses_rules_characteristic_adventure_surface() {
+    let rendered = adventure_creature_spell_trigger_compiled_text(
+        "Edgewall Innkeeper",
+        "Whenever you cast a creature spell that has an Adventure, draw a card.",
+    );
+    assert_eq!(
+        rendered,
+        "Whenever you cast a creature spell that has an Adventure, draw a card."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn garenbrig_squire_uses_rules_characteristic_adventure_surface() {
+    let rendered = adventure_creature_spell_trigger_compiled_text(
+        "Garenbrig Squire",
+        "Whenever you cast a creature spell that has an Adventure, this creature gets +1/+1 until end of turn.",
+    );
+    assert_eq!(
+        rendered,
+        "Whenever you cast a creature spell that has an Adventure, this creature gets +1/+1 until end of turn."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn wandermare_uses_rules_characteristic_adventure_surface() {
+    let rendered = adventure_creature_spell_trigger_compiled_text(
+        "Wandermare",
+        "Whenever you cast a creature spell that has an Adventure, put a +1/+1 counter on this creature.",
+    );
+    assert_eq!(
+        rendered,
+        "Whenever you cast a creature spell that has an Adventure, put a +1/+1 counter on this creature."
     );
 }

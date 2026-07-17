@@ -862,6 +862,54 @@ pub(crate) fn parse_life_amount_from_trailing(
         return Ok(None);
     }
 
+    // Preserve both terms in authored additive life amounts such as
+    // `2 life plus 2 life for each Spirit sacrificed this way`. Looking for a
+    // later `each` across the whole suffix would otherwise recover only the
+    // scaled dynamic term and silently discard the leading base amount.
+    let additive_tail = trim_commas(trailing);
+    if additive_tail
+        .first()
+        .is_some_and(|token| token.is_word("plus"))
+    {
+        let mut addend_tokens = &additive_tail[1..];
+        if addend_tokens
+            .first()
+            .is_some_and(|token| token.is_word("additional"))
+        {
+            addend_tokens = &addend_tokens[1..];
+        } else if addend_tokens
+            .first()
+            .is_some_and(|token| token.is_word("an"))
+            && addend_tokens
+                .get(1)
+                .is_some_and(|token| token.is_word("additional"))
+        {
+            addend_tokens = &addend_tokens[2..];
+        }
+        let (addend_base, used) = parse_life_amount(addend_tokens, "additive life amount")?;
+        let Some(rest) = addend_tokens.get(used..) else {
+            return Ok(None);
+        };
+        if !rest.first().is_some_and(|token| token.is_word(LIFE_WORD)) {
+            return Ok(None);
+        }
+        let addend_trailing = trim_commas(&rest[1..]);
+        let addend = if addend_trailing.is_empty() {
+            addend_base
+        } else {
+            let Some(resolved) =
+                parse_life_amount_from_trailing(&addend_base, &addend_trailing)?
+            else {
+                return Ok(None);
+            };
+            resolved
+        };
+        return Ok(Some(Value::Add(
+            Box::new(base_amount.clone()),
+            Box::new(addend),
+        )));
+    }
+
     // Prefer the generic tagged-count representation for prior-action
     // correlations. Unlike a bare pending effect count, this preserves noun
     // restrictions such as "land card discarded this way" and resolves the
@@ -980,6 +1028,7 @@ pub(crate) fn remap_source_stat_value_to_it(value: Value) -> Value {
 fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
+        PlayerAst::Active => Some(PlayerFilter::Active),
         PlayerAst::Any => Some(PlayerFilter::Any),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),

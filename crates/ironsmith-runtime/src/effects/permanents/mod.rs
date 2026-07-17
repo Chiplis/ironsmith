@@ -61,6 +61,11 @@ pub(crate) fn attachment_can_attach_to_target(
         return false;
     }
 
+    let attachment_controller = game.controller_of(attachment);
+    if !game.attachment_target_is_within_range(attachment_controller, target, Some(attachment_id)) {
+        return false;
+    }
+
     let subtypes = game.calculated_subtypes(attachment_id);
     if subtypes.contains(&Subtype::Aura) {
         let Some(filter) = game
@@ -70,8 +75,7 @@ pub(crate) fn attachment_can_attach_to_target(
         else {
             return false;
         };
-        let filter_ctx =
-            game.filter_context_for(game.controller_of(attachment), Some(attachment_id));
+        let filter_ctx = game.filter_context_for(attachment_controller, Some(attachment_id));
         return filter.matches_target(target, &filter_ctx, game);
     }
 
@@ -86,8 +90,7 @@ pub(crate) fn attachment_can_attach_to_target(
             .and_then(|chars| chars.aura_attach_filter)
             .or_else(|| attachment.aura_attach_filter_owned())
         {
-            let filter_ctx =
-                game.filter_context_for(game.controller_of(attachment), Some(attachment_id));
+            let filter_ctx = game.filter_context_for(attachment_controller, Some(attachment_id));
             return matches!(target, AttachmentTarget::Object(target_id) if game
                 .object(target_id)
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game)));

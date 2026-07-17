@@ -3508,6 +3508,36 @@ pub(super) fn test_roaming_throne_variant_parses_without_placeholders() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn dredge_compiles_to_typed_graveyard_replacement_ability() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stinkweed Imp")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Dredge 5")
+        .expect("Dredge should compile");
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::Dredge
+            )
+        })
+        .expect("Dredge should be a typed static ability");
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        unreachable!();
+    };
+    assert_eq!(static_ability.display(), "Dredge 5");
+    assert!(ability.functions_in(&Zone::Graveyard));
+    assert!(!ability.functions_in(&Zone::Battlefield));
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        ["Dredge 5."]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn test_chosen_creature_type_static_adds_selected_subtype() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Roaming Throne Variant")
         .card_types(vec![CardType::Artifact, CardType::Creature])

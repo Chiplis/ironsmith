@@ -173,3 +173,79 @@ pub(super) fn creation_of_avacyn_keeps_source_exiled_card_through_all_chapters()
     assert!(rendered.contains("the exiled card"), "{rendered}");
     assert!(rendered.contains("its owner's hand"), "{rendered}");
 }
+
+#[test]
+pub(super) fn attack_or_block_end_of_combat_cards_keep_typed_delayed_payloads() {
+    let cases = [
+        (
+            "Clockwork Beetle",
+            "Whenever this creature attacks or blocks, remove a +1/+1 counter from it at end of combat.",
+            "RemoveCountersEffect",
+        ),
+        (
+            "Saprazzan Outrigger",
+            "When this creature attacks or blocks, put it on top of its owner's library at end of combat.",
+            "MoveToZoneEffect",
+        ),
+        (
+            "Wicker Warcrawler",
+            "Whenever this creature attacks or blocks, put a -1/-1 counter on it at end of combat.",
+            "PutCountersEffect",
+        ),
+    ];
+
+    for (name, expected_line, expected_payload) in cases {
+        let definition = parse_oracle_card_definition(name);
+        let triggered = definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{name} should have an attack-or-block trigger"));
+        assert_eq!(
+            triggered.trigger.display(),
+            expected_line
+                .split_once(',')
+                .expect("triggered oracle line")
+                .0,
+            "{name} should compact the shared source subject"
+        );
+
+        let immediate = triggered.effects.flattened_default_effects();
+        assert_eq!(
+            immediate.len(),
+            2,
+            "{name} should capture the triggering creature and schedule one delayed payload: {immediate:#?}"
+        );
+        assert!(
+            immediate[0]
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some(),
+            "{name} should snapshot the triggering creature before scheduling: {immediate:#?}"
+        );
+        let schedule = immediate[1]
+            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            .unwrap_or_else(|| panic!("{name} should schedule its payload: {immediate:#?}"));
+        assert!(schedule.one_shot, "{name} delay should fire once");
+        assert!(
+            schedule
+                .trigger
+                .downcast_ref::<crate::triggers::EndOfCombatTrigger>()
+                .is_some(),
+            "{name} should wait for end of combat: {schedule:#?}"
+        );
+        let payload_debug = format!("{:#?}", schedule.effects);
+        assert!(
+            payload_debug.contains(expected_payload),
+            "{name} should keep its typed delayed payload {expected_payload}: {payload_debug}"
+        );
+
+        let rendered = canonical_compiled_lines(&definition);
+        assert!(
+            rendered.iter().any(|line| line == expected_line),
+            "{name} delayed trigger should round-trip exactly; expected {expected_line:?}, got {rendered:#?}"
+        );
+    }
+}

@@ -5,13 +5,16 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until};
+use crate::effect::{
+    ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeObjectMemory, OutcomeValue, Until,
+};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::player::CastTaggedEffect;
 use crate::effects::zones::apply_zone_change;
 use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
+    move_to_battlefield_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::Event;
@@ -138,31 +141,7 @@ fn explore_snapshot_for_object(
 }
 
 fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
-    if game.turn_store.turn_order.is_empty() {
-        return game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game())
-            .map(|player| player.id)
-            .collect();
-    }
-
-    let start = game
-        .turn_store
-        .turn_order
-        .iter()
-        .position(|&player_id| player_id == game.turn.active_player)
-        .unwrap_or(0);
-
-    (0..game.turn_store.turn_order.len())
-        .filter_map(|offset| {
-            let player_id =
-                game.turn_store.turn_order[(start + offset) % game.turn_store.turn_order.len()];
-            game.player(player_id)
-                .filter(|player| player.is_in_game())
-                .map(|_| player_id)
-        })
-        .collect()
+    game.team_apnap_player_order()
 }
 
 fn execute_keyword_action_replacement_effects(
@@ -598,6 +577,8 @@ pub struct ManifestTopCardOfLibraryEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ManifestCardFromHandEffect;
 
+pub type ManifestObjectsEffect = ironsmith_core::ManifestObjectsEffect;
+
 impl ManifestTopCardOfLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
@@ -626,30 +607,76 @@ impl ManifestCardFromHandEffect {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ManifestPreparation {
+    object_id: ObjectId,
+    stable_id: StableId,
+    original_abilities: std::sync::Arc<Vec<crate::ability::Ability>>,
+    overlay_applied: bool,
+}
+
+fn prepare_manifest_card(
+    game: &mut GameState,
+    card_id: ObjectId,
+    cloak: bool,
+) -> Option<ManifestPreparation> {
+    let card = game.object_mut(card_id)?;
+    let stable_id = card.stable_id;
+    let original_abilities = card.abilities.clone();
+    let overlay_applied = card.apply_face_down_cast_overlay();
+    // Disguise's shared face-down overlay adds ward {2}, but manifesting a
+    // disguise card does not make the disguise action's ward apply. Cloak has
+    // ward {2} independently, so normalize the overlay before adding it.
+    card.abilities_mut().retain(|ability| {
+        !matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::Ward
+        )
+    });
+    if cloak {
+        card.abilities_mut()
+            .push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::ward(crate::cost::TotalCost::mana(
+                    crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Generic(
+                        2,
+                    )]]),
+                )),
+            ));
+    }
+    Some(ManifestPreparation {
+        object_id: card_id,
+        stable_id,
+        original_abilities,
+        overlay_applied,
+    })
+}
+
+fn rollback_manifest_preparation(game: &mut GameState, preparation: &ManifestPreparation) {
+    let object_id = game
+        .find_object_by_stable_id(preparation.stable_id)
+        .unwrap_or(preparation.object_id);
+    let Some(card) = game.object_mut(object_id) else {
+        return;
+    };
+    if preparation.overlay_applied {
+        card.end_face_down_cast_overlay();
+    } else {
+        card.abilities = preparation.original_abilities.clone();
+    }
+}
+
 fn manifest_card(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     card_id: ObjectId,
     controller: crate::ids::PlayerId,
     cloak: bool,
+    action: KeywordActionKind,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if game.object(card_id).is_none() {
+    let Some(preparation) = prepare_manifest_card(game, card_id, cloak) else {
         return Ok(EffectOutcome::count(0));
-    }
-
-    if let Some(card) = game.object_mut(card_id) {
-        card.apply_face_down_cast_overlay();
-        if cloak {
-            card.abilities_mut()
-                .push(crate::ability::Ability::static_ability(
-                    crate::static_abilities::StaticAbility::ward(crate::cost::TotalCost::mana(
-                        crate::mana::ManaCost::from_pips(vec![vec![
-                            crate::mana::ManaSymbol::Generic(2),
-                        ]]),
-                    )),
-                ));
-        }
-    }
+    };
 
     let outcome = match move_to_battlefield_with_options(
         game,
@@ -660,28 +687,116 @@ fn manifest_card(
         BattlefieldEntryOutcome::Moved(new_id) => {
             game.set_manifested(new_id);
             EffectOutcome::with_objects(vec![new_id]).with_event(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    if cloak {
-                        KeywordActionKind::Cloak
-                    } else {
-                        KeywordActionKind::Manifest
-                    },
-                    controller,
-                    ctx.source,
-                    1,
-                ),
+                KeywordActionEvent::new(action, controller, ctx.source, 1),
                 ctx.provenance,
             ))
         }
         BattlefieldEntryOutcome::Prevented => {
-            if let Some(card) = game.object_mut(card_id) {
-                card.end_face_down_cast_overlay();
-            }
+            rollback_manifest_preparation(game, &preparation);
             EffectOutcome::count(0)
         }
     };
 
     Ok(outcome)
+}
+
+impl EffectExecutor for ManifestObjectsEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let controller =
+            crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
+        let mut object_ids =
+            crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+        let mut seen = std::collections::HashSet::new();
+        object_ids.retain(|object_id| {
+            seen.insert(*object_id)
+                && game
+                    .object(*object_id)
+                    .is_some_and(|object| object.kind == ObjectKind::Card)
+        });
+        if object_ids.is_empty() {
+            return Ok(if self.target.is_target() {
+                EffectOutcome::target_invalid()
+            } else {
+                EffectOutcome::count(0)
+            });
+        }
+        if self.shuffle {
+            game.shuffle_slice(&mut object_ids);
+        }
+
+        let mut entries = Vec::with_capacity(object_ids.len());
+        for object_id in object_ids {
+            let Some(object) = game.object(object_id) else {
+                continue;
+            };
+            let memory =
+                OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(object, game));
+            let Some(preparation) = prepare_manifest_card(game, object_id, self.cloak) else {
+                continue;
+            };
+            entries.push((preparation, memory));
+        }
+
+        let outcomes = move_to_battlefield_batch_with_options(
+            game,
+            ctx,
+            entries
+                .iter()
+                .map(|(preparation, _)| {
+                    (
+                        preparation.object_id,
+                        BattlefieldEntryOptions::specific(controller, self.tapped),
+                    )
+                })
+                .collect(),
+        );
+        let mut moved_ids = Vec::new();
+        let mut affected_memory = Vec::new();
+        for ((preparation, memory), outcome) in entries.into_iter().zip(outcomes) {
+            match outcome {
+                BattlefieldEntryOutcome::Moved(new_id) => {
+                    game.set_manifested(new_id);
+                    moved_ids.push(new_id);
+                    affected_memory.push(memory);
+                }
+                BattlefieldEntryOutcome::Prevented => {
+                    rollback_manifest_preparation(game, &preparation);
+                }
+            }
+        }
+
+        if moved_ids.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let action = if self.cloak {
+            KeywordActionKind::Cloak
+        } else {
+            KeywordActionKind::Manifest
+        };
+        let amount = u32::try_from(moved_ids.len()).unwrap_or(u32::MAX);
+        Ok(EffectOutcome::with_objects(moved_ids)
+            .with_affected_object_memory(affected_memory)
+            .with_event(TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(action, controller, ctx.source, amount),
+                ctx.provenance,
+            )))
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        self.target.is_target().then_some(&self.target)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "cards to manifest"
+    }
 }
 
 impl EffectExecutor for ManifestDreadEffect {
@@ -691,10 +806,121 @@ impl EffectExecutor for ManifestDreadEffect {
 
     fn execute(
         &self,
-        _game: &mut GameState,
-        _ctx: &mut ExecutionContext,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        Ok(EffectOutcome::resolved())
+        let top_cards = game
+            .player(ctx.controller)
+            .map(|player| {
+                player
+                    .library
+                    .iter()
+                    .rev()
+                    .take(2)
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if top_cards.is_empty() {
+            let object_tags = HashMap::from([(
+                TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG),
+                Vec::new(),
+            )]);
+            return Ok(
+                EffectOutcome::count(0).with_event(TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::ManifestDread,
+                        ctx.controller,
+                        ctx.source,
+                        1,
+                    )
+                    .with_object_tags(object_tags),
+                    ctx.provenance,
+                )),
+            );
+        }
+
+        let card_to_manifest = if top_cards.len() == 1 {
+            top_cards[0]
+        } else {
+            let selection = make_decision(
+                game,
+                ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose one of the top two cards of your library to manifest",
+                    top_cards.clone(),
+                    1,
+                    Some(1),
+                )
+                .require_explicit_choice()
+                .with_hidden_card_visibility(
+                    crate::decisions::context::DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                ),
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            normalize_object_selection(selection, &top_cards, 1)
+                .first()
+                .copied()
+                .unwrap_or(top_cards[0])
+        };
+
+        let mut outcome = manifest_card(
+            game,
+            ctx,
+            card_to_manifest,
+            ctx.controller,
+            false,
+            KeywordActionKind::ManifestDread,
+        )?;
+        let mut graveyard_snapshots = Vec::new();
+        for card_id in top_cards
+            .into_iter()
+            .filter(|&card_id| card_id != card_to_manifest)
+        {
+            if let EventOutcome::Proceed(result) = apply_zone_change(
+                game,
+                card_id,
+                Zone::Library,
+                Zone::Graveyard,
+                ctx.cause.clone(),
+                ctx.decision_maker,
+            ) && result.final_zone == Zone::Graveyard
+            {
+                graveyard_snapshots.extend(result.new_object_ids.into_iter().filter_map(|id| {
+                    game.object(id).map(|object| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                    })
+                }));
+            }
+        }
+
+        outcome.events.retain(|event| {
+            !event
+                .downcast::<KeywordActionEvent>()
+                .is_some_and(|event| event.action == KeywordActionKind::ManifestDread)
+        });
+        let object_tags = HashMap::from([(
+            TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG),
+            graveyard_snapshots,
+        )]);
+        outcome.events.push(TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(
+                KeywordActionKind::ManifestDread,
+                ctx.controller,
+                ctx.source,
+                1,
+            )
+            .with_object_tags(object_tags),
+            ctx.provenance,
+        ));
+
+        Ok(outcome)
     }
 }
 
@@ -717,7 +943,18 @@ impl EffectExecutor for ManifestTopCardOfLibraryEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        manifest_card(game, ctx, card_id, ctx.controller, self.cloak)
+        manifest_card(
+            game,
+            ctx,
+            card_id,
+            ctx.controller,
+            self.cloak,
+            if self.cloak {
+                KeywordActionKind::Cloak
+            } else {
+                KeywordActionKind::Manifest
+            },
+        )
     }
 }
 
@@ -766,7 +1003,14 @@ impl EffectExecutor for ManifestCardFromHandEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        manifest_card(game, ctx, card_id, ctx.controller, false)
+        manifest_card(
+            game,
+            ctx,
+            card_id,
+            ctx.controller,
+            false,
+            KeywordActionKind::Manifest,
+        )
     }
 }
 
@@ -2088,6 +2332,396 @@ mod tests {
     }
 
     #[test]
+    fn manifest_dread_chooses_one_top_card_and_puts_the_other_in_the_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let second_from_top = create_library_card(
+            &mut game,
+            alice,
+            198,
+            "Chosen Dread Card",
+            vec![CardType::Creature],
+            None,
+            Some(3),
+            Some(3),
+        );
+        let top = create_library_card(
+            &mut game,
+            alice,
+            199,
+            "Unchosen Dread Card",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let chosen_stable_id = game
+            .object(second_from_top)
+            .expect("chosen library card")
+            .stable_id;
+        let mut dm = SelectIdsDecisionMaker {
+            choices: VecDeque::from([vec![second_from_top]]),
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        let outcome = ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("manifest dread should execute");
+
+        let manifested_id = outcome
+            .value
+            .objects()
+            .and_then(|ids| ids.first().copied())
+            .expect("manifest dread should return the manifested permanent");
+        let manifested = game
+            .object(manifested_id)
+            .expect("manifested permanent should exist");
+        assert_eq!(manifested.stable_id, chosen_stable_id);
+        assert!(game.is_face_down(manifested_id));
+        assert!(game.is_manifested(manifested_id));
+        assert_eq!(game.calculated_power(manifested_id), Some(2));
+        assert_eq!(game.calculated_toughness(manifested_id), Some(2));
+        assert!(game.player(alice).is_some_and(|player| {
+            player.graveyard.iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|card| card.name == "Unchosen Dread Card")
+            })
+        }));
+        assert!(
+            game.object(top).is_none(),
+            "zone change should mint a new object"
+        );
+        let action_event = outcome
+            .events
+            .iter()
+            .find(|event| {
+                event
+                    .downcast::<KeywordActionEvent>()
+                    .is_some_and(|action| action.action == KeywordActionKind::ManifestDread)
+            })
+            .cloned()
+            .expect("manifest dread should emit its distinct keyword action");
+        let action = action_event
+            .downcast::<KeywordActionEvent>()
+            .expect("manifest dread action event");
+        let graveyard_snapshots = action
+            .object_tags
+            .get(&TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG))
+            .expect("manifest dread should tag the card put into the graveyard");
+        assert_eq!(graveyard_snapshots.len(), 1);
+        assert_eq!(graveyard_snapshots[0].name, "Unchosen Dread Card");
+        assert_eq!(graveyard_snapshots[0].zone, Zone::Graveyard);
+
+        let graveyard_object_id = graveyard_snapshots[0].object_id;
+        let graveyard_stable_id = graveyard_snapshots[0].stable_id;
+        drop(ctx);
+        let tag = TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG);
+        let mut resolution_ctx =
+            ExecutionContext::new_default(source, alice).with_triggering_event(action_event);
+        crate::effects::TagTriggeringObjectEffect::new(tag.clone())
+            .execute(&mut game, &mut resolution_ctx)
+            .expect("observer prelude should recover the post-zone-change graveyard object");
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag), Zone::Hand, false)
+            .execute(&mut game, &mut resolution_ctx)
+            .expect("observer should move the tagged graveyard card to hand");
+
+        assert!(game.object(graveyard_object_id).is_none());
+        assert!(game.player(alice).is_some_and(|player| {
+            player.hand.iter().any(|id| {
+                game.object(*id).is_some_and(|card| {
+                    card.name == "Unchosen Dread Card" && card.stable_id == graveyard_stable_id
+                })
+            })
+        }));
+    }
+
+    #[test]
+    fn manifest_dread_observer_excludes_a_card_replaced_out_of_the_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card_to_manifest = create_library_card(
+            &mut game,
+            alice,
+            189,
+            "Chosen Replacement Dread Card",
+            vec![CardType::Creature],
+            None,
+            Some(2),
+            Some(2),
+        );
+        create_library_card(
+            &mut game,
+            alice,
+            190,
+            "Exiled Replacement Dread Card",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let mut dm = SelectIdsDecisionMaker {
+            choices: VecDeque::from([vec![card_to_manifest]]),
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        crate::effects::ExileInsteadOfGraveyardEffect::you()
+            .execute(&mut game, &mut ctx)
+            .expect("graveyard replacement should register");
+
+        let outcome = ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("manifest dread should honor the replacement");
+        let action_event = outcome
+            .events
+            .iter()
+            .find(|event| {
+                event
+                    .downcast::<KeywordActionEvent>()
+                    .is_some_and(|action| action.action == KeywordActionKind::ManifestDread)
+            })
+            .cloned()
+            .expect("manifest dread action event");
+        let action = action_event
+            .downcast::<KeywordActionEvent>()
+            .expect("manifest dread action payload");
+        assert!(
+            action
+                .object_tags
+                .get(&TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG))
+                .is_some_and(Vec::is_empty),
+            "a card replaced into exile must not be tagged as put into the graveyard"
+        );
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|card| card.name == "Exiled Replacement Dread Card")
+        }));
+
+        drop(ctx);
+        let tag = TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG);
+        let mut resolution_ctx =
+            ExecutionContext::new_default(source, alice).with_triggering_event(action_event);
+        let tagged = crate::effects::TagTriggeringObjectEffect::new(tag.clone())
+            .execute(&mut game, &mut resolution_ctx)
+            .expect("observer prelude should handle an empty event tag");
+        assert_eq!(tagged.value.as_count(), Some(0));
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag), Zone::Hand, false)
+            .execute(&mut game, &mut resolution_ctx)
+            .expect("empty observer selection should resolve without moving a card");
+
+        assert!(
+            game.player(alice)
+                .is_some_and(|player| player.hand.is_empty())
+        );
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|card| card.name == "Exiled Replacement Dread Card")
+        }));
+    }
+
+    #[test]
+    fn manifest_dread_with_one_library_card_manifests_it_without_a_choice() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let only_card = create_library_card(
+            &mut game,
+            alice,
+            197,
+            "Only Dread Card",
+            vec![CardType::Creature],
+            None,
+            Some(1),
+            Some(1),
+        );
+        let only_card_stable_id = game.object(only_card).expect("only library card").stable_id;
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("one-card manifest dread should execute");
+
+        let manifested_id = outcome
+            .value
+            .objects()
+            .and_then(|ids| ids.first().copied())
+            .expect("the only card should be manifested");
+        assert_eq!(
+            game.object(manifested_id).map(|card| card.stable_id),
+            Some(only_card_stable_id)
+        );
+        assert!(
+            game.player(alice)
+                .is_some_and(|player| player.library.is_empty())
+        );
+        assert!(
+            game.player(alice)
+                .is_some_and(|player| player.graveyard.is_empty())
+        );
+    }
+
+    #[test]
+    fn manifest_dread_waiting_for_a_private_choice_does_not_move_cards() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        create_library_card(
+            &mut game,
+            alice,
+            195,
+            "Dread Choice One",
+            vec![CardType::Creature],
+            None,
+            None,
+            None,
+        );
+        create_library_card(
+            &mut game,
+            alice,
+            196,
+            "Dread Choice Two",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let original_library = game.player(alice).expect("alice").library.clone();
+        let mut dm = PromptingDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("prompt-only manifest dread should suspend cleanly");
+
+        assert_eq!(game.player(alice).expect("alice").library, original_library);
+        assert!(game.player(alice).expect("alice").graveyard.is_empty());
+        assert!(game.battlefield.is_empty());
+    }
+
+    #[test]
+    fn manifest_dread_with_an_empty_library_still_emits_the_completed_action() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("empty-library manifest dread should execute");
+
+        assert_eq!(outcome.value.as_count(), Some(0));
+        assert!(game.battlefield.is_empty());
+        assert!(game.player(alice).expect("alice").graveyard.is_empty());
+        let action_events = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<KeywordActionEvent>())
+            .filter(|event| event.action == KeywordActionKind::ManifestDread)
+            .collect::<Vec<_>>();
+        assert_eq!(action_events.len(), 1, "CR 701.62b requires one event");
+        assert_eq!(
+            action_events[0]
+                .object_tags
+                .get(&TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG))
+                .map(Vec::len),
+            Some(0),
+            "the completed action should expose an empty this-way graveyard set"
+        );
+    }
+
+    #[test]
+    fn repeated_manifest_dread_emits_once_per_instruction_after_the_library_is_empty() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome = crate::effects::RepeatEffectsEffect::new(
+            crate::effect::Value::Fixed(2),
+            vec![Effect::manifest_dread()],
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("repeated empty-library manifest dread should execute");
+
+        assert_eq!(
+            outcome
+                .events
+                .iter()
+                .filter_map(|event| event.downcast::<KeywordActionEvent>())
+                .filter(|event| event.action == KeywordActionKind::ManifestDread)
+                .count(),
+            2,
+            "each impossible manifest-dread instruction completes independently"
+        );
+    }
+
+    #[test]
+    fn manifest_dread_twice_uses_the_next_two_cards_for_the_second_action() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let first = create_library_card(
+            &mut game,
+            alice,
+            191,
+            "First Dread Card",
+            vec![CardType::Creature],
+            None,
+            None,
+            None,
+        );
+        let second = create_library_card(
+            &mut game,
+            alice,
+            192,
+            "Second Dread Card",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let third = create_library_card(
+            &mut game,
+            alice,
+            193,
+            "Third Dread Card",
+            vec![CardType::Creature],
+            None,
+            None,
+            None,
+        );
+        let fourth = create_library_card(
+            &mut game,
+            alice,
+            194,
+            "Fourth Dread Card",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let mut dm = SelectIdsDecisionMaker {
+            choices: VecDeque::from([vec![fourth], vec![second]]),
+        };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("first manifest dread should execute");
+        ManifestDreadEffect::new()
+            .execute(&mut game, &mut ctx)
+            .expect("second manifest dread should execute");
+
+        assert!(game.player(alice).expect("alice").library.is_empty());
+        assert_eq!(game.battlefield.len(), 2);
+        assert_eq!(game.player(alice).expect("alice").graveyard.len(), 2);
+        assert!(game.object(first).is_none());
+        assert!(game.object(second).is_none());
+        assert!(game.object(third).is_none());
+        assert!(game.object(fourth).is_none());
+    }
+
+    #[test]
     fn manifest_top_card_of_your_library_enters_face_down_under_your_control() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -2184,6 +2818,145 @@ mod tests {
             .downcast_ref::<KeywordActionEvent>()
             .expect("expected keyword action event");
         assert_eq!(keyword.action, KeywordActionKind::Cloak);
+    }
+
+    #[test]
+    fn cloak_objects_moves_the_collection_simultaneously_tapped_and_emits_one_action() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let creature = create_library_card(
+            &mut game,
+            alice,
+            203,
+            "Pile Creature",
+            vec![CardType::Creature],
+            None,
+            Some(4),
+            Some(4),
+        );
+        let instant = create_library_card(
+            &mut game,
+            alice,
+            204,
+            "Pile Instant",
+            vec![CardType::Instant],
+            None,
+            None,
+            None,
+        );
+        let creature = game
+            .move_object_by_effect(creature, Zone::Exile)
+            .expect("creature should move to exile");
+        let instant = game
+            .move_object_by_effect(instant, Zone::Exile)
+            .expect("instant should move to exile");
+        game.set_face_down(creature);
+        game.set_face_down(instant);
+        let pile = [creature, instant]
+            .into_iter()
+            .map(|id| ObjectSnapshot::from_object(game.object(id).expect("pile card"), &game))
+            .collect();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("pile", pile);
+        let random_before = game.irreversible_random_count();
+
+        let outcome =
+            ManifestObjectsEffect::new(ChooseSpec::Tagged(TagKey::from("pile")), PlayerFilter::You)
+                .cloak()
+                .tapped()
+                .shuffled()
+                .execute(&mut game, &mut ctx)
+                .expect("cloaking the collection should execute");
+        let cloaked = outcome
+            .value
+            .objects()
+            .expect("cloaking should return the moved permanents");
+
+        assert_eq!(cloaked.len(), 2);
+        assert_eq!(game.irreversible_random_count(), random_before + 1);
+        for object_id in cloaked {
+            let object = game
+                .object(*object_id)
+                .expect("cloaked permanent should exist");
+            assert_eq!(object.zone, Zone::Battlefield);
+            assert_eq!(game.controller_of(object), alice);
+            assert!(game.is_tapped(*object_id));
+            assert!(game.is_face_down(*object_id));
+            assert!(game.is_manifested(*object_id));
+            assert_eq!(game.calculated_power(*object_id), Some(2));
+            assert_eq!(game.calculated_toughness(*object_id), Some(2));
+            assert!(object.abilities.iter().any(|ability| matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::Ward
+                        && static_ability.display() == "Ward {2}"
+            )));
+        }
+        let keyword_actions = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<KeywordActionEvent>())
+            .collect::<Vec<_>>();
+        assert_eq!(keyword_actions.len(), 1);
+        assert_eq!(keyword_actions[0].action, KeywordActionKind::Cloak);
+        assert_eq!(keyword_actions[0].player, alice);
+        assert_eq!(keyword_actions[0].amount, 2);
+    }
+
+    #[test]
+    fn manifest_objects_does_not_grant_cloak_ward() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card = create_library_card(
+            &mut game,
+            alice,
+            205,
+            "Manifest Collection Card",
+            vec![CardType::Creature],
+            None,
+            Some(3),
+            Some(3),
+        );
+        game.object_mut(card)
+            .expect("card should exist in the library")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::disguise(
+                crate::cost::TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Generic(3),
+                ]])),
+            )));
+        let card = game
+            .move_object_by_effect(card, Zone::Exile)
+            .expect("card should move to exile");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let outcome =
+            ManifestObjectsEffect::new(ChooseSpec::SpecificObject(card), PlayerFilter::You)
+                .execute(&mut game, &mut ctx)
+                .expect("manifesting the card should execute");
+        let manifested = outcome
+            .value
+            .objects()
+            .and_then(|ids| ids.first().copied())
+            .expect("manifest should return the moved permanent");
+        let object = game.object(manifested).expect("manifested permanent");
+
+        assert!(game.is_face_down(manifested));
+        assert!(game.is_manifested(manifested));
+        assert!(!object.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            crate::ability::AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::Ward
+        )));
+        let keyword = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<KeywordActionEvent>())
+            .expect("manifest should emit one keyword action");
+        assert_eq!(keyword.action, KeywordActionKind::Manifest);
+        assert_eq!(keyword.amount, 1);
     }
 
     #[test]

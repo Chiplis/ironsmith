@@ -45,10 +45,8 @@ impl EffectExecutor for GainLifeEffect {
         // Process through replacement effects and check "can't gain life"
         let final_amount = process_life_gain_with_event(game, player_id, amount);
 
-        if final_amount > 0
-            && let Some(p) = game.player_mut(player_id)
-        {
-            p.gain_life(final_amount);
+        if final_amount > 0 {
+            game.gain_life(player_id, final_amount);
         }
 
         // Create the trigger event only if life was actually gained

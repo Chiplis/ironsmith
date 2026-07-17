@@ -30,6 +30,7 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         || effect.downcast_ref::<effects::TapEffect>().is_some()
         || effect.downcast_ref::<effects::UntapEffect>().is_some()
         || effect.downcast_ref::<effects::LoseLifeEffect>().is_some()
+        || effect.downcast_ref::<effects::PayLifeEffect>().is_some()
         || effect.downcast_ref::<effects::GainLifeEffect>().is_some()
         || effect.downcast_ref::<effects::PayEnergyEffect>().is_some()
         || effect.downcast_ref::<effects::DiscardEffect>().is_some()

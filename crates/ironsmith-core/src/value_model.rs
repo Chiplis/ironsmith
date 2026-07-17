@@ -148,6 +148,11 @@ pub enum ValueSurfaceHint {
     /// Preserve a sentence boundary before a counter-placement follow-up.
     /// This is presentation metadata only; the numeric value is unchanged.
     CounterFollowupSeparateSentence,
+    /// Marks a counter parsed from the same battlefield-entry clause as its
+    /// zone move ("with a ... counter on it"). This lets lowering distinguish
+    /// an entry modifier from a genuinely subsequent counter action even when
+    /// an earlier action in the sentence is coordinated with "then".
+    InlineBattlefieldEntryCounter,
     /// Preserve the authored word "additional" in a battlefield-entry
     /// counter clause. This is presentation metadata only; the numeric value
     /// is unchanged.
@@ -347,10 +352,16 @@ pub enum Value {
     CreaturesDiedThisTurnControlledBy(PlayerFilter),
     PlayersBeingAttacked,
     CountPlayers(PlayerFilter),
-    PlayersWhoControlMoreThanYou(ObjectFilter),
+    /// The number of matching players whose matching-object count exceeds
+    /// yours.
+    PlayersWhoControlMoreThanYou {
+        players: PlayerFilter,
+        filter: ObjectFilter,
+    },
     /// The number of players whose matching-object count exceeds yours by at
     /// least `minimum_difference`.
     PlayersWhoControlAtLeastMoreThanYou {
+        players: PlayerFilter,
         filter: ObjectFilter,
         minimum_difference: u32,
     },
@@ -484,6 +495,21 @@ impl Value {
 
     pub fn creatures_you_control() -> Self {
         Self::Count(ObjectFilter::creature().you_control())
+    }
+
+    /// The nonnegative difference between two dynamic values, represented in
+    /// terms of the existing composable arithmetic nodes so every value
+    /// resolver can evaluate it without a bespoke runtime branch.
+    pub fn absolute_difference(left: Self, right: Self) -> Self {
+        let forward = Self::Add(
+            Box::new(left.clone()),
+            Box::new(Self::Scaled(Box::new(right.clone()), -1)),
+        );
+        let reverse = Self::Add(Box::new(right), Box::new(Self::Scaled(Box::new(left), -1)));
+        Self::Scaled(
+            Box::new(Self::Min(Box::new(forward), Box::new(reverse))),
+            -1,
+        )
     }
 
     pub fn counters_on_source_reference(
@@ -1051,25 +1077,48 @@ pub enum SourceCounterThresholdSurface {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TurnHistoryCondition {
     SpellsCastLastTurnAtLeast(u32),
-    SourceCrewedByAtLeast { count: u32, filter: ObjectFilter },
-    SourceWasCast { surface: SourceReferenceSurface },
-    SourceWasCastByController { surface: SourceReferenceSurface },
-    SourceWasKicked { surface: SourceReferenceSurface },
-    SourceEnteredBattlefieldThisTurn { surface: SourceReferenceSurface },
-    SourceAttackedThisTurn { surface: SourceReferenceSurface },
+    SourceCrewedByAtLeast {
+        count: u32,
+        filter: ObjectFilter,
+    },
+    SourceWasCast {
+        surface: SourceReferenceSurface,
+    },
+    SourceWasCastByController {
+        surface: SourceReferenceSurface,
+    },
+    SourceWasKicked {
+        surface: SourceReferenceSurface,
+    },
+    SourceEnteredBattlefieldThisTurn {
+        surface: SourceReferenceSurface,
+    },
+    SourceAttackedThisTurn {
+        surface: SourceReferenceSurface,
+    },
+    TriggeringObjectEnlistedThisCombat,
     TriggeringObjectWasCast,
     TriggeringObjectWasCastFromZone(Zone),
     PlayerPlayedLandThisTurn(PlayerFilter),
     TriggeringObjectDied,
-    PlayerPlayedCardFromZoneThisTurn { player: PlayerFilter, zone: Zone },
+    PlayerPlayedCardFromZoneThisTurn {
+        player: PlayerFilter,
+        zone: Zone,
+    },
     TriggeringPlayerAttackedControllerLastTurn,
     PlayerLostLifeLastTurn(PlayerFilter),
-    TriggeringPlayersTurn { definite_player: bool },
+    TriggeringPlayersTurn {
+        definite_player: bool,
+    },
     ControllerTeamGainedLifeThisTurn,
     TriggeringObjectsNoneWereCastOrNoManaSpent,
-    ManaFromSourceSpentOnTriggeringAction { source_filter: ObjectFilter },
+    ManaFromSourceSpentOnTriggeringAction {
+        source_filter: ObjectFilter,
+    },
     AllPlayersLifeAtMost(i32),
-    AnotherOpponentControlsPotentialTarget { filter: ObjectFilter },
+    AnotherOpponentControlsPotentialTarget {
+        filter: ObjectFilter,
+    },
     TriggeringAttackerBlockers {
         required: ObjectFilter,
         required_count: u32,
@@ -1199,6 +1248,11 @@ pub enum Condition {
         player: PlayerFilter,
         count: u32,
     },
+    PlayerHasCountersOrMore {
+        player: PlayerFilter,
+        counter_type: CounterType,
+        count: u32,
+    },
     YouHaveCardInHandMatching(ObjectFilter),
     YourTurn,
     YourFirstTurnsOfTheGameOrFewer(u32),
@@ -1284,6 +1338,9 @@ pub enum Condition {
     TargetManaValueLteColorsSpentToCastThisSpell,
     ItIsNight,
     FirstCombatPhaseOfTurn,
+    /// This condition's controller is the active player and the game is in
+    /// either a precombat or postcombat main phase.
+    SourceControllersMainPhase,
     SourceIsTapped,
     SourceIsSaddled,
     SourceCrewedByExactly {
@@ -1292,6 +1349,7 @@ pub enum Condition {
     },
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
+    SourceIsRenowned,
     SourceIsFaceDown,
     SourceMatches(ObjectFilter),
     /// The battlefield object this Aura or Equipment source is attached to

@@ -81,16 +81,12 @@ pub(crate) fn parse_voted_against_you_effects_shape(
     let (_, rest) = primitives::parse_prefix(
         tokens,
         alt((
-            primitives::phrase(&[
-                "each", "opponent", "who", "voted", "for", "a", "choice",
-            ]),
+            primitives::phrase(&["each", "opponent", "who", "voted", "for", "a", "choice"]),
             // Quantified player lowering scopes the action to an iterated
             // player by rewriting `each opponent` to this contextual subject
             // before sentence dispatch. Retain the typed vote predicate when
             // receiving that equivalent internal surface.
-            primitives::phrase(&[
-                "that", "players", "who", "voted", "for", "a", "choice",
-            ]),
+            primitives::phrase(&["that", "players", "who", "voted", "for", "a", "choice"]),
         ))
         .void(),
     )?;

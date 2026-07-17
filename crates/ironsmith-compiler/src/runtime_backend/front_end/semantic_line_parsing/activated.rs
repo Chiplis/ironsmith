@@ -190,6 +190,15 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
     }
 }
 
+fn effect_ast_starts_with_mana_effect(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SourceSentence { effects } => effects
+            .first()
+            .is_some_and(effect_ast_starts_with_mana_effect),
+        other => effect_ast_is_mana_effect(other),
+    }
+}
+
 fn effects_ast_can_lower_as_mana_ability(effects: &[EffectAst]) -> bool {
     !effects.is_empty() && effects.iter().all(effect_ast_is_mana_effect)
 }
@@ -583,7 +592,9 @@ fn parse_activated_line_impl(
             line.info.line_index,
         )?);
         if effects_ast_can_lower_as_mana_ability(&effects_ast)
-            || effects_ast.first().is_some_and(effect_ast_is_mana_effect)
+            || effects_ast
+                .first()
+                .is_some_and(effect_ast_starts_with_mana_effect)
         {
             let functional_zones = infer_rewrite_activated_functional_zones(line)?;
             let reference_imports = activation_cost_reference_imports(&normalized_cost);

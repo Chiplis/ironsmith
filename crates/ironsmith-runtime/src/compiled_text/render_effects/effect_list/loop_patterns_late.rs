@@ -721,6 +721,14 @@
 
         if idx + 1 < filtered.len()
             && let Some(compact) =
+                describe_counter_linked_grant_after_put(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
                 describe_compact_tagged_apply_continuous_pair(filtered[idx], filtered[idx + 1])
         {
             parts.push(compact);
@@ -1082,6 +1090,7 @@
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
         {
             let mut branch_parts = Vec::new();
+            let mut saw_happened_branch = false;
             let mut lookahead = idx + 1;
             while lookahead < filtered.len() {
                 let if_effect = filtered[lookahead]
@@ -1099,9 +1108,27 @@
                 if if_effect.condition != with_id.id {
                     break;
                 }
-                let Some(branch_text) = describe_with_id_if_clause(with_id, if_effect) else {
+                let Some(mut branch_text) = describe_with_id_if_clause(with_id, if_effect) else {
                     break;
                 };
+                if saw_happened_branch
+                    && if_effect.predicate == EffectPredicate::DidNotHappen
+                    && if_effect.else_.is_empty()
+                    && let Some((_, followup)) = branch_text.split_once(", ")
+                {
+                    branch_text = if let Some(condition) =
+                        describe_explicit_alternative_result_condition(
+                            &with_id.effect,
+                            &EffectPredicate::Happened,
+                        )
+                    {
+                        format!("{condition}, {followup}")
+                    } else {
+                        format!("Otherwise, {followup}")
+                    };
+                }
+                saw_happened_branch |= if_effect.predicate == EffectPredicate::Happened
+                    && if_effect.else_.is_empty();
                 branch_parts.push(branch_text);
                 lookahead += 1;
             }
@@ -2679,6 +2706,19 @@
             idx += consumed;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(with_id) = filtered[idx + 1].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(conditional) =
+                filtered[idx + 2].downcast_ref::<crate::effects::IfEffect>()
+            && let Some(compact) =
+                describe_choose_sacrifice_result_sequence(choose, with_id, conditional)
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -3274,10 +3314,31 @@
         }
         let mut rendered = describe_effect(filtered[idx]);
         if !rendered.is_empty() {
+            let mut is_battlefield_move_result_followup = false;
+            if idx > 0
+                && let Some(moved_tag) = tagged_battlefield_move_result_tag(filtered[idx - 1])
+                && let Some(conditional) = filtered[idx]
+                    .downcast_ref::<crate::effects::ConditionalEffect>()
+                && let Condition::TaggedObjectMatches(condition_tag, filter) =
+                    &conditional.condition
+                && *condition_tag == moved_tag
+                && let Some((_, followup)) = rendered.split_once(", ")
+            {
+                rendered = format!(
+                    "If {} is put onto the battlefield this way, {}",
+                    describe_player_tagged_object_text(condition_tag, filter),
+                    lowercase_first(followup)
+                );
+                is_battlefield_move_result_followup = true;
+            }
             let is_your_turn_followup = filtered[idx]
                 .downcast_ref::<crate::effects::ConditionalEffect>()
                 .is_some_and(|conditional| conditional.condition == Condition::YourTurn);
-            if !parts.is_empty() && rendered.starts_with("If ") && !is_your_turn_followup {
+            if !parts.is_empty()
+                && rendered.starts_with("If ")
+                && !is_your_turn_followup
+                && !is_battlefield_move_result_followup
+            {
                 rendered = format!("Then {}", lowercase_first(&rendered));
                 if let Some(comma_idx) = rendered.find(", ") {
                     let tail = lowercase_first(&rendered[comma_idx + 2..]);

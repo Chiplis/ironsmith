@@ -957,7 +957,13 @@ fn parse_source_crewed_by_exactly_predicate(
 
 fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let state_phrases: &[&[&str]] = &[&["enchanted"], &["equipped"], &["tapped"], &["untapped"]];
+    let state_phrases: &[&[&str]] = &[
+        &["enchanted"],
+        &["equipped"],
+        &["renowned"],
+        &["tapped"],
+        &["untapped"],
+    ];
     let atoms = [
         WinnowSequence::subject("subject", WinnowCaptureKind::UntilAnyPhrase(state_phrases)),
         WinnowSequence::object(
@@ -1001,7 +1007,14 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
         ),
         WinnowSequence::object(
             "state",
-            WinnowCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped", "saddled"]),
+            WinnowCaptureKind::OneOf(&[
+                "enchanted",
+                "equipped",
+                "renowned",
+                "tapped",
+                "untapped",
+                "saddled",
+            ]),
         ),
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
@@ -1054,6 +1067,13 @@ fn source_state_predicate_from_clause(
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)))
         } else {
             Some(PredicateAst::SourceIsSaddled)
+        };
+    }
+    if surface::exact(clause, &["renowned"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsRenowned)))
+        } else {
+            Some(PredicateAst::SourceIsRenowned)
         };
     }
     None
@@ -2434,9 +2454,7 @@ fn ability_resolution_ordinal_disjunction_counts(clause: LexedClause<'_>) -> Opt
 /// independent event-boundary comparison, so shared Oracle wording such as
 /// "the first instant spell, the first sorcery spell, or the first Otter
 /// spell ..." retains its inclusive disjunction semantics.
-fn parse_triggering_spell_ordinal_predicate(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_triggering_spell_ordinal_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     const OPTIONAL_THE: &[WinnowAtom<'static>] = &[WinnowSequence::word("the")];
     const CAST_THIS_TURN_SUFFIXES: &[&[&str]] = &[
         &["you", "cast", "this", "turn"],
@@ -2447,12 +2465,7 @@ fn parse_triggering_spell_ordinal_predicate(
 
     let clause = LexedClause::new(tokens);
     let atoms = [
-        WinnowSequence::any_phrase(&[
-            &["it", "was"],
-            &["it's"],
-            &["its"],
-            &["it", "s"],
-        ]),
+        WinnowSequence::any_phrase(&[&["it", "was"], &["it's"], &["its"], &["it", "s"]]),
         WinnowSequence::optional(OPTIONAL_THE),
         WinnowSequence::object(
             "ordinal_categories",
@@ -3056,12 +3069,8 @@ fn parse_repeated_and_predicate(
         if left_tokens.is_empty() || right_tokens.is_empty() {
             continue;
         }
-        if left_tokens
-            .iter()
-            .any(|token| token.is_word(AND_WORD))
-            || right_tokens
-                .iter()
-                .any(|token| token.is_word(AND_WORD))
+        if left_tokens.iter().any(|token| token.is_word(AND_WORD))
+            || right_tokens.iter().any(|token| token.is_word(AND_WORD))
         {
             continue;
         }

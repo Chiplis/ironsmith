@@ -41,6 +41,35 @@ pub(super) fn parse_standalone_choose_player_effect() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn opportunistic_dragon_renders_one_leading_source_lifetime_bundle() {
+    let def = parse_oracle_card_definition("Opportunistic Dragon");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "for as long as this creature remains on the battlefield, gain control of that permanent, it loses all abilities, and it can't attack or block"
+        ),
+        "expected one coordinated source-lifetime control bundle, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn splinter_aging_champion_keeps_the_other_target_player_surface() {
+    let def = parse_oracle_card_definition("Splinter, Aging Champion");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "When Splinter leaves the battlefield, you and another target player each draw a card."
+        ),
+        "expected the joint draw to retain its target declaration, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn master_of_the_wild_hunt_compiles_tagged_dynamic_damage_program() {
     let def = parse_oracle_card_definition("Master of the Wild Hunt");
     let rendered = compiled_text_lines(&def).join("\n");
@@ -2117,7 +2146,8 @@ pub(super) fn parse_oracle_illuna_apex_of_wishes_strictly_parses_mutate_trigger(
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
         rendered.contains("Mutate {3}{R/G}{U}{U}")
-            && rendered.contains("When this creature mutates"),
+            && (rendered.contains("When this creature mutates")
+                || rendered.contains("Whenever this creature mutates")),
         "expected Illuna mutate keyword and mutate trigger in compiled text, got {rendered}"
     );
 }
@@ -2130,7 +2160,9 @@ pub(super) fn parse_oracle_illuna_apex_of_wishes_compiles_battlefield_or_hand_cl
     assert!(
         rendered_lower.contains("you may put it onto the battlefield")
             && (rendered_lower.contains("if you don't, return it to its owner's hand")
-                || rendered_lower.contains("if you dont, return it to its owner's hand"))
+                || rendered_lower.contains("if you dont, return it to its owner's hand")
+                || rendered_lower.contains("if you don't, put it into its owner's hand")
+                || rendered_lower.contains("if you dont, put it into its owner's hand"))
             && !rendered_lower.contains("exile the top card of your library"),
         "expected consult branch over nonland permanent and no top-card fallback text, got {rendered}"
     );
@@ -2676,10 +2708,10 @@ pub(super) fn parse_oracle_barkweave_crusher_enlist_render_regression() {
 
     let raw = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        raw.contains("enlisted_creature")
-            && raw.contains("enlist_attacker")
+        raw.contains("enlistattack")
+            && raw.contains("enlisted_creature")
             && raw.contains("powerof"),
-        "expected raw compiled definition to retain enlist power-lifting scaffolding, got {raw}"
+        "expected a typed enlist attack cost with its linked power trigger, got {raw}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)
@@ -2688,6 +2720,39 @@ pub(super) fn parse_oracle_barkweave_crusher_enlist_render_regression() {
     assert!(
         rendered.contains("enlist"),
         "expected Barkweave Crusher to keep the enlist marker, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_enlist_action_and_combat_history_regressions() {
+    let guardian = parse_oracle_card_definition("Guardian of New Benalia");
+    let guardian_raw = format!("{guardian:#?}");
+    assert!(
+        guardian_raw.contains("KeywordActionTrigger")
+            && guardian_raw.contains("Enlist")
+            && guardian_raw.contains("ScryEffect"),
+        "expected Guardian's enlist-action trigger and scry effect to remain typed, got {guardian_raw}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&guardian).join("\n"),
+        "Enlist\nWhenever this creature enlists a creature, scry 2.\nDiscard a card: This creature gains indestructible until end of turn. Tap it."
+    );
+
+    let aradesh = parse_oracle_card_definition("Aradesh, the Founder");
+    let aradesh_raw = format!("{aradesh:#?}");
+    let aradesh_compact = aradesh_raw.split_whitespace().collect::<String>();
+    assert!(
+        aradesh_raw.contains("TriggeringObjectEnlistedThisCombat")
+            && aradesh_compact.contains("target_spec:Some(Tagged(TagKey(\"triggering\",),),)")
+            && aradesh_raw.contains("DoubleStrike"),
+        "expected Aradesh to gate and affect the triggering enlisted attacker, got {aradesh_raw}"
+    );
+    let rendered = unprocessed_compiled_lines(&aradesh).join(" ");
+    assert!(
+        rendered.contains("if it enlisted a creature this combat")
+            && rendered.contains("it gains double strike until end of turn")
+            && rendered.contains("its power is 4 or greater"),
+        "expected Aradesh to preserve enlist history, attacker reference, and power threshold, got {rendered}"
     );
 }
 
@@ -3117,7 +3182,7 @@ pub(super) fn parse_oracle_sarkhan_dragon_ascendant_behold_regression() {
         "expected Sarkhan to lower behold into a runtime behold effect, got {raw}"
     );
     assert!(
-        rendered.contains("Behold a dragon"),
+        rendered.contains("behold a Dragon"),
         "expected Sarkhan compiled text to preserve the behold clause, got {rendered}"
     );
     assert!(
@@ -3317,7 +3382,7 @@ pub(super) fn parse_oracle_osseous_exhale_behold_paid_regression() {
         "expected Osseous Exhale to preserve the 'was beheld' condition, got {raw}"
     );
     assert!(
-        rendered.contains("If this spell's behold cost was paid, you gain 2 life"),
+        rendered.contains("If a Dragon was beheld, you gain 2 life"),
         "expected Osseous Exhale compiled text to keep the behold payoff, got {rendered}"
     );
 }
@@ -3354,7 +3419,7 @@ pub(super) fn parse_oracle_cinder_strike_blight_additional_cost_regression() {
     );
     assert!(
         rendered.contains("As an additional cost to cast this spell")
-            && rendered.contains("-1/-1 counter on a creature you control")
+            && rendered.contains("you may blight 1")
             && rendered.contains("additional cost was paid"),
         "expected Cinder Strike compiled text to keep blight cost and payoff wiring, got {rendered}"
     );

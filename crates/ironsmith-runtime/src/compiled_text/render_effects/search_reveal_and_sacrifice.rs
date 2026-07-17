@@ -1832,13 +1832,8 @@ pub(super) fn describe_choose_sacrifice_then_draw_for_sacrificed(
 
     let selection = describe_sacrifice_choice_selection(choose);
 
-    if draw
-        .count
-        .has_surface_hint(ValueSurfaceHint::ThatManyCards)
-    {
-        return Some(format!(
-            "Sacrifice {selection}, then draw that many cards"
-        ));
+    if draw.count.has_surface_hint(ValueSurfaceHint::ThatManyCards) {
+        return Some(format!("Sacrifice {selection}, then draw that many cards"));
     }
 
     Some(format!(
@@ -2957,11 +2952,21 @@ pub(super) fn describe_for_players_choose_nonland_put_counter(
 }
 
 pub(super) fn describe_simple_create_token_bundle(effects: &[&Effect]) -> Option<String> {
+    if let [effect] = effects {
+        let sequence =
+            unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()?;
+        if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+            return None;
+        }
+        let coordinated = sequence.effects.iter().collect::<Vec<_>>();
+        return describe_simple_create_token_bundle(&coordinated);
+    }
     if effects.len() < 2 {
         return None;
     }
     let mut tokens = Vec::new();
     for effect in effects {
+        let effect = unwrap_basic_tag_wrappers(effect);
         let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
         if create.count != Value::Fixed(1)
             || !matches!(create.controller, PlayerFilter::You)
@@ -2975,14 +2980,8 @@ pub(super) fn describe_simple_create_token_bundle(effects: &[&Effect]) -> Option
         {
             return None;
         }
-        let token_name = create.token.name();
-        if !matches!(
-            token_name,
-            "Treasure" | "Clue" | "Food" | "Blood" | "Gold" | "Powerstone" | "Junk" | "Mutagen"
-        ) {
-            return None;
-        }
-        tokens.push(format!("a {token_name} token"));
+        let rendered = describe_effect(effect);
+        tokens.push(rendered.strip_prefix("Create ")?.to_string());
     }
 
     Some(format!("Create {}", join_with_and(&tokens)))
@@ -3375,7 +3374,8 @@ pub(super) fn describe_reveal_top_opponent_exiles_rest_hand_then_may_cast(
     }
     let chosen = describe_choose_filter_from_looked_cards(look, choose)?;
 
-    let exile = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let exile = unwrap_tag_wrapped_effect(exile_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if !move_to_exile_uses_chosen_tag(exile, choose.tag.as_str()) {
         return None;
     }
@@ -3887,11 +3887,23 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
         {
             Some("Each player other than its controller")
         }
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Any)
+                && matches!(excluded.as_ref(), PlayerFilter::Target(inner) if matches!(inner.as_ref(), PlayerFilter::Any)) =>
+        {
+            Some("Each player other than target player")
+        }
         _ => None,
     }
 }
 
 pub(super) fn describe_life_amount_phrase(amount: &Value) -> String {
+    if let Some(backref) = describe_scalar_life_backref(amount) {
+        return format!("{backref} life");
+    }
+    if let Some(additive) = describe_additive_for_each_life_amount(amount) {
+        return additive;
+    }
     if matches!(
         amount,
         Value::SourcePower
@@ -3907,6 +3919,40 @@ pub(super) fn describe_life_amount_phrase(amount: &Value) -> String {
         return format!("life equal to {}", describe_value(amount));
     }
     format!("{} life", describe_value(amount))
+}
+
+fn describe_scalar_life_backref(amount: &Value) -> Option<String> {
+    match amount.unhinted() {
+        Value::EffectValue(_) | Value::EventValue(EventValueSpec::Amount) => {
+            Some("that much".to_string())
+        }
+        Value::EffectValueOffset(_, offset)
+        | Value::EventValueOffset(EventValueSpec::Amount, offset) => match offset {
+            0 => Some("that much".to_string()),
+            offset if *offset > 0 => Some(format!("that much plus {offset}")),
+            -1 => Some("that much minus one".to_string()),
+            offset => Some(format!("that much minus {}", -offset)),
+        },
+        _ => None,
+    }
+}
+
+fn describe_additive_for_each_life_amount(amount: &Value) -> Option<String> {
+    let Value::Add(base, addend) = amount.unhinted() else {
+        return None;
+    };
+    if !addend.has_surface_hint(ValueSurfaceHint::ForEach) {
+        return None;
+    }
+    let (basis, multiplier) = match addend.unhinted() {
+        Value::Scaled(basis, multiplier) if *multiplier > 0 => (basis.as_ref(), *multiplier),
+        basis => (basis, 1),
+    };
+    let counted = describe_create_for_each_count(basis)?;
+    Some(format!(
+        "{} life plus {multiplier} life for each {counted}",
+        describe_value(base)
+    ))
 }
 
 pub(super) fn describe_half_life_amount_for_same_player(
@@ -4168,19 +4214,28 @@ pub(super) fn describe_for_players_simple_iterated_action(
 pub(super) fn describe_for_players_iterated_action_sequence(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    if for_players.effects.len() < 2 {
+    let effects = if let [effect] = for_players.effects.as_slice()
+        && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+    {
+        sequence.effects.as_slice()
+    } else {
+        for_players.effects.as_slice()
+    };
+    if effects.len() < 2 {
         return None;
     }
     let subject = describe_for_players_subject(&for_players.filter)?;
     let subject_lower = lowercase_first(subject);
-    let mut phrases = Vec::with_capacity(for_players.effects.len());
+    let mut phrases = Vec::with_capacity(effects.len());
     let mut effect_idx = 0usize;
 
-    while effect_idx < for_players.effects.len() {
-        if effect_idx + 1 < for_players.effects.len()
-            && let Some(choose) = for_players.effects[effect_idx]
-                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && let Some(sacrifice) = sacrifice_view(&for_players.effects[effect_idx + 1])
+    while effect_idx < effects.len() {
+        if effect_idx + 1 < effects.len()
+            && let Some(choose) =
+                effects[effect_idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(sacrifice) = sacrifice_view(&effects[effect_idx + 1])
             && let Some(inner) = describe_choose_then_sacrifice(choose, sacrifice)
         {
             phrases.push(iterated_player_action_phrase(
@@ -4193,14 +4248,14 @@ pub(super) fn describe_for_players_iterated_action_sequence(
         }
 
         if let Some(phrase) =
-            iterated_player_structural_action_phrase(&for_players.effects[effect_idx], subject)
+            iterated_player_structural_action_phrase(&effects[effect_idx], subject)
         {
             phrases.push(phrase);
             effect_idx += 1;
             continue;
         }
 
-        let inner = describe_effect(&for_players.effects[effect_idx]);
+        let inner = describe_effect(&effects[effect_idx]);
         if inner.contains(". ")
             || inner.starts_with("For each ")
             || inner.starts_with("Choose ")
@@ -4303,4 +4358,105 @@ pub(super) fn choose_spec_is_all_iterated_player_hand_cards(spec: &ChooseSpec) -
         && filter.subtypes.is_empty()
         && filter.any_of.is_empty()
         && filter.tagged_constraints.is_empty()
+}
+
+#[cfg(test)]
+mod simple_create_token_bundle_tests {
+    use super::*;
+
+    #[test]
+    fn reveal_top_opponent_exiles_rest_hand_bundle_accepts_tagged_exile_move() {
+        let looked_tag = TagKey::from("looked");
+        let chosen_tag = TagKey::from("chosen");
+
+        let mut chosen_filter = ObjectFilter::tagged(looked_tag.clone()).in_zone(Zone::Library);
+        chosen_filter.excluded_card_types.push(CardType::Land);
+        let remainder_filter = ObjectFilter::tagged(looked_tag.clone())
+            .not_tagged(chosen_tag.clone())
+            .in_zone(Zone::Library);
+        let effects = vec![
+            Effect::reveal_top_cards(PlayerFilter::You, 6, looked_tag),
+            Effect::choose_objects(
+                chosen_filter,
+                crate::effect::ChoiceCount::exactly(1),
+                PlayerFilter::Opponent,
+                chosen_tag.clone(),
+            ),
+            Effect::move_to_zone(ChooseSpec::tagged(chosen_tag.clone()), Zone::Exile, true)
+                .tag(chosen_tag.clone()),
+            Effect::move_to_zone(ChooseSpec::Object(remainder_filter), Zone::Hand, false)
+                .tag("moved"),
+            Effect::may_player(
+                PlayerFilter::Opponent,
+                vec![Effect::cast_tagged(
+                    chosen_tag,
+                    PlayerFilter::Opponent,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
+            ),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Reveal the top six cards of your library. An opponent exiles a nonland card from among them, then you put the rest into your hand. That opponent may cast the exiled card without paying its mana cost"
+        );
+    }
+
+    #[test]
+    fn compacts_direct_and_coordinated_full_typed_blueprint_lists() {
+        let snake = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Snake")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Snake])
+            .color_indicator(crate::color::ColorSet::GREEN)
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+            .build();
+        let wolf = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Wolf")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wolf])
+            .color_indicator(crate::color::ColorSet::GREEN)
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+        let effects = vec![
+            Effect::with_id(
+                0,
+                Effect::new(crate::effects::CreateTokenEffect::new(
+                    snake,
+                    Value::Fixed(1),
+                    PlayerFilter::You,
+                ))
+                .tag("created_snake"),
+            ),
+            Effect::new(crate::effects::CreateTokenEffect::new(
+                wolf,
+                Value::Fixed(1),
+                PlayerFilter::You,
+            ))
+            .tag_all("created_wolf"),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Create a 1/1 green Snake creature token and a 2/2 green Wolf creature token"
+        );
+
+        let coordinated = vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+            effects.clone(),
+        ))];
+        assert_eq!(
+            describe_effect_list(&coordinated),
+            "Create a 1/1 green Snake creature token and a 2/2 green Wolf creature token"
+        );
+
+        let draw = Effect::draw(Value::Fixed(1));
+        let mixed = vec![&effects[0], &draw, &effects[1]];
+        assert_eq!(describe_simple_create_token_bundle(&mixed), None);
+
+        let sequential = Effect::new(crate::effects::SequenceEffect::new(effects));
+        assert_eq!(describe_simple_create_token_bundle(&[&sequential]), None);
+    }
 }

@@ -64,7 +64,8 @@ pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry,
     TriggeredAbilitySourceKind, check_delayed_triggers, check_state_triggers, check_triggers,
     compute_delayed_trigger_identity, compute_trigger_identity, generate_step_trigger_events,
-    player_filter_matches_with_context, verify_intervening_if,
+    generate_step_trigger_events_for_active_players, player_filter_matches_with_context,
+    verify_intervening_if,
 };
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
@@ -108,6 +109,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::ChosenPlayer
@@ -148,6 +150,7 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::ChosenPlayer
@@ -241,6 +244,13 @@ impl Trigger {
 
     pub(crate) fn source_must_match_event_object(&self, event_kind: EventKind) -> bool {
         self.matcher.source_must_match_event_object(event_kind)
+    }
+
+    pub(crate) fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<matcher_trait::SimultaneousTriggerKey> {
+        self.matcher.simultaneous_trigger_key(event)
     }
 
     /// Get the display text for this trigger.
@@ -714,7 +724,41 @@ impl Trigger {
 
     /// Create a "when [filter] deals damage" trigger.
     pub fn deals_damage(filter: ObjectFilter) -> Self {
-        Self::new(DealsDamageTrigger::new(filter))
+        Self::deals_damage_with_source_surface(
+            filter,
+            ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+        )
+    }
+
+    pub fn deals_damage_with_source_surface(
+        filter: ObjectFilter,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+    ) -> Self {
+        Self::new(DealsDamageTrigger::with_source_surface(
+            filter,
+            source_surface,
+        ))
+    }
+
+    /// Create a "when [filter] deals damage to [player]" trigger.
+    pub fn deals_damage_to_player(filter: ObjectFilter, damaged_player: PlayerFilter) -> Self {
+        Self::deals_damage_to_player_with_source_surface(
+            filter,
+            damaged_player,
+            ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+        )
+    }
+
+    pub fn deals_damage_to_player_with_source_surface(
+        filter: ObjectFilter,
+        damaged_player: PlayerFilter,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+    ) -> Self {
+        Self::new(DealsDamageTrigger::to_player(
+            filter,
+            damaged_player,
+            source_surface,
+        ))
     }
 
     /// Create a "when [source-filter] deals damage to [target-filter]" trigger.
@@ -831,6 +875,7 @@ impl Trigger {
     pub fn spell_cast_qualified(
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        timing: Option<ironsmith_core::TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
@@ -839,6 +884,7 @@ impl Trigger {
         Self::new(SpellCastTrigger::qualified(
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -863,6 +909,16 @@ impl Trigger {
             filter,
             false,
         ))
+    }
+
+    /// Create a "whenever another ability triggers" trigger.
+    pub fn another_ability_triggers() -> Self {
+        Self::new(AbilityTriggeredTrigger::new(true))
+    }
+
+    /// Create a generic "whenever an ability triggers" trigger.
+    pub fn ability_triggers() -> Self {
+        Self::new(AbilityTriggeredTrigger::new(false))
     }
 
     /// Create a qualified "when [player] activates [ability]" trigger.
@@ -949,6 +1005,17 @@ impl Trigger {
     /// Create a "whenever [player] rolls a die" trigger.
     pub fn player_rolls_die(player: PlayerFilter) -> Self {
         Self::new(PlayerRollsDieTrigger::new(player))
+    }
+
+    /// Create a die-roll trigger while preserving whether Oracle grouped the
+    /// roll as "one or more dice".
+    pub fn player_rolls_die_with_surface(player: PlayerFilter, one_or_more: bool) -> Self {
+        Self::new(PlayerRollsDieTrigger::with_surface(player, one_or_more))
+    }
+
+    /// Create a "whenever [player] wins/loses a coin flip" trigger.
+    pub fn player_coin_flip_result(player: PlayerFilter, won: bool) -> Self {
+        Self::new(PlayerCoinFlipResultTrigger::new(player, won))
     }
 
     /// Create a "whenever mana is added to [player]'s mana pool" trigger.
@@ -1233,6 +1300,14 @@ impl Trigger {
         Self::new(EventKindTrigger::new(
             EventKind::DayNightChanged,
             "Whenever day becomes night or night becomes day",
+        ))
+    }
+
+    /// Create a "whenever damage is prevented" trigger (CR 615.13).
+    pub fn damage_prevented() -> Self {
+        Self::new(EventKindTrigger::new(
+            EventKind::DamagePrevented,
+            "Whenever damage is prevented",
         ))
     }
 

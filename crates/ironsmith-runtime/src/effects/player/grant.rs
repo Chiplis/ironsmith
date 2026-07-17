@@ -24,6 +24,7 @@
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::player::grant_by_spec::next_turn_number_for_player;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant::{DerivedAlternativeCastRuntimeExt, GrantDuration, Grantable};
@@ -60,16 +61,19 @@ impl EffectExecutor for GrantEffect {
             GrantDuration::UntilEndOfTurn => game.turn.turn_number,
             GrantDuration::Forever => u32::MAX,
             GrantDuration::UntilYourNextTurnEnd => {
-                return Err(ExecutionError::Impossible(
-                    "grant duration until your next turn is not implemented".to_string(),
-                ));
+                next_turn_number_for_player(game, ctx.controller)
             }
         };
 
         let source_id = ctx.source;
-        let grant_source = GrantSource::Effect {
-            source_id,
-            expires_end_of_turn: expires,
+        let grant_source = match self.duration {
+            GrantDuration::UntilYourNextTurnEnd => {
+                GrantSource::until_player_next_turn_end(source_id, ctx.controller, expires)
+            }
+            GrantDuration::UntilEndOfTurn | GrantDuration::Forever => GrantSource::Effect {
+                source_id,
+                expires_end_of_turn: expires,
+            },
         };
 
         match &self.grantable {
@@ -251,6 +255,79 @@ mod tests {
             Grantable::Ability(ability) => assert!(ability.has_flash()),
             _ => panic!("Expected ability grant"),
         }
+    }
+
+    #[test]
+    fn targeted_grant_lasts_through_the_controllers_next_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(2), "Next-turn Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_id = game.create_object_from_card(&card, bob, Zone::Hand);
+        let flash = StaticAbility::flash();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(creature_id)];
+        GrantEffect::new(
+            Grantable::ability(flash.clone()),
+            ChooseSpec::Object(ObjectFilter::default().in_zone(Zone::Hand)),
+            GrantDuration::UntilYourNextTurnEnd,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("the next-turn duration must be executable");
+
+        assert_eq!(
+            game.effect_store.grant_registry.grants[0].source,
+            GrantSource::until_player_next_turn_end(source, alice, 3)
+        );
+        for turn_number in [1, 2, 3] {
+            game.turn.turn_number = turn_number;
+            assert!(game.effect_store.grant_registry.card_has_granted_ability(
+                &game,
+                creature_id,
+                Zone::Hand,
+                bob,
+                &flash,
+            ));
+        }
+        game.turn.turn_number = 4;
+        assert!(!game.effect_store.grant_registry.card_has_granted_ability(
+            &game,
+            creature_id,
+            Zone::Hand,
+            bob,
+            &flash,
+        ));
+    }
+
+    #[test]
+    fn targeted_next_turn_grant_uses_a_queued_extra_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(3), "Extra-turn Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_id = game.create_object_from_card(&card, alice, Zone::Hand);
+        game.turn_store.extra_turns.push(alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.targets = vec![crate::effects::ResolvedTarget::Object(creature_id)];
+        GrantEffect::new(
+            Grantable::ability(StaticAbility::flash()),
+            ChooseSpec::Object(ObjectFilter::default().in_zone(Zone::Hand)),
+            GrantDuration::UntilYourNextTurnEnd,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("the next-turn duration must be executable");
+
+        assert_eq!(
+            game.effect_store.grant_registry.grants[0].source,
+            GrantSource::until_player_next_turn_end(source, alice, 2)
+        );
     }
 
     #[test]

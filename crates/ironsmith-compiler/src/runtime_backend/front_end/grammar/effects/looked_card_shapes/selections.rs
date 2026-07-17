@@ -4,9 +4,11 @@ use winnow::combinator::{alt, eof, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
+use crate::cards::builders::LibraryBottomOrderAst;
+use crate::effect::ChoiceCount;
 use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
-use super::super::super::primitives;
+use super::super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LookedCardDestinationShape {
@@ -57,6 +59,133 @@ pub(crate) struct ChosenCardMoveFollowupShape {
     pub(crate) followup: Range<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CountedLookedHandRemainderShape {
+    pub(crate) count: ChoiceCount,
+    pub(crate) remainder_order: LibraryBottomOrderAst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OptionalLookedTopRemainderShape {
+    pub(crate) count: ChoiceCount,
+    pub(crate) remainder_order: LibraryBottomOrderAst,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ExactLookedCardMoveShape {
+    pub(crate) destination: LookedCardDestinationShape,
+}
+
+fn counted_looked_reference(input: &mut LexStream<'_>) -> WResult<ChoiceCount> {
+    let count = leaf::parse_leaf_choice_count_prefix_lexed.parse_next(input)?;
+    alt((
+        primitives::phrase(&["of", "those", "cards"]),
+        primitives::phrase(&["of", "them"]),
+    ))
+    .void()
+    .parse_next(input)?;
+    Ok(count)
+}
+
+fn library_bottom_order(input: &mut LexStream<'_>) -> WResult<LibraryBottomOrderAst> {
+    alt((
+        primitives::phrase(&["in", "a", "random", "order"]).value(LibraryBottomOrderAst::Random),
+        primitives::phrase(&["in", "random", "order"]).value(LibraryBottomOrderAst::Random),
+        primitives::phrase(&["in", "any", "order"]).value(LibraryBottomOrderAst::ChooserChooses),
+    ))
+    .parse_next(input)
+}
+
+fn library_position(input: &mut LexStream<'_>, position: &str) -> WResult<()> {
+    primitives::kw("on").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    if position == "top" {
+        primitives::kw("top").parse_next(input)?;
+    } else {
+        primitives::kw("bottom").parse_next(input)?;
+    }
+    primitives::phrase(&["of", "your", "library"])
+        .void()
+        .parse_next(input)
+}
+
+fn standalone_library_bottom_remainder(
+    input: &mut LexStream<'_>,
+) -> WResult<LibraryBottomOrderAst> {
+    primitives::kw("put").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("rest").parse_next(input)?;
+    library_position(input, "bottom")?;
+    let order = library_bottom_order.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(order)
+}
+
+fn counted_looked_hand_remainder(
+    input: &mut LexStream<'_>,
+) -> WResult<CountedLookedHandRemainderShape> {
+    primitives::kw("put").parse_next(input)?;
+    let count = counted_looked_reference.parse_next(input)?;
+    primitives::phrase(&["into", "your", "hand"])
+        .void()
+        .parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("rest").parse_next(input)?;
+    library_position(input, "bottom")?;
+    let remainder_order = library_bottom_order.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CountedLookedHandRemainderShape {
+        count,
+        remainder_order,
+    })
+}
+
+pub(crate) fn parse_counted_looked_hand_remainder_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<CountedLookedHandRemainderShape> {
+    counted_looked_hand_remainder
+        .parse(LexStream::new(trim_lexed_commas(tokens)))
+        .ok()
+}
+
+fn optional_looked_top_selection(input: &mut LexStream<'_>) -> WResult<ChoiceCount> {
+    primitives::phrase(&["you", "may", "put"])
+        .void()
+        .parse_next(input)?;
+    let count = counted_looked_reference.parse_next(input)?;
+    library_position(input, "top")?;
+    primitives::sentence_end().parse_next(input)?;
+    if count == ChoiceCount::exactly(1) || count == ChoiceCount::up_to(1) {
+        // The surrounding `you may` carries the optionality.  Preserve the
+        // selected branch as an exact singleton so lowering can represent the
+        // choice as `May { choose one, move it }` instead of losing the printed
+        // "may" in a flat `up to one` selection.
+        Ok(ChoiceCount::exactly(1))
+    } else {
+        Err(primitives::backtrack_err(
+            "optional looked-card top selection",
+            "one or up to one looked card",
+        ))
+    }
+}
+
+pub(crate) fn parse_optional_looked_top_remainder_shape(
+    selection_tokens: &[OwnedLexToken],
+    remainder_tokens: &[OwnedLexToken],
+) -> Option<OptionalLookedTopRemainderShape> {
+    let count = optional_looked_top_selection
+        .parse(LexStream::new(trim_lexed_commas(selection_tokens)))
+        .ok()?;
+    let remainder_order = standalone_library_bottom_remainder
+        .parse(LexStream::new(trim_lexed_commas(remainder_tokens)))
+        .ok()?;
+    Some(OptionalLookedTopRemainderShape {
+        count,
+        remainder_order,
+    })
+}
+
 fn looked_one_reference(input: &mut LexStream<'_>) -> WResult<()> {
     primitives::kw("one").parse_next(input)?;
     alt((
@@ -102,6 +231,23 @@ fn looked_card_destination(input: &mut LexStream<'_>) -> WResult<LookedCardDesti
 fn bare_one_destination(input: &mut LexStream<'_>) -> WResult<LookedCardDestinationShape> {
     primitives::kw("one").parse_next(input)?;
     looked_card_destination.parse_next(input)
+}
+
+fn exact_looked_card_move(input: &mut LexStream<'_>) -> WResult<ExactLookedCardMoveShape> {
+    primitives::kw("put").parse_next(input)?;
+    looked_one_reference.parse_next(input)?;
+    let destination = looked_card_destination.parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(ExactLookedCardMoveShape { destination })
+}
+
+pub(crate) fn parse_exact_looked_card_move_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ExactLookedCardMoveShape> {
+    exact_looked_card_move
+        .parse(LexStream::new(trim_lexed_commas(tokens)))
+        .ok()
 }
 
 fn three_way_disposition(input: &mut LexStream<'_>) -> WResult<ThreeWayLookedCardDispositionShape> {
@@ -261,6 +407,65 @@ mod tests {
                 .filter_map(OwnedLexToken::as_word)
                 .collect::<Vec<_>>(),
             ["draw", "two", "cards"]
+        );
+    }
+
+    #[test]
+    fn parses_exact_singleton_looked_card_moves() {
+        for (text, destination) in [
+            (
+                "Put one of them into your graveyard",
+                LookedCardDestinationShape::Graveyard,
+            ),
+            (
+                "Put one of those cards into their graveyard",
+                LookedCardDestinationShape::Graveyard,
+            ),
+        ] {
+            assert_eq!(
+                parse_exact_looked_card_move_shape(&lex(text)),
+                Some(ExactLookedCardMoveShape { destination })
+            );
+        }
+
+        assert!(
+            parse_exact_looked_card_move_shape(&lex("Put the rest into your graveyard")).is_none()
+        );
+    }
+
+    #[test]
+    fn parses_direct_counted_hand_and_random_remainder_partition() {
+        for (text, count) in [
+            (
+                "Put two of those cards into your hand and the rest on the bottom of your library in a random order",
+                ChoiceCount::exactly(2),
+            ),
+            (
+                "Put three of them into your hand and the rest on the bottom of your library in a random order",
+                ChoiceCount::exactly(3),
+            ),
+        ] {
+            assert_eq!(
+                parse_counted_looked_hand_remainder_shape(&lex(text)),
+                Some(CountedLookedHandRemainderShape {
+                    count,
+                    remainder_order: LibraryBottomOrderAst::Random,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn parses_separate_optional_top_selection_and_exact_remainder() {
+        assert_eq!(
+            parse_optional_looked_top_remainder_shape(
+                &lex("You may put one of those cards on top of your library"),
+                &lex("Put the rest on the bottom of your library in a random order"),
+            ),
+            Some(OptionalLookedTopRemainderShape {
+                count: ChoiceCount::exactly(1),
+                remainder_order: LibraryBottomOrderAst::Random,
+            })
         );
     }
 }

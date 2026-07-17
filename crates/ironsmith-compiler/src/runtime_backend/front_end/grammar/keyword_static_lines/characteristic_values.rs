@@ -23,6 +23,7 @@ pub(crate) enum CharacteristicAggregateKind {
     BasicLandTypes,
     CreatureTypes,
     Colors,
+    DistinctNames,
     DifferentPowers,
     CardTypes,
 }
@@ -36,6 +37,13 @@ pub(crate) struct CharacteristicAggregatePrefix<'a> {
 pub(crate) fn parse_characteristic_shared_value_tail_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
+    let (power_toughness_start, _, _) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["power", "and", "toughness"])
+    })?;
+    if power_toughness_start > 0 && tokens[power_toughness_start - 1].is_word("with") {
+        return None;
+    }
+
     primitives::parse_all(
         tokens,
         parse_characteristic_shared_value_tail_lexed,
@@ -213,6 +221,8 @@ fn parse_characteristic_aggregate_prefix_lexed<'a>(
             primitives::kw("among"),
         )
             .value(CharacteristicAggregateKind::Colors),
+        (primitives::kw("differently"), primitives::kw("named"))
+            .value(CharacteristicAggregateKind::DistinctNames),
         (
             primitives::kw("different"),
             alt((
@@ -276,6 +286,20 @@ mod tests {
         assert_eq!(
             parse_characteristic_aggregate_prefix_tokens(stripped).map(|spec| spec.kind),
             Some(CharacteristicAggregateKind::CardTypes)
+        );
+
+        let tokens = lex_line("the number of differently named lands you control", 0).unwrap();
+        let stripped = strip_characteristic_number_of_prefix_tokens(&tokens);
+        let parsed = parse_characteristic_aggregate_prefix_tokens(stripped)
+            .expect("differently named characteristic aggregate should parse");
+        assert_eq!(parsed.kind, CharacteristicAggregateKind::DistinctNames);
+        assert_eq!(
+            parsed
+                .scope_tokens
+                .iter()
+                .filter_map(OwnedLexToken::as_word)
+                .collect::<Vec<_>>(),
+            ["lands", "you", "control"]
         );
     }
 }

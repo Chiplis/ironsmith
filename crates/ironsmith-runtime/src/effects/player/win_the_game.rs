@@ -41,12 +41,15 @@ impl EffectExecutor for WinTheGameEffect {
         let losing_players = game
             .players
             .iter()
-            .filter(|player| player.id != player_id && player.is_in_game())
+            .filter(|player| {
+                player.id != player_id
+                    && player.is_in_game()
+                    && game.are_opponents(player_id, player.id)
+                    && game.player_is_within_range(player_id, player.id)
+            })
             .map(|player| player.id)
             .collect::<Vec<_>>();
-        for other_player in losing_players {
-            game.mark_player_lost(other_player);
-        }
+        game.mark_players_lost_simultaneously(&losing_players);
         Ok(EffectOutcome::resolved())
     }
 }

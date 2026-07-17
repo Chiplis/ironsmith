@@ -9,8 +9,17 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Runtime tag for the resolving spell or ability's source object.
+///
+/// This gives object-relative player filters (for example, "this artifact's
+/// owner") the same snapshot-backed representation as other tagged-object
+/// references without inventing a separate player-filter primitive.
+pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
+
 /// One source snapshot per mana unit spent to cast the current spell.
 pub const MANA_SOURCES_SPENT_TO_CAST_TAG: &str = "__mana_sources_spent_to_cast__";
+/// The spell or ability whose transaction consumed one concrete mana unit.
+pub const MANA_PAID_OBJECT_TAG: &str = "__mana_paid_object__";
 
 /// Runtime tag for the creature sacrificed to an exploit action.
 pub const EXPLOITED_TAG: &str = "exploited";
@@ -20,6 +29,10 @@ pub const EXPLOITER_TAG: &str = "exploiter";
 
 /// Runtime tag for cards seen by a surveil action this turn.
 pub const SURVEILLED_THIS_TURN_TAG: &str = "__surveilled_this_turn__";
+
+/// Runtime action-event tag for the card put into a graveyard while
+/// performing the manifest-dread keyword action.
+pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
 
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";

@@ -3,11 +3,15 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::ability::{
-    ManaSpendAbilityGrantDuration, ManaSpendBonusCondition, ManaSpendGrantedKeyword,
-    ManaUsageRestriction, ManaUsageSubtypeRequirement,
+    ManaPaymentPredicate, ManaPaymentPurpose, ManaSpendAbilityGrantDuration,
+    ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaSpendPayload, ManaUsageRestriction,
+    ManaUsageSubtypeRequirement,
 };
+use crate::effect::{Effect, Value};
 use crate::object::CounterType;
+use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbilityId;
+use crate::target::ChooseSpec;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -34,9 +38,8 @@ const SPEND_MANA_CAST_PREFIXES: &[&[&str]] = &[
     &["spend", "this", "mana", "only", "to", "cast"],
     &["spend", "that", "mana", "only", "to", "cast"],
 ];
-const WHEN_MANA_SPENT_SPELL_PREFIXES: &[&[&str]] = &[&[
-    "when", "you", "spend", "this", "mana", "to", "cast",
-]];
+const WHEN_MANA_SPENT_SPELL_PREFIXES: &[&[&str]] =
+    &[&["when", "you", "spend", "this", "mana", "to", "cast"]];
 const UNCOUNTERABLE_TAILS: &[&[&str]] = &[
     &["and", "that", "spell", "can't", "be", "countered"],
     &["and", "that", "spell", "cant", "be", "countered"],
@@ -95,7 +98,8 @@ pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken])
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
-    parse_cast_unlock_turn_face_up(tokens)
+    parse_generic_mana_transaction(tokens)
+        .or_else(|| parse_cast_unlock_turn_face_up(tokens))
         .or_else(|| parse_cast_or_activate_source(tokens))
         .or_else(|| parse_legacy_restriction(tokens))
         .or_else(|| parse_activate_ability_restriction(tokens))
@@ -106,6 +110,14 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
 pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
+    if let Some(transaction) = parse_generic_mana_transaction(tokens)
+        && matches!(
+            transaction,
+            ManaUsageRestriction::PaymentTransaction { ref on_spend, .. } if !on_spend.is_empty()
+        )
+    {
+        return Some(transaction);
+    }
     let parsed = parse_mana_spend_bonus_shape(tokens)?;
     let spec_tokens = trim_lexed_commas(parsed.spec_tokens);
     if TokenWordView::new(spec_tokens).is_empty() {
@@ -158,9 +170,12 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
 
     let (counter_bonus_tokens, mut duration_grants) =
         strip_mana_spend_duration_grant_suffix(bonus_tokens);
-    duration_grants.extend(granted_abilities.iter().copied().map(|ability| {
-        (ability, ManaSpendAbilityGrantDuration::UntilEndOfTurn)
-    }));
+    duration_grants.extend(
+        granted_abilities
+            .iter()
+            .copied()
+            .map(|ability| (ability, ManaSpendAbilityGrantDuration::UntilEndOfTurn)),
+    );
     let enters_with_counters = parse_mana_spend_counter_shape(counter_bonus_tokens)
         .and_then(parse_mana_spend_counter_tail)
         .into_iter()
@@ -173,9 +188,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
         )
         || duration_grants
             .iter()
-            .any(|(_, duration)| {
-                *duration == ManaSpendAbilityGrantDuration::UntilYourNextTurn
-            })
+            .any(|(_, duration)| *duration == ManaSpendAbilityGrantDuration::UntilYourNextTurn)
         || !granted_keywords.is_empty()
     {
         if !grant_uncounterable
@@ -228,6 +241,129 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
         grant_uncounterable: false,
         enters_with_counters: vec![(counter_type, count)],
         granted_abilities: vec![],
+    })
+}
+
+fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
+    if matches_any_exact_tokens(
+        tokens,
+        &[
+            &[
+                "spend",
+                "this",
+                "mana",
+                "only",
+                "to",
+                "pay",
+                "cumulative",
+                "upkeep",
+                "costs",
+            ],
+            &[
+                "spend",
+                "that",
+                "mana",
+                "only",
+                "to",
+                "pay",
+                "cumulative",
+                "upkeep",
+                "costs",
+            ],
+        ],
+    ) {
+        return Some(ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::Purpose(
+                ManaPaymentPurpose::CumulativeUpkeep,
+            )),
+            on_spend: Vec::new(),
+        });
+    }
+    if matches_any_exact_tokens(
+        tokens,
+        &[
+            &[
+                "spend", "this", "mana", "only", "on", "costs", "that", "contain", "x",
+            ],
+            &[
+                "spend", "that", "mana", "only", "on", "costs", "that", "contain", "x",
+            ],
+        ],
+    ) {
+        return Some(ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::CostContainsX),
+            on_spend: Vec::new(),
+        });
+    }
+
+    let words = TokenWordView::new(tokens).word_refs();
+    let cast_prefix = words.starts_with(&["when", "that", "mana", "is", "spent", "to", "cast"])
+        || words.starts_with(&["when", "you", "spend", "this", "mana", "to", "cast"]);
+    if !cast_prefix {
+        return None;
+    }
+
+    let (filter, additional_predicate) = if words.windows(8).any(|window| {
+        window
+            == [
+                "creature", "spell", "that", "shares", "a", "creature", "type", "with",
+            ]
+    }) && words
+        .windows(2)
+        .any(|window| window == ["your", "commander"])
+    {
+        (
+            ObjectFilter::default().with_type(CardType::Creature),
+            Some(ManaPaymentPredicate::SharesCreatureTypeWithPayersCommander),
+        )
+    } else if words
+        .windows(4)
+        .any(|window| window == ["your", "commander", "scry", "x"])
+    {
+        (
+            ObjectFilter::default()
+                .commander()
+                .owned_by(PlayerFilter::You),
+            None,
+        )
+    } else if words
+        .windows(5)
+        .any(|window| window == ["red", "instant", "or", "sorcery", "spell"])
+    {
+        let mut filter = ObjectFilter::default().with_colors(crate::color::ColorSet::RED);
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        (filter, None)
+    } else {
+        return None;
+    };
+
+    let mut predicates = vec![
+        ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+        ManaPaymentPredicate::SourceMatches(filter),
+    ];
+    predicates.extend(additional_predicate);
+    let effect = if words.windows(2).any(|window| window == ["scry", "1"]) {
+        Effect::scry(1)
+    } else if words.windows(2).any(|window| window == ["scry", "x"]) {
+        Effect::scry(Value::CommanderCastCount(PlayerFilter::You))
+    } else if words
+        .windows(3)
+        .any(|window| window == ["copy", "that", "spell"])
+    {
+        Effect::new(crate::effects::CopySpellEffect::single(ChooseSpec::Tagged(
+            crate::tag::TagKey::from(ironsmith_core::MANA_PAID_OBJECT_TAG),
+        )))
+    } else {
+        return None;
+    };
+
+    Some(ManaUsageRestriction::PaymentTransaction {
+        restriction: None,
+        on_spend: vec![ManaSpendPayload {
+            predicate: ManaPaymentPredicate::All(predicates),
+            effects: ResolutionProgram::from_effects(vec![effect]),
+            choices: Vec::new(),
+        }],
     })
 }
 
@@ -948,5 +1084,53 @@ mod tests {
                 ..
             }) if granted_keywords == [ManaSpendGrantedKeyword::Riot]
         ));
+    }
+
+    #[test]
+    fn u078_parses_arbitrary_payment_purpose_and_cost_predicates() {
+        let cumulative = parse_mana_usage_restriction_sentence_lexed(&lex(
+            "Spend this mana only to pay cumulative upkeep costs.",
+        ));
+        assert!(matches!(
+            cumulative,
+            Some(ManaUsageRestriction::PaymentTransaction {
+                restriction: Some(ManaPaymentPredicate::Purpose(
+                    ManaPaymentPurpose::CumulativeUpkeep
+                )),
+                ref on_spend,
+            }) if on_spend.is_empty()
+        ));
+
+        let contains_x = parse_mana_usage_restriction_sentence_lexed(&lex(
+            "Spend this mana only on costs that contain {X}.",
+        ));
+        assert!(matches!(
+            contains_x,
+            Some(ManaUsageRestriction::PaymentTransaction {
+                restriction: Some(ManaPaymentPredicate::CostContainsX),
+                ref on_spend,
+            }) if on_spend.is_empty()
+        ));
+    }
+
+    #[test]
+    fn u078_parses_generic_scry_and_copy_on_spend_payloads() {
+        for text in [
+            "When that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1.",
+            "When you spend this mana to cast your commander, scry X, where X is the number of times it's been cast from the command zone this game.",
+            "When that mana is spent to cast a red instant or sorcery spell, copy that spell and you may choose new targets for the copy.",
+        ] {
+            let parsed = parse_mana_spend_bonus_sentence_lexed(&lex(text));
+            assert!(
+                matches!(
+                    parsed,
+                    Some(ManaUsageRestriction::PaymentTransaction {
+                        restriction: None,
+                        ref on_spend,
+                    }) if on_spend.len() == 1 && !on_spend[0].effects.is_empty()
+                ),
+                "failed to parse {text}: {parsed:?}"
+            );
+        }
     }
 }

@@ -322,6 +322,21 @@ fn describe_branch_member(effect: &Effect) -> Option<String> {
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
         return describe_may_actions(may);
     }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let [reveal_effect, move_effect] = sequence.effects.as_slice() else {
+            return None;
+        };
+        let reveal = structural_unwrap_render_wrappers(reveal_effect)
+            .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+        let moved = structural_unwrap_render_wrappers(move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if sequence.surface != ironsmith_core::SequenceSurface::Sequential
+            || !matches!(moved.target.base(), ChooseSpec::Tagged(tag) if tag == &reveal.tag)
+        {
+            return None;
+        }
+        return describe_branch(&sequence.effects);
+    }
     if effect.downcast_ref::<crate::effects::IfEffect>().is_some() {
         return None;
     }
@@ -715,35 +730,60 @@ fn describe_observation_continuation(
     }
 }
 
-fn branch_moves_observed_to_battlefield(effects: &[Effect], observed_tag: &TagKey) -> bool {
-    effects.iter().any(|effect| {
-        let effect = structural_unwrap_render_wrappers(effect);
-        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
-            return branch_moves_observed_to_battlefield(&may.effects, observed_tag);
-        }
-        effect
-            .downcast_ref::<crate::effects::MoveToZoneEffect>()
-            .is_some_and(|move_to_zone| {
-                move_to_zone.zone == Zone::Battlefield
-                    && matches!(
-                        move_to_zone.target.base(),
-                        ChooseSpec::Tagged(tag) if tag == observed_tag
-                    )
-            })
-    })
+fn effect_tree_moves_observed_to_zone(effect: &Effect, observed_tag: &TagKey, zone: Zone) -> bool {
+    let effect = structural_unwrap_render_wrappers(effect);
+    if effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_to_zone| {
+            move_to_zone.zone == zone
+                && matches!(
+                    move_to_zone.target.base(),
+                    ChooseSpec::Tagged(tag) if tag == observed_tag
+                )
+        })
+    {
+        return true;
+    }
+
+    if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        return may
+            .effects
+            .iter()
+            .any(|child| effect_tree_moves_observed_to_zone(child, observed_tag, zone));
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return sequence
+            .effects
+            .iter()
+            .any(|child| effect_tree_moves_observed_to_zone(child, observed_tag, zone));
+    }
+    false
 }
 
-fn is_observed_not_on_battlefield(condition: &Condition, observed_tag: &TagKey) -> bool {
+fn branch_moves_observed_to_zone(effects: &[Effect], observed_tag: &TagKey, zone: Zone) -> bool {
+    effects
+        .iter()
+        .any(|effect| effect_tree_moves_observed_to_zone(effect, observed_tag, zone))
+}
+
+fn observed_not_in_zone(condition: &Condition, observed_tag: &TagKey) -> Option<Zone> {
     let Condition::Not(inner) = condition else {
-        return false;
+        return None;
     };
-    matches!(
-        inner.as_ref(),
-        Condition::PlayerTaggedObjectMatches { player, tag, filter }
-            if *player == PlayerFilter::You
-                && tag == observed_tag
-                && filter.zone == Some(Zone::Battlefield)
-    )
+    let Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+    } = inner.as_ref()
+    else {
+        return None;
+    };
+    if *player != PlayerFilter::You || tag != observed_tag {
+        return None;
+    }
+    let mut remainder = filter.clone();
+    let zone = remainder.zone.take()?;
+    (remainder == ObjectFilter::default()).then_some(zone)
 }
 
 fn describe_if_not_moved_fallback(
@@ -751,14 +791,23 @@ fn describe_if_not_moved_fallback(
     fallback: &crate::effects::ConditionalEffect,
     observed_tag: &TagKey,
 ) -> Option<String> {
-    if !fallback.if_false.is_empty()
-        || !is_observed_not_on_battlefield(&fallback.condition, observed_tag)
-        || !branch_moves_observed_to_battlefield(&previous.if_true, observed_tag)
-    {
+    if !fallback.if_false.is_empty() {
         return None;
     }
+    let destination_zone = observed_not_in_zone(&fallback.condition, observed_tag)?;
+    if !branch_moves_observed_to_zone(&previous.if_true, observed_tag, destination_zone) {
+        return None;
+    }
+    let destination = match destination_zone {
+        Zone::Battlefield => "onto the battlefield",
+        Zone::Hand => "into your hand",
+        Zone::Graveyard => "into your graveyard",
+        Zone::Library => "into your library",
+        Zone::Exile => "into exile",
+        Zone::Stack | Zone::Command | Zone::Ante | Zone::OutsideGame => return None,
+    };
     Some(format!(
-        "If you don't put the card onto the battlefield, {}",
+        "If you don't put the card {destination}, {}",
         describe_branch(&fallback.if_true)?
     ))
 }
@@ -818,9 +867,17 @@ fn describe_observed_life_payment(effects: &[&Effect]) -> Option<(String, usize)
     let [life_payment] = may.effects.as_slice() else {
         return None;
     };
-    let lose_life = structural_unwrap_render_wrappers(life_payment)
-        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
-    if lose_life.player != ChooseSpec::Player(PlayerFilter::You) {
+    let life_payment = structural_unwrap_render_wrappers(life_payment);
+    let (payment_player, payment_amount) = if let Some(pay_life) =
+        life_payment.downcast_ref::<crate::effects::PayLifeEffect>()
+    {
+        (&pay_life.player, &pay_life.amount)
+    } else if let Some(lose_life) = life_payment.downcast_ref::<crate::effects::LoseLifeEffect>() {
+        (&lose_life.player, &lose_life.amount)
+    } else {
+        return None;
+    };
+    if payment_player != &ChooseSpec::Player(PlayerFilter::You) {
         return None;
     }
     let if_effect = effects.get(2)?.downcast_ref::<crate::effects::IfEffect>()?;
@@ -836,13 +893,13 @@ fn describe_observed_life_payment(effects: &[&Effect]) -> Option<(String, usize)
         format!(
             "{}. If it's {condition}, you may pay {} life. If you do, {followup}",
             observation.text()?,
-            describe_value(&lose_life.amount)
+            describe_value(payment_amount)
         ),
         3,
     ))
 }
 
-pub(super) fn describe_immediate_observation_conditionals(
+pub(in crate::compiled_text) fn describe_immediate_observation_conditionals(
     effects: &[&Effect],
 ) -> Option<(String, usize)> {
     if let Some(rendered) = describe_observation_after_if_result(effects) {
@@ -1042,6 +1099,37 @@ mod tests {
         );
         assert!(!rendered.contains("Then if not"), "{rendered}");
         assert!(!rendered.contains("was revealed this way"), "{rendered}");
+    }
+
+    #[test]
+    fn private_look_renders_hand_move_and_graveyard_fallback() {
+        let tag = TagKey::from("__sentence_helper_revealed_test");
+        let reveal_and_move = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::new(crate::effects::RevealTaggedEffect::new(tag.clone())),
+            tagged_move(&tag, Zone::Hand),
+        ]));
+        let mut creature_card = ObjectFilter::default();
+        creature_card.card_types.push(CardType::Creature);
+        let effects = vec![
+            Effect::look_at_top_cards(PlayerFilter::You, 1, tag.clone()),
+            Effect::conditional_only(
+                Condition::TaggedObjectMatches(tag.clone(), creature_card),
+                vec![Effect::may_single(reveal_and_move)],
+            ),
+            Effect::conditional_only(
+                Condition::Not(Box::new(Condition::PlayerTaggedObjectMatches {
+                    player: PlayerFilter::You,
+                    tag: tag.clone(),
+                    filter: ObjectFilter::default().in_zone(Zone::Hand),
+                })),
+                vec![Effect::may_single(tagged_move(&tag, Zone::Graveyard))],
+            ),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Look at the top card of your library. If it's a creature card, you may reveal it and put it into your hand. If you don't put the card into your hand, you may put it into your graveyard"
+        );
     }
 
     #[test]

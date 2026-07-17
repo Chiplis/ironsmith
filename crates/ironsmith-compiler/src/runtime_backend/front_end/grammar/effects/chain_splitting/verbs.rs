@@ -89,6 +89,7 @@ fn parse_chain_verb_kind(input: &mut &[&str]) -> WResult<ChainVerbKind> {
         "flips" | "flip" => ChainVerbKind::Flip,
         "rolls" | "roll" => ChainVerbKind::Roll,
         "regenerates" | "regenerate" => ChainVerbKind::Regenerate,
+        "heals" | "heal" | "healed" => ChainVerbKind::Heal,
         "mills" | "mill" => ChainVerbKind::Mill,
         "gets" | "get" => ChainVerbKind::Get,
         "removes" | "remove" => ChainVerbKind::Remove,

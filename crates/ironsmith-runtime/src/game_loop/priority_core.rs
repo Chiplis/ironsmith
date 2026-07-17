@@ -35,6 +35,34 @@ pub fn last_priority_advance_perf() -> Option<PriorityAdvancePerfMetrics> {
     LAST_PRIORITY_ADVANCE_PERF.with(|slot| slot.borrow().clone())
 }
 
+fn terminal_progress_or_resume_subgame(
+    game: &mut GameState,
+    result: GameResult,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    if game.is_subgame() {
+        game.finish_subgame_with(result, decision_maker)
+            .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+        Ok(GameProgress::StackResolved)
+    } else {
+        Ok(GameProgress::GameOver(result))
+    }
+}
+
+pub(super) fn finish_mandatory_loop_draw(
+    game: &mut GameState,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    if !game.mandatory_loop_draw_pending() {
+        game.mark_mandatory_loop_draw();
+    }
+    if game.resolve_mandatory_loop_draw() {
+        terminal_progress_or_resume_subgame(game, GameResult::Draw, decision_maker)
+    } else {
+        Ok(GameProgress::StackResolved)
+    }
+}
+
 ///
 /// This is the main entry point for the decision-based game loop.
 /// Call this repeatedly, handling decisions as they come, until
@@ -57,6 +85,17 @@ pub fn advance_priority_with_dm(
 ) -> Result<GameProgress, GameLoopError> {
     let total_started_at = PerfTimer::start();
     let mut perf = PriorityAdvancePerfMetrics::default();
+    if game.subgame_starting_procedure_pending() {
+        return Err(GameLoopError::InvalidState(
+            "the subgame starting procedure must finish before priority can advance".to_string(),
+        ));
+    }
+    if game.mandatory_loop_draw_pending() {
+        perf.total_ms = total_started_at.elapsed_ms();
+        perf.result_kind = "mandatory_loop_draw".to_string();
+        store_priority_advance_perf(perf);
+        return finish_mandatory_loop_draw(game, decision_maker);
+    }
     // Check for pending replacement effect choice first
     // This takes priority over normal game flow
     let replacement_started_at = PerfTimer::start();
@@ -107,12 +146,30 @@ pub fn advance_priority_with_dm(
 
     // Check and apply state-based actions
     let sba_started_at = PerfTimer::start();
-    check_and_apply_sbas_with(game, trigger_queue, decision_maker)?;
+    if let Err(error) = check_and_apply_sbas_with(game, trigger_queue, decision_maker) {
+        if matches!(error, GameLoopError::MandatoryLoopDraw) {
+            perf.state_based_actions_ms = sba_started_at.elapsed_ms();
+            perf.total_ms = total_started_at.elapsed_ms();
+            perf.result_kind = "mandatory_loop_draw".to_string();
+            store_priority_advance_perf(perf);
+            return finish_mandatory_loop_draw(game, decision_maker);
+        }
+        return Err(error);
+    }
     perf.state_based_actions_ms = sba_started_at.elapsed_ms();
 
     // Put triggered abilities on the stack with target selection
     let triggers_started_at = PerfTimer::start();
-    put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)?;
+    if let Err(error) = put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker) {
+        if matches!(error, GameLoopError::MandatoryLoopDraw) {
+            perf.put_triggers_ms = triggers_started_at.elapsed_ms();
+            perf.total_ms = total_started_at.elapsed_ms();
+            perf.result_kind = "mandatory_loop_draw".to_string();
+            store_priority_advance_perf(perf);
+            return finish_mandatory_loop_draw(game, decision_maker);
+        }
+        return Err(error);
+    }
     perf.put_triggers_ms = triggers_started_at.elapsed_ms();
 
     // Check if game is over
@@ -129,7 +186,22 @@ pub fn advance_priority_with_dm(
         perf.total_ms = total_started_at.elapsed_ms();
         perf.result_kind = "game_over_draw".to_string();
         store_priority_advance_perf(perf);
-        return Ok(GameProgress::GameOver(GameResult::Draw));
+        return terminal_progress_or_resume_subgame(game, GameResult::Draw, decision_maker);
+    }
+    if let Some(winners) = game.sole_surviving_team_winners() {
+        perf.game_over_check_ms = game_over_started_at.elapsed_ms();
+        perf.total_ms = total_started_at.elapsed_ms();
+        perf.result_kind = "game_over_team".to_string();
+        store_priority_advance_perf(perf);
+        for winner in &winners {
+            game.mark_team_winner(*winner);
+        }
+        let result = if winners.len() == 1 {
+            GameResult::Winner(winners[0])
+        } else {
+            GameResult::Remaining(winners)
+        };
+        return terminal_progress_or_resume_subgame(game, result, decision_maker);
     }
     if remaining.len() == 1 {
         perf.game_over_check_ms = game_over_started_at.elapsed_ms();
@@ -137,9 +209,17 @@ pub fn advance_priority_with_dm(
         perf.result_kind = "game_over_winner".to_string();
         store_priority_advance_perf(perf);
         let winner = remaining[0];
+        if game.is_subgame() {
+            return terminal_progress_or_resume_subgame(
+                game,
+                GameResult::Winner(winner),
+                decision_maker,
+            );
+        }
         if let Some(player) = game.player_mut(winner) {
             player.has_won = true;
         }
+        game.finalize_ante_ownership(winner);
         return Ok(GameProgress::GameOver(GameResult::Winner(winner)));
     }
     perf.game_over_check_ms = game_over_started_at.elapsed_ms();
@@ -154,13 +234,29 @@ pub fn advance_priority_with_dm(
     };
     perf.priority_player = Some(priority_player.index() as u8);
 
-    // Compute legal actions for the priority player
+    // A CR 805 priority decision exposes actions for every member of the team.
+    // The primary player remains the prompt recipient/fallback decision maker.
     let legal_actions_started_at = PerfTimer::start();
-    let mut actions = compute_legal_actions(game, priority_player);
+    let priority_players = game.priority_team_players();
+    let mut actions = Vec::new();
+    for player in priority_players.iter().copied() {
+        for action in compute_legal_actions(game, player) {
+            if !actions.contains(&action) {
+                actions.push(action);
+            }
+        }
+    }
     perf.compute_legal_actions_ms = legal_actions_started_at.elapsed_ms();
     perf.compute_legal_actions_detail = crate::decision::last_compute_legal_actions_perf();
     let commander_actions_started_at = PerfTimer::start();
-    let commander_actions = compute_commander_actions(game, priority_player);
+    let mut commander_actions = Vec::new();
+    for player in priority_players {
+        for action in compute_commander_actions(game, player) {
+            if !commander_actions.contains(&action) && !actions.contains(&action) {
+                commander_actions.push(action);
+            }
+        }
+    }
     perf.compute_commander_actions_ms = commander_actions_started_at.elapsed_ms();
     perf.action_count = actions.len();
     perf.commander_action_count = commander_actions.len();
@@ -174,6 +270,19 @@ pub fn advance_priority_with_dm(
     Ok(GameProgress::NeedsDecisionCtx(
         crate::decisions::context::DecisionContext::Priority(ctx),
     ))
+}
+
+pub(super) fn priority_actor_for_action(
+    game: &GameState,
+    action: &LegalAction,
+) -> Option<PlayerId> {
+    if matches!(action, LegalAction::PassPriority) {
+        return game.turn.priority_player;
+    }
+    game.priority_team_players().into_iter().find(|player| {
+        compute_legal_actions(game, *player).contains(action)
+            || compute_commander_actions(game, *player).contains(action)
+    })
 }
 
 /// Apply a player's response to a decision during the priority loop.

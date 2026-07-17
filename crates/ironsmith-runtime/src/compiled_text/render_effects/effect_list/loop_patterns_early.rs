@@ -246,6 +246,20 @@
             continue;
         }
 
+        if let [look_effect, may_effect, remainder_effect, ..] = &filtered[idx..]
+            && let Some(look_at_top) =
+                look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(may) = may_effect.downcast_ref::<crate::effects::MayEffect>()
+            && let Some(remainder) = remainder_effect
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            && let Some(rendered) =
+                describe_looked_may_one_top_rest_bottom(look_at_top, may, remainder)
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
+
         if let [look_effect, choose_effect, move_effect, remainder_effect, ..] = &filtered[idx..]
             && let Some(look_at_top) =
                 look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -273,6 +287,14 @@
         }
 
         if let Some((rendered, consumed)) =
+            describe_two_stage_looked_card_partition(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
             describe_conditional_looked_hand_partition(&filtered[idx..])
         {
             parts.push(rendered);
@@ -290,6 +312,14 @@
 
         if let Some((rendered, consumed)) =
             describe_look_exile_face_down_rest_graveyard_then_cast(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_looked_card_selected_hand_remainder_bottom(&filtered[idx..])
         {
             parts.push(rendered);
             idx += consumed;

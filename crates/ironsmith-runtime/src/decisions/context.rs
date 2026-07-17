@@ -41,7 +41,8 @@ impl DecisionUiHints {
 pub enum DecisionHiddenCardVisibility {
     /// Do not expose hidden identities.
     None,
-    /// Open the cards only to the player making the decision.
+    /// Open the cards privately to the player making the decision. CR 722.4
+    /// also shares in-game information with that player's current controller.
     PrivateToDecisionPlayer,
     /// Open the cards to all players.
     Public,

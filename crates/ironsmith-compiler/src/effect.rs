@@ -263,6 +263,19 @@ impl Effect {
         ))
     }
 
+    pub fn mana_retained(
+        effects: Vec<Effect>,
+        duration: crate::effects::ManaRetentionDuration,
+    ) -> Self {
+        Self::new(crate::effects::ManaRetainedEffect::new(effects, duration))
+    }
+
+    pub fn mana_retained_until_end_of_combat(effects: Vec<Effect>) -> Self {
+        Self::new(crate::effects::ManaRetainedEffect::until_end_of_combat(
+            effects,
+        ))
+    }
+
     pub fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
         if let Some(sequence) = self.downcast_ref::<crate::effects::SequenceEffect>() {
             for effect in &sequence.effects {
@@ -272,6 +285,12 @@ impl Effect {
         }
         if let Some(restricted) = self.downcast_ref::<crate::effects::ManaRestrictedEffect>() {
             for effect in &restricted.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(retained) = self.downcast_ref::<crate::effects::ManaRetainedEffect>() {
+            for effect in &retained.effects {
                 visitor(effect);
             }
             return;
@@ -301,6 +320,12 @@ impl Effect {
         }
         if let Some(for_players) = self.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>() {
             for effect in &for_players.effects {
+                visitor(effect);
+            }
+            return;
+        }
+        if let Some(subgame) = self.downcast_ref::<crate::effects::PlaySubgameEffect<Effect>>() {
+            for effect in &subgame.nonwinner_effects {
                 visitor(effect);
             }
             return;
@@ -604,6 +629,14 @@ impl Effect {
 
     pub fn deal_damage(amount: impl Into<Value>, target: crate::target::ChooseSpec) -> Self {
         Self::new(DealDamageEffect::new(amount.into(), target))
+    }
+
+    pub fn heal_damage(target: crate::target::ChooseSpec, amount: impl Into<Value>) -> Self {
+        Self::new(crate::effects::HealDamageEffect::exact(target, amount))
+    }
+
+    pub fn heal_all_damage(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::HealDamageEffect::all(target))
     }
 
     pub fn turn_face_up(target: crate::target::ChooseSpec) -> Self {
@@ -1395,6 +1428,14 @@ impl Effect {
         Self::new(crate::effects::LoseLifeEffect::new(amount.into(), player))
     }
 
+    pub fn pay_life(amount: impl Into<Value>) -> Self {
+        Self::new(crate::effects::PayLifeEffect::you(amount))
+    }
+
+    pub fn pay_life_player(amount: impl Into<Value>, player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::PayLifeEffect::with_filter(amount, player))
+    }
+
     pub fn gain_life_player(amount: impl Into<Value>, target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::GainLifeEffect::new(amount.into(), target))
     }
@@ -1871,6 +1912,10 @@ impl Effect {
         Self::new(crate::effects::FlipCoinEffect::new(player))
     }
 
+    pub fn flip_coin_for_face(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::FlipCoinEffect::face_only(player))
+    }
+
     pub fn shuffle_objects_into_library(
         target: crate::target::ChooseSpec,
         player: crate::target::PlayerFilter,
@@ -1944,6 +1989,10 @@ impl Effect {
         Self::new(crate::effects::EndTurnEffect::new(player))
     }
 
+    pub fn end_combat_phase() -> Self {
+        Self::new(crate::effects::EndCombatPhaseEffect::new())
+    }
+
     pub fn skip_turn_player(player: crate::target::PlayerFilter) -> Self {
         Self::new(crate::effects::SkipTurnEffect::new(player))
     }
@@ -1991,7 +2040,7 @@ impl Effect {
     pub fn grant_next_spell_ability_this_turn(
         player: crate::target::PlayerFilter,
         filter: crate::target::ObjectFilter,
-        ability: crate::static_abilities::StaticAbility,
+        ability: crate::ability::Ability,
     ) -> Self {
         Self::new(crate::effects::GrantNextSpellAbilityEffect::new(
             player, filter, ability,
@@ -2191,6 +2240,16 @@ impl Effect {
         Self::new(crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect::new(player))
     }
 
+    pub fn shuffle_hand_graveyard_and_owned_permanents_into_library_player(
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(
+            crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect::including_owned_permanents(
+                player,
+            ),
+        )
+    }
+
     pub fn shuffle_graveyard_into_library_player(player: crate::target::PlayerFilter) -> Self {
         Self::new(crate::effects::ShuffleGraveyardIntoLibraryEffect::new(
             player,
@@ -2350,6 +2409,24 @@ impl Effect {
                 order,
                 player,
             ),
+        )
+    }
+
+    pub fn put_tagged_remainder_on_library_bottom_with_surface(
+        tag: impl Into<crate::tag::TagKey>,
+        keep_tagged: Option<crate::tag::TagKey>,
+        order: crate::effects::consult_helpers::LibraryBottomOrder,
+        player: crate::target::PlayerFilter,
+        surface: ironsmith_core::LibraryRemainderSurface,
+    ) -> Self {
+        Self::new(
+            crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
+                tag,
+                keep_tagged,
+                order,
+                player,
+            )
+            .with_surface(surface),
         )
     }
 }

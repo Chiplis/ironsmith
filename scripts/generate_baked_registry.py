@@ -131,7 +131,7 @@ def frontend_card_route_key(name: str) -> str:
     without_marks = "".join(
         char for char in normalized if not unicodedata.combining(char)
     )
-    slug = re.sub(r"[^a-z0-9]+", "-", without_marks).strip("-")
+    slug = re.sub(r"[^a-z0-9_]+", "-", without_marks).strip("-")
     return slug or "card"
 
 

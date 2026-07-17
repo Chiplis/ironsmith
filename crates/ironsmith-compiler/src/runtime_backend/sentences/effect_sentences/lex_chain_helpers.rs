@@ -83,6 +83,7 @@ fn lower_chain_verb(kind: chain_grammar::ChainVerbKind) -> Verb {
         chain_grammar::ChainVerbKind::Flip => Verb::Flip,
         chain_grammar::ChainVerbKind::Roll => Verb::Roll,
         chain_grammar::ChainVerbKind::Regenerate => Verb::Regenerate,
+        chain_grammar::ChainVerbKind::Heal => Verb::Heal,
         chain_grammar::ChainVerbKind::Mill => Verb::Mill,
         chain_grammar::ChainVerbKind::Get => Verb::Get,
         chain_grammar::ChainVerbKind::Remove => Verb::Remove,

@@ -375,7 +375,23 @@ pub(super) fn looks_like_statement_line(normalized: &str) -> bool {
 }
 
 fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {
-    super::super::grammar::statement_grouping::parse_statement_sentences_tokens(tokens).sentences
+    let mut sentences =
+        super::super::grammar::statement_grouping::parse_statement_sentences_tokens(tokens)
+            .sentences;
+    if let Some(first) = sentences.first_mut()
+        && first.first().is_some_and(|token| token.is_word("as"))
+        && first.get(1).is_some_and(|token| token.is_word("this"))
+        && let Some(enters_idx) = first.iter().position(|token| token.is_word("enters"))
+        && let Some(comma_idx) = first
+            .iter()
+            .enumerate()
+            .skip(enters_idx + 1)
+            .find_map(|(idx, token)| token.is_comma().then_some(idx))
+        && comma_idx + 1 < first.len()
+    {
+        first.drain(..=comma_idx);
+    }
+    sentences
 }
 
 fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {

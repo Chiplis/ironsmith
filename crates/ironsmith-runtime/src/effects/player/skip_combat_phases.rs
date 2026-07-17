@@ -33,7 +33,11 @@ impl EffectExecutor for SkipCombatPhasesEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        game.turn_store.skip_next_combat_phases.insert(player_id);
+        if !ctx.claim_shared_team_structure_operation(game, player_id, "skip_combat_phases") {
+            return Ok(EffectOutcome::resolved());
+        }
+        let turn_player = game.team_turn_representative(player_id);
+        game.turn_store.skip_next_combat_phases.insert(turn_player);
         Ok(EffectOutcome::resolved())
     }
 }

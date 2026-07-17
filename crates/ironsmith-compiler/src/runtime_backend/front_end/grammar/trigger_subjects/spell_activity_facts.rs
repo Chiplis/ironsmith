@@ -21,6 +21,7 @@ pub(crate) enum SpellOwnerSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SpellActivitySurfaceFacts {
     pub(crate) has_spell_noun: bool,
+    pub(crate) during_combat: bool,
     pub(crate) during_their_turn: bool,
     pub(crate) during_turn: Option<TriggerControllerReference>,
     pub(crate) exact_spells_this_turn: Option<u32>,
@@ -78,6 +79,7 @@ pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivit
 
     SpellActivitySurfaceFacts {
         has_spell_noun,
+        during_combat: exact_phrase_occurs(words, &["during", "combat"]),
         during_their_turn,
         during_turn,
         exact_spells_this_turn,
@@ -247,7 +249,7 @@ fn first_spell_turn_surface(words: &[&str]) -> bool {
 
     words.iter().enumerate().any(|(index, word)| {
         *word == "first"
-            && words[index + 1..(index + 5).min(words.len())]
+            && words[index + 1..(index + 8).min(words.len())]
                 .iter()
                 .any(|candidate| matches!(*candidate, "spell" | "spells"))
     })
@@ -406,6 +408,17 @@ mod tests {
             "hand",
         ]);
         assert!(outside_hand.from_not_hand);
+    }
+
+    #[test]
+    fn lady_loki_union_qualifier_preserves_first_spell_each_turn() {
+        let facts = parse_spell_activity_surface_facts(&[
+            "whenever", "you", "cast", "your", "first", "instant", "sorcery", "or", "villain",
+            "spell", "each", "turn",
+        ]);
+
+        assert_eq!(facts.exact_spells_this_turn, Some(1));
+        assert_eq!(facts.min_spells_this_turn, None);
     }
 
     #[test]

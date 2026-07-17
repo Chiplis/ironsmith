@@ -84,9 +84,64 @@ pub fn execute_turn_with(
 
 /// Generate step trigger events and add them to the queue.
 pub fn generate_and_queue_step_triggers(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
-    if let Some(event) = generate_step_trigger_events(game) {
-        queue_triggers_from_event(game, trigger_queue, event, true);
+    for event in crate::triggers::check::generate_step_trigger_events_for_active_players(game) {
+        let event = game.ensure_trigger_event_provenance(event);
+        queue_triggers_from_event(game, trigger_queue, event.clone(), true);
+        queue_inherent_radiation_trigger(game, trigger_queue, &event);
     }
+}
+
+/// CR 728.1 gives rad counters an inherent, sourceless intervening-if trigger.
+fn queue_inherent_radiation_trigger(
+    game: &GameState,
+    trigger_queue: &mut TriggerQueue,
+    event: &TriggerEvent,
+) {
+    let Some(precombat_main) =
+        event.downcast::<crate::events::phase::BeginningOfPrecombatMainPhaseEvent>()
+    else {
+        return;
+    };
+    let controller = precombat_main.player;
+    if game
+        .player(controller)
+        .map_or(0, |player| player.counter_count(CounterType::Rad))
+        == 0
+    {
+        return;
+    }
+
+    let ability = crate::ability::TriggeredAbility {
+        trigger: crate::triggers::Trigger::beginning_of_precombat_main_phase(
+            crate::target::PlayerFilter::Any,
+        ),
+        effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::RadiationEffect::new(),
+        )]),
+        choices: Vec::new(),
+        intervening_if: Some(crate::ConditionExpr::PlayerHasCountersOrMore {
+            player: crate::target::PlayerFilter::You,
+            counter_type: CounterType::Rad,
+            count: 1,
+        }),
+        presentation_label: None,
+    };
+    let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
+    let source = ObjectId::from_raw(u64::MAX - 2);
+    trigger_queue.add(TriggeredAbilityEntry {
+        source,
+        controller,
+        x_value: None,
+        event_value_amount: None,
+        ability,
+        triggering_event: event.clone(),
+        source_stable_id: StableId::from(source),
+        source_name: "Rad counters".to_string(),
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::GameRule,
+        trigger_identity,
+    });
 }
 
 /// Generate damage trigger events from combat damage.
@@ -96,6 +151,7 @@ pub(super) fn generate_damage_triggers(
     trigger_queue: &mut TriggerQueue,
 ) {
     game.clear_combat_damage_player_batch_hits();
+    game.clear_combat_damage_object_batch_hits();
     if events.is_empty() {
         return;
     }
@@ -114,6 +170,7 @@ pub(super) fn generate_damage_triggers(
         }
         queue_triggers_for_simultaneous_events(game, trigger_queue, trigger_events);
         game.clear_combat_damage_player_batch_hits();
+        game.clear_combat_damage_object_batch_hits();
         return;
     }
 
@@ -129,8 +186,14 @@ pub(super) fn generate_damage_triggers(
         {
             game.record_combat_damage_player_batch_hit(event.source, player_id);
         }
+        if let DamageEventTarget::Object(object_id) = event.target
+            && event.amount > 0
+        {
+            game.record_combat_damage_object_batch_hit(event.source, object_id);
+        }
     }
     game.clear_combat_damage_player_batch_hits();
+    game.clear_combat_damage_object_batch_hits();
 }
 
 fn can_batch_combat_damage_trigger_events(game: &GameState) -> bool {

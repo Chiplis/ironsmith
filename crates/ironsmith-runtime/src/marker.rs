@@ -22,6 +22,40 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::static_abilities::StaticAbilityId;
 
+/// A sector designation created by space sculptor (CR 702.158b).
+///
+/// This is deliberately stored outside [`crate::object::Object`]: sector
+/// designations are not copiable values, and a zone change creates a new
+/// object that has no designation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SectorDesignation {
+    Alpha,
+    Beta,
+    Gamma,
+}
+
+impl SectorDesignation {
+    pub const ALL: [Self; 3] = [Self::Alpha, Self::Beta, Self::Gamma];
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Alpha => "alpha sector",
+            Self::Beta => "beta sector",
+            Self::Gamma => "gamma sector",
+        }
+    }
+
+    pub fn from_option_index(index: usize) -> Option<Self> {
+        Self::ALL.get(index).copied()
+    }
+}
+
+impl std::fmt::Display for SectorDesignation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.description())
+    }
+}
+
 /// A marker that can be placed on objects, players, or the game.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Marker {

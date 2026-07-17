@@ -23,6 +23,7 @@ pub(crate) enum CounterMarkerTimingShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CounterMarkerDestinationShape {
     pub(crate) tapped: bool,
+    pub(crate) attacking: bool,
     pub(crate) transformed: bool,
     pub(crate) controller: ReturnControllerAst,
 }
@@ -209,6 +210,7 @@ fn owner_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DestinationFlag {
     Tapped,
+    Attacking,
     Transformed,
 }
 
@@ -225,21 +227,25 @@ fn parse_destination_lexed<'a>(
     let flags: Vec<DestinationFlag> = repeat(
         0..,
         alt((
+            primitives::phrase(&["and", "attacking"]).value(DestinationFlag::Attacking),
             primitives::kw("tapped").value(DestinationFlag::Tapped),
+            primitives::kw("attacking").value(DestinationFlag::Attacking),
             primitives::kw("transformed").value(DestinationFlag::Transformed),
         )),
     )
     .parse_next(input)?;
     let controller = controller_tail.parse_next(input)?;
-    let (tapped, transformed) =
-        flags
-            .into_iter()
-            .fold((false, false), |(tapped, transformed), flag| match flag {
-                DestinationFlag::Tapped => (true, transformed),
-                DestinationFlag::Transformed => (tapped, true),
-            });
+    let (tapped, attacking, transformed) = flags.into_iter().fold(
+        (false, false, false),
+        |(tapped, attacking, transformed), flag| match flag {
+            DestinationFlag::Tapped => (true, attacking, transformed),
+            DestinationFlag::Attacking => (tapped, true, transformed),
+            DestinationFlag::Transformed => (tapped, attacking, true),
+        },
+    );
     Ok(CounterMarkerDestinationShape {
         tapped,
+        attacking,
         transformed,
         controller,
     })
@@ -1082,6 +1088,22 @@ mod tests {
             shape.timing,
             Some(CounterMarkerTimingShape::NextEndStep(PlayerFilter::Any))
         ));
+
+        let attacking = lex_line(
+            "Return target creature card from your graveyard to the battlefield tapped and attacking with a finality counter on it.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_return_with_counters_tokens(&attacking).unwrap();
+        assert!(shape.destination.tapped);
+        assert!(shape.destination.attacking);
+        assert!(!shape.destination.transformed);
+        assert_eq!(shape.descriptors.len(), 1);
+        assert_eq!(shape.descriptors[0].counter_type, CounterType::Finality);
+        assert_eq!(
+            render_token_slice(shape.target_tokens),
+            "target creature card from your graveyard"
+        );
     }
 
     #[test]

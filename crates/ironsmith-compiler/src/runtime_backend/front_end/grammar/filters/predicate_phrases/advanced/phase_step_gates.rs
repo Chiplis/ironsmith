@@ -143,6 +143,22 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         ));
     }
 
+    let words = clause.word_refs();
+    if words.starts_with(&["a", "counter", "was", "put", "on"])
+        && words.ends_with(&["this", "turn"])
+        && words.len() > 7
+        && let Some(source) = clause.between_word_range(5, words.len() - 2)
+        && is_source_reference_clause(source)
+    {
+        return Some(value_at_least(
+            Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
+                counter_type: None,
+                filter: ObjectFilter::source(),
+            }),
+            1,
+        ));
+    }
+
     if surface::exact(
         clause,
         &[
@@ -435,6 +451,17 @@ fn parse_life_above_starting_total_gate(tokens: &[OwnedLexToken]) -> Option<Pred
 }
 
 fn parse_cards_in_library_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if surface::exact(
+        LexedClause::new(tokens),
+        &["your", "library", "has", "no", "cards", "in", "it"],
+    ) {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CardsInLibrary(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        });
+    }
+
     let relation = parse_has_relation_clauses(tokens)?;
     let player = if surface::exact(relation.subject_clause, &["you"]) {
         PlayerFilter::You
@@ -792,20 +819,15 @@ fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst
     if let Some(relation) = parse_has_relation_clauses(tokens)
         && surface::exact_any(
             relation.subject_clause,
-            &[
-                &["enchanted", "creature"],
-                &["enchanted", "permanent"],
-            ],
+            &[&["enchanted", "creature"], &["enchanted", "permanent"]],
         )
     {
         let words = relation.tail_clause.word_refs();
         if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(&words)
             && consumed == words.len()
         {
-            let mut filter = if surface::exact(
-                relation.subject_clause,
-                &["enchanted", "creature"],
-            ) {
+            let mut filter = if surface::exact(relation.subject_clause, &["enchanted", "creature"])
+            {
                 ObjectFilter::creature()
             } else {
                 ObjectFilter::permanent()
@@ -818,23 +840,19 @@ fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst
     if let Some(relation) = parse_copula_relation_clauses(tokens)
         && surface::exact_any(
             relation.subject_clause,
-            &[
-                &["enchanted", "creature"],
-                &["enchanted", "permanent"],
-            ],
+            &[&["enchanted", "creature"], &["enchanted", "permanent"]],
         )
     {
-        let mut filter = if surface::exact(
-            relation.subject_clause,
-            &["enchanted", "creature"],
-        ) {
+        let mut filter = if surface::exact(relation.subject_clause, &["enchanted", "creature"]) {
             ObjectFilter::creature()
         } else {
             ObjectFilter::permanent()
         };
         let tail = relation.tail_clause;
         if tail.word_refs().len() == 1
-            && let Some(color) = tail.token(0).and_then(|token| parse_color(token.parser_text()))
+            && let Some(color) = tail
+                .token(0)
+                .and_then(|token| parse_color(token.parser_text()))
         {
             filter.colors = Some(color);
             return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
@@ -847,12 +865,28 @@ fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst
             tail,
             &[
                 &[
-                    "a", "creature", "with", "the", "greatest", "power", "among",
-                    "creatures", "on", "the", "battlefield",
+                    "a",
+                    "creature",
+                    "with",
+                    "the",
+                    "greatest",
+                    "power",
+                    "among",
+                    "creatures",
+                    "on",
+                    "the",
+                    "battlefield",
                 ],
                 &[
-                    "a", "creature", "with", "greatest", "power", "among", "creatures",
-                    "on", "battlefield",
+                    "a",
+                    "creature",
+                    "with",
+                    "greatest",
+                    "power",
+                    "among",
+                    "creatures",
+                    "on",
+                    "battlefield",
                 ],
             ],
         ) {
@@ -1157,6 +1191,14 @@ mod tests {
                 left: Value::CardsInHand(PlayerFilter::You),
                 operator: crate::effect::ValueComparisonOperator::Equal,
                 right: Value::Fixed(13),
+            }
+        ));
+        assert!(matches!(
+            parse("your library has no cards in it"),
+            PredicateAst::ValueComparison {
+                left: Value::CardsInLibrary(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(0),
             }
         ));
     }

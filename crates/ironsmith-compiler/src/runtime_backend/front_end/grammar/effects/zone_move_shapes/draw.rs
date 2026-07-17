@@ -223,8 +223,7 @@ pub(crate) fn parse_draw_head_shape(
         if tokens.first().is_some_and(|token| token.is_word("that"))
             && tokens.get(1).is_some_and(|token| token.is_word("many"))
         {
-            value = value
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards);
+            value = value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards);
         }
         if let Some(((), after_card)) = primitives::parse_prefix(rest, card_noun) {
             let trailing = trimmed(after_card);
@@ -743,8 +742,9 @@ mod tests {
         assert!(!head.additional);
         assert!(head.tail_tokens.is_empty());
 
-        let additional = parse_draw_head_shape(&tokens("an additional card."))
-            .expect("additional article draw head");
+        let additional_tokens = tokens("an additional card.");
+        let additional =
+            parse_draw_head_shape(&additional_tokens).expect("additional article draw head");
         assert_eq!(
             additional.count,
             DrawHeadCountShape::Resolved(Value::Fixed(1))
@@ -752,8 +752,8 @@ mod tests {
         assert!(additional.additional);
         assert!(additional.tail_tokens.is_empty());
 
-        let two = parse_draw_head_shape(&tokens("two additional cards."))
-            .expect("additional counted draw head");
+        let two_tokens = tokens("two additional cards.");
+        let two = parse_draw_head_shape(&two_tokens).expect("additional counted draw head");
         assert_eq!(two.count, DrawHeadCountShape::Resolved(Value::Fixed(2)));
         assert!(two.additional);
         assert!(two.tail_tokens.is_empty());

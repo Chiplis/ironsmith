@@ -52,8 +52,7 @@ pub(crate) fn parse_source_exiled_owner_library_bottom_shape(
     let tokens = trim_lexed_commas(tokens);
     let (_, after_prefix) = primitives::parse_prefix(
         tokens,
-        primitives::phrase(&["the", "owner", "of", "each", "card", "exiled", "with"])
-            .void(),
+        primitives::phrase(&["the", "owner", "of", "each", "card", "exiled", "with"]).void(),
     )?;
     let (puts_index, _, trailing) = primitives::find_prefix(after_prefix, || {
         (
@@ -70,16 +69,14 @@ pub(crate) fn parse_source_exiled_owner_library_bottom_shape(
     (!source_tokens.is_empty()).then_some(SourceExiledOwnerLibraryBottomShape { source_tokens })
 }
 
-pub(crate) fn contains_source_exiled_owner_library_bottom_shape(
-    tokens: &[OwnedLexToken],
-) -> bool {
-    permission_shapes::contains_tokens(
-        tokens,
-        &["owner", "of", "each", "card", "exiled", "with"],
-    ) && permission_shapes::contains_tokens(
-        tokens,
-        &["that", "card", "on", "the", "bottom", "of", "their", "library"],
-    )
+pub(crate) fn contains_source_exiled_owner_library_bottom_shape(tokens: &[OwnedLexToken]) -> bool {
+    permission_shapes::contains_tokens(tokens, &["owner", "of", "each", "card", "exiled", "with"])
+        && permission_shapes::contains_tokens(
+            tokens,
+            &[
+                "that", "card", "on", "the", "bottom", "of", "their", "library",
+            ],
+        )
 }
 
 #[derive(Debug, Clone, Copy)]

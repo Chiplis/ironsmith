@@ -6,9 +6,9 @@ use super::prevention_helpers::{
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_objects_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::effects::helpers::resolve_objects_from_spec;
 pub use ironsmith_core::PreventAllDamageEffect;
 
 /// Effect that prevents all damage until end of turn.
@@ -43,9 +43,10 @@ impl EffectExecutor for PreventAllDamageEffect {
 
         let mut damage_filter = self.damage_filter.clone();
         if let Some(source_target) = &self.source_target {
-            damage_filter.from_specific_source = resolve_objects_from_spec(game, source_target, ctx)?
-                .first()
-                .copied();
+            damage_filter.from_specific_source =
+                resolve_objects_from_spec(game, source_target, ctx)?
+                    .first()
+                    .copied();
             if damage_filter.from_specific_source.is_none() {
                 return Err(ExecutionError::InvalidTarget);
             }

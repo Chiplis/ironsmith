@@ -239,6 +239,57 @@ pub(super) fn test_etb_trigger_fires() {
     assert_eq!(trigger_queue.entries.len(), 1);
 }
 
+#[test]
+pub(super) fn combat_timed_spell_cast_trigger_queues_only_during_combat() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let watcher_id = create_creature(&mut game, "Combat Cast Watcher", alice, 2, 2);
+    game.object_mut(watcher_id)
+        .expect("watcher should exist")
+        .abilities_mut()
+        .push(Ability::triggered(
+            Trigger::spell_cast_qualified(
+                None,
+                PlayerFilter::You,
+                Some(ironsmith_core::TriggerTimingRestriction::DuringCombat),
+                None,
+                None,
+                None,
+                false,
+            ),
+            vec![Effect::draw(1)],
+        ));
+
+    let spell = CardBuilder::new(CardId::new(), "Combat Cast Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    assert!(
+        check_triggers(&game, &event)
+            .into_iter()
+            .all(|trigger| trigger.source != watcher_id),
+        "the ability must not trigger for a spell cast outside combat"
+    );
+
+    game.turn.phase = Phase::Combat;
+    let matching = check_triggers(&game, &event)
+        .into_iter()
+        .filter(|trigger| trigger.source == watcher_id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matching.len(),
+        1,
+        "the ability must trigger exactly once for the same spell cast during combat"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn terastodon_etb_destroys_up_to_three_permanents_and_makes_elephants() {

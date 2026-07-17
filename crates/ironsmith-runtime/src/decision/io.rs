@@ -2390,6 +2390,7 @@ fn zone_label(zone: Zone) -> &'static str {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command zone",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
     }
 }
@@ -2704,6 +2705,17 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                     .map(|cost| format!("{cost}: "))
                     .unwrap_or_default();
                 format!("{cost_prefix}Unlock a door. ({name})")
+            }
+            crate::special_actions::SpecialAction::RollPlanarDie => "Roll planar die".to_string(),
+            crate::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
+                format!("Turn conspiracy #{} face up", conspiracy_id.0)
+            }
+            crate::special_actions::SpecialAction::Companion { card_id } => {
+                let name = game
+                    .object(*card_id)
+                    .map(|object| object.name.as_str())
+                    .unwrap_or("companion");
+                format!("{{3}}: Put {name} into your hand")
             }
         },
     }

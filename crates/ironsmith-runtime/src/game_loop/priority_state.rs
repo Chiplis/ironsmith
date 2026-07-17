@@ -14,12 +14,15 @@ use super::*;
 /// 5. ChoosingX (601.2b) - Announce X value
 /// 6. AnnouncingCost (601.2b) - Announce hybrid/Phyrexian mana choices
 /// 7. ChoosingTargets (601.2c) - Choose targets
-/// 8. ActivatingManaAbilities (601.2g) - One repeatable mana-ability window
-/// 9. ChoosingNextCost - Choose the next remaining cost to pay
-/// 10. ProcessingCosts - Pay a selected non-mana cost
-/// 11. ChoosingSacrifice / ChoosingCardCost - Resolve object/card cost choices
-/// 12. PayingMana (601.2h) - Pay locked mana costs without reopening 601.2g
-/// 13. ReadyToFinalize (601.2i) - Spell becomes cast
+/// 8. ChoosingAssistPlayer / ActivatingAssistManaAbilities / PayingAssistMana
+///    (702.132a) - An assisting player may activate mana abilities, then pay
+///    some of the generic component of the total cost
+/// 9. ActivatingManaAbilities (601.2g) - The caster's repeatable mana-ability window
+/// 10. ChoosingNextCost - Choose the next remaining cost to pay
+/// 11. ProcessingCosts - Pay a selected non-mana cost
+/// 12. ChoosingSacrifice / ChoosingCardCost - Resolve object/card cost choices
+/// 13. PayingMana (601.2h) - Pay locked mana costs without reopening 601.2g
+/// 14. ReadyToFinalize (601.2i) - Spell becomes cast
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CastStage {
     /// Spell is being proposed - moved to stack per 601.2a.
@@ -41,6 +44,14 @@ pub enum CastStage {
     ChoosingTargets,
     /// Need to divide an amount among the chosen targets.
     ChoosingDistribution,
+    /// The caster may choose another player to assist with a generic cost.
+    ChoosingAssistPlayer,
+    /// The chosen assisting player may repeatedly activate mana abilities.
+    ActivatingAssistManaAbilities,
+    /// The chosen assisting player chooses how much generic mana to contribute.
+    ChoosingAssistContribution,
+    /// The chosen assisting player pays the announced contribution pip by pip.
+    PayingAssistMana,
     /// Total cost is locked; the player may repeatedly activate mana abilities.
     ActivatingManaAbilities,
     /// Need to choose the next remaining cost to pay.
@@ -68,6 +79,12 @@ impl CastStage {
             CastStage::AnnouncingCost => "announcing costs",
             CastStage::ChoosingTargets => "choosing targets",
             CastStage::ChoosingDistribution => "choosing distribution",
+            CastStage::ChoosingAssistPlayer => "choosing assisting player",
+            CastStage::ActivatingAssistManaAbilities => {
+                "activating assisting player's mana abilities"
+            }
+            CastStage::ChoosingAssistContribution => "choosing assist contribution",
+            CastStage::PayingAssistMana => "paying assist contribution",
             CastStage::ActivatingManaAbilities => "activating mana abilities",
             CastStage::ChoosingNextCost => "choosing next cost",
             CastStage::ProcessingCosts => "processing costs",
@@ -148,8 +165,22 @@ pub struct PendingCast {
     pub undo_locked_by_mana: bool,
     /// True once the single CR 601.2g mana-ability window has been closed.
     pub mana_ability_window_closed: bool,
+    /// True once the caster has chosen whether another player will assist.
+    pub assist_player_choice_made: bool,
+    /// The other player chosen for Assist, if any.
+    pub assist_player: Option<PlayerId>,
+    /// True once the chosen player's Assist mana-ability window has closed.
+    pub assist_mana_ability_window_closed: bool,
+    /// The amount of generic mana the chosen player announced they will pay.
+    pub assist_generic_contribution: u32,
+    /// Generic Assist pips that the chosen player still has to pay.
+    pub remaining_assist_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
+    /// True once the chosen player has declined or finished the contribution.
+    pub assist_payment_complete: bool,
     /// Mana actually spent to cast the spell (color-by-color).
     pub mana_spent_to_cast: ManaPool,
+    /// The subset of that mana spent by the player chosen for Assist.
+    pub assist_mana_spent_to_cast: ManaPool,
     /// The computed mana cost to pay (set during PayingMana stage).
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
     /// Stable display pips for the mana payment overlay.
@@ -228,7 +259,14 @@ impl PendingCast {
             payment_trace: Vec::new(),
             undo_locked_by_mana: false,
             mana_ability_window_closed: false,
+            assist_player_choice_made: false,
+            assist_player: None,
+            assist_mana_ability_window_closed: false,
+            assist_generic_contribution: 0,
+            remaining_assist_mana_pips: Vec::new(),
+            assist_payment_complete: false,
             mana_spent_to_cast: ManaPool::default(),
+            assist_mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
             display_mana_pips: Vec::new(),
             remaining_mana_pips: Vec::new(),
@@ -272,6 +310,8 @@ pub struct PendingTargetDistribution {
 pub enum ActivationStage {
     /// Need to choose modes for modal activated abilities.
     ChoosingModes,
+    /// Need to choose one complete branch of an alternative activation cost.
+    ChoosingAlternativeCost,
     /// Need to choose X value for abilities with X in cost.
     ChoosingX,
     /// Need to announce hybrid/Phyrexian mana payment choices (per MTG rule 601.2b via 602.2b).
@@ -300,6 +340,7 @@ impl ActivationStage {
     pub fn name(&self) -> &'static str {
         match self {
             ActivationStage::ChoosingModes => "choosing modes",
+            ActivationStage::ChoosingAlternativeCost => "choosing alternative cost",
             ActivationStage::ChoosingX => "choosing X",
             ActivationStage::AnnouncingCost => "announcing costs",
             ActivationStage::ChoosingTargets => "choosing targets",
@@ -349,6 +390,8 @@ pub enum ActivationCardCostChoice {
         cost: crate::costs::Cost,
         filter: ObjectFilter,
         zone: Zone,
+        /// Restrict an ordered-zone cost to the first matching object.
+        top_only: bool,
         description: String,
         choice_tag: crate::tag::TagKey,
     },
@@ -493,6 +536,7 @@ pub(crate) fn choose_tagged_cost_step(
                         cost: cost.clone(),
                         filter: choose.filter.clone(),
                         zone,
+                        top_only: choose.top_only,
                         description,
                         choice_tag: choose.tag.clone(),
                     },
@@ -504,6 +548,7 @@ pub(crate) fn choose_tagged_cost_step(
                         cost: cost.clone(),
                         filter: choose.filter.clone(),
                         zone,
+                        top_only: choose.top_only,
                         description,
                         choice_tag: choose.tag.clone(),
                     },
@@ -690,6 +735,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                         cost: single_choice_cost(cost),
                         filter: filter.clone(),
                         zone,
+                        top_only: false,
                         description: description.clone(),
                         choice_tag: crate::tag::TagKey::from("exile_cost"),
                     },
@@ -757,6 +803,10 @@ pub struct PendingActivation {
     pub remaining_requirements: Vec<TargetRequirement>,
     /// The computed mana cost to pay.
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
+    /// Complete alternative activation-cost branches locked before targets.
+    pub alternative_cost_branches: Vec<crate::cost::TotalCost>,
+    /// Branch announced by the activating player, if the cost is alternative.
+    pub selected_alternative_cost: Option<usize>,
     /// Why this activation's costs are being paid.
     pub payment_reason: crate::costs::PaymentReason,
     /// Stable display pips for the mana payment overlay.
@@ -830,6 +880,7 @@ impl PendingActivation {
         effects: crate::resolution::ResolutionProgram,
         remaining_requirements: Vec<TargetRequirement>,
         mana_cost_to_pay: Option<crate::mana::ManaCost>,
+        alternative_cost_branches: Vec<crate::cost::TotalCost>,
         payment_reason: crate::costs::PaymentReason,
         payment_trace: Vec<CostStep>,
         remaining_cost_steps: Vec<ActivationCostStep>,
@@ -860,6 +911,8 @@ impl PendingActivation {
             pending_target_distributions: std::collections::VecDeque::new(),
             remaining_requirements,
             mana_cost_to_pay,
+            alternative_cost_branches,
+            selected_alternative_cost: None,
             payment_reason,
             display_mana_pips: Vec::new(),
             payment_trace,
@@ -935,6 +988,7 @@ pub enum PendingPriorityContinuation {
 #[derive(Debug, Clone)]
 pub struct PriorityLoopState {
     pub(super) tracker: PriorityTracker,
+    pub(super) mandatory_loop: super::mandatory_loop::MandatoryLoopTracker,
     /// A pending spell cast waiting for target selection.
     pub pending_cast: Option<PendingCast>,
     /// A pending ability activation waiting for cost payment.
@@ -958,6 +1012,7 @@ impl PriorityLoopState {
     pub fn new(num_players: usize) -> Self {
         Self {
             tracker: PriorityTracker::new(num_players),
+            mandatory_loop: super::mandatory_loop::MandatoryLoopTracker::default(),
             pending_cast: None,
             pending_activation: None,
             pending_method_selection: None,
@@ -1034,7 +1089,16 @@ impl PriorityLoopState {
 
     /// Reset pass tracking and assign priority to the active player for a fresh priority window.
     pub fn reset_for_new_priority_window(&mut self, game: &mut GameState) {
-        self.tracker.set_players_in_game(game.players_in_game());
+        self.tracker.set_players_in_game(game.teams_in_game());
+        self.mandatory_loop.reset();
         reset_priority(game, &mut self.tracker);
+    }
+
+    /// Reconcile an in-progress priority window after a multiplayer player
+    /// leaves without overwriting the priority recipient selected by CR 800.4a.
+    pub fn player_left_game(&mut self, game: &GameState) {
+        self.tracker.set_players_in_game(game.teams_in_game());
+        self.tracker.reset();
+        self.mandatory_loop.reset();
     }
 }

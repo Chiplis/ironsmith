@@ -165,13 +165,11 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
-        | Value::DistinctPowers(filter)
-        | Value::PlayersWhoControlMoreThanYou(filter) => {
-            object_filter_mentions_iterated_player(filter)
-        }
-        Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
-            object_filter_mentions_iterated_player(filter)
-        }
+        | Value::DistinctPowers(filter) => object_filter_mentions_iterated_player(filter),
+        Value::PlayersWhoControlMoreThanYou { players, filter }
+        | Value::PlayersWhoControlAtLeastMoreThanYou {
+            players, filter, ..
+        } => players.mentions_iterated_player() || object_filter_mentions_iterated_player(filter),
         Value::StaticAbilitiesAmong { filter, .. } => {
             object_filter_mentions_iterated_player(filter)
         }
@@ -299,11 +297,9 @@ pub(crate) fn value_contains_pending_effect_metric(value: &Value) -> bool {
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
-        | Value::DistinctPowers(filter)
-        | Value::PlayersWhoControlMoreThanYou(filter) => {
-            object_filter_contains_pending_effect_metric(filter)
-        }
-        Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
+        | Value::DistinctPowers(filter) => object_filter_contains_pending_effect_metric(filter),
+        Value::PlayersWhoControlMoreThanYou { filter, .. }
+        | Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
             object_filter_contains_pending_effect_metric(filter)
         }
         Value::StaticAbilitiesAmong { filter, .. } => {

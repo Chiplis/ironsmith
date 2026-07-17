@@ -14,7 +14,9 @@ pub(crate) use blocking::{BlockingCantFact, parse_blocking_cant_fact_tokens};
 
 #[path = "cant_shapes/direct.rs"]
 mod direct;
-pub(crate) use direct::{DirectCantFact, parse_direct_cant_fact_tokens};
+pub(crate) use direct::{
+    DirectCantFact, parse_counter_limit_fact_tokens, parse_direct_cant_fact_tokens,
+};
 
 #[path = "cant_shapes/parity.rs"]
 mod parity;

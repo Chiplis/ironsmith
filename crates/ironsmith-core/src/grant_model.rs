@@ -480,6 +480,7 @@ where
                 Zone::Exile => "exile",
                 Zone::Stack => "stack",
                 Zone::Command => "command zone",
+                Zone::Ante => "ante",
                 Zone::OutsideGame => "outside the game",
             }
         }
@@ -799,6 +800,9 @@ where
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => "That player may".to_string(),
                 PlayerFilter::HasMoreLifeThanYou { .. } => "That player may".to_string(),
+                PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+                    "That player may".to_string()
+                }
                 PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)
@@ -867,6 +871,132 @@ where
             let article = if owner_words.is_empty() { "" } else { "the " };
             Some(format!(
                 "{spell_subject} from among {article}{card_subject} {owner_words}exiled with this permanent"
+            ))
+        }
+
+        fn simple_ability_marker_spell_subject(filter: &ObjectFilter) -> Option<String> {
+            let [marker] = filter.ability_markers.as_slice() else {
+                return None;
+            };
+            let mut normalized = filter.clone();
+            normalized.ability_markers.clear();
+            normalized
+                .excluded_card_types
+                .retain(|card_type| *card_type != CardType::Land);
+            if normalized != ObjectFilter::default() {
+                return None;
+            }
+            let marker = marker.to_ascii_lowercase();
+            Some(format!(
+                "spells that have {} {marker} ability",
+                article_for(&marker)
+            ))
+        }
+
+        fn countered_exile_filter_facts(
+            filter: &ObjectFilter,
+        ) -> Option<(crate::CounterType, Option<PlayerFilter>, bool, ObjectFilter)> {
+            let crate::filter_model::CounterConstraint::Typed(counter_type) = filter.with_counter?
+            else {
+                return None;
+            };
+            if filter.zone != Some(Zone::Exile) {
+                return None;
+            }
+            let source_linked = filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
+                    && constraint.relation
+                        == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject
+            });
+            let mut normalized = filter.clone();
+            let owner = normalized.owner.take();
+            normalized.zone = None;
+            normalized.with_counter = None;
+            normalized.tagged_constraints.retain(|constraint| {
+                !(constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
+                    && constraint.relation
+                        == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject)
+            });
+            if !normalized.tagged_constraints.is_empty() {
+                return None;
+            }
+            Some((counter_type, owner, source_linked, normalized))
+        }
+
+        fn countered_exile_play_permission(
+            filter: &ObjectFilter,
+            beneficiary: &PlayerFilter,
+            may_prefix: &str,
+        ) -> Option<String> {
+            let owner_clause = |owner: Option<&PlayerFilter>| match owner {
+                Some(PlayerFilter::Opponent) => Some("your opponents own"),
+                Some(PlayerFilter::You) => Some("you own"),
+                Some(PlayerFilter::NotYou) => Some("you don't own"),
+                None => Some(""),
+                _ => None,
+            };
+            let counter_clause = |counter_type: crate::CounterType| {
+                format!("{} counters on them", counter_type.description())
+            };
+
+            if filter.any_of.is_empty() {
+                let (counter_type, owner, source_linked, mut normalized) =
+                    countered_exile_filter_facts(filter)?;
+                if source_linked {
+                    return None;
+                }
+                normalized
+                    .excluded_card_types
+                    .retain(|card_type| *card_type != CardType::Land);
+                if normalized != ObjectFilter::default() {
+                    return None;
+                }
+                let owner_clause = owner_clause(owner.as_ref())?;
+                let owner_clause = if owner_clause.is_empty() {
+                    String::new()
+                } else {
+                    format!(" {owner_clause}")
+                };
+                return Some(format!(
+                    "{may_prefix} cast spells from among cards in exile{owner_clause} with {}",
+                    counter_clause(counter_type)
+                ));
+            }
+
+            if filter.any_of.len() != 2 {
+                return None;
+            }
+            let mut outer = filter.clone();
+            outer.any_of.clear();
+            if outer != ObjectFilter::default() {
+                return None;
+            }
+            let first = countered_exile_filter_facts(&filter.any_of[0])?;
+            let second = countered_exile_filter_facts(&filter.any_of[1])?;
+            if first.0 != second.0 || first.1 != second.1 || first.2 != second.2 || !first.2 {
+                return None;
+            }
+            let (land_branch, spell_branch) = if first.3.card_types.as_slice() == [CardType::Land] {
+                (&first.3, &second.3)
+            } else if second.3.card_types.as_slice() == [CardType::Land] {
+                (&second.3, &first.3)
+            } else {
+                return None;
+            };
+            if land_branch != &ObjectFilter::default().with_type(CardType::Land)
+                || filter_can_include_lands(spell_branch)
+            {
+                return None;
+            }
+            let card_pool = if matches!(beneficiary, PlayerFilter::You) {
+                "cards you exiled"
+            } else {
+                "cards exiled with this permanent"
+            };
+            Some(format!(
+                "{may_prefix} play lands and cast {} from among {card_pool} that have {}",
+                unlimited_zone_castable_filter_description(spell_branch),
+                counter_clause(first.0)
             ))
         }
 
@@ -985,6 +1115,24 @@ where
             return format!(
                 "{may_prefix} play lands and cast spells from among cards in your graveyard you've surveilled this turn"
             );
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && !filter_can_include_lands(&self.filter)
+        {
+            let spell_subject = simple_ability_marker_spell_subject(&self.filter)
+                .unwrap_or_else(|| unlimited_zone_castable_filter_description(&self.filter));
+            return format!(
+                "{may_prefix} cast {spell_subject} from your graveyard{}",
+                cast_this_way_suffix()
+            );
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Exile
+            && let Some(permission) =
+                countered_exile_play_permission(&self.filter, &self.beneficiary, &may_prefix)
+        {
+            return format!("{permission}{}", cast_this_way_suffix());
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library

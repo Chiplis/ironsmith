@@ -63,6 +63,8 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             min_choose_count: choose_mode.min_choose_count.clone(),
             allow_repeated_modes: choose_mode.allow_repeated_modes,
             mode_point_costs: choose_mode.mode_point_costs.clone(),
+            spree: choose_mode.spree,
+            mode_additional_mana_costs: choose_mode.mode_additional_mana_costs.clone(),
             disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
             disallow_previously_chosen_modes_this_turn: choose_mode
                 .disallow_previously_chosen_modes_this_turn,
@@ -86,6 +88,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let crate::cards::builders::ParsedModalHeader {
         min: header_min,
         max: header_max,
+        spree,
         weighted_mode_points,
         random: random_mode_choice,
         same_mode_more_than_once,
@@ -136,8 +139,10 @@ pub(crate) fn rewrite_lower_parsed_modal(
 
     let mut compiled_modes = Vec::new();
     let mut mode_point_costs = Vec::new();
+    let mut mode_additional_mana_costs = Vec::new();
     for mode in modes {
         let point_cost = mode.point_cost.unwrap_or(1);
+        let additional_mana_cost = mode.additional_mana_cost;
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
@@ -155,6 +160,14 @@ pub(crate) fn rewrite_lower_parsed_modal(
             effects: effects.to_vec(),
         });
         mode_point_costs.push(point_cost);
+        if spree {
+            mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "Spree mode '{}' is missing its typed additional mana cost",
+                    mode.info.raw_line
+                ))
+            })?);
+        }
     }
     let weighted_mode_points =
         weighted_mode_points || mode_point_costs.iter().any(|point_cost| *point_cost != 1);
@@ -194,6 +207,9 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
         if weighted_mode_points {
             choose_mode = choose_mode.with_mode_point_costs(mode_point_costs.clone());
+        }
+        if spree {
+            choose_mode = choose_mode.with_spree_mana_costs(mode_additional_mana_costs.clone());
         }
         if mode_must_be_unchosen {
             choose_mode = if mode_must_be_unchosen_this_turn {

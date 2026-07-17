@@ -176,6 +176,101 @@ fn move_to_zone_lowering_preserves_oracle_verb_and_explicit_actor() {
 }
 
 #[test]
+fn source_top_only_zone_actions_choose_the_ordered_card_before_moving_it() {
+    let source_filter = ObjectFilter::creature()
+        .in_zone(crate::zone::Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+
+    let exile_ast =
+        EffectAst::subject_verb_exile(TargetAst::Object(source_filter.clone(), None, None), true)
+            .with_source_top_only(true);
+    let (exile_effects, exile_choices) =
+        compile_effect(&exile_ast, &mut EffectLoweringContext::new())
+            .expect("top graveyard exile should lower");
+    assert!(exile_choices.is_empty());
+    assert_eq!(exile_effects.len(), 2);
+    let exile_choose = exile_effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("ordered exile should begin with a typed choice");
+    assert!(exile_choose.top_only);
+    assert_eq!(exile_choose.filter, source_filter);
+    let exile = exile_effects[1]
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .expect("ordered exile should consume the chosen tag");
+    assert_eq!(exile.spec, ChooseSpec::tagged(exile_choose.tag.clone()));
+    assert!(exile.face_down);
+
+    let move_ast = EffectAst::subject_verb_move_to_zone(
+        TargetAst::Object(source_filter.clone(), None, None),
+        crate::zone::Zone::Hand,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    )
+    .with_source_top_only(true);
+    let (move_effects, move_choices) = compile_effect(&move_ast, &mut EffectLoweringContext::new())
+        .expect("top graveyard move should lower");
+    assert!(move_choices.is_empty());
+    assert_eq!(move_effects.len(), 2);
+    let move_choose = move_effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("ordered move should begin with a typed choice");
+    assert!(move_choose.top_only);
+    assert_eq!(move_choose.filter, source_filter);
+    let move_effect = move_effects[1]
+        .as_tagged()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(&move_effects[1])
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .expect("ordered move should consume the chosen tag");
+    assert_eq!(
+        move_effect.target,
+        ChooseSpec::tagged(move_choose.tag.clone())
+    );
+    assert_eq!(move_effect.zone, crate::zone::Zone::Hand);
+}
+
+#[test]
+fn source_top_only_lowering_preserves_count_value_and_scoped_library_default() {
+    let target = TargetAst::WithCountValue(
+        Box::new(TargetAst::Object(ObjectFilter::default(), None, None)),
+        ChoiceCount::dynamic_x(),
+        Value::Fixed(4),
+    );
+    let ast = EffectAst::subject_verb_exile(target, false).with_source_top_only(true);
+    let mut ctx = EffectLoweringContext::new();
+    let (effects, choices) = compile_effect(&ast, &mut ctx)
+        .expect("a lexically proven bare top-card source should default to the library");
+
+    assert!(choices.is_empty());
+    assert_eq!(effects.len(), 2);
+    let choose = effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("top-card collection should begin with an ordered choice");
+    assert_eq!(choose.filter.zone, Some(crate::zone::Zone::Library));
+    assert_eq!(choose.count, ChoiceCount::dynamic_x());
+    assert_eq!(choose.count_value, Some(Value::Fixed(4)));
+    assert!(choose.top_only);
+    assert!(ctx.last_exiled_collection_is_plural);
+
+    let battlefield_target = TargetAst::Object(
+        ObjectFilter::default().in_zone(crate::zone::Zone::Battlefield),
+        None,
+        None,
+    );
+    let battlefield_ast =
+        EffectAst::subject_verb_exile(battlefield_target, false).with_source_top_only(true);
+    let err = compile_effect(&battlefield_ast, &mut EffectLoweringContext::new())
+        .expect_err("top-only must not reinterpret an explicitly unordered source");
+    assert!(
+        err.to_string()
+            .contains("ordered graveyard or library source"),
+        "unexpected top-only source error: {err:?}"
+    );
+}
+
+#[test]
 fn explicit_controller_return_lowering_retains_return_surface() {
     let (effects, choices) = compile_effect(
         &EffectAst::subject_verb_return_to_battlefield(
@@ -757,6 +852,59 @@ fn inline_quoted_token_trigger_stays_on_the_created_token() {
 }
 
 #[test]
+fn full_triggered_token_creation_keeps_quoted_blocks_untap_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Quoted Blocking Token Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, create two 0/2 blue Illusion creature tokens with \"Whenever this token blocks a creature, that creature doesn't untap during its controller's next untap step.\"\nThis creature has hexproof as long as you control an Illusion.",
+        )
+        .expect("full quoted blocking-token document should parse");
+    let create = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.as_create_token()),
+            _ => None,
+        })
+        .expect("entry trigger should create Illusion tokens");
+
+    assert_eq!(create.count, Value::Fixed(2));
+    let nested = create
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("created Illusions should carry the quoted triggered ability");
+    assert!(matches!(
+        &nested.trigger.kind,
+        crate::triggers::TriggerKind::ThisBlocksObject { filter }
+            if filter.card_types.as_slice() == [CardType::Creature]
+    ));
+
+    let [effect] = nested.effects.flattened_default_effects() else {
+        panic!("expected one nested untap restriction: {nested:#?}");
+    };
+    let cant = effect
+        .downcast_ref::<crate::effects::CantEffect>()
+        .expect("nested trigger should apply an untap restriction");
+    assert!(matches!(
+        &cant.restriction,
+        crate::effect::Restriction::Untap(_)
+    ));
+    assert_eq!(
+        cant.duration,
+        crate::effect::Until::ControllersNextUntapStep
+    );
+}
+
+#[test]
 fn pest_token_attack_trigger_keeps_its_life_gain() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Pest Trigger Probe")
         .card_types(vec![CardType::Sorcery])
@@ -958,6 +1106,119 @@ fn quoted_tap_sacrifice_any_color_rule_keeps_both_costs() {
         format!("{:#?}", activated.effects).contains("AddManaOfAnyColorEffect"),
         "{activated:#?}"
     );
+}
+
+#[test]
+fn full_lost_in_the_spirit_world_keeps_reciprocal_spirit_restriction_once() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lost in the Spirit World")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Return up to one target creature to its owner's hand. Create a 1/1 colorless Spirit creature token with \"This token can't block or be blocked by non-Spirit creatures.\"",
+        )
+        .expect("full Lost in the Spirit World text should parse");
+    let create = def
+        .spell_effect
+        .as_ref()
+        .expect("instant spell effects")
+        .iter()
+        .find_map(|effect| effect.as_create_token())
+        .expect("Lost in the Spirit World should create a Spirit");
+
+    assert_eq!(
+        create.token.abilities.len(),
+        1,
+        "the specialized restriction must not also be granted generically: {create:#?}"
+    );
+    let debug = format!("{:#?}", create.token.abilities);
+    assert_eq!(debug.matches("BlockSpecificAttacker").count(), 2, "{debug}");
+    assert!(debug.contains("Spirit"), "{debug}");
+}
+
+#[test]
+fn full_tezzeret_the_schemer_keeps_etherium_cell_mana_ability_once() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tezzeret the Schemer")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(5)
+        .parse_text(
+            "+1: Create a colorless artifact token named Etherium Cell with \"{T}, Sacrifice this token: Add one mana of any color.\"\n−2: Target creature gets +X/-X until end of turn, where X is the number of artifacts you control.\n−7: You get an emblem with \"At the beginning of combat on your turn, target artifact you control becomes an artifact creature with base power and toughness 5/5.\"",
+        )
+        .expect("full Tezzeret the Schemer text should parse");
+    let create = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.as_create_token()),
+            _ => None,
+        })
+        .expect("Tezzeret's +1 should create an Etherium Cell");
+
+    assert_eq!(
+        create.token.abilities.len(),
+        1,
+        "the specialized mana rule must not also be granted generically: {create:#?}"
+    );
+    let activated = create
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Etherium Cell activated mana ability");
+    assert!(matches!(
+        activated.mana_cost.costs(),
+        [crate::costs::Cost::Tap, crate::costs::Cost::SacrificeSelf]
+    ));
+    assert!(
+        format!("{:#?}", activated.effects).contains("AddManaOfAnyColorEffect"),
+        "{activated:#?}"
+    );
+}
+
+#[test]
+fn full_toggo_keeps_rock_grant_and_equip_once_each() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Toggo, Goblin Weaponsmith")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Landfall — Whenever a land you control enters, create a colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.\nPartner (You can have two commanders if both have partner.)",
+        )
+        .expect("full Toggo text should parse");
+    let create = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.as_create_token()),
+            _ => None,
+        })
+        .expect("Toggo's landfall ability should create a Rock");
+
+    assert_eq!(
+        create.token.abilities.len(),
+        2,
+        "Rock should own one attached grant and one equip ability: {create:#?}"
+    );
+    let debug = format!("{:#?}", create.token.abilities);
+    assert_eq!(debug.matches("AttachedAbilityGrant").count(), 1, "{debug}");
+    let equip_costs = create
+        .token
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.mana_cost.display()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(equip_costs.len(), 1, "{debug}");
+    assert!(equip_costs[0].contains("{1}"), "{equip_costs:?}");
 }
 
 #[test]
@@ -1418,7 +1679,9 @@ fn optional_exile_from_another_players_hand_does_not_use_controller_hand_imprint
     );
     let may = compiled
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()
+        })
         .expect("opponent-hand exile should retain its optional branch");
     assert!(
         may.effects.iter().any(|effect| effect
@@ -1673,6 +1936,32 @@ fn restorative_technique_keeps_the_target_as_searcher_and_library_owner() {
     assert!(
         debug.matches("AliasedTarget(Any)").count() >= 2,
         "searcher/library owner and shuffle should share the selected player: {debug}"
+    );
+}
+
+#[test]
+fn kicked_targeted_search_keeps_one_library_owner_across_document_sentences() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kicked Targeted Search Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Kicker {7}\nSearch target player's library for up to three cards, exile them, then that player shuffles. If this spell was kicked, instead search that player's library for up to fifteen cards, exile them, then that player shuffles.",
+        )
+        .expect("kicked targeted search should parse through the full document pipeline");
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        !debug.contains("IteratedPlayer"),
+        "both search branches must use the spell's selected target: {debug}"
+    );
+    assert_eq!(
+        debug.matches("chooser: You").count(),
+        2,
+        "the spell controller should search both branches: {debug}"
+    );
+    assert_eq!(
+        debug.matches("ShuffleLibraryEffect").count(),
+        2,
+        "each branch should shuffle the targeted library exactly once: {debug}"
     );
 }
 

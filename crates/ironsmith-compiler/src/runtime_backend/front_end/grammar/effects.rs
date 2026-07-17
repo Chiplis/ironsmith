@@ -105,6 +105,7 @@ pub(crate) mod looked_card_shapes;
 pub(crate) use control::*;
 pub(crate) use looked_card_shapes::{
     LookedCardDestinationShape, RevealedCardChooserShape, ThreeWayLookedCardDispositionShape,
+    parse_counted_looked_hand_remainder_shape, parse_exact_looked_card_move_shape,
     parse_revealed_card_choice_shape, parse_three_way_looked_card_disposition_shape,
 };
 #[path = "effects/conditional_shapes.rs"]
@@ -962,7 +963,8 @@ fn parse_prevent_damage_source_excluding_target(
     let Some(excluded_clause) = clause.after_words(marker.start + marker.len) else {
         return Ok(None);
     };
-    if source_clause.trimmed().tokens().is_empty() || excluded_clause.trimmed().tokens().is_empty() {
+    if source_clause.trimmed().tokens().is_empty() || excluded_clause.trimmed().tokens().is_empty()
+    {
         return Ok(None);
     }
     let source_filter = parse_object_filter(source_clause.trimmed().tokens(), false)?;
@@ -1698,11 +1700,13 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             filter_tokens: filter_tokens.clone(),
             same_name_reference: None,
             same_name_relation: TaggedOpbjectRelation::SameNameAsTagged,
+            same_name_antecedent_surface: None,
         }
     };
     let filter_tokens = same_name_split.filter_tokens;
     let same_name_reference = same_name_split.same_name_reference;
     let same_name_relation = same_name_split.same_name_relation;
+    let same_name_antecedent_surface = same_name_split.same_name_antecedent_surface;
     let same_name_reference_requires_setup = matches!(
         same_name_reference,
         Some(SearchLibrarySameNameReference::Target(_))
@@ -1728,6 +1732,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             SearchLibrarySameNameReference::Choose { tag, .. } => tag.clone(),
         })
     {
+        filter.set_same_name_antecedent_surface(same_name_antecedent_surface);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: same_name_tag.clone(),
             relation: same_name_relation,
@@ -2120,15 +2125,25 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     if trailing_that_player_shuffle {
         let mut has_existing_shuffle = false;
         for effect in &mut effects {
-            if let EffectAst::SubjectVerb(subject_verb) = effect
-                && matches!(subject_verb.action, SubjectVerbActionAst::ShuffleLibrary)
-            {
-                has_existing_shuffle = true;
-                if matches!(
-                    subject_verb.subject.player,
-                    PlayerAst::You | PlayerAst::Implicit
-                ) {
-                    subject_verb.subject.player = PlayerAst::That;
+            if let EffectAst::SubjectVerb(subject_verb) = effect {
+                match &subject_verb.action {
+                    SubjectVerbActionAst::ShuffleLibrary => {
+                        has_existing_shuffle = true;
+                        if matches!(
+                            subject_verb.subject.player,
+                            PlayerAst::You | PlayerAst::Implicit
+                        ) {
+                            subject_verb.subject.player = PlayerAst::That;
+                        }
+                    }
+                    // A search with `shuffle: true` already lowers to its own
+                    // library shuffle. Do not append a second effect merely
+                    // because Oracle spells the same shuffle out as a trailing
+                    // "Then that player shuffles" sentence.
+                    SubjectVerbActionAst::SearchLibrary { shuffle: true, .. } => {
+                        has_existing_shuffle = true;
+                    }
+                    _ => {}
                 }
             }
         }

@@ -601,6 +601,7 @@ pub(crate) fn parse_attached_has_and_loses_keywords_line(
         result.push(StaticAbilityAst::RemoveKeywordAction {
             filter: filter.clone(),
             action,
+            mode: ironsmith_core::AbilityLossMode::Lose,
         });
     }
 

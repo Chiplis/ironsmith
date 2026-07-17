@@ -56,6 +56,20 @@ fn parses_delayed_timing_marker_and_known_fallback() {
 }
 
 #[test]
+fn parses_end_of_combat_timing_suffixes() {
+    for text in [
+        "Remove a +1/+1 counter from it at end of combat.",
+        "Put a -1/-1 counter on it at the end of combat.",
+    ] {
+        let shape = parse_delayed_timing_marker_shape(&tokens(text))
+            .expect("end-of-combat suffix should have a typed timing marker");
+        assert_eq!(shape.step, DelayedTimingStepShape::EndOfCombat, "{text}");
+        assert_eq!(shape.player, PlayerAst::Any, "{text}");
+        assert!(shape.start_word > 0, "{text}");
+    }
+}
+
+#[test]
 fn delayed_timing_marker_normalizes_apostrophized_player() {
     let timing = tokens(
         "Exile that creature at the beginning of that player's next upkeep unless they pay {2}.",

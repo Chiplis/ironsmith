@@ -88,6 +88,24 @@ fn parse_position_count_and_owner<'a>(
     Some((count, false, trim_commas(owner)))
 }
 
+fn parse_position_count_without_owner(
+    tokens: &[OwnedLexToken],
+    position: &'static str,
+) -> Option<(Value, bool)> {
+    let (_, after_position) = primitives::parse_prefix(
+        tokens,
+        (opt(primitives::kw("the")), primitives::kw(position)),
+    )?;
+    if let Some(((), rest)) = primitives::parse_prefix(after_position, card_word)
+        && trim_commas(rest).is_empty()
+    {
+        return Some((Value::Fixed(1), true));
+    }
+    let (count, used) = values::parse_value_prefix_lexed(after_position)?;
+    let (_, rest) = primitives::parse_prefix(&after_position[used..], card_word)?;
+    trim_commas(rest).is_empty().then_some((count, false))
+}
+
 pub(crate) fn parse_exile_dynamic_top_library_shape(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
@@ -142,8 +160,14 @@ pub(crate) fn parse_exile_top_library_shape(
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
     let tokens = trim_commas(tokens);
-    let (count, _implicit, owner_tokens) = parse_position_count_and_owner(tokens, "top")?;
-    let player = library_player(owner_tokens, default_player, true)?;
+    let (count, player) = if let Some((count, _implicit, owner_tokens)) =
+        parse_position_count_and_owner(tokens, "top")
+    {
+        (count, library_player(owner_tokens, default_player, true)?)
+    } else {
+        let (count, _implicit) = parse_position_count_without_owner(tokens, "top")?;
+        (count, ExileLibraryPlayerShape::Player(default_player))
+    };
     Some(ExileLibraryCardsShape { player, count })
 }
 
@@ -199,6 +223,23 @@ mod tests {
         assert_eq!(
             damaged_player_top.player,
             ExileLibraryPlayerShape::Player(PlayerAst::That)
+        );
+
+        let implicit_library_top =
+            parse_exile_top_library_shape(&lex("the top four cards"), PlayerAst::You).unwrap();
+        assert_eq!(implicit_library_top.count, Value::Fixed(4));
+        assert_eq!(
+            implicit_library_top.player,
+            ExileLibraryPlayerShape::Player(PlayerAst::You)
+        );
+
+        assert!(
+            parse_exile_top_library_shape(
+                &lex("the top four cards from a graveyard"),
+                PlayerAst::You,
+            )
+            .is_none(),
+            "the implicit-library route must consume the complete top-card phrase"
         );
 
         let bottom = parse_exile_bottom_library_shape(

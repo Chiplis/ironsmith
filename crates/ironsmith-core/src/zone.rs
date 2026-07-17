@@ -7,6 +7,7 @@ pub enum Zone {
     Stack,
     Exile,
     Command,
+    Ante,
     OutsideGame,
 }
 
@@ -20,6 +21,7 @@ impl Zone {
             Zone::Stack => "stack",
             Zone::Exile => "exile",
             Zone::Command => "command",
+            Zone::Ante => "ante",
             Zone::OutsideGame => "outside the game",
         }
     }
@@ -28,7 +30,12 @@ impl Zone {
     pub fn is_public(&self) -> bool {
         matches!(
             self,
-            Zone::Battlefield | Zone::Graveyard | Zone::Stack | Zone::Exile | Zone::Command
+            Zone::Battlefield
+                | Zone::Graveyard
+                | Zone::Stack
+                | Zone::Exile
+                | Zone::Command
+                | Zone::Ante
         )
     }
 
@@ -60,6 +67,7 @@ mod tests {
         assert!(Zone::Stack.is_public());
         assert!(Zone::Exile.is_public());
         assert!(Zone::Command.is_public());
+        assert!(Zone::Ante.is_public());
 
         assert!(Zone::Library.is_hidden());
         assert!(Zone::Hand.is_hidden());
@@ -73,5 +81,6 @@ mod tests {
         assert!(!Zone::Hand.is_ordered());
         assert!(!Zone::Battlefield.is_ordered());
         assert!(!Zone::Graveyard.is_ordered());
+        assert!(!Zone::Ante.is_ordered());
     }
 }

@@ -119,7 +119,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             modification,
             runtime_static_ability,
             runtime_ability_from_core_model,
-            convert_removed_ability,
+            runtime_ability_from_core_model,
         )
     }
 
@@ -255,19 +255,6 @@ fn remove_redundant_target_only_effects_in_program(
     program: &mut ironsmith::resolution::ResolutionProgram,
 ) {
     ironsmith::effect_model_interpreter::prune_redundant_target_only_effects_in_program(program);
-}
-
-fn convert_removed_ability(
-    ability: compiler::ability::Ability,
-) -> Result<ironsmith::static_abilities::StaticAbility, CompilerIntegrationError> {
-    match ability.kind {
-        compiler::ability::AbilityKind::Static(static_ability) => {
-            runtime_static_ability(static_ability)
-        }
-        other => Err(CompilerIntegrationError::UnsupportedEffect {
-            detail: format!("continuous RemoveAbility for non-static ability `{other:?}`"),
-        }),
-    }
 }
 
 fn runtime_cost_from_core_model(
@@ -454,6 +441,9 @@ fn runtime_ability_with_inherent_functional_zones(
                 ironsmith::zone::Zone::Exile,
                 ironsmith::zone::Zone::Command,
             ])
+        }
+        ironsmith::static_abilities::StaticAbilityId::Dredge => {
+            ability.in_zones(vec![ironsmith::zone::Zone::Graveyard])
         }
         ironsmith::static_abilities::StaticAbilityId::Grants => {
             if let Some(spec) = static_ability.grant_spec()

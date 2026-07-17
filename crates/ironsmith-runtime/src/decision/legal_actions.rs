@@ -13,7 +13,7 @@ fn grant_usage_limit_allows(
             .grant_cast_uses_this_turn
             .contains(&(player, source_id)),
         Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns) => {
-            game.turn.active_player == player
+            game.is_active_player(player)
                 && !game
                     .turn_store
                     .grant_cast_uses_this_turn
@@ -898,6 +898,14 @@ fn collect_non_battlefield_source_ids(
             .copied()
             .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
     );
+    if game.planar_controller() == Some(player) {
+        non_battlefield_ids.extend(
+            game.face_up_planar_objects()
+                .iter()
+                .copied()
+                .filter(|object| game.controller_of_id(*object) == Some(player)),
+        );
+    }
     non_battlefield_ids.extend(game.stack.iter().map(|entry| entry.object_id));
     non_battlefield_ids.sort_by_key(|id| id.0);
     non_battlefield_ids.dedup();
@@ -1032,6 +1040,24 @@ pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Vec<LegalAct
     perf.controlled_battlefield_ms = controlled_battlefield_started_at.elapsed_ms();
 
     actions.push(LegalAction::PassPriority);
+    let planar_die_action = crate::special_actions::SpecialAction::RollPlanarDie;
+    if crate::special_actions::can_perform_check(&planar_die_action, game, player).is_ok() {
+        actions.push(LegalAction::SpecialAction(planar_die_action));
+    }
+    if let Some(companion_id) = game.player(player).and_then(|state| state.companion) {
+        let companion_action = crate::special_actions::SpecialAction::Companion {
+            card_id: companion_id,
+        };
+        if crate::special_actions::can_perform_check(&companion_action, game, player).is_ok() {
+            actions.push(LegalAction::SpecialAction(companion_action));
+        }
+    }
+    for conspiracy_id in game.conspiracy_cards() {
+        let action = crate::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id };
+        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+            actions.push(LegalAction::SpecialAction(action));
+        }
+    }
 
     let lands_started_at = PerfTimer::start();
     add_land_actions(
@@ -1168,20 +1194,18 @@ fn activation_timing_allows(
             {
                 return true;
             }
-            game.turn.active_player == controller
+            game.is_active_player(controller)
                 && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
                 && game.stack_is_empty()
         }
         crate::ability::ActivationTiming::OncePerTurn => {
             game.ability_activation_count_this_turn(source, ability_index) == 0
         }
-        crate::ability::ActivationTiming::DuringYourTurn => game.turn.active_player == controller,
-        crate::ability::ActivationTiming::DuringOpponentsTurn => {
-            game.turn.active_player != controller
-        }
+        crate::ability::ActivationTiming::DuringYourTurn => game.is_active_player(controller),
+        crate::ability::ActivationTiming::DuringOpponentsTurn => !game.is_active_player(controller),
         crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
             game.object(source)
-                .is_some_and(|object| object.owner == game.turn.active_player)
+                .is_some_and(|object| game.is_active_player(object.owner))
                 && game.turn.phase == Phase::Beginning
                 && game.turn.step == Some(crate::game_state::Step::Upkeep)
         }
@@ -1198,7 +1222,7 @@ fn loyalty_activation_special_rules_allow(
         return true;
     }
 
-    game.turn.active_player == controller
+    game.is_active_player(controller)
         && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
         && game.stack_is_empty()
         && !game.loyalty_ability_activated_this_turn(source)
@@ -1232,6 +1256,39 @@ fn loyalty_negative_costs_payable(
     required == 0 || game.counter_count(source, crate::CounterType::Loyalty) >= required
 }
 
+fn total_cost_branch_is_payable_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => activation_printed_costs_precheck_with_view(
+            game, controller, source, costs, reason, view,
+        ),
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+            total_cost_branch_is_payable_with_view(game, controller, source, branch, reason, view)
+        }),
+    }
+}
+
+fn every_cost_branch_requires(
+    cost: &crate::cost::TotalCost,
+    predicate: fn(&crate::costs::Cost) -> bool,
+) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(predicate),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            !branches.is_empty()
+                && branches
+                    .iter()
+                    .all(|branch| every_cost_branch_requires(branch, predicate))
+        }
+    }
+}
+
 fn activated_minimum_x_cost_is_payable(
     game: &GameState,
     controller: PlayerId,
@@ -1243,15 +1300,28 @@ fn activated_minimum_x_cost_is_payable(
         return true;
     }
 
-    activated
-        .mana_cost
-        .costs()
-        .iter()
-        .filter_map(|cost| {
-            cost.effect_ref()
-                .and_then(|effect| effect.max_cost_x(game, source, controller))
-        })
-        .min()
+    fn branch_maximum_x(
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        cost: &crate::cost::TotalCost,
+    ) -> Option<u32> {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => costs
+                .iter()
+                .filter_map(|cost| {
+                    cost.effect_ref()
+                        .and_then(|effect| effect.max_cost_x(game, source, controller))
+                })
+                .min(),
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches
+                .iter()
+                .filter_map(|branch| branch_maximum_x(game, source, controller, branch))
+                .max(),
+        }
+    }
+
+    branch_maximum_x(game, source, controller, &activated.mana_cost)
         .is_none_or(|maximum| maximum >= minimum)
 }
 
@@ -1311,7 +1381,7 @@ fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
     controller: PlayerId,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    if game.turn.active_player != controller
+    if !game.is_active_player(controller)
         || game.exhaust_ability_activation_count_this_turn(controller) > 0
     {
         return false;
@@ -1344,7 +1414,7 @@ fn activation_cost_component_precheck_with_view(
     source: ObjectId,
     cost: &crate::costs::Cost,
     reason: crate::costs::PaymentReason,
-    _view: &DerivedGameView<'_>,
+    view: &DerivedGameView<'_>,
 ) -> bool {
     if let Some(amount) = cost.life_amount() {
         return game.can_pay_life_with_reason(controller, amount, reason);
@@ -1377,8 +1447,13 @@ fn activation_cost_component_precheck_with_view(
     }
 
     if let Some(mana_cost) = cost.mana_cost_ref() {
-        let _ = mana_cost;
-        return true;
+        return view.can_potentially_pay_with_reason(
+            controller,
+            Some(source),
+            mana_cost,
+            0,
+            reason,
+        );
     }
     if cost.is_remove_counters() {
         return true;
@@ -1500,24 +1575,23 @@ fn activation_precheck_with_view(
         }
         return None;
     }
-    if activated.has_tap_cost() && !source_facts.can_activate_tap_abilities {
+    let every_branch_taps =
+        every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_tap);
+    let every_branch_untaps =
+        every_cost_branch_requires(&activated.mana_cost, crate::costs::Cost::requires_untap);
+    if every_branch_taps && !source_facts.can_activate_tap_abilities {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
         return None;
     }
-    if activated.has_tap_cost() && source_facts.is_tapped {
+    if every_branch_taps && source_facts.is_tapped {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
         return None;
     }
-    let has_untap_cost = activated
-        .mana_cost
-        .costs()
-        .iter()
-        .any(|cost| cost.requires_untap());
-    if (activated.has_tap_cost() || has_untap_cost)
+    if (every_branch_taps || every_branch_untaps)
         && source_facts.is_creature
         && source_facts.is_summoning_sick
         && !source_facts.has_haste
@@ -1527,13 +1601,7 @@ fn activation_precheck_with_view(
         }
         return None;
     }
-    if activated
-        .mana_cost
-        .costs()
-        .iter()
-        .any(|cost| cost.requires_untap())
-        && !source_facts.is_tapped
-    {
+    if every_branch_untaps && !source_facts.is_tapped {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -1591,15 +1659,29 @@ fn activation_precheck_with_view(
         }
 
         let reason = crate::costs::PaymentReason::ActivateAbility;
-        let costs = activated.mana_cost.costs();
-        if activated.is_loyalty_ability() && !loyalty_negative_costs_payable(game, source, costs) {
+        let loyalty_costs_payable = match activated.mana_cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => {
+                loyalty_negative_costs_payable(game, source, costs)
+            }
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+                branch
+                    .as_all()
+                    .is_some_and(|costs| loyalty_negative_costs_payable(game, source, costs))
+            }),
+        };
+        if activated.is_loyalty_ability() && !loyalty_costs_payable {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
             }
             return None;
         }
-        if !activation_printed_costs_precheck_with_view(
-            game, controller, source, costs, reason, view,
+        if !total_cost_branch_is_payable_with_view(
+            game,
+            controller,
+            source,
+            &activated.mana_cost,
+            reason,
+            view,
         ) {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -1670,14 +1752,30 @@ fn activation_precheck_with_view(
     }
 
     let reason = crate::costs::PaymentReason::ActivateAbility;
-    let costs = activated.mana_cost.costs();
-    if activated.is_loyalty_ability() && !loyalty_negative_costs_payable(game, source, costs) {
+    let loyalty_costs_payable = match activated.mana_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            loyalty_negative_costs_payable(game, source, costs)
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+            branch
+                .as_all()
+                .is_some_and(|costs| loyalty_negative_costs_payable(game, source, costs))
+        }),
+    };
+    if activated.is_loyalty_ability() && !loyalty_costs_payable {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
         return None;
     }
-    if !activation_printed_costs_precheck_with_view(game, controller, source, costs, reason, view) {
+    if !total_cost_branch_is_payable_with_view(
+        game,
+        controller,
+        source,
+        &activated.mana_cost,
+        reason,
+        view,
+    ) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -1735,7 +1833,7 @@ fn activation_cost_is_payable_with_view(
     controller: PlayerId,
     source: ObjectId,
     cost: &crate::costs::Cost,
-    _view: &DerivedGameView<'_>,
+    view: &DerivedGameView<'_>,
 ) -> bool {
     let reason = crate::costs::PaymentReason::ActivateAbility;
     if game
@@ -1746,8 +1844,13 @@ fn activation_cost_is_payable_with_view(
     }
 
     if let Some(mana_cost) = cost.mana_cost_ref() {
-        let _ = mana_cost;
-        return true;
+        return view.can_potentially_pay_with_reason(
+            controller,
+            Some(source),
+            mana_cost,
+            0,
+            reason,
+        );
     }
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
         return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
@@ -1758,6 +1861,62 @@ fn activation_cost_is_payable_with_view(
 
     let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
     crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
+}
+
+pub(crate) fn activation_total_cost_is_payable_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => {
+            let mut idx = 0usize;
+            while idx < components.len() {
+                if let Some(choose) = components[idx]
+                    .effect_ref()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+                    && let Some(next) = components.get(idx + 1)
+                    && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
+                {
+                    let paired_cost = match &step {
+                        crate::game_loop::ActivationCostStep::Cost(cost)
+                        | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
+                        crate::game_loop::ActivationCostStep::CardChoice(choice) => {
+                            activation_card_cost_choice_cost(choice)
+                        }
+                    };
+                    if !activation_cost_is_payable_with_view(
+                        game,
+                        controller,
+                        source,
+                        paired_cost,
+                        view,
+                    ) {
+                        return false;
+                    }
+                    idx += 2;
+                    continue;
+                }
+
+                if !activation_cost_is_payable_with_view(
+                    game,
+                    controller,
+                    source,
+                    &components[idx],
+                    view,
+                ) {
+                    return false;
+                }
+                idx += 1;
+            }
+            true
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+            activation_total_cost_is_payable_with_view(game, controller, source, branch, view)
+        }),
+    }
 }
 
 pub(crate) fn can_activate_ability_with_restrictions_with_view(
@@ -1784,6 +1943,12 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         }
         return false;
     };
+    if !game.object_is_within_range(controller, source, Some(source)) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_total_ms(total_started_at.elapsed_ms());
+        }
+        return false;
+    }
 
     let target_started_at = PerfTimer::start();
     let has_legal_targets =
@@ -1824,45 +1989,27 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
     if let Some(perf_ctx) = perf_ctx {
         perf_ctx.add_cost_build_ms(cost_started_at.elapsed_ms());
     }
-    let components = total_cost.costs();
-    if activated.is_loyalty_ability() && !loyalty_negative_costs_payable(game, source, components) {
+    let loyalty_costs_payable = match total_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            loyalty_negative_costs_payable(game, source, costs)
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+            branch
+                .as_all()
+                .is_some_and(|costs| loyalty_negative_costs_payable(game, source, costs))
+        }),
+    };
+    if activated.is_loyalty_ability() && !loyalty_costs_payable {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_total_ms(total_started_at.elapsed_ms());
         }
         return false;
     }
-    let mut idx = 0usize;
-    while idx < components.len() {
-        if let Some(choose) = components[idx]
-            .effect_ref()
-            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-            && let Some(next) = components.get(idx + 1)
-            && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
-        {
-            let paired_cost = match &step {
-                crate::game_loop::ActivationCostStep::Cost(cost) => cost,
-                crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
-                crate::game_loop::ActivationCostStep::CardChoice(choice) => {
-                    activation_card_cost_choice_cost(choice)
-                }
-            };
-            if !activation_cost_is_payable_with_view(game, controller, source, paired_cost, view) {
-                if let Some(perf_ctx) = perf_ctx {
-                    perf_ctx.add_total_ms(total_started_at.elapsed_ms());
-                }
-                return false;
-            }
-            idx += 2;
-            continue;
+    if !activation_total_cost_is_payable_with_view(game, controller, source, &total_cost, view) {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_total_ms(total_started_at.elapsed_ms());
         }
-
-        if !activation_cost_is_payable_with_view(game, controller, source, &components[idx], view) {
-            if let Some(perf_ctx) = perf_ctx {
-                perf_ctx.add_total_ms(total_started_at.elapsed_ms());
-            }
-            return false;
-        }
-        idx += 1;
+        return false;
     }
 
     if let Some(perf_ctx) = perf_ctx {

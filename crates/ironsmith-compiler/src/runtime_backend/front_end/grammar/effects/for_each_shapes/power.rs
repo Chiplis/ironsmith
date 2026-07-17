@@ -2,7 +2,7 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::cards::builders::CardTextError;
-use crate::effect::Value;
+use crate::effect::{Until, Value};
 use crate::runtime_backend::front_end::grammar::{leaf, primitives};
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, render_token_slice};
 use crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens;
@@ -11,6 +11,7 @@ use crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_token
 pub(crate) struct BasePowerClauseShape<'a> {
     pub(crate) power: Value,
     pub(crate) target_tokens: &'a [OwnedLexToken],
+    pub(crate) duration: Until,
 }
 
 #[derive(Debug, Clone)]
@@ -18,6 +19,8 @@ pub(crate) struct BasePowerToughnessClauseShape<'a> {
     pub(crate) power: Value,
     pub(crate) toughness: Value,
     pub(crate) target_tokens: &'a [OwnedLexToken],
+    pub(crate) duration: Until,
+    pub(crate) where_x_tokens: Option<&'a [OwnedLexToken]>,
 }
 
 fn has_or_have<'a>(
@@ -28,14 +31,31 @@ fn has_or_have<'a>(
         .parse_next(input)
 }
 
-fn eot_prefix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let parsed = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)?;
-    (parsed.duration == leaf::LeafDurationPhrase::UntilEndOfTurn)
-        .then_some(trim_edge_punctuation_tokens(parsed.rest))
+fn duration_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
+    match duration {
+        leaf::LeafDurationPhrase::ThisTurn | leaf::LeafDurationPhrase::UntilEndOfTurn => {
+            Until::EndOfTurn
+        }
+        leaf::LeafDurationPhrase::UntilEndOfCombat => Until::EndOfCombat,
+        leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
+        leaf::LeafDurationPhrase::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
+        leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
+        leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
+        leaf::LeafDurationPhrase::Forever => Until::Forever,
+    }
 }
 
-fn is_eot_tail(tokens: &[OwnedLexToken]) -> bool {
-    eot_prefix(tokens).is_some_and(<[_]>::is_empty)
+fn duration_prefix(tokens: &[OwnedLexToken]) -> Option<(Until, &[OwnedLexToken])> {
+    let parsed = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)?;
+    Some((
+        duration_from_leaf(parsed.duration),
+        trim_edge_punctuation_tokens(parsed.rest),
+    ))
+}
+
+fn complete_duration(tokens: &[OwnedLexToken]) -> Option<Until> {
+    let (duration, rest) = duration_prefix(tokens)?;
+    rest.is_empty().then_some(duration)
 }
 
 fn contains_temporal_marker(tokens: &[OwnedLexToken]) -> bool {
@@ -53,16 +73,20 @@ fn contains_temporal_marker(tokens: &[OwnedLexToken]) -> bool {
 
 fn permits_implicit_eot(subject: &[OwnedLexToken], all: &[OwnedLexToken]) -> bool {
     primitives::contains_word(subject, "target")
-        || eot_prefix(subject).is_some()
+        || duration_prefix(subject).is_some()
         || contains_temporal_marker(all)
 }
 
-fn target_without_leading_eot(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    eot_prefix(tokens).unwrap_or_else(|| trim_edge_punctuation_tokens(tokens))
+fn target_and_leading_duration(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Until>) {
+    duration_prefix(tokens)
+        .map(|(duration, rest)| (rest, Some(duration)))
+        .unwrap_or_else(|| (trim_edge_punctuation_tokens(tokens), None))
 }
 
 fn has_shared_gain_tail(tokens: &[OwnedLexToken]) -> bool {
-    let tokens = eot_prefix(tokens).unwrap_or(tokens);
+    let tokens = duration_prefix(tokens)
+        .map(|(_, rest)| rest)
+        .unwrap_or(tokens);
     primitives::parse_prefix(
         trim_edge_punctuation_tokens(tokens),
         (
@@ -120,19 +144,33 @@ pub(crate) fn parse_base_power_clause_shape(
         )));
     };
     let tail = trim_edge_punctuation_tokens(value_tokens.get(consumed..).unwrap_or_default());
-    if tail.is_empty() {
+    let (target_tokens, leading_duration) = target_and_leading_duration(subject);
+    let duration = if tail.is_empty() {
         if !permits_implicit_eot(subject, tokens) {
             return Ok(None);
         }
-    } else if !is_eot_tail(tail) {
+        leading_duration.unwrap_or(Until::EndOfTurn)
+    } else if let Some(trailing_duration) = complete_duration(tail) {
+        if leading_duration
+            .as_ref()
+            .is_some_and(|leading| leading != &trailing_duration)
+        {
+            return Err(CardTextError::ParseError(format!(
+                "conflicting base power durations (clause: '{}')",
+                render_token_slice(tokens)
+            )));
+        }
+        trailing_duration
+    } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power clause (clause: '{}')",
             render_token_slice(tokens)
         )));
-    }
+    };
     Ok(Some(BasePowerClauseShape {
         power,
-        target_tokens: target_without_leading_eot(subject),
+        target_tokens,
+        duration,
     }))
 }
 
@@ -161,22 +199,44 @@ pub(crate) fn parse_base_power_toughness_clause_shape(
         ))
     })?;
     let tail = trim_edge_punctuation_tokens(modifier_tokens.get(1..).unwrap_or_default());
-    if tail.is_empty() {
+    let (target_tokens, leading_duration) = target_and_leading_duration(subject);
+    let mut where_x_tokens = None;
+    let duration = if tail.is_empty() {
         if !permits_implicit_eot(subject, tokens) {
             return Ok(None);
         }
+        leading_duration.unwrap_or(Until::EndOfTurn)
     } else if has_shared_gain_tail(tail) {
         return Ok(None);
-    } else if !is_eot_tail(tail) {
+    } else if primitives::parse_prefix(tail, primitives::phrase(&["where", "x", "is"])).is_some() {
+        if !permits_implicit_eot(subject, tokens) {
+            return Ok(None);
+        }
+        where_x_tokens = Some(tail);
+        leading_duration.unwrap_or(Until::EndOfTurn)
+    } else if let Some(trailing_duration) = complete_duration(tail) {
+        if leading_duration
+            .as_ref()
+            .is_some_and(|leading| leading != &trailing_duration)
+        {
+            return Err(CardTextError::ParseError(format!(
+                "conflicting base power/toughness durations (clause: '{}')",
+                render_token_slice(tokens)
+            )));
+        }
+        trailing_duration
+    } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",
             render_token_slice(tokens)
         )));
-    }
+    };
     Ok(Some(BasePowerToughnessClauseShape {
         power,
         toughness,
-        target_tokens: target_without_leading_eot(subject),
+        target_tokens,
+        duration,
+        where_x_tokens,
     }))
 }
 
@@ -202,5 +262,38 @@ mod tests {
             .unwrap();
         assert_eq!(shape.power, Value::Fixed(3));
         assert_eq!(shape.toughness, Value::Fixed(4));
+        assert_eq!(shape.duration, Until::EndOfTurn);
+        assert!(shape.where_x_tokens.is_none());
+
+        let pt = lex_line(
+            "until your next turn, creatures target player controls have base power and toughness 1/1",
+            0,
+        )
+        .unwrap();
+        let shape = parse_base_power_toughness_clause_shape(&pt)
+            .unwrap()
+            .unwrap();
+        assert_eq!(shape.duration, Until::YourNextTurn);
+        assert!(shape.where_x_tokens.is_none());
+        assert_eq!(
+            render_token_slice(shape.target_tokens),
+            "creatures target player controls"
+        );
+
+        let dynamic = lex_line(
+            "until end of turn, creatures you control have base power and toughness X/X, where X is the number of cards in your graveyard",
+            0,
+        )
+        .unwrap();
+        let shape = parse_base_power_toughness_clause_shape(&dynamic)
+            .unwrap()
+            .unwrap();
+        assert_eq!(shape.power, Value::X);
+        assert_eq!(shape.toughness, Value::X);
+        assert_eq!(shape.duration, Until::EndOfTurn);
+        assert_eq!(
+            render_token_slice(shape.where_x_tokens.unwrap()),
+            "where X is the number of cards in your graveyard"
+        );
     }
 }

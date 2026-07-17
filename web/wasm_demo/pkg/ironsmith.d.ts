@@ -1,9 +1,6 @@
 /* tslint:disable */
 /* eslint-disable */
 
-/**
- * Browser-exposed game handle.
- */
 export class WasmGame {
     free(): void;
     [Symbol.dispose](): void;
@@ -53,6 +50,10 @@ export class WasmGame {
      * Get the count of scored cards meeting the current threshold.
      */
     cardsMeetingThreshold(): number;
+    /**
+     * Return the rules-defined chooser for a creature's combat-damage division.
+     */
+    combatDamageAssignmentPlayer(source_id: bigint): number | undefined;
     createCustomCard(payload_js: any): bigint;
     /**
      * Apply a player command for the currently pending decision.
@@ -185,6 +186,11 @@ export class WasmGame {
     revealHiddenPositions(input: any): any;
     revealHiddenSlot(input: any): any;
     sampleLoadedDeckSeed(player_index: number): any;
+    selectGrandMeleeStack(player_index: number, marker: number): any;
+    /**
+     * Enable or disable the CR 803 attack-left/attack-right option.
+     */
+    setAttackDirection(direction?: string | null): void;
     /**
      * Record an attacking band for the current combat.
      */
@@ -198,11 +204,23 @@ export class WasmGame {
      * Set an explicit combat damage assignment for the next combat damage step.
      */
     setCombatDamageAssignment(attacker_id: bigint, recipient_id: bigint, amount: number): void;
+    /**
+     * Set a combat-damage assignment on behalf of the rules-defined chooser.
+     */
+    setCombatDamageAssignmentForPlayer(assigning_player: number, source_id: bigint, recipient_id: bigint, amount: number): void;
     setDaytime(daytime: boolean): any;
+    /**
+     * Enable or disable the CR 804 deploy-creatures option.
+     */
+    setDeployCreatures(enabled: boolean): void;
     /**
      * Set a player's life total.
      */
     setLife(player_index: number, life: number): void;
+    /**
+     * Enable the CR 801 multiplayer option in current player-seat order.
+     */
+    setLimitedRangeOfInfluence(ranges: any): void;
     /**
      * Set local perspective explicitly.
      */
@@ -211,6 +229,19 @@ export class WasmGame {
      * Set the semantic similarity threshold for card addition (0..100%, 0 = off).
      */
     setSemanticThreshold(threshold: number): void;
+    /**
+     * Record one team's chosen within-team order for CR 805 simultaneous
+     * choices, actions, and trigger placement.
+     */
+    setSharedTeamMemberOrder(team: number, order: any): void;
+    /**
+     * Enable or disable the CR 805 shared-team-turns option.
+     */
+    setSharedTeamTurns(enabled: boolean): void;
+    /**
+     * Configure explicit multiplayer teams as arrays of player indices.
+     */
+    setTeams(teams: any): void;
     /**
      * Return a JS object snapshot of public game state.
      */
@@ -252,8 +283,15 @@ export interface InitOutput {
     readonly wasmgame_registerExternalCardSourcesJson: (a: number, b: number, c: number) => [number, number, number, number];
     readonly wasmgame_registerExternalCardSources: (a: number, b: any) => [number, number, number];
     readonly wasm_start: () => void;
+    readonly wasmgame_selectGrandMeleeStack: (a: number, b: number, c: number) => [number, number, number];
     readonly wasmgame_new: () => number;
     readonly wasmgame_setAutoChooseSingleObjectDecisions: (a: number, b: number) => void;
+    readonly wasmgame_setLimitedRangeOfInfluence: (a: number, b: any) => [number, number];
+    readonly wasmgame_setAttackDirection: (a: number, b: number, c: number) => [number, number];
+    readonly wasmgame_setTeams: (a: number, b: any) => [number, number];
+    readonly wasmgame_setDeployCreatures: (a: number, b: number) => void;
+    readonly wasmgame_setSharedTeamTurns: (a: number, b: number) => [number, number];
+    readonly wasmgame_setSharedTeamMemberOrder: (a: number, b: number, c: any) => [number, number];
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
     readonly wasmgame_revealHiddenObject: (a: number, b: any) => [number, number, number];
@@ -293,6 +331,8 @@ export interface InitOutput {
     readonly wasmgame_addCardToZone: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [bigint, number, number];
     readonly wasmgame_addCardsToZones: (a: number, b: any) => [number, number, number];
     readonly wasmgame_setCombatDamageAssignment: (a: number, b: bigint, c: bigint, d: number) => void;
+    readonly wasmgame_combatDamageAssignmentPlayer: (a: number, b: bigint) => number;
+    readonly wasmgame_setCombatDamageAssignmentForPlayer: (a: number, b: number, c: bigint, d: bigint, e: number) => [number, number];
     readonly wasmgame_setAttackingBand: (a: number, b: any) => [number, number];
     readonly wasmgame_drawOpeningHands: (a: number, b: number) => [number, number];
     readonly wasmgame_loadDemoDecks: (a: number) => [number, number];

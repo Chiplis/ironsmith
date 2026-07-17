@@ -1,13 +1,13 @@
 //! Register a one-shot spell-ability grant for the next matching spell this turn.
 
+use crate::ability::Ability;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-use crate::static_abilities::StaticAbility;
 
-pub type GrantNextSpellAbilityEffect = ironsmith_core::GrantNextSpellAbilityEffect<StaticAbility>;
+pub type GrantNextSpellAbilityEffect = ironsmith_core::GrantNextSpellAbilityEffect<Ability>;
 
 impl EffectExecutor for GrantNextSpellAbilityEffect {
     fn execute(
@@ -30,8 +30,10 @@ impl EffectExecutor for GrantNextSpellAbilityEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::AbilityKind;
     use crate::card::CardBuilder;
     use crate::ids::{CardId, PlayerId};
+    use crate::static_abilities::{StaticAbility, StaticAbilityId};
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -46,7 +48,7 @@ mod tests {
         let effect = GrantNextSpellAbilityEffect::new(
             PlayerFilter::You,
             ObjectFilter::noncreature_spell().cast_by(PlayerFilter::You),
-            StaticAbility::cascade(),
+            StaticAbility::cascade().into(),
         );
         effect
             .execute(&mut game, &mut ctx)
@@ -55,10 +57,11 @@ mod tests {
         assert_eq!(game.effect_store.temporary_spell_ability_grants.len(), 1);
         let grant = &game.effect_store.temporary_spell_ability_grants[0];
         assert_eq!(grant.player, alice);
-        assert_eq!(
-            grant.ability.id(),
-            crate::static_abilities::StaticAbilityId::Cascade
-        );
+        assert!(matches!(
+            &grant.ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::Cascade
+        ));
     }
 
     #[test]
@@ -86,14 +89,18 @@ mod tests {
             alice,
             spell_id,
             filter,
-            StaticAbility::rebound(),
+            StaticAbility::rebound().into(),
             1,
         );
 
         assert!(
             game.temporary_granted_spell_abilities(spell_id, alice)
                 .iter()
-                .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Rebound),
+                .any(|ability| matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::Rebound
+                )),
             "the stack spell should match its hand-origin snapshot"
         );
     }

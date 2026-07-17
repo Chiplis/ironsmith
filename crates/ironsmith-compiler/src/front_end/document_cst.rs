@@ -85,6 +85,7 @@ pub struct LevelItemCst<Parsed> {
 pub struct SagaChapterLineCst<Effect> {
     pub info: LineInfo,
     pub chapters: Vec<u32>,
+    pub presentation_label: Option<String>,
     pub text: String,
     pub effects_ast: Vec<Effect>,
 }

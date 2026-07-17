@@ -15,6 +15,7 @@ import {
   LOBBY_DECK_SIZE,
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
+  MATCH_FORMAT_PLANECHASE,
   PARTNER_DECK_SIZE,
   normalizeMatchFormat,
   parseCommanderList,
@@ -57,9 +58,10 @@ const securityModeOptions = [
 ];
 
 function formatName(format) {
-  return normalizeMatchFormat(format) === MATCH_FORMAT_COMMANDER
-    ? "Commander"
-    : "Normal";
+  const normalized = normalizeMatchFormat(format);
+  if (normalized === MATCH_FORMAT_COMMANDER) return "Commander";
+  if (normalized === MATCH_FORMAT_PLANECHASE) return "Planechase";
+  return "Normal";
 }
 
 function securityModeName(mode) {
@@ -85,7 +87,11 @@ function formatPlayerStatus(player, localPeerId, format) {
   }
   if (player.ready) return player.peerId === localPeerId ? "You / Ready" : "Ready";
 
-  if (normalizeMatchFormat(format) === MATCH_FORMAT_COMMANDER) {
+  const normalizedFormat = normalizeMatchFormat(format);
+  if (
+    normalizedFormat === MATCH_FORMAT_COMMANDER
+    || normalizedFormat === MATCH_FORMAT_PLANECHASE
+  ) {
     const mainCount = Number(player.deckCount || 0);
     const commanderCount = Number(player.commanderCount || 0);
     const prefix = player.peerId === localPeerId ? "You / " : "";
@@ -114,9 +120,14 @@ function offlinePlayerSummary(players) {
 }
 
 function formatDeckRequirement(format) {
-  return normalizeMatchFormat(format) === MATCH_FORMAT_COMMANDER
-    ? `Submit a ${COMMANDER_DECK_SIZE}-card main deck plus 1 commander, or a ${PARTNER_DECK_SIZE}-card main deck plus 2 commanders.`
-    : `Submit exactly ${LOBBY_DECK_SIZE} main-deck cards.`;
+  const normalized = normalizeMatchFormat(format);
+  if (normalized === MATCH_FORMAT_COMMANDER) {
+    return `Submit a ${COMMANDER_DECK_SIZE}-card main deck plus 1 commander, or a ${PARTNER_DECK_SIZE}-card main deck plus 2 commanders.`;
+  }
+  if (normalized === MATCH_FORMAT_PLANECHASE) {
+    return `Submit exactly ${LOBBY_DECK_SIZE} main-deck cards plus at least 10 uniquely named Plane or Phenomenon cards.`;
+  }
+  return `Submit exactly ${LOBBY_DECK_SIZE} main-deck cards.`;
 }
 
 export default function LobbyOverlay({
@@ -258,7 +269,10 @@ export default function LobbyOverlay({
       name: inviteName,
       deckText: inviteDeckText,
       commanderText:
-        activeFormat === MATCH_FORMAT_COMMANDER ? inviteCommanderText : "",
+        activeFormat === MATCH_FORMAT_COMMANDER
+        || activeFormat === MATCH_FORMAT_PLANECHASE
+          ? inviteCommanderText
+          : "",
     }),
     [activeFormat, inviteCommanderText, inviteDeckText, inviteName, shareLobbyCode]
   );
@@ -266,6 +280,9 @@ export default function LobbyOverlay({
   const handleCreateFormatChange = (nextFormat) => {
     const normalized = normalizeMatchFormat(nextFormat);
     setCreateFormat(normalized);
+    if (normalized === MATCH_FORMAT_PLANECHASE) {
+      setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
+    }
     setStartingLife((prev) => {
       if (normalized === MATCH_FORMAT_COMMANDER && prev === 20) return 40;
       if (normalized === MATCH_FORMAT_NORMAL && prev === 40) return 20;
@@ -279,7 +296,10 @@ export default function LobbyOverlay({
       desiredPlayers,
       startingLife,
       format: createFormat,
-      securityMode: createSecurityMode,
+      securityMode:
+        createFormat === MATCH_FORMAT_PLANECHASE
+          ? MULTIPLAYER_SECURITY_TRUSTED
+          : createSecurityMode,
       deckText: createDeckText,
       commanderText: createCommanderText,
     });
@@ -374,6 +394,7 @@ export default function LobbyOverlay({
                         >
                           <option value={MATCH_FORMAT_NORMAL}>Normal</option>
                           <option value={MATCH_FORMAT_COMMANDER}>Commander</option>
+                          <option value={MATCH_FORMAT_PLANECHASE}>Planechase</option>
                         </select>
                       </label>
                     </div>
@@ -407,6 +428,12 @@ export default function LobbyOverlay({
                       </legend>
                       <div className="grid gap-2 md:grid-cols-2">
                         {securityModeOptions.map((option) => {
+                          if (
+                            createFormat === MATCH_FORMAT_PLANECHASE
+                            && option.value === MULTIPLAYER_SECURITY_VERIFIED
+                          ) {
+                            return null;
+                          }
                           const selected = createSecurityMode === option.value;
                           return (
                             <label
@@ -447,14 +474,21 @@ export default function LobbyOverlay({
                         }
                       />
                     </label>
-                    {createFormat === MATCH_FORMAT_COMMANDER ? (
+                    {createFormat === MATCH_FORMAT_COMMANDER
+                    || createFormat === MATCH_FORMAT_PLANECHASE ? (
                       <label className={labelClass}>
-                        Commander(s)
+                        {createFormat === MATCH_FORMAT_PLANECHASE
+                          ? "Planar Deck"
+                          : "Commander(s)"}
                         <textarea
                           className={commanderTextareaClass}
                           value={createCommanderText}
                           onChange={(event) => setCreateCommanderText(event.target.value)}
-                          placeholder={"1 Atraxa, Praetors' Voice\nor\nTymna the Weaver\nKraum, Ludevic's Opus"}
+                          placeholder={
+                            createFormat === MATCH_FORMAT_PLANECHASE
+                              ? "1 The Aether Flues\n1 Spatial Merging\n1 The Great Forest\n..."
+                              : "1 Atraxa, Praetors' Voice\nor\nTymna the Weaver\nKraum, Ludevic's Opus"
+                          }
                         />
                       </label>
                     ) : null}
@@ -471,6 +505,8 @@ export default function LobbyOverlay({
                       </span>
                       {createFormat === MATCH_FORMAT_COMMANDER ? (
                         <span>Commander(s): {createCommanderCount}/1-2</span>
+                      ) : createFormat === MATCH_FORMAT_PLANECHASE ? (
+                        <span>Planar deck: {createCommanderCount}/10+</span>
                       ) : null}
                       <span>Mode: {securityModeName(createSecurityMode)}</span>
                       <span>{securityModeSummary(createSecurityMode)}</span>
@@ -517,16 +553,16 @@ export default function LobbyOverlay({
                         className={textareaClass}
                         value={joinDeckText}
                         onChange={(event) => setJoinDeckText(event.target.value)}
-                        placeholder={`Paste your main deck now or finish it inside the lobby.\n\nNormal lobbies need ${LOBBY_DECK_SIZE} cards.\nCommander lobbies need ${COMMANDER_DECK_SIZE} or ${PARTNER_DECK_SIZE} main-deck cards.`}
+                        placeholder={`Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need ${LOBBY_DECK_SIZE} cards.\nCommander lobbies need ${COMMANDER_DECK_SIZE} or ${PARTNER_DECK_SIZE} main-deck cards.`}
                       />
                     </label>
                     <label className={labelClass}>
-                      Commander(s)
+                      Commander(s) / Planar Deck
                       <textarea
                         className={commanderTextareaClass}
                         value={joinCommanderText}
                         onChange={(event) => setJoinCommanderText(event.target.value)}
-                        placeholder={"Optional until you see the host format.\nIf the lobby is Commander, add 1 or 2 commanders here."}
+                        placeholder={"Optional until you see the host format.\nAdd 1 or 2 commanders for Commander, or at least 10 unique planar cards for Planechase."}
                       />
                     </label>
                   </div>
@@ -534,9 +570,9 @@ export default function LobbyOverlay({
                   <div className={panelClass}>
                     <div className={infoTextClass}>
                       <span>Main deck: {joinDeckCount} cards</span>
-                      <span>Commander(s): {joinCommanderCount}</span>
+                      <span>Supplemental cards: {joinCommanderCount}</span>
                       <span>
-                        Join first, then the lobby will tell you whether the host chose Normal or Commander.
+                        Join first, then the lobby will tell you whether the host chose Normal, Commander, or Planechase.
                       </span>
                       <span>
                         You only become ready after the host receives a valid deck submission for that format.
@@ -644,14 +680,21 @@ export default function LobbyOverlay({
                         }
                       />
                     </label>
-                    {activeFormat === MATCH_FORMAT_COMMANDER ? (
+                    {activeFormat === MATCH_FORMAT_COMMANDER
+                    || activeFormat === MATCH_FORMAT_PLANECHASE ? (
                       <label className={labelClass}>
-                        Commander(s)
+                        {activeFormat === MATCH_FORMAT_PLANECHASE
+                          ? "Planar Deck"
+                          : "Commander(s)"}
                         <textarea
                           className={commanderTextareaClass}
                           value={inviteCommanderText}
                           onChange={(event) => setInviteCommanderText(event.target.value)}
-                          placeholder={"Optional until the invitee finalizes their commander choice"}
+                          placeholder={
+                            activeFormat === MATCH_FORMAT_PLANECHASE
+                              ? "Optional planar deck for this invitee"
+                              : "Optional until the invitee finalizes their commander choice"
+                          }
                         />
                       </label>
                     ) : null}
@@ -666,7 +709,7 @@ export default function LobbyOverlay({
                     </label>
                     <div className={infoTextClass}>
                       <span>
-                        Includes the current lobby code plus any optional name/deck/commander fields above.
+                        Includes the current lobby code plus any optional name, deck, and supplemental fields above.
                       </span>
                       <span>
                         Incomplete deck submissions still join the lobby and can be finished there before the player becomes ready.
@@ -705,7 +748,8 @@ export default function LobbyOverlay({
                           ? `${multiplayer.localDeckCount}/${activeCommanderTarget}`
                           : `${multiplayer.localDeckCount}/${LOBBY_DECK_SIZE}`}
                       </span>
-                      {activeFormat === MATCH_FORMAT_COMMANDER ? (
+                      {activeFormat === MATCH_FORMAT_COMMANDER
+                      || activeFormat === MATCH_FORMAT_PLANECHASE ? (
                         <>
                           <textarea
                             className={commanderTextareaClass}
@@ -714,10 +758,16 @@ export default function LobbyOverlay({
                             onChange={(event) =>
                               updateLobbyDeck({ commanderText: event.target.value })
                             }
-                            placeholder={"1 Commander\nor\nCommander One\nCommander Two"}
+                            placeholder={
+                              activeFormat === MATCH_FORMAT_PLANECHASE
+                                ? "1 Plane or Phenomenon per line"
+                                : "1 Commander\nor\nCommander One\nCommander Two"
+                            }
                           />
                           <span>
-                            Commander(s): {multiplayer.localCommanderCount}/1-2
+                            {activeFormat === MATCH_FORMAT_PLANECHASE
+                              ? `Planar deck: ${multiplayer.localCommanderCount}/10+`
+                              : `Commander(s): ${multiplayer.localCommanderCount}/1-2`}
                           </span>
                         </>
                       ) : null}

@@ -77,7 +77,7 @@ fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerC
         PlayerFilter::Opponent => player != ctx.controller,
         PlayerFilter::Any => true,
         PlayerFilter::Specific(id) => player == *id,
-        PlayerFilter::Active => player == ctx.game.turn.active_player,
+        PlayerFilter::Active => ctx.game.is_active_player(player),
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
             if matches!(tag.as_str(), "enchanted" | "equipped") =>
         {

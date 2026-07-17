@@ -169,11 +169,12 @@ pub(super) fn parse_graveyard_threshold_predicate(
     if raw_filter_tokens.is_empty() || tokens_contain_type_marker(raw_filter_tokens) {
         return Ok(None);
     }
-    let used_and_or_connective = raw_filter_tokens.windows(2).any(|window| {
-        window[0].is_word("and") && window[1].is_word("or")
-    }) || raw_filter_tokens
-        .iter()
-        .any(|token| token.is_word("and/or"));
+    let used_and_or_connective = raw_filter_tokens
+        .windows(2)
+        .any(|window| window[0].is_word("and") && window[1].is_word("or"))
+        || raw_filter_tokens
+            .iter()
+            .any(|token| token.is_word("and/or"));
 
     let player = graveyard_threshold_owner_player(shape.owner);
     if constrained_player.is_some_and(|expected| expected != player) {
@@ -599,6 +600,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_keeps_basic_land_exception_as_exclusions() {
+        let tokens = lex_line("card in a graveyard other than a basic land card", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.any_of.len(), 2, "{filter:?}");
+        assert!(filter.any_of.iter().all(|branch| {
+            branch.zone == Some(Zone::Graveyard)
+                && branch.card_types.is_empty()
+                && branch.all_card_types.is_empty()
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.excluded_card_types == vec![CardType::Land]
+                && branch.excluded_supertypes.is_empty()
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.excluded_card_types.is_empty()
+                && branch.excluded_supertypes == vec![crate::types::Supertype::Basic]
+        }));
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_one_or_more_colors_phrase() {
         let tokens = lex_line("creatures of one or more colors", 0).unwrap();
 
@@ -918,6 +940,10 @@ mod tests {
 
         let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
         assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.same_name_antecedent_surface(),
+            Some(ironsmith_core::SameNameAntecedentSurface::Creature)
+        );
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
@@ -997,6 +1023,23 @@ mod tests {
             filter.description(),
             "a creature put onto the battlefield with this enchantment"
         );
+    }
+
+    #[test]
+    fn parse_object_filter_preserves_token_creation_source_provenance() {
+        let tokens = lex_line("tokens created with this enchantment", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert!(filter.token);
+        assert!(filter.card_types.is_empty());
+        assert!(filter.created_with_source);
+        assert_eq!(
+            filter.created_with_source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this enchantment".to_string()
+            ))
+        );
+        assert_eq!(filter.description(), "a token created with this enchantment");
     }
 
     #[test]

@@ -9,9 +9,7 @@ use crate::decisions::context::{
 };
 use crate::effect::{ChoiceCount, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{
-    resolve_objects_from_spec, resolve_player_filter, resolve_players_from_spec,
-};
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::spells::BecomesTargetedEvent;
 use crate::filter::ObjectFilterExt as _;
@@ -223,7 +221,8 @@ impl EffectExecutor for RetargetStackObjectEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser_id = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser_id =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let object_ids = resolve_retarget_objects(game, ctx, chooser_id, &self.target)?;
         if object_ids.is_empty() {
             return Ok(EffectOutcome::resolved());

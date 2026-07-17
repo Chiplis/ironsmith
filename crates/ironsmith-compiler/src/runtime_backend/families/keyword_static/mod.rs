@@ -1,4 +1,5 @@
 mod costs_replacements_and_permissions;
+mod leading_conditional_sentence_chain;
 pub(crate) use costs_replacements_and_permissions::*;
 
 use super::activation_and_restrictions::{
@@ -21,6 +22,7 @@ use super::grammar::abilities::{
     is_double_damage_from_sources_you_control_of_chosen_type_line_lexed,
     is_draw_replace_exile_top_face_down_line_lexed, is_draw_replacement_double_line_lexed,
     is_draw_replacement_skip_empty_library_line_lexed,
+    is_draw_replacement_win_empty_library_line_lexed,
     is_during_your_turn_prevent_all_damage_to_source_line_lexed,
     is_effect_discard_to_library_replacement_line_lexed,
     is_enchanted_land_is_chosen_type_line_lexed,
@@ -255,6 +257,72 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
         return StaticAbility::keyword_marker(text);
     }
     StaticAbility::keyword_fallback_text(text)
+}
+
+fn parse_companion_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+    let text = keyword_static_clause_text(tokens);
+    let normalized = text
+        .to_ascii_lowercase()
+        .replace(['—', '–'], "-");
+    let condition_text = normalized
+        // The document front end strips a keyword label before routing some
+        // labeled lines, so accept either the complete Companion surface or
+        // one of the exact ten condition surfaces. Exact matching keeps an
+        // unrelated starting-deck sentence from acquiring guessed semantics.
+        .strip_prefix("companion -")
+        .unwrap_or(&normalized)
+        .split(" (if this card")
+        .next()?
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    let condition = match condition_text {
+        "your starting deck contains only cards with even mana values" => {
+            ironsmith_core::CompanionDeckCondition::OnlyManaValueParity {
+                even: true,
+                lands_are_exempt: false,
+            }
+        }
+        "no card in your starting deck has more than one of the same mana symbol in its mana cost" => {
+            ironsmith_core::CompanionDeckCondition::NoRepeatedManaSymbols
+        }
+        "each creature card in your starting deck is a cat, elemental, nightmare, dinosaur, or beast card" => {
+            ironsmith_core::CompanionDeckCondition::CreatureSubtypes(vec![
+                Subtype::Cat,
+                Subtype::Elemental,
+                Subtype::Nightmare,
+                Subtype::Dinosaur,
+                Subtype::Beast,
+            ])
+        }
+        "your starting deck contains only cards with mana value 3 or greater and land cards" => {
+            ironsmith_core::CompanionDeckCondition::NonlandManaValueAtLeast(3)
+        }
+        "each permanent card in your starting deck has mana value 2 or less" => {
+            ironsmith_core::CompanionDeckCondition::PermanentManaValueAtMost(2)
+        }
+        "each nonland card in your starting deck has a different name" => {
+            ironsmith_core::CompanionDeckCondition::UniqueNonlandNames
+        }
+        "your starting deck contains only cards with odd mana values and land cards" => {
+            ironsmith_core::CompanionDeckCondition::OnlyManaValueParity {
+                even: false,
+                lands_are_exempt: true,
+            }
+        }
+        "each nonland card in your starting deck shares a card type" => {
+            ironsmith_core::CompanionDeckCondition::SharedNonlandCardType
+        }
+        "your starting deck contains at least twenty cards more than the minimum deck size" => {
+            ironsmith_core::CompanionDeckCondition::CardsAboveMinimumDeckSize(20)
+        }
+        "each permanent card in your starting deck has an activated ability" => {
+            ironsmith_core::CompanionDeckCondition::PermanentsHaveActivatedAbility
+        }
+        _ => return None,
+    };
+
+    Some(StaticAbility::companion(condition, text))
 }
 
 fn supported_keyword_marker_tokens(tokens: &[OwnedLexToken], text: &str) -> bool {
@@ -501,6 +569,9 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("the"),
             StaticAbilityLineHeadHint::Pair("the", "legend"),
         ],
+        "parse_lose_game_replacement_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
+        }
         _ => match static_keyword_shapes::parse_rule_id_head(rule_id) {
             Some("ward") => vec![StaticAbilityLineHeadHint::Single("ward")],
             Some("skulk") => vec![StaticAbilityLineHeadHint::Single("skulk")],
@@ -630,6 +701,10 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_source_is_chosen_color_line),
         single_static_ability_ast_rule!(parse_double_token_creation_replacement_line),
         single_static_ability_ast_rule!(parse_double_counters_replacement_line),
+        StaticAbilityLineRuleDef {
+            id: stringify!(parse_lose_game_replacement_line),
+            rule: StaticAbilityLineRuleAst::Single(parse_lose_game_replacement_line),
+        },
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),
         single_static_ability_ast_infallible_rule!(parse_static_text_marker_line),
         multi_static_ability_ast_rule!(parse_enters_tapped_with_choose_color_line),
@@ -1071,9 +1146,20 @@ fn parse_source_characteristics_of_last_exiled_creature_card_line(
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(ability) = parse_companion_ability(tokens) {
+        return Ok(Some(vec![ability.into()]));
+    }
+
     let marker_text = render_token_slice(tokens);
-    if is_ticket_sticker_marker_text(&marker_text) {
+    if supported_keyword_marker_tokens(tokens, &marker_text)
+        || is_ticket_sticker_marker_text(&marker_text)
+    {
         return Ok(Some(vec![keyword_static_marker(tokens).into()]));
+    }
+    if document_grammar::parse_static_effect_continues_until_end_of_turn_surface(tokens).is_some() {
+        return Ok(Some(vec![
+            StaticAbility::keyword_marker(marker_text).into(),
+        ]));
     }
 
     if let Some(ability) = parse_source_characteristics_of_last_exiled_creature_card_line(tokens) {
@@ -1133,6 +1219,20 @@ fn parse_static_ability_ast_line_early_lexed(
 
     if let Some(ability) = parse_count_as_card_named_for_spell_effect_line(tokens) {
         return Ok(Some(vec![ability.into()]));
+    }
+    // Route compound ability-removal shapes before the indexed registry can
+    // accept their leading "lose all abilities" clause as a complete,
+    // narrower removal effect and discard the remaining characteristic
+    // changes.
+    if let Some(abilities) = parse_lose_all_abilities_and_transform_base_pt_line(tokens)? {
+        return Ok(Some(
+            abilities.into_iter().map(StaticAbilityAst::from).collect(),
+        ));
+    }
+    if let Some(abilities) = parse_lose_all_abilities_and_base_pt_line(tokens)? {
+        return Ok(Some(
+            abilities.into_iter().map(StaticAbilityAst::from).collect(),
+        ));
     }
     if is_minimum_spell_total_mana_three_line_lexed(tokens) {
         return Ok(Some(vec![
@@ -1210,6 +1310,13 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
         parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line(tokens)?
     {
         return Ok(Some(vec![StaticAbilityAst::from(ability)]));
+    }
+    if let Some(abilities) =
+        leading_conditional_sentence_chain::parse_independent_leading_conditional_static_sentence_chain(
+            tokens,
+        )
+    {
+        return Ok(Some(abilities));
     }
     if let Some(abilities) = parse_attached_conditional_keyword_otherwise_line(tokens)? {
         return Ok(Some(abilities));
@@ -1611,6 +1718,7 @@ fn parse_pregame_reveal_from_opening_hand_line(
             crate::cards::builders::TriggerSpec::SpellCast {
                 filter: None,
                 caster: PlayerFilter::Opponent,
+                timing: None,
                 during_turn: None,
                 min_spells_this_turn: None,
                 exact_spells_this_turn: None,
@@ -1994,7 +2102,7 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     if is_companion_marker_line_lexed(tokens) {
-        return Some(keyword_static_marker(tokens));
+        return parse_companion_ability(tokens).or_else(|| Some(keyword_static_marker(tokens)));
     }
 
     if is_more_than_meets_the_eye_marker_line_lexed(tokens) {
@@ -2602,6 +2710,7 @@ fn parse_trigger_duplication_event_matcher(
                 Trigger::spell_cast_qualified(
                     Some(filter.clone()),
                     PlayerFilter::You,
+                    None,
                     None,
                     None,
                     None,
@@ -3396,6 +3505,13 @@ pub(crate) fn parse_characteristic_defining_pt_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let sentence_tokens = trim_edge_punctuation(tokens);
     if split_lexed_sentences(&sentence_tokens).len() > 1 {
+        return Ok(None);
+    }
+    let sentence_words = parser_token_word_refs(&sentence_tokens);
+    if sentence_words
+        .iter()
+        .any(|word| matches!(*word, "target" | "targets" | "become" | "becomes" | "until"))
+    {
         return Ok(None);
     }
 

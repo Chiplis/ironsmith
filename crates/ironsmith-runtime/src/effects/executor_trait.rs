@@ -30,6 +30,10 @@ pub struct ModalSpec {
     pub allow_repeated_modes: bool,
     /// Point costs for weighted modal choices. Unweighted modes use one point each.
     pub mode_point_costs: Vec<u32>,
+    /// Whether the mode labels are mandatory Spree additional costs.
+    pub spree: bool,
+    /// Additional mana cost associated with each mode.
+    pub mode_additional_mana_costs: Vec<crate::mana::ManaCost>,
     /// Whether each selected mode must target a different player.
     pub distinct_player_targets_per_mode: bool,
     /// Alternate range enabled by a later optional-cost choice under CR 601.4.
@@ -66,6 +70,9 @@ pub enum TargetReusePolicy {
 #[derive(Debug, Clone, Copy)]
 pub struct TargetSelectionProfile<'a> {
     pub spec: &'a ChooseSpec,
+    /// Player assigned to make this target choice. `None` means the spell or
+    /// ability controller uses the normal targeting flow.
+    pub chooser: Option<&'a crate::target::PlayerFilter>,
     pub description: &'static str,
     pub min_targets: usize,
     pub max_targets: Option<usize>,
@@ -85,6 +92,8 @@ pub struct ModalEffectSpec<'a> {
     pub min_modes: &'a Value,
     pub allow_repeated_modes: bool,
     pub mode_point_costs: &'a [u32],
+    pub spree: bool,
+    pub mode_additional_mana_costs: &'a [crate::mana::ManaCost],
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
     pub distinct_player_targets_per_mode: bool,
@@ -129,6 +138,16 @@ where
     }
 }
 
+/// A fully determined part of one simultaneous multi-player action.
+///
+/// Implementations are prepared for every affected player against the same
+/// immutable game state. `commit` must apply only the already-determined
+/// mutation: it must not ask a new question or recalculate a value from game
+/// state changed by an earlier proposal in the same batch.
+pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
+    fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError>;
+}
+
 pub trait EffectExecutor:
     std::fmt::Debug + Any + Send + Sync + EffectExecutorClone + 'static
 {
@@ -148,6 +167,33 @@ pub trait EffectExecutor:
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError>;
+
+    /// Whether this effect can prepare an immutable proposal for a generic
+    /// simultaneous each-player action (CR 101.4, 608.2f).
+    fn supports_simultaneous_player_action(&self) -> bool {
+        false
+    }
+
+    /// Whether executing this effect once per player can only observe game
+    /// state and update execution-context metadata/outcomes. Such effects may
+    /// run in APNAP order without an immutable mutation proposal because no
+    /// player's execution can change the game state seen by another player.
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        false
+    }
+
+    /// Prepare this player's part of a simultaneous action without mutating
+    /// game state. The composition layer collects every proposal in APNAP order
+    /// before committing the batch atomically.
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        Err(ExecutionError::InternalError(
+            "effect advertised simultaneous preparation without implementing it".to_string(),
+        ))
+    }
 
     /// The primary runtime category for this effect.
     ///
@@ -268,6 +314,13 @@ pub trait EffectExecutor:
             })
     }
 
+    /// Player assigned to make this effect's target choice, when Oracle says
+    /// someone other than the spell or ability controller chooses it.
+    fn target_chooser(&self) -> Option<&crate::target::PlayerFilter> {
+        self.transparent_child_effect()
+            .and_then(|effect| effect.0.target_chooser())
+    }
+
     /// Structured target selection metadata for this effect.
     fn target_selection_profile(&self) -> Option<TargetSelectionProfile<'_>> {
         let spec = self.get_target_spec()?;
@@ -282,6 +335,7 @@ pub trait EffectExecutor:
 
         Some(TargetSelectionProfile {
             spec,
+            chooser: self.target_chooser(),
             description: self.target_description(),
             min_targets,
             max_targets,

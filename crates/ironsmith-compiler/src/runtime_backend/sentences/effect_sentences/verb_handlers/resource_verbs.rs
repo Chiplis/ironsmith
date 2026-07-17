@@ -90,7 +90,14 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Incubate => parse_incubate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
         Verb::Tap => parse_tap(tokens),
-        Verb::Attach => parse_attach(tokens),
+        Verb::Attach => {
+            let player = extract_subject_player(subject);
+            let mut effect = parse_attach(tokens)?;
+            if let Some(player) = player {
+                super::bind_implicit_player_context(&mut effect, player);
+            }
+            Ok(effect)
+        }
         Verb::Unattach => parse_unattach(tokens),
         Verb::Untap => parse_untap(tokens),
         Verb::Scry => parse_scry(tokens, subject),
@@ -100,6 +107,10 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Flip => parse_flip(tokens, subject),
         Verb::Roll => parse_roll(tokens, subject),
         Verb::Regenerate => parse_regenerate(tokens),
+        Verb::Heal => Err(CardTextError::ParseError(format!(
+            "unsupported heal clause (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        ))),
         Verb::Mill => parse_mill(tokens, subject),
         Verb::Get => parse_get(tokens, subject),
         Verb::Remove => parse_remove(tokens),

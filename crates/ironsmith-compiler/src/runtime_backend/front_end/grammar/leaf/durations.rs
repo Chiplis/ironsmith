@@ -55,6 +55,7 @@ pub(crate) struct LeafDurationWordSpan {
 pub(crate) enum LeafConditionalDurationKind {
     YouControlSource,
     SourceRemainsTapped,
+    SourceRemainsOnBattlefield,
 }
 
 const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
@@ -276,6 +277,12 @@ pub(crate) fn parse_leaf_conditional_duration_kind_tokens(
     {
         return Some(LeafConditionalDurationKind::SourceRemainsTapped);
     }
+    if has_lexed_word(tokens, "remains")
+        && has_lexed_word(tokens, "battlefield")
+        && has_source_reference_word(tokens)
+    {
+        return Some(LeafConditionalDurationKind::SourceRemainsOnBattlefield);
+    }
     if has_lexed_word(tokens, "you")
         && has_lexed_word(tokens, "control")
         && has_source_reference_word(tokens)
@@ -283,6 +290,33 @@ pub(crate) fn parse_leaf_conditional_duration_kind_tokens(
         return Some(LeafConditionalDurationKind::YouControlSource);
     }
     None
+}
+
+pub(crate) fn parse_leaf_conditional_duration_prefix_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LeafDurationPrefix<'a, LeafConditionalDurationKind>> {
+    primitives::parse_prefix(tokens, primitives::phrase(&["for", "as", "long", "as"]))?;
+    let duration = parse_leaf_conditional_duration_kind_tokens(tokens)?;
+    let condition_end = match duration {
+        LeafConditionalDurationKind::SourceRemainsOnBattlefield => {
+            tokens
+                .iter()
+                .position(|token| token.is_word("battlefield"))?
+                + 1
+        }
+        LeafConditionalDurationKind::SourceRemainsTapped => {
+            tokens.iter().position(|token| token.is_word("tapped"))? + 1
+        }
+        LeafConditionalDurationKind::YouControlSource => {
+            primitives::find_prefix(tokens, || primitives::comma().void())?.0
+        }
+    };
+    let prefix = tokens.get(..condition_end)?;
+    if parse_leaf_conditional_duration_kind_tokens(prefix) != Some(duration) {
+        return None;
+    }
+    let rest = tokens.get(condition_end..)?;
+    Some(LeafDurationPrefix { duration, rest })
 }
 
 pub(crate) fn strip_leaf_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -420,5 +454,23 @@ mod tests {
             LeafDurationPhrase::UntilEndOfTurn
         );
         assert!(find_leaf_canonical_until_end_of_turn_words(&with_article).is_none());
+    }
+
+    #[test]
+    fn source_battlefield_lifetime_is_a_typed_leading_duration() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "For as long as this creature remains on the battlefield, gain control of it.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_leaf_conditional_duration_prefix_tokens(&tokens).unwrap();
+        assert_eq!(
+            parsed.duration,
+            LeafConditionalDurationKind::SourceRemainsOnBattlefield
+        );
+        assert_eq!(
+            crate::runtime_backend::front_end::lexer::TokenWordView::new(parsed.rest).word_refs(),
+            ["gain", "control", "of", "it"]
+        );
     }
 }

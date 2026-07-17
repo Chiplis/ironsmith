@@ -80,6 +80,7 @@ pub(crate) struct NormalizedModalModeAst {
     pub(crate) info: LineInfo,
     pub(crate) description: String,
     pub(crate) point_cost: Option<u32>,
+    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
     pub(crate) prepared: PreparedEffectsForLowering,
 }
 
@@ -148,7 +149,17 @@ pub(crate) struct ParsedOverloadBranch {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ParsedCleaveBranch {
+    pub(crate) items: Vec<ParsedCardItem>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct NormalizedOverloadBranch {
+    pub(crate) items: Vec<NormalizedCardItem>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct NormalizedCleaveBranch {
     pub(crate) items: Vec<NormalizedCardItem>,
 }
 
@@ -158,6 +169,7 @@ pub(crate) struct NormalizedCardAst {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<NormalizedCardItem>,
     pub(crate) overload_branch: Option<NormalizedOverloadBranch>,
+    pub(crate) cleave_branch: Option<NormalizedCleaveBranch>,
     pub(crate) allow_unsupported: bool,
 }
 
@@ -167,6 +179,7 @@ pub(crate) struct ParsedCardAst {
     pub(crate) annotations: ParseAnnotations,
     pub(crate) items: Vec<ParsedCardItem>,
     pub(crate) overload_branch: Option<ParsedOverloadBranch>,
+    pub(crate) cleave_branch: Option<ParsedCleaveBranch>,
     pub(crate) allow_unsupported: bool,
 }
 

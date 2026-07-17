@@ -738,6 +738,19 @@ mod tests {
         assert!(cost.is_mana_cost());
         assert_eq!(cost.dynamic_mana_cost_ref(), Some(&dynamic));
     }
+
+    #[test]
+    fn behold_optional_cost_refs_preserve_subtype_discriminators() {
+        let dragon = OptionalCostRef::with_discriminator(OptionalCostKind::Behold, "Dragon");
+        let generic = OptionalCostRef::new(OptionalCostKind::Behold);
+        let goblin = OptionalCostRef::with_discriminator(OptionalCostKind::Behold, "Goblin");
+
+        assert_eq!(dragon.display_label(), "Behold Dragon");
+        assert_eq!(OptionalCostRef::from_label("Behold Dragon"), dragon);
+        assert!(dragon.matches_query(&generic));
+        assert!(dragon.matches_query(&dragon));
+        assert!(!dragon.matches_query(&goblin));
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -801,6 +814,7 @@ impl OptionalCostKind {
             _ if lower.starts_with("kicker ") => Self::Kicker,
             _ if lower.starts_with("gift ") => Self::Gift,
             _ if lower.starts_with("conspire") => Self::Conspire,
+            _ if lower.starts_with("behold ") => Self::Behold,
             _ if lower.starts_with("waterbend ") => Self::Waterbend,
             _ if lower.starts_with("as an additional cost to cast this spell, you may behold ") => {
                 Self::Behold
@@ -902,6 +916,12 @@ impl OptionalCostRef {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
+            OptionalCostKind::Behold => trimmed
+                .strip_prefix("Behold ")
+                .or_else(|| trimmed.strip_prefix("behold "))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
             OptionalCostKind::CustomUnsupported(_) => Some(trimmed.to_string()),
             _ => None,
         };
@@ -929,7 +949,10 @@ impl OptionalCostRef {
             Some(discriminator)
                 if matches!(
                     self.kind,
-                    OptionalCostKind::Kicker | OptionalCostKind::Gift | OptionalCostKind::Waterbend
+                    OptionalCostKind::Kicker
+                        | OptionalCostKind::Gift
+                        | OptionalCostKind::Behold
+                        | OptionalCostKind::Waterbend
                 ) =>
             {
                 format!("{} {discriminator}", self.kind.canonical_label())
@@ -955,6 +978,7 @@ impl OptionalCostRef {
         match (&self.kind, prefix) {
             (OptionalCostKind::Kicker, "Kicker ") => self.discriminator.as_deref(),
             (OptionalCostKind::Gift, "Gift ") => self.discriminator.as_deref(),
+            (OptionalCostKind::Behold, "Behold ") => self.discriminator.as_deref(),
             (OptionalCostKind::Waterbend, "Waterbend ") => self.discriminator.as_deref(),
             (OptionalCostKind::CustomUnsupported(label), _) => label.strip_prefix(prefix),
             _ => None,

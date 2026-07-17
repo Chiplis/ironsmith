@@ -162,6 +162,7 @@ function formatInspectorZoneLabel(zone, t = null) {
     graveyard: "zone.graveyard",
     exile: "zone.exile",
     command: "zone.command",
+    ante: "zone.ante",
     library: "zone.library",
     stack: "zone.stack",
     deck: "zone.deck",
@@ -257,6 +258,10 @@ function buildObjectNameMaps(state, visibleStackObjects) {
       setObjectName(byId, card.id, card.name);
       setObjectName(byStableId, card.stable_id, card.name);
     }
+    for (const card of player?.ante_cards || []) {
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
+    }
     for (const card of player?.sideboard_cards || []) {
       setObjectName(byId, card.id, card.name);
       setObjectName(byStableId, card.stable_id, card.name);
@@ -278,6 +283,11 @@ function buildObjectNameMaps(state, visibleStackObjects) {
   }
 
   for (const card of state?.viewed_cards?.cards || []) {
+    setObjectName(byId, card?.id, card?.name);
+    setObjectName(byStableId, card?.stable_id, card?.name);
+  }
+
+  for (const card of state?.planechase?.face_up || []) {
     setObjectName(byId, card?.id, card?.name);
     setObjectName(byStableId, card?.stable_id, card?.name);
   }
@@ -338,6 +348,7 @@ function inspectableZonesForPlayer(player) {
     player?.graveyard_cards || [],
     player?.exile_cards || [],
     player?.command_cards || [],
+    player?.ante_cards || [],
     player?.sideboard_cards || [],
   ];
 }
@@ -360,6 +371,10 @@ function findCardSnapshotForObjectId(state, objectIdNum) {
   }
 
   for (const card of state?.viewed_cards?.cards || []) {
+    if (cardSnapshotMatchesObjectId(card, objectIdNum)) return card;
+  }
+
+  for (const card of state?.planechase?.face_up || []) {
     if (cardSnapshotMatchesObjectId(card, objectIdNum)) return card;
   }
 

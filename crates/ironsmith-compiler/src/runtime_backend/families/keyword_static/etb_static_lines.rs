@@ -1036,6 +1036,12 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         }
     }
 
+    // Parse mana-symbol aggregates before the generic "number of <objects>" form.
+    // Otherwise the leading color adjective can be mistaken for an object filter.
+    if let Some(value) = parse_where_x_is_colored_mana_symbols_value(tokens) {
+        return Some(value);
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);
@@ -1049,6 +1055,20 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
     }
 
     None
+}
+
+pub(crate) fn parse_where_x_is_colored_mana_symbols_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
+        return None;
+    }
+    let word_view = crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens);
+    let words = word_view.word_refs();
+    let tail = words.get(3..)?;
+    let (value, used) =
+        crate::runtime_backend::front_end::grammar::shared_util::value_expr::colored_mana_symbols_in_costs(tail)?;
+    (used == tail.len()).then_some(value)
 }
 
 pub(crate) fn parse_value_binding_clause_lexed(

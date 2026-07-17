@@ -35,6 +35,10 @@ pub struct MarkersChangedEvent {
     pub location: MarkerLocation,
     /// The number of markers added/removed.
     pub amount: u32,
+    /// The number of this marker remaining immediately after the change, when
+    /// the event producer can determine it. Trigger checks use this event-time
+    /// value rather than later mutable game state.
+    pub count_after: Option<u32>,
     /// The source that caused this change (if any).
     pub source: Option<ObjectId>,
     /// The player who controlled the source (if any).
@@ -55,6 +59,7 @@ impl MarkersChangedEvent {
             marker: marker.into(),
             location: location.into(),
             amount,
+            count_after: None,
             source,
             source_controller,
         }
@@ -73,6 +78,7 @@ impl MarkersChangedEvent {
             marker: marker.into(),
             location: location.into(),
             amount,
+            count_after: None,
             source,
             source_controller,
         }
@@ -86,6 +92,12 @@ impl MarkersChangedEvent {
     /// Check if this is a remove event.
     pub fn is_removed(&self) -> bool {
         self.change_type == MarkerChangeType::Removed
+    }
+
+    /// Record the marker count immediately after this change.
+    pub fn with_count_after(mut self, count_after: u32) -> Self {
+        self.count_after = Some(count_after);
+        self
     }
 
     /// Get the object ID if the location is an object.

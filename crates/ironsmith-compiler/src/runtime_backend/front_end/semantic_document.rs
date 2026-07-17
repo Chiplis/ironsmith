@@ -9,7 +9,7 @@ use crate::cards::builders::{
 };
 use crate::static_abilities::StaticAbility;
 
-use super::effect_pipeline::{ParsedCardAst, ParsedOverloadBranch};
+use super::effect_pipeline::{ParsedCardAst, ParsedCleaveBranch, ParsedOverloadBranch};
 use super::ir::{RewriteSemanticDocument, RewriteSemanticItem};
 use super::semantic_line_parsing::rewrite_modal_to_parsed_item;
 
@@ -48,16 +48,20 @@ fn parse_rewrite_item(item: RewriteSemanticItem) -> Result<Option<ParsedCardItem
                 items: level.items.into_iter().map(|item| item.parsed).collect(),
             })))
         }
-        RewriteSemanticItem::SagaChapter(saga) => Ok(Some(ParsedCardItem::Line(ParsedLineAst {
-            info: saga.info.clone(),
-            chunks: vec![LineAst::Triggered {
-                trigger: TriggerSpec::SagaChapter(saga.chapters),
-                effects: saga.effects_ast,
-                max_triggers_per_turn: None,
-            }],
-            restrictions: ParsedRestrictions::default(),
-            semantic_facts: saga.info.semantic_facts.clone(),
-        }))),
+        RewriteSemanticItem::SagaChapter(saga) => {
+            let mut info = saga.info;
+            info.semantic_facts.triggered_ability.presentation_label = saga.presentation_label;
+            Ok(Some(ParsedCardItem::Line(ParsedLineAst {
+                info: info.clone(),
+                chunks: vec![LineAst::Triggered {
+                    trigger: TriggerSpec::SagaChapter(saga.chapters),
+                    effects: saga.effects_ast,
+                    max_triggers_per_turn: None,
+                }],
+                restrictions: ParsedRestrictions::default(),
+                semantic_facts: info.semantic_facts.clone(),
+            })))
+        }
     }
 }
 
@@ -78,18 +82,24 @@ pub(crate) fn parse_semantic_document(
         annotations,
         items,
         overload_items,
+        cleave_items,
         allow_unsupported,
     } = doc;
     let overload_branch = overload_items
         .map(parse_rewrite_items)
         .transpose()?
         .map(|items| ParsedOverloadBranch { items });
+    let cleave_branch = cleave_items
+        .map(parse_rewrite_items)
+        .transpose()?
+        .map(|items| ParsedCleaveBranch { items });
 
     Ok(ParsedCardAst {
         builder,
         annotations,
         items: parse_rewrite_items(items)?,
         overload_branch,
+        cleave_branch,
         allow_unsupported,
     })
 }

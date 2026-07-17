@@ -12,6 +12,7 @@ pub(crate) enum AggregateValueMetric {
     BasicLandTypes,
     CreatureTypes,
     Colors,
+    DistinctNames,
     DistinctPowers,
     Counters,
 }
@@ -130,6 +131,11 @@ fn parse_aggregate_metric(
             primitives::word_slice_exact("among"),
         )
             .value(AggregateValueMetric::Colors),
+        (
+            primitives::word_slice_exact("differently"),
+            primitives::word_slice_exact("named"),
+        )
+            .value(AggregateValueMetric::DistinctNames),
         (
             primitives::word_slice_exact("different"),
             primitives::word_slice_exact("power"),
@@ -353,6 +359,11 @@ mod tests {
         let parsed = parse_aggregate_value_surface(&words).expect("aggregate surface");
         assert_eq!(parsed.metric, AggregateValueMetric::Colors);
         assert_eq!(parsed.scope_words, ["permanents"]);
+
+        let words = ["differently", "named", "lands", "you", "control"];
+        let parsed = parse_aggregate_value_surface(&words).expect("distinct-name surface");
+        assert_eq!(parsed.metric, AggregateValueMetric::DistinctNames);
+        assert_eq!(parsed.scope_words, ["lands", "you", "control"]);
     }
 
     #[test]

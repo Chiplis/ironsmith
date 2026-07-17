@@ -245,3 +245,111 @@ pub(super) fn authored_counter_grant_conjunctions_survive_parser_and_renderer() 
         );
     }
 }
+
+fn exact_singleton_look_effects(definition: &CardDefinition) -> Vec<&crate::effect::Effect> {
+    definition
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let effects = match &ability.kind {
+                AbilityKind::Triggered(triggered) => triggered.effects.flattened_default_effects(),
+                AbilityKind::Activated(activated) => activated.effects.flattened_default_effects(),
+                _ => return None,
+            };
+            effects
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+                        .is_some()
+                })
+                .then(|| effects.iter().collect())
+        })
+        .expect("card should contain its look-two ability")
+}
+
+fn looked_owner_matches_filter_owner(looked: &PlayerFilter, owner: Option<&PlayerFilter>) -> bool {
+    matches!(
+        (looked, owner),
+        (PlayerFilter::You, Some(PlayerFilter::You))
+            | (
+                PlayerFilter::Target(_),
+                Some(PlayerFilter::AliasedTarget(_))
+            )
+    )
+}
+
+#[test]
+pub(super) fn look_two_put_one_graveyard_cards_share_an_exact_selected_tag() {
+    for (name, expected_surface) in [
+        (
+            "Celestus Sanctifier",
+            "Look at the top two cards of your library. Put one of them into your graveyard",
+        ),
+        (
+            "Soulcipher Board",
+            "Look at the top two cards of your library. Put one of them into your graveyard",
+        ),
+        (
+            "Wu Spy",
+            "Look at the top two cards of target player's library. Put one of them into their graveyard",
+        ),
+    ] {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let effects = exact_singleton_look_effects(&definition);
+        let look = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>())
+            .expect("look-two effect should be structured");
+        let choose = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+            .expect("looked pool should have a structured exact selection");
+        let move_to_zone = effects
+            .iter()
+            .find_map(|effect| {
+                effect.downcast_ref::<MoveToZoneEffect>().or_else(|| {
+                    effect
+                        .downcast_ref::<TaggedEffect>()
+                        .and_then(|tagged| tagged.effect.downcast_ref::<MoveToZoneEffect>())
+                })
+            })
+            .expect("selected card should have a structured graveyard move");
+
+        assert_eq!(look.count, crate::effect::Value::Fixed(2), "{name}");
+        assert!(!look.reveal, "{name}");
+        assert_eq!(
+            choose.count,
+            crate::effect::ChoiceCount::exactly(1),
+            "{name}"
+        );
+        assert_eq!(choose.chooser, PlayerFilter::You, "{name}");
+        assert_eq!(choose.zone, Some(Zone::Library), "{name}");
+        assert!(
+            looked_owner_matches_filter_owner(&look.player, choose.filter.owner.as_ref()),
+            "{name} must select from the same player's looked library: {choose:#?}"
+        );
+        assert!(choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == look.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert_eq!(move_to_zone.zone, Zone::Graveyard, "{name}");
+        assert!(
+            matches!(
+                move_to_zone.target.base(),
+                ChooseSpec::Tagged(tag) if tag == &choose.tag
+            ),
+            "{name} must move only the exact selected tag: {move_to_zone:#?}"
+        );
+        let rendered_lines = compiled_text_lines(&definition);
+        let expected_surface = expected_surface.to_ascii_lowercase();
+        assert!(
+            rendered_lines
+                .iter()
+                .any(|line| line.to_ascii_lowercase().contains(&expected_surface)),
+            "{name} should retain the exact singleton surface: {:#?}",
+            rendered_lines
+        );
+    }
+}

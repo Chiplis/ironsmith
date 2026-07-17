@@ -42,6 +42,98 @@ fn counter_scaled_anthems_keep_the_counter_source_or_counter_set() {
 }
 
 #[test]
+fn alternative_equip_costs_keep_keyword_surface_and_one_of_semantics() {
+    for (name, expected) in [
+        ("Bloodthorn Flail", "Equip—Pay {3} or discard a card"),
+        (
+            "Gavel of the Righteous",
+            "Equip—Pay {3} or remove a counter from this Equipment",
+        ),
+        ("Transmogrant's Crown", "Equip {2} or {B}"),
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let debug = format!("{definition:#?}");
+        assert!(
+            debug.contains("kind: OneOf")
+                && debug.contains("AttachToEffect")
+                && debug.contains("timing: SorcerySpeed"),
+            "{name} must remain a real alternative-cost equip activation: {debug}"
+        );
+        let compiled = compiled_text_lines(&definition).join("\n");
+        assert!(compiled.contains(expected), "{name}: {compiled}");
+        assert!(
+            !compiled.contains("Attach this Equipment"),
+            "{name} should use the Equip keyword surface: {compiled}"
+        );
+    }
+}
+
+#[test]
+fn enchanted_object_restriction_pairs_keep_compound_oracle_surface() {
+    for (name, expected) in [
+        (
+            "Demotion",
+            "Enchanted creature can't block, and its activated abilities can't be activated.",
+        ),
+        (
+            "Gelid Shackles",
+            "Enchanted creature can't block, and its activated abilities can't be activated.",
+        ),
+        (
+            "Hold for Questioning",
+            "Enchanted permanent doesn't untap during its controller's untap step and its activated abilities can't be activated.",
+        ),
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let debug = format!("{definition:#?}");
+        assert!(
+            debug.contains("RuleRestriction")
+                && debug.contains("ActivateAbilitiesOf")
+                && (debug.contains("Block(") || debug.contains("Untap(")),
+            "{name} must retain both typed restrictions: {debug}"
+        );
+        let compiled = compiled_text_lines(&definition).join("\n");
+        assert!(compiled.contains(expected), "{name}: {compiled}");
+    }
+
+    let hold = parse_oracle_card_definition("Hold for Questioning");
+    let compiled = compiled_text_lines(&hold).join("\n");
+    assert!(
+        compiled.contains("When this Aura enters, tap enchanted permanent and investigate."),
+        "Hold for Questioning must derive its enchanted subject from the creature-or-planeswalker attachment domain: {compiled}"
+    );
+}
+
+#[test]
+fn artifact_or_chosen_color_protection_choices_keep_compact_surface() {
+    for (name, expected) in [
+        (
+            "Apostle's Blessing",
+            "Target artifact or creature you control gains protection from artifacts or from the color of your choice until end of turn.",
+        ),
+        (
+            "Jeweled Spirit",
+            "Sacrifice two lands: This creature gains protection from artifacts or from the color of your choice until end of turn.",
+        ),
+        (
+            "Razor Barrier",
+            "Target permanent you control gains protection from artifacts or from the color of your choice until end of turn.",
+        ),
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let debug = format!("{definition:#?}");
+        assert!(
+            debug.contains("ChooseModeEffect")
+                && debug.contains("Protection(CardType(Artifact))")
+                && debug.matches("Protection(Color(").count() == 5,
+            "{name} must retain one artifact and five color protection modes: {debug}"
+        );
+        let compiled = compiled_text_lines(&definition).join("\n");
+        assert!(compiled.contains(expected), "{name}: {compiled}");
+    }
+}
+
+#[test]
 fn draw_for_each_creature_with_a_counter_counts_creatures() {
     for (name, expected) in [
         (
@@ -68,6 +160,34 @@ fn draw_for_each_creature_with_a_counter_counts_creatures() {
             "{name} must not count counters on the source: {debug}"
         );
         assert!(compiled.contains(expected), "{name}: {compiled}");
+    }
+
+    let (_, compiled) = compiled_lower("Inspiring Call");
+    assert!(
+        compiled.contains("those creatures gain indestructible until end of turn"),
+        "Inspiring Call must grant indestructible to the complete counted creature set: {compiled}"
+    );
+}
+
+#[test]
+fn singular_demonstrative_double_counter_followups_reuse_the_target() {
+    for name in ["Growth Curve", "Invigorating Surge"] {
+        let (definition, compiled) = compiled_lower(name);
+        let debug = format!("{definition:#?}");
+        assert!(
+            debug.contains("DoubleCountersEffect"),
+            "{name} must retain a typed double-counters effect: {debug}"
+        );
+        assert!(
+            compiled.contains(
+                "put a +1/+1 counter on target creature you control, then double the number of +1/+1 counters on that creature"
+            ),
+            "{name} must reuse its singular target instead of widening to a collection: {compiled}"
+        );
+        assert!(
+            !compiled.contains("each of those creatures"),
+            "{name} widened a singular demonstrative into a collection: {compiled}"
+        );
     }
 }
 

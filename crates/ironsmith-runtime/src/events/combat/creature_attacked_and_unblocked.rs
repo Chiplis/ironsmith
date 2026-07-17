@@ -15,7 +15,7 @@ use crate::triggers::event::AttackEventTarget;
 pub struct CreatureAttackedAndUnblockedEvent {
     /// The unblocked attacking creature.
     pub attacker: ObjectId,
-    /// What the creature is attacking (player or planeswalker).
+    /// What the creature is attacking (player, planeswalker, or battle).
     pub target: AttackEventTarget,
 }
 
@@ -56,6 +56,7 @@ impl GameEventType for CreatureAttackedAndUnblockedEvent {
         match self.target {
             AttackEventTarget::Player(p) => Some(p),
             AttackEventTarget::Planeswalker(_) => None,
+            AttackEventTarget::Battle(_) => None,
         }
     }
 

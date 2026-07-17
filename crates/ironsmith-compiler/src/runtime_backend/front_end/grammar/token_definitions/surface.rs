@@ -203,7 +203,12 @@ pub(super) fn creature_rules(
     .flatten();
     let cant_attack_or_block = all(&["cant", "attack", "or", "block"]);
     let qualified_cant_be_blocked = common::phrase_present(words, &["cant", "be", "blocked", "by"])
-        || common::phrase_present(words, &["cant", "be", "blocked", "except", "by"]);
+        || common::phrase_present(words, &["cant", "be", "blocked", "except", "by"])
+        || common::phrase_present(words, &["cant", "block", "or", "be", "blocked", "by"])
+        || common::phrase_present(
+            words,
+            &["cant", "block", "or", "be", "blocked", "except", "by"],
+        );
     let coordinated_cant_block_and_be_blocked =
         common::phrase_present(words, &["cant", "block", "or", "be", "blocked"]);
     let combat_restriction = if cant_attack_or_block && common::word_present(words, "alone") {
@@ -451,7 +456,7 @@ pub(crate) fn parse_token_definition_shape_tokens(
     {
         let artifact_scaling = if construct_plus {
             Some(ConstructArtifactScalingShape::GetsPlusOnePerArtifact)
-        } else if construct_cda || pt.is_none() {
+        } else if construct_cda {
             Some(ConstructArtifactScalingShape::CharacteristicDefining)
         } else {
             None
@@ -609,6 +614,44 @@ mod tests {
         assert!(matches!(
             parse_token_definition_shape_text("2/2 colorless Assembly-Worker artifact creature"),
             Some(TokenDefinitionSpec::Creature(_))
+        ));
+    }
+
+    #[test]
+    fn construct_artifact_scaling_requires_explicit_rules_text() {
+        let dynamic =
+            parse_token_definition_shape_text("X/X colorless Construct artifact creature token")
+                .expect("dynamic Construct token should parse");
+        assert!(matches!(
+            dynamic,
+            TokenDefinitionSpec::Construct(ConstructTokenShape {
+                power_toughness: (0, 0),
+                artifact_scaling: None,
+            })
+        ));
+
+        let explicit = parse_token_definition_shape_text(
+            "colorless Construct artifact creature token with \"This token's power and toughness are each equal to the number of artifacts you control.\"",
+        )
+        .expect("explicit artifact-scaling Construct should parse");
+        assert!(matches!(
+            explicit,
+            TokenDefinitionSpec::Construct(ConstructTokenShape {
+                artifact_scaling: Some(ConstructArtifactScalingShape::CharacteristicDefining),
+                ..
+            })
+        ));
+
+        let explicit_plus = parse_token_definition_shape_text(
+            "0/0 colorless Construct artifact creature token with \"This token gets +1/+1 for each artifact you control.\"",
+        )
+        .expect("explicit artifact-pump Construct should parse");
+        assert!(matches!(
+            explicit_plus,
+            TokenDefinitionSpec::Construct(ConstructTokenShape {
+                artifact_scaling: Some(ConstructArtifactScalingShape::GetsPlusOnePerArtifact),
+                ..
+            })
         ));
     }
 

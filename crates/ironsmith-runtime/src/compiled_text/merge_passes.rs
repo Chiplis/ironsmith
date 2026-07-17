@@ -38,12 +38,16 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
     }
     if lower == "sunburst"
         || lower.starts_with("bushido ")
+        || lower.starts_with("cleave ")
+        || lower.starts_with("frenzy ")
         || lower.starts_with("fading ")
         || lower.starts_with("fabricate ")
         || lower.starts_with("graft ")
         || lower.starts_with("modular ")
+        || lower.starts_with("poisonous ")
         || lower.starts_with("rampage ")
         || lower.starts_with("scavenge ")
+        || lower.starts_with("transfigure ")
         || lower.starts_with("transmute ")
         || lower.starts_with("toxic ")
         || lower.starts_with("vanishing ")
@@ -707,6 +711,13 @@ fn format_conditioned_subject_predicate_merge(
         );
     }
     if is_get(&left.verb) && is_trait(right_verb) {
+        if let Some((pump, granted_keywords)) = left_predicate.rsplit_once(" and has ") {
+            return format!(
+                "{ability_word}As long as {condition}, {} {} {pump} and has {granted_keywords} and {right_predicate}",
+                lowercase_first(&left.subject),
+                left.verb,
+            );
+        }
         return format!(
             "{ability_word}As long as {condition}, {} {} {} and {} {}",
             lowercase_first(&left.subject),
@@ -880,6 +891,7 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
         if idx + 1 < lines.len()
             && let Some((left_subject, left_verb, left_rest)) =
                 split_subject_predicate_clause(&lines[idx])
+            && !left_subject.contains(':')
             && matches!(
                 left_verb,
                 "gets" | "get" | "has" | "have" | "gains" | "gain"
@@ -941,6 +953,11 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 split_subject_predicate_clause(&lines[idx])
             && let Some((right_subject, right_verb, right_rest)) =
                 split_subject_predicate_clause(&lines[idx + 1])
+            // A top-level colon is the authored boundary between an
+            // activated ability's cost and effect. Equal costs do not make
+            // separately authored abilities one resolution program.
+            && !left_subject.contains(':')
+            && !right_subject.contains(':')
             && conditioned_subjects_equivalent(left_subject, right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
@@ -1109,15 +1126,23 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
             let right = lines[idx + 1].trim();
-            if (left == "This creature can't block" && right == "This creature can't be blocked")
-                || (left == "Can't block" && right == "Can't be blocked")
+            let left_no_period = left.trim_end_matches('.');
+            let right_no_period = right.trim_end_matches('.');
+            if (left_no_period == "This creature can't block"
+                && right_no_period == "This creature can't be blocked")
+                || (left_no_period == "Can't block" && right_no_period == "Can't be blocked")
             {
                 merged.push("This creature can't block and can't be blocked".to_string());
                 idx += 2;
                 continue;
             }
-            let left_no_period = left.trim_end_matches('.');
-            let right_no_period = right.trim_end_matches('.');
+            if let Some(game_result_pair) =
+                merge_complementary_game_result_restrictions(left_no_period, right_no_period)
+            {
+                merged.push(game_result_pair);
+                idx += 2;
+                continue;
+            }
             if let (Some(left_subject), Some(right_subject)) = (
                 left_no_period.strip_suffix(block_this_turn_tail),
                 right_no_period.strip_suffix(block_this_turn_tail),
@@ -1135,6 +1160,20 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
         idx += 1;
     }
     merged
+}
+
+fn merge_complementary_game_result_restrictions(left: &str, right: &str) -> Option<String> {
+    let is_complementary_pair = matches!(
+        (left, right),
+        (
+            "You can't lose the game",
+            "Your opponents can't win the game"
+        ) | (
+            "You can't win the game",
+            "Your opponents can't lose the game"
+        )
+    );
+    is_complementary_pair.then(|| format!("{left} and {}", lowercase_first(right)))
 }
 
 pub(super) fn merge_attached_transform_keyword_loss_lines(lines: Vec<String>) -> Vec<String> {
@@ -2741,6 +2780,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn merge_blockability_lines_compacts_punctuated_adjacent_pair() {
+        let merged = merge_blockability_lines(vec![
+            "This creature can't block.".to_string(),
+            "This creature can't be blocked.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec!["This creature can't block and can't be blocked".to_string()]
+        );
+    }
+
+    #[test]
+    fn merge_blockability_lines_compacts_complementary_game_result_pairs() {
+        let cant_lose = merge_blockability_lines(vec![
+            "You can't lose the game.".to_string(),
+            "Your opponents can't win the game.".to_string(),
+        ]);
+        let cant_win = merge_blockability_lines(vec![
+            "You can't win the game.".to_string(),
+            "Your opponents can't lose the game.".to_string(),
+        ]);
+
+        assert_eq!(
+            cant_lose,
+            vec!["You can't lose the game and your opponents can't win the game".to_string()]
+        );
+        assert_eq!(
+            cant_win,
+            vec!["You can't win the game and your opponents can't lose the game".to_string()]
+        );
+    }
+
+    #[test]
+    fn merge_blockability_lines_keeps_noncomplementary_game_result_lines_separate() {
+        for lines in [
+            vec![
+                "You can't lose the game.".to_string(),
+                "Your opponents can't lose the game.".to_string(),
+            ],
+            vec![
+                "As long as you control an Angel, you can't lose the game.".to_string(),
+                "Your opponents can't win the game.".to_string(),
+            ],
+            vec![
+                "Your opponents can't win the game.".to_string(),
+                "You can't lose the game.".to_string(),
+            ],
+            vec![
+                "You can't lose the game.".to_string(),
+                "Creatures you control have flying.".to_string(),
+                "Your opponents can't win the game.".to_string(),
+            ],
+        ] {
+            assert_eq!(merge_blockability_lines(lines.clone()), lines);
+        }
+    }
+
+    #[test]
     fn merge_conditional_self_buff_and_granted_ability_keeps_hellbent_surface() {
         let merged = merge_subject_has_keyword_lines(vec![
             "This creature gets +1/+0 as long as you have no cards in hand.".to_string(),
@@ -2770,6 +2868,24 @@ mod tests {
     }
 
     #[test]
+    fn merge_subject_has_keyword_lines_compacts_multiple_conditioned_grants() {
+        let first_pass = merge_subject_has_keyword_lines(vec![
+            "that creature gets +2/+0 as long as you control exactly one creature".to_string(),
+            "as long as you control exactly one creature, that creature has deathtouch".to_string(),
+            "as long as you control exactly one creature, that creature has lifelink".to_string(),
+        ]);
+        let merged = merge_subject_has_keyword_lines(first_pass);
+
+        assert_eq!(
+            merged,
+            vec![
+                "As long as you control exactly one creature, that creature gets +2/+0 and has deathtouch and lifelink"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn merge_adjacent_subject_predicate_lines_does_not_merge_otherwise_branch() {
         let merged = merge_adjacent_subject_predicate_lines(vec![
             "Equipped creature gets +1/+1.".to_string(),
@@ -2783,6 +2899,29 @@ mod tests {
                 "Equipped creature has deathtouch during your turn. Otherwise, it has reach."
                     .to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn activated_subject_predicate_lines_preserve_ability_boundaries() {
+        let lines = vec![
+            "{1}{G}: This creature gains reach until end of turn.".to_string(),
+            "{1}{G}: This creature gains deathtouch until end of turn.".to_string(),
+        ];
+
+        assert_eq!(merge_adjacent_subject_predicate_lines(lines.clone()), lines);
+    }
+
+    #[test]
+    fn ordinary_subject_predicate_lines_still_merge() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "This creature gains reach.".to_string(),
+            "This creature gains deathtouch.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec!["This creature gains reach and deathtouch".to_string()]
         );
     }
 

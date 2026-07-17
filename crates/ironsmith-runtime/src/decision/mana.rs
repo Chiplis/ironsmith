@@ -159,6 +159,24 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
     use crate::ability::AbilityKind;
     use crate::filter::{FilterContext, player_filter_matches_game};
 
+    if let ironsmith_core::TotalCostKind::OneOf(branches) = cost.kind() {
+        return crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| {
+                    calculate_effective_activation_total_cost_with_view(
+                        game,
+                        activator,
+                        ability_source,
+                        branch,
+                        chosen_targets,
+                        view,
+                    )
+                })
+                .collect(),
+        );
+    }
+
     fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
         game.turn_store
             .turn_order
@@ -523,6 +541,34 @@ fn casting_method_is_bestow(
             .or_else(|| spell.cast_alternative_method_owned())
             .as_ref()
             .is_some_and(|method| method.is_bestow()),
+        _ => false,
+    }
+}
+
+fn casting_method_is_mutate(
+    game: &GameState,
+    caster: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    match casting_method {
+        CastingMethod::Alternative(idx) => spell
+            .alternative_casts
+            .get(*idx)
+            .is_some_and(|method| method.is_mutate()),
+        CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            use_alternative: idx,
+            zone,
+            ..
+        } => resolve_play_from_alternative_method(game, caster, spell, *zone, *idx)
+            .or_else(|| spell.cast_alternative_method_owned())
+            .as_ref()
+            .is_some_and(|method| method.is_mutate()),
         _ => false,
     }
 }
@@ -913,17 +959,19 @@ where
                         player,
                         crate::costs::PaymentReason::CastSpell,
                     );
-                potential.max_x_for_cost_with_mana_spend_policy_and_black_life(
+                let caster_only = potential.max_x_for_cost_with_mana_spend_policy_and_black_life(
                     cost,
                     &mana_spend_policy,
                     allow_black_life,
-                )
+                );
+                max_x_payable_with_assist(hypothetical, player, proposal.id, cost)
+                    .unwrap_or(caster_only)
             })
             .unwrap_or(0);
 
         for x_value in 0..=max_x {
             if effective_cost.as_ref().is_some_and(|cost| {
-                !mana_cost_can_be_paid_with_view_at_x(
+                !mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
                     hypothetical,
                     player,
                     spell.id,
@@ -1054,6 +1102,7 @@ pub(crate) fn player_was_attacked_this_step(game: &GameState, player: PlayerId) 
             AttackTarget::Planeswalker(planeswalker_id) => game
                 .object(planeswalker_id)
                 .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
+            AttackTarget::Battle(battle_id) => game.battle_protector(battle_id) == Some(player),
         })
 }
 
@@ -1102,7 +1151,7 @@ pub(crate) fn this_spell_cast_timing_allows(
                 )
         }
         ThisSpellCastTiming::DuringCombatOnYourTurnBeforeBlockersAreDeclared => {
-            game.turn.active_player == player
+            game.is_active_player(player)
                 && matches!(game.turn.phase, Phase::Combat)
                 && matches!(
                     game.turn.step,
@@ -1110,7 +1159,7 @@ pub(crate) fn this_spell_cast_timing_allows(
                 )
         }
         ThisSpellCastTiming::DuringCombatOnOpponentsTurn => {
-            game.turn.active_player != player && matches!(game.turn.phase, Phase::Combat)
+            !game.is_active_player(player) && matches!(game.turn.phase, Phase::Combat)
         }
         ThisSpellCastTiming::BeforeAttackersAreDeclared => {
             matches!(game.turn.phase, Phase::Combat) && game.turn.step == Some(Step::BeginCombat)
@@ -1123,12 +1172,12 @@ pub(crate) fn this_spell_cast_timing_allows(
                 )
         }
         ThisSpellCastTiming::DuringOpponentsUpkeep => {
-            game.turn.active_player != player
+            !game.is_active_player(player)
                 && matches!(game.turn.phase, Phase::Beginning)
                 && game.turn.step == Some(Step::Upkeep)
         }
         ThisSpellCastTiming::DuringOpponentsTurnAfterUpkeep => {
-            if game.turn.active_player == player {
+            if game.is_active_player(player) {
                 return false;
             }
             !matches!(
@@ -1137,7 +1186,7 @@ pub(crate) fn this_spell_cast_timing_allows(
             )
         }
         ThisSpellCastTiming::DuringYourEndStep => {
-            game.turn.active_player == player
+            game.is_active_player(player)
                 && matches!(game.turn.phase, Phase::Ending)
                 && game.turn.step == Some(Step::End)
         }
@@ -1203,6 +1252,9 @@ pub(crate) fn this_spell_cast_condition_allows(
                         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
                             .object(planeswalker_id)
                             .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
+                        crate::combat_state::AttackTarget::Battle(battle_id) => {
+                            game.battle_protector(battle_id) == Some(player)
+                        }
                     })
                 })
         }
@@ -1291,7 +1343,7 @@ pub(crate) fn has_valid_spell_timing_with_view(
         .cast_spells_only_as_sorcery
         .contains(&player)
     {
-        return game.turn.active_player == player && crate::turn::is_sorcery_timing(game);
+        return game.is_active_player(player) && crate::turn::is_sorcery_timing(game);
     }
 
     if !is_sorcery_speed_spell(spell)
@@ -1301,7 +1353,7 @@ pub(crate) fn has_valid_spell_timing_with_view(
     }
 
     // Sorcery-speed spells require: active player, main phase, empty stack.
-    game.turn.active_player == player && crate::turn::is_sorcery_timing(game)
+    game.is_active_player(player) && crate::turn::is_sorcery_timing(game)
 }
 
 fn casting_method_grants_flash_timing(
@@ -1728,6 +1780,119 @@ pub(crate) fn spell_has_legal_targets_for_cast_with_view(
     effects.is_empty() || view.spell_has_legal_targets(effects, player, Some(spell_id), None)
 }
 
+fn spree_mode_selections(mode_count: usize, min: usize, max: usize) -> Vec<Vec<usize>> {
+    fn visit(
+        next: usize,
+        mode_count: usize,
+        min: usize,
+        max: usize,
+        selected: &mut Vec<usize>,
+        out: &mut Vec<Vec<usize>>,
+    ) {
+        if selected.len() >= min {
+            out.push(selected.clone());
+        }
+        if selected.len() == max {
+            return;
+        }
+        for mode in next..mode_count {
+            selected.push(mode);
+            visit(mode + 1, mode_count, min, max, selected, out);
+            selected.pop();
+        }
+    }
+
+    let mut selections = Vec::new();
+    visit(0, mode_count, min, max, &mut Vec::new(), &mut selections);
+    selections
+}
+
+#[allow(clippy::too_many_arguments)]
+fn has_payable_legal_spree_selection_with_view(
+    game: &GameState,
+    spell: &crate::object::Object,
+    spell_id: ObjectId,
+    program_override: Option<&crate::resolution::ResolutionProgram>,
+    effects_override: Option<&[crate::effect::Effect]>,
+    player: PlayerId,
+    base_mana_cost: Option<&crate::mana::ManaCost>,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> Option<bool> {
+    let program = program_override.or(spell.spell_effect.as_deref())?;
+    let modal = program.all_effects().into_iter().find_map(|effect| {
+        effect
+            .0
+            .get_modal_spec_with_context(game, player, spell_id)
+            .filter(|modal| modal.spree)
+    })?;
+    let min = match modal.min_modes {
+        crate::effect::Value::Fixed(value) => value.max(0) as usize,
+        _ => return Some(false),
+    };
+    let max = match modal.max_modes {
+        crate::effect::Value::Fixed(value) => {
+            (value.max(0) as usize).min(modal.mode_descriptions.len())
+        }
+        _ => return Some(false),
+    };
+
+    for modes in spree_mode_selections(modal.mode_descriptions.len(), min, max) {
+        let targets_are_legal = if let Some(effects) = effects_override {
+            view.spell_has_legal_targets(effects, player, Some(spell_id), Some(&modes))
+        } else {
+            crate::game_loop::spell_program_has_legal_targets_with_modes_and_view(
+                game,
+                program,
+                player,
+                Some(spell_id),
+                Some(&modes),
+                view,
+            )
+        };
+        if !targets_are_legal {
+            continue;
+        }
+
+        let mut pips = base_mana_cost
+            .map(|cost| cost.pips().to_vec())
+            .unwrap_or_default();
+        for (index, optional) in spell.optional_costs.iter().enumerate() {
+            for _ in 0..spell.optional_costs_paid.times_paid(index) {
+                if let Some(cost) = optional.cost.mana_cost() {
+                    pips.extend(cost.pips().iter().cloned());
+                }
+            }
+        }
+        for mode in &modes {
+            if let Some(cost) = modal.mode_additional_mana_costs.get(*mode) {
+                pips.extend(cost.pips().iter().cloned());
+            }
+        }
+        let combined = crate::mana::ManaCost::from_pips(pips);
+        let effective = calculate_effective_mana_cost_with_view_for_casting_method(
+            game,
+            player,
+            spell,
+            &combined,
+            casting_method,
+            view,
+        );
+        if mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
+            game,
+            player,
+            spell_id,
+            &effective,
+            spell.x_value.unwrap_or(0),
+            view,
+        ) {
+            return Some(true);
+        }
+    }
+
+    Some(false)
+}
+
 fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_view(
     game: &GameState,
     spell: &crate::object::Object,
@@ -1745,6 +1910,38 @@ fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_vie
         base_mana_cost,
         casting_method,
         |hypothetical, proposal, _effective_cost, hypothetical_view| {
+            if casting_method_is_mutate(hypothetical, player, proposal, casting_method) {
+                let mutate_target =
+                    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                        crate::target::ObjectFilter::creature()
+                            .owned_by(crate::target::PlayerFilter::Specific(proposal.owner))
+                            .without_subtype(crate::types::Subtype::Human),
+                    ));
+                let requirement = crate::effect::Effect::new(
+                    crate::effects::TargetOnlyEffect::new(mutate_target),
+                );
+                if !hypothetical_view.spell_has_legal_targets(
+                    &[requirement],
+                    player,
+                    Some(spell_id),
+                    None,
+                ) {
+                    return false;
+                }
+            }
+            if let Some(legal) = has_payable_legal_spree_selection_with_view(
+                hypothetical,
+                proposal,
+                spell_id,
+                program_override,
+                effects_override,
+                player,
+                base_mana_cost,
+                casting_method,
+                hypothetical_view,
+            ) {
+                return legal;
+            }
             spell_has_legal_targets_for_cast_with_view(
                 &hypothetical,
                 proposal,
@@ -1756,16 +1953,6 @@ fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_vie
             )
         },
     )
-}
-
-fn mana_cost_can_be_paid_with_view(
-    game: &GameState,
-    player: PlayerId,
-    spell_id: ObjectId,
-    cost: &crate::mana::ManaCost,
-    view: &DerivedGameView<'_>,
-) -> bool {
-    mana_cost_can_be_paid_with_view_at_x(game, player, spell_id, cost, 0, view)
 }
 
 fn mana_cost_can_be_paid_with_view_at_x(
@@ -1800,6 +1987,127 @@ fn mana_cost_can_be_paid_with_view_at_x(
         &mana_spend_policy,
         allow_black_life,
         view,
+    )
+}
+
+fn mana_cost_with_locked_x_and_generic_reduction(
+    cost: &crate::mana::ManaCost,
+    x_value: u32,
+    reduction: u32,
+) -> crate::mana::ManaCost {
+    let mut pips = Vec::new();
+    let mut generic_from_x = 0u32;
+    for pip in cost.pips() {
+        if pip
+            .iter()
+            .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::X))
+        {
+            generic_from_x = generic_from_x.saturating_add(x_value);
+        } else {
+            pips.push(pip.clone());
+        }
+    }
+    crate::mana::ManaCost::from_pips(pips)
+        .add_generic(generic_from_x)
+        .reduce_generic(reduction)
+}
+
+fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
+    game: &GameState,
+    caster: PlayerId,
+    spell_id: ObjectId,
+    cost: &crate::mana::ManaCost,
+    x_value: u32,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if mana_cost_can_be_paid_with_view_at_x(game, caster, spell_id, cost, x_value, view) {
+        return true;
+    }
+    if !game
+        .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist)
+    {
+        return false;
+    }
+
+    let x_pips = cost
+        .pips()
+        .iter()
+        .filter(|pip| {
+            pip.iter()
+                .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::X))
+        })
+        .count() as u32;
+    let generic_total = cost
+        .generic_mana_total()
+        .saturating_add(x_pips.saturating_mul(x_value));
+    if generic_total == 0 {
+        return false;
+    }
+
+    game.turn_store
+        .turn_order
+        .iter()
+        .copied()
+        .filter(|helper| *helper != caster && game.player(*helper).is_some())
+        .any(|helper| {
+            (1..=generic_total).any(|contribution| {
+                let helper_cost = crate::mana::ManaCost::new().add_generic(contribution);
+                if !mana_cost_can_be_paid_with_view_at_x(
+                    game,
+                    helper,
+                    spell_id,
+                    &helper_cost,
+                    0,
+                    view,
+                ) {
+                    return false;
+                }
+                let caster_cost =
+                    mana_cost_with_locked_x_and_generic_reduction(cost, x_value, contribution);
+                mana_cost_can_be_paid_with_view_at_x(game, caster, spell_id, &caster_cost, 0, view)
+            })
+        })
+}
+
+fn mana_cost_can_be_paid_by_caster_or_assist_with_view(
+    game: &GameState,
+    caster: PlayerId,
+    spell_id: ObjectId,
+    cost: &crate::mana::ManaCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(game, caster, spell_id, cost, 0, view)
+}
+
+pub(crate) fn max_x_payable_with_assist(
+    game: &GameState,
+    caster: PlayerId,
+    spell_id: ObjectId,
+    cost: &crate::mana::ManaCost,
+) -> Option<u32> {
+    if !game
+        .current_has_static_ability_id(spell_id, crate::static_abilities::StaticAbilityId::Assist)
+        || !cost.has_x()
+    {
+        return None;
+    }
+    let view = DerivedGameView::new(game);
+    let upper_bound = game
+        .turn_store
+        .turn_order
+        .iter()
+        .copied()
+        .map(|player| view.potential_mana(player).total())
+        .sum::<u32>();
+    Some(
+        (0..=upper_bound)
+            .rev()
+            .find(|x_value| {
+                mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
+                    game, caster, spell_id, cost, *x_value, &view,
+                )
+            })
+            .unwrap_or(0),
     )
 }
 
@@ -1859,6 +2167,9 @@ pub(crate) fn can_cast_spell_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
+    if game.is_planar_card(spell.id) {
+        return false;
+    }
     let cast_view = match casting_method {
         CastingMethod::FaceDown => {
             if !spell_can_be_cast_face_down(spell) {
@@ -2017,8 +2328,13 @@ pub(crate) fn can_cast_spell_with_context(
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
-        let can_pay_effective =
-            mana_cost_can_be_paid_with_view(game, player, spell.id, &effective_cost, view);
+        let can_pay_effective = mana_cost_can_be_paid_by_caster_or_assist_with_view(
+            game,
+            player,
+            spell.id,
+            &effective_cost,
+            view,
+        );
         let can_pay_with_optional_reduction = !can_pay_effective
             && effective_cost_with_affordable_optional_cost_hypothesis(
                 game,
@@ -2028,7 +2344,9 @@ pub(crate) fn can_cast_spell_with_context(
                 casting_method,
             )
             .is_some_and(|cost| {
-                mana_cost_can_be_paid_with_view(game, player, spell.id, &cost, view)
+                mana_cost_can_be_paid_by_caster_or_assist_with_view(
+                    game, player, spell.id, &cost, view,
+                )
             });
         if !can_pay_effective && !can_pay_with_optional_reduction {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
@@ -2130,6 +2448,9 @@ pub(crate) fn can_cast_with_cost_with_context(
     let game = ctx.game;
     let player = ctx.player;
     let view = ctx.view;
+    if game.is_planar_card(spell_id) {
+        return false;
+    }
     let cast_view = if casting_method_is_bestow(game, player, spell, casting_method) {
         let mut view = spell.clone();
         view.apply_bestow_cast_overlay();
@@ -2293,8 +2614,9 @@ pub(crate) fn can_cast_with_cost_with_context(
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
-        let can_pay_adjusted =
-            mana_cost_can_be_paid_with_view(game, player, spell_id, &adjusted, view);
+        let can_pay_adjusted = mana_cost_can_be_paid_by_caster_or_assist_with_view(
+            game, player, spell_id, &adjusted, view,
+        );
         let can_pay_with_optional_reduction = !can_pay_adjusted
             && effective_cost_with_affordable_optional_cost_hypothesis(
                 game,
@@ -2304,7 +2626,13 @@ pub(crate) fn can_cast_with_cost_with_context(
                 casting_method,
             )
             .is_some_and(|optional_adjusted| {
-                mana_cost_can_be_paid_with_view(game, player, spell_id, &optional_adjusted, view)
+                mana_cost_can_be_paid_by_caster_or_assist_with_view(
+                    game,
+                    player,
+                    spell_id,
+                    &optional_adjusted,
+                    view,
+                )
             });
         if !can_pay_adjusted && !can_pay_with_optional_reduction {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
@@ -2537,6 +2865,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
         .unwrap_or(base_spell_for_checks);
     let effects_override = method
         .overload_effects()
+        .or_else(|| method.cleave_effects())
         .or_else(|| method.awaken_effects())
         .or_else(|| {
             disturbed_view
@@ -2572,7 +2901,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
             if plotted_turn >= game.turn.turn_number {
                 return false;
             }
-            if game.turn.active_player != player || !crate::turn::is_sorcery_timing(game) {
+            if !game.is_active_player(player) || !crate::turn::is_sorcery_timing(game) {
                 return false;
             }
             Some(&free_plot_cost)
@@ -3601,9 +3930,8 @@ pub(crate) fn apply_spell_cost_modifiers(
         }
     }
 
-    let current_turn = game.turn.turn_number;
     for effect in &game.effect_store.temporary_spell_cost_reductions {
-        if effect.player != player || effect.is_expired(current_turn, game.turn.active_player) {
+        if effect.player != player || effect.is_expired(game) {
             continue;
         }
         let temporary_ctx = with_source_exiled_tagged_objects(
@@ -4263,6 +4591,7 @@ pub fn compute_potential_mana(game: &GameState, player: PlayerId) -> crate::play
 struct AvailableManaSource {
     source_id: ObjectId,
     outputs: Vec<Vec<ManaSymbol>>,
+    from_snow_source: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -4274,6 +4603,12 @@ struct ManaPaymentSearchKey {
     red: u32,
     green: u32,
     colorless: u32,
+    snow_white: u32,
+    snow_blue: u32,
+    snow_black: u32,
+    snow_red: u32,
+    snow_green: u32,
+    snow_colorless: u32,
     life_to_pay: u32,
     used_sources_mask: u128,
 }
@@ -4282,6 +4617,7 @@ impl ManaPaymentSearchKey {
     fn new(
         pip_index: usize,
         pool: &crate::player::ManaPool,
+        snow_pool: &crate::player::ManaPool,
         life_to_pay: u32,
         used_sources_mask: u128,
     ) -> Self {
@@ -4293,13 +4629,19 @@ impl ManaPaymentSearchKey {
             red: pool.red,
             green: pool.green,
             colorless: pool.colorless,
+            snow_white: snow_pool.white,
+            snow_blue: snow_pool.blue,
+            snow_black: snow_pool.black,
+            snow_red: snow_pool.red,
+            snow_green: snow_pool.green,
+            snow_colorless: snow_pool.colorless,
             life_to_pay,
             used_sources_mask,
         }
     }
 }
 
-fn can_pay_mana_cost_with_available_sources(
+pub(crate) fn can_pay_mana_cost_with_available_sources(
     game: &GameState,
     player: PlayerId,
     source: Option<ObjectId>,
@@ -4331,6 +4673,7 @@ fn can_pay_mana_cost_with_available_sources(
     };
 
     let sources = available_mana_sources_for_payment(game, player, view);
+    let snow_pool = snow_mana_pool(game, player, source, reason);
     if sources.len() > 128 {
         return can_pay_expanded_pips_large_source_count(
             game,
@@ -4338,6 +4681,7 @@ fn can_pay_mana_cost_with_available_sources(
             &pips,
             0,
             player_obj.mana_pool.clone(),
+            snow_pool,
             &sources,
             &mut vec![false; sources.len()],
             0,
@@ -4354,6 +4698,7 @@ fn can_pay_mana_cost_with_available_sources(
         &pips,
         0,
         player_obj.mana_pool.clone(),
+        snow_pool,
         &sources,
         0,
         0,
@@ -4481,11 +4826,63 @@ fn available_mana_sources_for_payment(
             sources.push(AvailableManaSource {
                 source_id: perm_id,
                 outputs: outputs_for_permanent,
+                from_snow_source: game
+                    .current_has_supertype(perm_id, crate::types::Supertype::Snow),
             });
         }
     }
 
     sources
+}
+
+fn snow_mana_pool(
+    game: &GameState,
+    player: PlayerId,
+    payment_source: Option<ObjectId>,
+    reason: crate::costs::PaymentReason,
+) -> crate::player::ManaPool {
+    let Some(player_obj) = game.player(player) else {
+        return crate::player::ManaPool::default();
+    };
+    let mut snow_pool = crate::player::ManaPool::default();
+    let mut used_restricted = std::collections::HashSet::new();
+    for unit in &player_obj.mana_source_provenance {
+        let from_snow_source =
+            unit.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.supertypes.contains(&crate::types::Supertype::Snow)
+            }) || (unit.snapshot.is_none()
+                && game.current_has_supertype(unit.source, crate::types::Supertype::Snow));
+        if !from_snow_source
+            || snow_pool.amount(unit.symbol) >= player_obj.mana_pool.amount(unit.symbol)
+        {
+            continue;
+        }
+        if unit.restricted {
+            let Some(index) = player_obj
+                .restricted_mana
+                .iter()
+                .enumerate()
+                .find(|(index, restricted)| {
+                    !used_restricted.contains(index)
+                        && restricted.symbol == unit.symbol
+                        && restricted.source == unit.source
+                })
+                .map(|(index, _)| index)
+            else {
+                continue;
+            };
+            used_restricted.insert(index);
+            if !game.restricted_mana_unit_is_payable_for_reason(
+                &player_obj.restricted_mana[index],
+                payment_source,
+                reason,
+            ) {
+                continue;
+            }
+        }
+        snow_pool.add(unit.symbol, 1);
+    }
+    snow_pool
 }
 
 fn mana_ability_output_options(
@@ -4644,6 +5041,7 @@ fn can_pay_expanded_pips(
     pips: &[Vec<ManaSymbol>],
     pip_index: usize,
     pool: crate::player::ManaPool,
+    snow_pool: crate::player::ManaPool,
     sources: &[AvailableManaSource],
     used_sources_mask: u128,
     life_to_pay: u32,
@@ -4656,7 +5054,8 @@ fn can_pay_expanded_pips(
         return life_to_pay <= max_life_payment;
     }
 
-    let key = ManaPaymentSearchKey::new(pip_index, &pool, life_to_pay, used_sources_mask);
+    let key =
+        ManaPaymentSearchKey::new(pip_index, &pool, &snow_pool, life_to_pay, used_sources_mask);
     if failed_states.contains(&key) {
         return false;
     }
@@ -4672,6 +5071,7 @@ fn can_pay_expanded_pips(
                     pips,
                     pip_index + 1,
                     pool.clone(),
+                    snow_pool.clone(),
                     sources,
                     used_sources_mask,
                     next_life,
@@ -4687,22 +5087,27 @@ fn can_pay_expanded_pips(
         }
 
         let mut pool_after = pool.clone();
-        if remove_mana_for_pip(&mut pool_after, symbol, mana_spend_policy)
-            && can_pay_expanded_pips(
-                game,
-                player,
-                pips,
-                pip_index + 1,
-                pool_after,
-                sources,
-                used_sources_mask,
-                life_to_pay,
-                max_life_payment,
-                mana_spend_policy,
-                payment_source,
-                failed_states,
-            )
-        {
+        let mut snow_pool_after = snow_pool.clone();
+        if remove_mana_for_pip(
+            &mut pool_after,
+            &mut snow_pool_after,
+            symbol,
+            mana_spend_policy,
+        ) && can_pay_expanded_pips(
+            game,
+            player,
+            pips,
+            pip_index + 1,
+            pool_after,
+            snow_pool_after,
+            sources,
+            used_sources_mask,
+            life_to_pay,
+            max_life_payment,
+            mana_spend_policy,
+            payment_source,
+            failed_states,
+        ) {
             return true;
         }
 
@@ -4720,17 +5125,20 @@ fn can_pay_expanded_pips(
                 source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
             }
             for output in &source.outputs {
-                if let Some(pool_from_output) =
-                    consume_output_for_pip(output, symbol, &source_policy)
+                if let Some((pool_from_output, snow_pool_from_output)) =
+                    consume_output_for_pip(output, symbol, &source_policy, source.from_snow_source)
                 {
                     let mut combined_pool = pool.clone();
                     add_pool(&mut combined_pool, &pool_from_output);
+                    let mut combined_snow_pool = snow_pool.clone();
+                    add_pool(&mut combined_snow_pool, &snow_pool_from_output);
                     let can_pay_rest = can_pay_expanded_pips(
                         game,
                         player,
                         pips,
                         pip_index + 1,
                         combined_pool,
+                        combined_snow_pool,
                         sources,
                         used_sources_mask | source_mask,
                         life_to_pay,
@@ -4758,6 +5166,7 @@ fn can_pay_expanded_pips_large_source_count(
     pips: &[Vec<ManaSymbol>],
     pip_index: usize,
     pool: crate::player::ManaPool,
+    snow_pool: crate::player::ManaPool,
     sources: &[AvailableManaSource],
     used_sources: &mut [bool],
     life_to_pay: u32,
@@ -4780,6 +5189,7 @@ fn can_pay_expanded_pips_large_source_count(
                     pips,
                     pip_index + 1,
                     pool.clone(),
+                    snow_pool.clone(),
                     sources,
                     used_sources,
                     next_life,
@@ -4794,21 +5204,26 @@ fn can_pay_expanded_pips_large_source_count(
         }
 
         let mut pool_after = pool.clone();
-        if remove_mana_for_pip(&mut pool_after, symbol, mana_spend_policy)
-            && can_pay_expanded_pips_large_source_count(
-                game,
-                player,
-                pips,
-                pip_index + 1,
-                pool_after,
-                sources,
-                used_sources,
-                life_to_pay,
-                max_life_payment,
-                mana_spend_policy,
-                payment_source,
-            )
-        {
+        let mut snow_pool_after = snow_pool.clone();
+        if remove_mana_for_pip(
+            &mut pool_after,
+            &mut snow_pool_after,
+            symbol,
+            mana_spend_policy,
+        ) && can_pay_expanded_pips_large_source_count(
+            game,
+            player,
+            pips,
+            pip_index + 1,
+            pool_after,
+            snow_pool_after,
+            sources,
+            used_sources,
+            life_to_pay,
+            max_life_payment,
+            mana_spend_policy,
+            payment_source,
+        ) {
             return true;
         }
 
@@ -4825,11 +5240,13 @@ fn can_pay_expanded_pips_large_source_count(
                 source_policy.allow_mode(ironsmith_core::value_model::ManaSpendMode::AnyColor);
             }
             for output in &source.outputs {
-                if let Some(pool_from_output) =
-                    consume_output_for_pip(output, symbol, &source_policy)
+                if let Some((pool_from_output, snow_pool_from_output)) =
+                    consume_output_for_pip(output, symbol, &source_policy, source.from_snow_source)
                 {
                     let mut combined_pool = pool.clone();
                     add_pool(&mut combined_pool, &pool_from_output);
+                    let mut combined_snow_pool = snow_pool.clone();
+                    add_pool(&mut combined_snow_pool, &snow_pool_from_output);
                     used_sources[source_index] = true;
                     let can_pay_rest = can_pay_expanded_pips_large_source_count(
                         game,
@@ -4837,6 +5254,7 @@ fn can_pay_expanded_pips_large_source_count(
                         pips,
                         pip_index + 1,
                         combined_pool,
+                        combined_snow_pool,
                         sources,
                         used_sources,
                         life_to_pay,
@@ -4860,16 +5278,21 @@ fn consume_output_for_pip(
     output: &[ManaSymbol],
     pip: ManaSymbol,
     mana_spend_policy: &crate::player::ManaSpendPolicy,
-) -> Option<crate::player::ManaPool> {
+    from_snow_source: bool,
+) -> Option<(crate::player::ManaPool, crate::player::ManaPool)> {
     for (idx, &produced) in output.iter().enumerate() {
-        if mana_symbol_can_pay_pip(produced, pip, mana_spend_policy) {
+        if mana_symbol_can_pay_pip(produced, pip, mana_spend_policy, from_snow_source) {
             let mut remainder = crate::player::ManaPool::default();
+            let mut snow_remainder = crate::player::ManaPool::default();
             for (other_idx, &symbol) in output.iter().enumerate() {
                 if other_idx != idx && is_payable_mana_symbol(symbol) {
                     remainder.add(symbol, 1);
+                    if from_snow_source {
+                        snow_remainder.add(symbol, 1);
+                    }
                 }
             }
-            return Some(remainder);
+            return Some((remainder, snow_remainder));
         }
     }
     None
@@ -4895,6 +5318,7 @@ const PAYABLE_MANA_SYMBOLS: [ManaSymbol; 6] = [
 
 fn remove_mana_for_pip(
     pool: &mut crate::player::ManaPool,
+    snow_pool: &mut crate::player::ManaPool,
     pip: ManaSymbol,
     mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> bool {
@@ -4905,7 +5329,9 @@ fn remove_mana_for_pip(
         | ManaSymbol::Red
         | ManaSymbol::Green => {
             for symbol in PAYABLE_MANA_SYMBOLS {
-                if mana_spend_policy.can_pay_symbol(symbol, pip) && pool.remove(symbol, 1) {
+                if mana_spend_policy.can_pay_symbol(symbol, pip)
+                    && remove_pool_unit_preserving_snow(pool, snow_pool, symbol)
+                {
                     return true;
                 }
             }
@@ -4914,23 +5340,53 @@ fn remove_mana_for_pip(
         ManaSymbol::Colorless => {
             for symbol in PAYABLE_MANA_SYMBOLS {
                 if mana_spend_policy.can_pay_symbol(symbol, ManaSymbol::Colorless)
-                    && pool.remove(symbol, 1)
+                    && remove_pool_unit_preserving_snow(pool, snow_pool, symbol)
                 {
                     return true;
                 }
             }
             false
         }
-        ManaSymbol::Generic(_) => remove_any_payable_mana(pool),
-        ManaSymbol::Snow => false,
+        ManaSymbol::Generic(_) => remove_any_payable_mana(pool, snow_pool),
+        ManaSymbol::Snow => remove_any_snow_mana(pool, snow_pool),
         ManaSymbol::Life(_) | ManaSymbol::X => false,
     }
 }
 
-fn remove_any_payable_mana(pool: &mut crate::player::ManaPool) -> bool {
+fn remove_pool_unit_preserving_snow(
+    pool: &mut crate::player::ManaPool,
+    snow_pool: &mut crate::player::ManaPool,
+    symbol: ManaSymbol,
+) -> bool {
+    if pool.amount(symbol) > snow_pool.amount(symbol) {
+        return pool.remove(symbol, 1);
+    }
+    if pool.remove(symbol, 1) {
+        snow_pool.remove(symbol, 1);
+        return true;
+    }
+    false
+}
+
+fn remove_any_payable_mana(
+    pool: &mut crate::player::ManaPool,
+    snow_pool: &mut crate::player::ManaPool,
+) -> bool {
     for symbol in PAYABLE_MANA_SYMBOLS {
-        if pool.remove(symbol, 1) {
+        if remove_pool_unit_preserving_snow(pool, snow_pool, symbol) {
             return true;
+        }
+    }
+    false
+}
+
+fn remove_any_snow_mana(
+    pool: &mut crate::player::ManaPool,
+    snow_pool: &mut crate::player::ManaPool,
+) -> bool {
+    for symbol in PAYABLE_MANA_SYMBOLS {
+        if snow_pool.remove(symbol, 1) {
+            return pool.remove(symbol, 1);
         }
     }
     false
@@ -4940,6 +5396,7 @@ fn mana_symbol_can_pay_pip(
     produced: ManaSymbol,
     pip: ManaSymbol,
     mana_spend_policy: &crate::player::ManaSpendPolicy,
+    from_snow_source: bool,
 ) -> bool {
     match pip {
         ManaSymbol::Generic(_) => is_payable_mana_symbol(produced),
@@ -4949,7 +5406,8 @@ fn mana_symbol_can_pay_pip(
         | ManaSymbol::Red
         | ManaSymbol::Green
         | ManaSymbol::Colorless => mana_spend_policy.can_pay_symbol(produced, pip),
-        ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X => false,
+        ManaSymbol::Snow => from_snow_source && is_payable_mana_symbol(produced),
+        ManaSymbol::Life(_) | ManaSymbol::X => false,
     }
 }
 

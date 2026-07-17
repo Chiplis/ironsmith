@@ -105,14 +105,19 @@ fn first_word_look_or_reveal(sentences: &[SentenceInput], sentence_idx: usize) -
     sentence_head_word_in(sentences, sentence_idx, &["look", "reveal"])
 }
 
-fn first_word_consult_reveal_candidate(
-    sentences: &[SentenceInput],
-    sentence_idx: usize,
-) -> bool {
+fn first_word_consult_reveal_candidate(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_in(
         sentences,
         sentence_idx,
-        &["reveal", "defending", "target", "each", "that", "they", "you"],
+        &[
+            "reveal",
+            "defending",
+            "target",
+            "each",
+            "that",
+            "they",
+            "you",
+        ],
     )
 }
 
@@ -169,6 +174,10 @@ fn first_word_the(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "the")
 }
 
+fn first_word_at(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "at")
+}
+
 fn first_word_tap(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "tap")
 }
@@ -207,6 +216,11 @@ fn first_word_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
 
 fn first_head_look_at(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_is(sentences, sentence_idx, ("look", Some("at")))
+}
+
+fn first_head_look_at_or_if(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    first_head_look_at(sentences, sentence_idx)
+        || sentence_head_word_is(sentences, sentence_idx, "if")
 }
 
 fn first_head_when_that(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -296,6 +310,30 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 3,
         predicate: first_word_you_or_untap,
         parser: generic_subject_verb_sequences::pairs::parse_reciprocal_creature_control_sequence,
+    },
+    SequenceRuleDef {
+        name: "revealed-and-or-choice-destination-override",
+        feature_tag: Some("looked-cards-and-or-destination-replacement"),
+        priority: 439,
+        consumed_sentences: 4,
+        predicate: first_word_reveal,
+        parser: generic_subject_verb_sequences::quads::parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override,
+    },
+    SequenceRuleDef {
+        name: "looked-matching-battlefield-then-shuffle",
+        feature_tag: Some("looked-cards-battlefield-shuffle"),
+        priority: 439,
+        consumed_sentences: 3,
+        predicate: first_word_look_or_reveal,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_put_matching_onto_battlefield_then_shuffle,
+    },
+    SequenceRuleDef {
+        name: "looked-battlefield-grant-rest-bottom",
+        feature_tag: Some("looked-cards-battlefield-grant-remainder"),
+        priority: 439,
+        consumed_sentences: 4,
+        predicate: first_word_look_or_reveal,
+        parser: generic_subject_verb_sequences::quads::parse_top_cards_move_then_grant_rest_bottom,
     },
     SequenceRuleDef {
         name: "top-cards-move-rest-typed-when-result",
@@ -423,6 +461,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_look,
         parser:
             generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-optional-one-top-remainder-bottom",
+        feature_tag: Some("looked-cards-optional-top-bottom-partition"),
+        priority: 344,
+        consumed_sentences: 3,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_then_optional_one_top_then_remainder_bottom,
     },
     SequenceRuleDef {
         name: "reveal-top-opponent-chooses-one-move-then-followup",
@@ -555,6 +601,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_search_delayed_upkeep_unless_pays_sequence,
     },
     SequenceRuleDef {
+        name: "next-upkeep-unless-pays-lose-game",
+        feature_tag: Some("delayed-upkeep-payment"),
+        priority: 338,
+        consumed_sentences: 2,
+        predicate: first_word_at,
+        parser: generic_subject_verb_sequences::parse_delayed_upkeep_unless_pays_sequence,
+    },
+    SequenceRuleDef {
         name: "exile-until-match-cast-rest-bottom",
         feature_tag: Some("consult-cast-bottom"),
         priority: 337,
@@ -595,6 +649,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 3,
         predicate: first_word_look_or_reveal,
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_match_into_hand_rest_graveyard,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-may-put-same-name-as-permanent-rest-bottom",
+        feature_tag: Some("looked-cards-same-name-permanent"),
+        priority: 336,
+        consumed_sentences: 3,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_may_put_same_name_as_permanent_rest_bottom,
     },
     SequenceRuleDef {
         name: "top-cards-may-cast-match-rest-bottom",
@@ -742,6 +804,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_each,
         parser: generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom,
+    },
+    SequenceRuleDef {
+        name: "look-at-top-counted-hand-rest-bottom",
+        feature_tag: Some("looked-cards-counted-hand-bottom"),
+        priority: 244,
+        consumed_sentences: 2,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_put_counted_hand_rest_bottom,
     },
     SequenceRuleDef {
         name: "top-cards-put-any-matching-to-zone-rest-bottom-same-sentence",
@@ -914,11 +984,19 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_exile_face_down_then_play_while_exiled,
     },
     SequenceRuleDef {
+        name: "look-at-top-exact-one-graveyard",
+        feature_tag: Some("looked-cards-exact-singleton-move"),
+        priority: 238,
+        consumed_sentences: 2,
+        predicate: first_head_look_at,
+        parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_move_exact_one_to_graveyard,
+    },
+    SequenceRuleDef {
         name: "look-at-top-partition-selected-and-remainder",
         feature_tag: Some("looked-cards-selected-remainder-partition"),
         priority: 237,
         consumed_sentences: 2,
-        predicate: first_head_look_at,
+        predicate: first_head_look_at_or_if,
         parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_partition_selected_and_remainder,
     },
     SequenceRuleDef {

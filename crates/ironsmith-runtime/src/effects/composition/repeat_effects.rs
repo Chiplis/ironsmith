@@ -84,15 +84,28 @@ impl EffectExecutor for RepeatEffectsEffect {
         let sequence = SequenceEffect::new(self.effects.clone());
         let mut all_events = Vec::new();
         let mut all_execution_facts = Vec::new();
+        let mut all_output_objects = Vec::new();
 
         for _ in 0..count {
             let outcome = sequence.execute(game, ctx)?;
             all_events.extend(outcome.events.clone());
             all_execution_facts.extend(outcome.execution_facts.clone());
+            if let Some(objects) = outcome.objects() {
+                for object in objects {
+                    if !all_output_objects.contains(object) {
+                        all_output_objects.push(*object);
+                    }
+                }
+            }
             if outcome.status.is_failure() {
+                let value = if all_output_objects.is_empty() {
+                    outcome.value
+                } else {
+                    OutcomeValue::Objects(all_output_objects)
+                };
                 return Ok(EffectOutcome::with_details(
                     outcome.status,
-                    outcome.value,
+                    value,
                     all_events,
                     all_execution_facts,
                 ));
@@ -101,7 +114,11 @@ impl EffectExecutor for RepeatEffectsEffect {
 
         Ok(EffectOutcome::with_details(
             OutcomeStatus::Succeeded,
-            OutcomeValue::None,
+            if all_output_objects.is_empty() {
+                OutcomeValue::None
+            } else {
+                OutcomeValue::Objects(all_output_objects)
+            },
             all_events,
             all_execution_facts,
         ))

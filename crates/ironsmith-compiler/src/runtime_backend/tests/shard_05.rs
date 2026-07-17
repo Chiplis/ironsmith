@@ -506,6 +506,65 @@ pub(super) fn rewrite_full_production_hollow_specter_keeps_dependent_discard_in_
 }
 
 #[test]
+pub(super) fn rewrite_full_production_leshracs_sigil_keeps_looked_card_discard_in_if_branch()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Leshrac's Sigil")
+        .card_types(vec![CardType::Enchantment]);
+    let text = "Whenever an opponent casts a green spell, you may pay {B}{B}. If you do, look at that player's hand and choose a card from it. The player discards that card.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Leshrac's Sigil should have a triggered ability");
+    let effects = &triggered.effects.segments[0].default_effects;
+    assert!(
+        effects.iter().all(|effect| effect
+            .downcast_ref::<crate::effects::DiscardEffect>()
+            .is_none()),
+        "the chosen-card discard must not escape the if-you-do branch: {effects:#?}"
+    );
+    let if_effect = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
+        .expect("Leshrac's Sigil should lower its if-you-do clause");
+    let sequence = if_effect
+        .then
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
+        .expect("the successful branch should retain the authored look-and-choose coordination");
+    assert!(sequence.effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::LookAtHandEffect>()
+            .is_some()
+    }));
+    let choose = sequence
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .expect("the successful branch should choose a card from the looked-at hand");
+    let discard = if_effect
+        .then
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>())
+        .expect("the successful branch should discard the chosen card");
+    let discard_filter = discard
+        .card_filter
+        .as_ref()
+        .expect("the discard should be restricted to the chosen card");
+    assert!(discard_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == choose.tag
+    }));
+
+    Ok(())
+}
+
+#[test]
 pub(super) fn rewrite_lexed_effect_sentence_supports_gain_then_get_for_each_cards_drawn() {
     let text = "Until end of turn, target creature gains trample and gets +1/+0 for each card you've drawn this turn.";
     let lexed =
@@ -1254,7 +1313,7 @@ pub(super) fn rewrite_activation_cost_parses_loyalty_shorthand_without_fallback_
 }
 
 #[test]
-pub(super) fn rewrite_activation_cost_parses_shard_style_without_raw_branch_splitting() {
+pub(super) fn rewrite_activation_cost_preserves_shard_style_full_cost_branches() {
     let raw = parse_activation_cost_rewrite("{W}, {T} or {U}, {T}")
         .expect("rewrite activation-cost parser should parse shard-style costs");
     let tokens = lex_line("{W}, {T} or {U}, {T}", 0)
@@ -1263,14 +1322,20 @@ pub(super) fn rewrite_activation_cost_parses_shard_style_without_raw_branch_spli
         .expect("token activation-cost parser should parse shard-style costs");
 
     assert_eq!(format!("{raw:?}"), format!("{lexed:?}"));
-    match lexed.segments.as_slice() {
-        [
-            super::super::ActivationCostSegmentCst::Mana(cost),
-            super::super::ActivationCostSegmentCst::Tap,
-        ] => {
-            assert_eq!(cost.pips(), vec![vec![ManaSymbol::White, ManaSymbol::Blue]]);
+    assert!(lexed.segments.is_empty());
+    assert_eq!(lexed.alternative_branches.len(), 2);
+    for (branch, symbol) in lexed
+        .alternative_branches
+        .iter()
+        .zip([ManaSymbol::White, ManaSymbol::Blue])
+    {
+        match branch.segments.as_slice() {
+            [
+                super::super::ActivationCostSegmentCst::Mana(cost),
+                super::super::ActivationCostSegmentCst::Tap,
+            ] => assert_eq!(cost.pips(), vec![vec![symbol]]),
+            other => panic!("expected mana plus tap alternative branch, got {other:?}"),
         }
-        other => panic!("expected hybrid mana plus tap shard-style cost, got {other:?}"),
     }
 }
 
@@ -1282,15 +1347,17 @@ pub(super) fn rewrite_activation_cost_preserves_alternative_and_dynamic_life_bra
     assert_eq!(alternative.alternative_branches.len(), 2);
     let lowered = lower_activation_cost_cst(&alternative)
         .expect("alternative activation cost should lower recursively");
-    let choose = lowered
-        .as_all()
-        .and_then(|costs| costs.first())
-        .and_then(crate::costs::Cost::effect_ref)
-        .and_then(crate::effect::Effect::as_choose_mode)
-        .expect("alternative activation cost should lower to a cost-executable modal choice");
-    assert_eq!(choose.modes.len(), 2);
-    assert_eq!(choose.modes[0].source_text, "Pay {3}");
-    assert_eq!(choose.modes[1].source_text, "discard a card");
+    let branches = lowered
+        .as_one_of()
+        .expect("alternative activation cost should lower to TotalCost::OneOf");
+    assert_eq!(branches.len(), 2);
+    assert_eq!(branches[0].display(), "{3}");
+    assert!(
+        branches[1]
+            .display()
+            .to_ascii_lowercase()
+            .contains("discard")
+    );
 
     let dynamic = parse_activation_cost_rewrite("Pay 1 life for each card in your hand")
         .expect("activation-cost grammar should parse dynamic life payments");
@@ -1420,6 +1487,69 @@ pub(super) fn rewrite_activation_cost_parser_handles_exile_self_and_named_artifa
 }
 
 #[test]
+pub(super) fn rewrite_activation_cost_preserves_top_only_graveyard_selection_through_lowering() {
+    let tokens = lex_line("Exile the top creature card of your graveyard", 0)
+        .expect("lexer should classify ordered graveyard exile cost");
+    let cst = parse_activation_cost_tokens_rewrite(&tokens)
+        .expect("activation-cost parser should preserve the ordered source");
+    assert!(matches!(
+        cst.segments.as_slice(),
+        [super::super::ActivationCostSegmentCst::ExileChosen {
+            choice_count,
+            filter,
+            top_only: true,
+        }] if *choice_count == ChoiceCount::exactly(1)
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.card_types == [CardType::Creature]
+    ));
+
+    let lowered = super::super::parse_activation_cost(&tokens)
+        .expect("ordered graveyard activation cost should lower");
+    let choose = lowered
+        .as_all()
+        .expect("ordered graveyard activation cost should be sequential")
+        .iter()
+        .find_map(|cost| {
+            cost.effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        })
+        .expect("ordered graveyard activation cost should retain its choice effect");
+    assert!(choose.top_only);
+    assert_eq!(choose.filter.zone, Some(Zone::Graveyard));
+    assert_eq!(choose.filter.card_types, vec![CardType::Creature]);
+}
+
+#[test]
+pub(super) fn rewrite_ordered_graveyard_direct_actions_lower_to_linked_top_only_choices() {
+    let barrow = CardDefinitionBuilder::new(CardId::new(), "Barrow Ghoul")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of your upkeep, sacrifice this creature unless you exile the top creature card of your graveyard.",
+        )
+        .expect("Barrow Ghoul ordered graveyard action should parse");
+    let barrow_debug = format!("{barrow:#?}");
+    assert!(
+        barrow_debug.contains("ChooseObjectsEffect"),
+        "{barrow_debug}"
+    );
+    assert!(barrow_debug.contains("top_only: true"), "{barrow_debug}");
+    assert!(barrow_debug.contains("ExileEffect"), "{barrow_debug}");
+
+    let digger = CardDefinitionBuilder::new(CardId::new(), "Soldevi Digger")
+        .parse_text("{2}: Put the top card of your graveyard on the bottom of your library.")
+        .expect("Soldevi Digger ordered graveyard move should parse");
+    let digger_debug = format!("{digger:#?}");
+    assert!(
+        digger_debug.contains("ChooseObjectsEffect"),
+        "{digger_debug}"
+    );
+    assert!(digger_debug.contains("top_only: true"), "{digger_debug}");
+    assert!(digger_debug.contains("MoveToZoneEffect"), "{digger_debug}");
+    assert!(digger_debug.contains("zone: Library"), "{digger_debug}");
+    assert!(digger_debug.contains("to_top: false"), "{digger_debug}");
+}
+
+#[test]
 pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants() {
     let tap_tokens = lex_line("Tap another untapped creature you control", 0)
         .expect("lexer should classify tap-chosen activation cost");
@@ -1456,6 +1586,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         [super::super::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter,
+            top_only: false,
         }] if *choice_count == ChoiceCount::at_least(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.owner == Some(crate::target::PlayerFilter::You)
@@ -1470,6 +1601,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
         [super::super::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter,
+            top_only: false,
         }] if *choice_count == ChoiceCount::exactly(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.single_graveyard
@@ -2231,6 +2363,69 @@ pub(super) fn night_shift_parses_die_adjustment_and_zombie_employee_token_inner(
         created_token.token.card.subtypes == vec![Subtype::Zombie, Subtype::Employee],
         "expected created token to keep both creature subtypes"
     );
+
+    Ok(())
+}
+
+#[test]
+pub(super) fn monitor_monitor_parses_paid_once_per_turn_reroll_modifier()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Monitor Monitor")
+        .card_types(vec![CardType::Creature]);
+    let text = "When this creature enters, open an Attraction.\nOnce each turn, you may pay {1} to reroll one or more dice you rolled.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let reroll = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::DieRollResultAdjustment =>
+            {
+                match &static_ability.payload {
+                    StaticAbilityPayload::DieRollResultAdjustment(spec) if spec.reroll => {
+                        Some(spec)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .expect("expected lowered die-reroll modifier");
+    assert_eq!(reroll.life_cost, 0);
+    assert_eq!(reroll.amount, 0);
+    assert_eq!(
+        reroll.mana_cost,
+        Some(crate::mana::ManaCost::from_symbols(vec![
+            crate::mana::ManaSymbol::Generic(1),
+        ]))
+    );
+    assert!(reroll.once_each_turn);
+    assert!(matches!(reroll.player, crate::target::PlayerFilter::You));
+
+    Ok(())
+}
+
+#[test]
+pub(super) fn chance_encounter_parses_coin_flip_win_trigger() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Chance Encounter")
+        .card_types(vec![CardType::Enchantment]);
+    let text = "Whenever you win a coin flip, put a luck counter on this enchantment.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    assert!(definition.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Triggered(triggered)
+                if matches!(
+                    &triggered.trigger.kind,
+                    TriggerKind::PlayerCoinFlipResult {
+                        player: crate::target::PlayerFilter::You,
+                        won: true,
+                    }
+                )
+        )
+    }));
 
     Ok(())
 }
@@ -3588,6 +3783,116 @@ pub(super) fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
         !debug.contains("target: Player(IteratedPlayer)"),
         "that player in this non-loop trigger must not lower to an unbound iterated player, got {debug}"
     );
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("Excluding{base:Opponent")
+            && compact.contains("TaggedPlayer(TagKey(\"enchanted\"))")
+            && compact.contains("random:true"),
+        "the random opponent must exclude the currently enchanted player: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn death_by_dragons_targets_one_player_and_excludes_that_player_from_the_fanout() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Death by Dragons")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Each player other than target player creates a 5/5 red Dragon creature token with flying.",
+        )
+        .expect("Death by Dragons should parse");
+    let debug = format!("{:#?}", def.spell_effect);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(debug.contains("TargetOnlyEffect"), "{debug}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(
+        compact.contains("Excluding{base:Any,excluded:Target(")
+            && compact.contains("controller:IteratedPlayer")
+            && debug.contains("Dragon")
+            && debug.contains("Flying"),
+        "the chosen player must be excluded from the Dragon fanout: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn curse_of_surveillance_keeps_the_enchanted_player_distinct_from_draw_recipients() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Curse of Surveillance")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Curse])
+        .parse_text(
+            "Enchant player\nAt the beginning of enchanted player's upkeep, any number of target players other than that player each draw cards equal to the number of Curses attached to that player.",
+        )
+        .expect("Curse of Surveillance should parse");
+    let debug = format!("{:#?}", def.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("min:0,max:None")
+            && compact.contains("Excluding{base:Any,excluded:TaggedPlayer(")
+            && compact.contains("ForPlayersEffect{filter:Target(Excluding")
+            && compact.contains("attached_to_player:Some(TaggedPlayer(")
+            && compact.matches("TagKey(\"enchanted\"").count() >= 3,
+        "the exclusion/count anchor must remain the enchanted player while the loop iterates targets: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn crown_of_doom_target_excludes_the_source_owner_not_the_controller() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Crown of Doom")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a creature attacks you or a planeswalker you control, it gets +2/+0 until end of turn.\n{2}: Target player other than this artifact's owner gains control of it. Activate only during your turn.",
+        )
+        .expect("Crown of Doom should parse");
+    let debug = format!("{:#?}", def.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("Excluding{base:Any,excluded:OwnerOf(Tagged(")
+            && compact.contains("TagKey(\"__source_object__\"")
+            && compact.contains("target_spec:Some(Source")
+            && (debug.contains("ChangeControllerToPlayer") || debug.contains("GainControlEffect")),
+        "the activation target must exclude the artifact's owner and transfer the source artifact itself: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn lord_of_pain_another_target_excludes_the_triggering_caster_and_damage_aliases_it() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Lord of Pain")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Menace\nYour opponents can't gain life.\nWhenever a player casts their first spell each turn, choose another target player. The Lord of Pain deals damage equal to that spell's mana value to the chosen player.",
+        )
+        .expect("The Lord of Pain should parse");
+    let debug = format!("{:#?}", def.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("explicit_declaration:true")
+            && compact.contains("Excluding{base:Any,excluded:ControllerOf(Tagged(")
+            && compact.contains("TagKey(\"triggering\"")
+            && compact.contains("AliasedTarget(Excluding"),
+        "the authored choice must exclude the triggering caster and the damage must hit that choice: {debug}"
+    );
+    assert!(!debug.contains("ChosenPlayer"), "{debug}");
+}
+
+#[test]
+pub(super) fn splinter_aging_champion_joint_draw_retains_the_other_target_player() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Splinter, Aging Champion")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When Splinter enters, destroy up to one target tapped creature.\nWhen Splinter leaves the battlefield, you and another target player each draw a card.",
+        )
+        .expect("Splinter, Aging Champion should parse");
+    let debug = format!("{:#?}", def.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert_eq!(
+        debug.matches("DrawCardsEffect").count(),
+        2,
+        "both players must draw: {debug}"
+    );
+    assert!(
+        compact.contains("Excluding{base:Any,excluded:You")
+            && compact.contains("player:AliasedTarget(Excluding"),
+        "the second draw must use the selected player other than you: {debug}"
+    );
 }
 
 #[test]
@@ -3635,4 +3940,95 @@ pub(super) fn parse_trigger_clause_supports_one_or_more_creature_tokens_created_
         "expected creature tokens to keep token filter"
     );
     assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+}
+
+#[test]
+pub(super) fn chroma_full_cards_keep_filtered_mana_symbol_aggregates() {
+    fn compact_debug(debug: &str) -> String {
+        debug
+            .chars()
+            .filter(|character| !character.is_whitespace() && *character != ',')
+            .collect()
+    }
+
+    fn parsed_debug(name: &str, card_type: CardType, text: &str) -> String {
+        let definition = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![card_type])
+            .parse_text(text)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
+        format!("{definition:#?}")
+    }
+
+    let primalcrux = parsed_debug(
+        "Primalcrux",
+        CardType::Creature,
+        "Trample\nChroma — This creature's power and toughness are each equal to the number of green mana symbols in the mana costs of permanents you control.",
+    );
+    let primalcrux_compact = compact_debug(&primalcrux);
+    assert!(
+        primalcrux_compact.contains("ManaSymbolsInManaCostOf{spec:All(")
+            && primalcrux_compact.contains("zone:Some(Battlefield)")
+            && primalcrux_compact.contains("controller:Some(You)")
+            && primalcrux_compact.contains("color:Green"),
+        "{primalcrux}"
+    );
+
+    let umbra = parsed_debug(
+        "Umbra Stalker",
+        CardType::Creature,
+        "Chroma — Umbra Stalker's power and toughness are each equal to the number of black mana symbols in the mana costs of cards in your graveyard.",
+    );
+    let umbra_compact = compact_debug(&umbra);
+    assert!(
+        umbra_compact.contains("ManaSymbolsInManaCostOf{spec:All(")
+            && umbra_compact.contains("zone:Some(Graveyard)")
+            && umbra_compact.contains("owner:Some(You)")
+            && umbra_compact.contains("color:Black"),
+        "{umbra}"
+    );
+
+    for (name, text, effect_marker, color) in [
+        (
+            "Outrage Shaman",
+            "Chroma — When this creature enters, it deals damage to target creature equal to the number of red mana symbols in the mana costs of permanents you control.",
+            "DealDamageEffect",
+            "Red",
+        ),
+        (
+            "Springjack Shepherd",
+            "Chroma — When this creature enters, create a 0/1 white Goat creature token for each white mana symbol in the mana costs of permanents you control.",
+            "CreateTokenEffect",
+            "White",
+        ),
+        (
+            "Heartlash Cinder",
+            "Haste\nChroma — When this creature enters, it gets +X/+0 until end of turn, where X is the number of red mana symbols in the mana costs of permanents you control.",
+            "ModifyPowerToughness",
+            "Red",
+        ),
+    ] {
+        let debug = parsed_debug(name, CardType::Creature, text);
+        let compact = compact_debug(&debug);
+        assert!(debug.contains(effect_marker), "{name}: {debug}");
+        assert!(
+            compact.contains("ManaSymbolsInManaCostOf{spec:All(")
+                && compact.contains("zone:Some(Battlefield)")
+                && compact.contains("controller:Some(You)")
+                && compact.contains(&format!("color:{color}")),
+            "{name}: {debug}"
+        );
+    }
+
+    let bombardment = parsed_debug(
+        "Fiery Bombardment",
+        CardType::Enchantment,
+        "Chroma — {2}, Sacrifice a creature: This enchantment deals damage to any target equal to the number of red mana symbols in the sacrificed creature's mana cost.",
+    );
+    let bombardment_compact = compact_debug(&bombardment);
+    assert!(
+        bombardment_compact.contains("ManaSymbolsInManaCostOf{spec:Tagged(")
+            && bombardment_compact.contains("color:Red")
+            && !bombardment_compact.contains("ManaSymbolsInManaCostOf{spec:All("),
+        "{bombardment}"
+    );
 }

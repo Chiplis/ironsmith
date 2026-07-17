@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 
-const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command"];
+const ZONE_ORDER = ["battlefield", "hand", "graveyard", "library", "exile", "command", "ante"];
 const ZONE_LABELS = {
   battlefield: "Battlefield",
   hand: "Hand",
@@ -19,6 +19,7 @@ const ZONE_LABELS = {
   library: "Deck",
   exile: "Exile",
   command: "CZ",
+  ante: "Ante",
 };
 const MY_ZONE_HEADER_HEIGHT = 44;
 
@@ -36,6 +37,7 @@ function getZoneCards(player, zone) {
     case "library": return [];
     case "exile": return player.exile_cards || [];
     case "command": return player.command_cards || [];
+    case "ante": return player.ante_cards || [];
     default: return player.battlefield || [];
   }
 }
@@ -52,6 +54,8 @@ function getZoneCount(player, zone) {
       return Array.isArray(player.exile_cards) ? player.exile_cards.length : 0;
     case "command":
       return player.command_size ?? (Array.isArray(player.command_cards) ? player.command_cards.length : 0);
+    case "ante":
+      return player.ante_size ?? (Array.isArray(player.ante_cards) ? player.ante_cards.length : 0);
     default:
       return (player.battlefield || []).reduce((total, card) => {
         const count = Number(card.count);
@@ -86,6 +90,7 @@ function shouldShowZoneBody(player, entry, activity = null) {
 function zoneCounts(player) {
   const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
   const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
+  const anteCards = Array.isArray(player.ante_cards) ? player.ante_cards : [];
   const battlefieldCount = (player.battlefield || []).reduce((total, card) => {
     const count = Number(card.count);
     return total + (Number.isFinite(count) && count > 1 ? count : 1);
@@ -98,6 +103,7 @@ function zoneCounts(player) {
     { label: "Deck", title: "Library", zone: "library", count: player.library_size ?? 0 },
     { label: "Exl", title: "Exile", zone: "exile", count: exileCards.length },
     { label: "CZ", title: "Command Zone", zone: "command", count: player.command_size ?? commandCards.length },
+    { label: "Ante", title: "Ante", zone: "ante", count: player.ante_size ?? anteCards.length },
   ];
 }
 
@@ -853,7 +859,7 @@ export default function MyZone({
         ).map((entry) => {
           const isVisible = entry.active && visibleZones.has(entry.zone);
           const isPrimaryBattlefield = entry.zone === "battlefield";
-          const isCompactSideZone = entry.zone === "command";
+          const isCompactSideZone = entry.zone === "command" || entry.zone === "ante";
           const activity = zoneActivity?.[entry.zone] || null;
           const isTransientReveal = Boolean(activity)
             && !isBaseVisibleZone(entry.zone, zoneViews, entry.count);

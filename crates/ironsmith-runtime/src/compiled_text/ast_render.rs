@@ -1,3 +1,8 @@
+use super::render_effects::{
+    damage_with_source_view, describe_roll_result_damage_then_random_source_attachment_program,
+    describe_same_name_reference_search_bundle, describe_single_hand_reveal_same_name_search,
+    describe_single_hand_reveal_setup,
+};
 use super::*;
 use crate::cards::CardDefinitionRuntimeExt;
 
@@ -14,8 +19,19 @@ pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
         .into_iter()
         .map(|line| rewrite_self_exile_cost_source(def, &line))
         .map(|line| rewrite_named_source_counter_reference(def, &line))
+        .map(|line| rewrite_source_owner_reference(def, &line))
         .map(RawRenderedLine)
         .collect()
+}
+
+fn rewrite_source_owner_reference(def: &CardDefinition, line: &str) -> String {
+    let Some(primary_type) = def.card.card_types.first() else {
+        return line.to_string();
+    };
+    line.replace(
+        "this source's owner",
+        &format!("this {}'s owner", primary_type.name().to_ascii_lowercase()),
+    )
 }
 
 fn rewrite_self_exile_cost_source(def: &CardDefinition, line: &str) -> String {
@@ -152,33 +168,19 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     let mut idx = 0usize;
     while idx < lines.len() {
-        if let Some((prefix, keyword)) = split_keyword_ability_line(&lines[idx]) {
+        if let Some((prefix, keyword)) = split_intrinsic_keyword_line(&lines[idx]) {
             let mut keywords = vec![keyword.to_string()];
             let mut consumed = 1usize;
             while let Some(next) = lines.get(idx + consumed) {
-                let Some((_, next_keyword)) = split_keyword_ability_line(next) else {
+                let Some((_, next_keyword)) = split_intrinsic_keyword_line(next) else {
                     break;
                 };
                 keywords.push(next_keyword.to_string());
                 consumed += 1;
             }
-            if consumed > 1 {
-                out.push(format!(
-                    "{prefix}{}",
-                    render_intrinsic_keyword_list(&keywords, true)
-                ));
-                idx += consumed;
-                continue;
-            }
-        }
-
-        if let Some((prefix, keyword)) = split_static_intrinsic_keyword_line(&lines[idx]) {
-            let mut keywords = vec![keyword.to_string()];
-            let mut consumed = 1usize;
-            while let Some(next) = lines.get(idx + consumed) {
-                let Some((_, next_keyword)) = split_static_intrinsic_keyword_line(next) else {
-                    break;
-                };
+            if let Some(next) = lines.get(idx + consumed)
+                && let Some(next_keyword) = split_trailing_numbered_intrinsic_keyword_line(next)
+            {
                 keywords.push(next_keyword.to_string());
                 consumed += 1;
             }
@@ -315,6 +317,27 @@ fn split_static_intrinsic_keyword_line(line: &str) -> Option<(&str, &str)> {
         return None;
     }
     Some((&line[..prefix.len() + 2], keyword.trim_end_matches('.')))
+}
+
+fn split_intrinsic_keyword_line(line: &str) -> Option<(&str, &str)> {
+    split_keyword_ability_line(line).or_else(|| split_static_intrinsic_keyword_line(line))
+}
+
+/// A numbered intrinsic can safely finish an ordinary keyword list even when
+/// it is kept out of the general mergeable-keyword set. Keeping this trailing
+/// only avoids treating a standalone parameterized ability as a list anchor.
+fn split_trailing_numbered_intrinsic_keyword_line(line: &str) -> Option<&str> {
+    let (prefix, keyword) = line.split_once(": ")?;
+    if !prefix.starts_with("Keyword ability ") && !prefix.starts_with("Static ability ") {
+        return None;
+    }
+    let keyword = keyword.trim_end_matches('.');
+    keyword
+        .to_ascii_lowercase()
+        .strip_prefix("annihilator ")?
+        .parse::<u32>()
+        .ok()?;
+    Some(keyword)
 }
 
 fn split_static_granted_keyword_line(line: &str) -> Option<(&str, &str, &str, &str)> {
@@ -460,10 +483,14 @@ fn flush_level_range_activations(
 fn is_mergeable_keyword_surface(keyword: &str) -> bool {
     let keyword = keyword.trim_end_matches('.');
     let lower = keyword.to_ascii_lowercase();
+    // Partner-with carries a structurally modeled card-name payload. Keep it
+    // on its own line so the ordinary intrinsic-keyword list renderer does
+    // not lowercase that payload or absorb a following keyword.
+    let carries_named_partner = lower.starts_with("partner with ");
     let is_numbered_firebending = lower
         .strip_prefix("firebending ")
         .is_some_and(|amount| amount.parse::<u32>().is_ok());
-    (is_keyword_phrase(keyword) && lower != "changeling")
+    (is_keyword_phrase(keyword) && lower != "changeling" && !carries_named_partner)
         || is_numbered_firebending
         || matches!(
             lower.as_str(),
@@ -571,6 +598,1910 @@ fn join_english_list(items: &[String]) -> String {
     }
 }
 
+fn modeled_source_keyword_grant(
+    ability: &Ability,
+) -> Option<(crate::static_abilities::StaticAbilityId, String, &Condition)> {
+    if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+        return None;
+    }
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = &model.payload
+    else {
+        return None;
+    };
+    if grant.filter != ObjectFilter::source()
+        || !grant.additional_abilities.is_empty()
+        || grant.set_quantifier_surface.is_some()
+        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+    {
+        return None;
+    }
+    let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+        return None;
+    };
+    let keyword = crate::static_abilities::StaticAbility::from_model(granted.clone());
+    if !keyword.is_keyword() {
+        return None;
+    }
+    let keyword_text = keyword
+        .display()
+        .trim()
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if !is_mergeable_keyword_surface(&keyword_text) {
+        return None;
+    }
+    Some((keyword.id(), keyword_text, grant.condition.as_ref()?))
+}
+
+fn threshold_graveyard_presentation_label(condition: &Condition) -> Option<&'static str> {
+    // Threshold is an ability word with no rules meaning. This exact typed
+    // gate is therefore safe presentation provenance without consulting a
+    // card name, Oracle text, or a rendered condition string.
+    matches!(
+        condition,
+        Condition::ValueComparison {
+            left: Value::CardsInGraveyard(PlayerFilter::You),
+            operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(7),
+        }
+    )
+    .then_some("Threshold")
+}
+
+/// Recombine the layer-correct static siblings emitted for a Threshold source
+/// modifier. Every semantic fact is proven from compiled payloads: the source
+/// gets exactly +1/+1, becomes black, and gains exactly one activated ability
+/// under the same seven-card graveyard gate.
+fn describe_structural_threshold_source_modifier_bundle(
+    abilities: &[Ability],
+    subject: &str,
+) -> Option<(String, usize)> {
+    let [anthem_ability, color_ability, grant_ability, ..] = abilities else {
+        return None;
+    };
+    if anthem_ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || color_ability.functional_zones != anthem_ability.functional_zones
+        || grant_ability.functional_zones != anthem_ability.functional_zones
+    {
+        return None;
+    }
+
+    let AbilityKind::Static(anthem_static) = &anthem_ability.kind else {
+        return None;
+    };
+    let AbilityKind::Static(color_static) = &color_ability.kind else {
+        return None;
+    };
+    let AbilityKind::Static(grant_static) = &grant_ability.kind else {
+        return None;
+    };
+    if anthem_static.id() != crate::static_abilities::StaticAbilityId::Anthem
+        || color_static.id() != crate::static_abilities::StaticAbilityId::SetColors
+        || grant_static.id()
+            != crate::static_abilities::StaticAbilityId::GrantObjectAbilityForFilter
+    {
+        return None;
+    }
+
+    let ironsmith_core::StaticAbilityPayload::Anthem(anthem) =
+        &anthem_static.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let (ironsmith_core::AnthemValue::Fixed(power), ironsmith_core::AnthemValue::Fixed(toughness)) =
+        (&anthem.power, &anthem.toughness)
+    else {
+        return None;
+    };
+    if anthem.filter.is_some()
+        || (*power, *toughness) != (1, 1)
+        || anthem.set_quantifier_surface.is_some()
+        || anthem.count_uses_where_x
+        || anthem.replacement_surface.is_some()
+    {
+        return None;
+    }
+    let condition = anthem.condition.as_ref()?;
+    let presentation_label = threshold_graveyard_presentation_label(condition)?;
+
+    let color_model = color_static.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::Conditional {
+        ability: inner_color,
+        condition: color_condition,
+    } = &color_model.payload
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::SetColors {
+        filter: color_filter,
+        colors,
+    } = &inner_color.payload
+    else {
+        return None;
+    };
+    if inner_color.id != Some(crate::static_abilities::StaticAbilityId::SetColors)
+        || *colors != crate::color::ColorSet::BLACK
+        || color_condition != condition
+    {
+        return None;
+    }
+
+    let grant_model = grant_static.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+        &grant_model.payload
+    else {
+        return None;
+    };
+    if color_filter != &grant.filter
+        || grant.filter != ObjectFilter::source()
+        || grant.condition.as_ref() != Some(condition)
+        || !grant.additional_abilities.is_empty()
+        || grant.set_quantifier_surface.is_some()
+        || grant.ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || !matches!(
+            &grant.ability.kind,
+            ironsmith_core::AbilityKind::Activated(_)
+        )
+    {
+        return None;
+    }
+
+    let granted = grant_static.source_granted_inline_abilities();
+    let [granted] = granted.as_slice() else {
+        return None;
+    };
+    if !matches!(&granted.kind, AbilityKind::Activated(_)) {
+        return None;
+    }
+    let mut granted_text = describe_inline_ability_with_self_subject(granted, subject)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if granted_text.is_empty() {
+        return None;
+    }
+    if !granted_text.ends_with('!') && !granted_text.ends_with('?') {
+        granted_text.push('.');
+    }
+
+    Some((
+        format!(
+            "{presentation_label} — As long as {}, {subject} gets +1/+1, is black, and has \"{granted_text}\"",
+            describe_condition(condition),
+        ),
+        3,
+    ))
+}
+
+fn modeled_keyword_count_condition(
+    condition: &Condition,
+    keyword: crate::static_abilities::StaticAbilityId,
+) -> Option<(ObjectFilter, &str)> {
+    let Condition::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        comparison: Comparison::GreaterThanOrEqual(1),
+        display: Some(display),
+    } = condition
+    else {
+        return None;
+    };
+    if filter.static_abilities.as_slice() != [keyword]
+        || !filter.excluded_static_abilities.is_empty()
+        || !filter.ability_markers.is_empty()
+        || !filter.excluded_ability_markers.is_empty()
+    {
+        return None;
+    }
+    let mut basis = filter.clone();
+    basis.static_abilities.clear();
+    Some((basis, display.trim()))
+}
+
+fn normalize_same_true_condition_statement(condition: &str, keyword: &str) -> String {
+    let condition = condition.trim().trim_end_matches('.');
+    if let Some(existence) = condition.strip_prefix("there is ") {
+        let keyword_suffix = format!(" with {keyword}");
+        if let Some(subject) = existence.strip_suffix(&keyword_suffix) {
+            return format!("{subject} has {keyword}");
+        }
+        if let Some(subject) = existence.strip_suffix(" in a graveyard")
+            && subject.ends_with(&keyword_suffix)
+        {
+            return format!("{subject} is in a graveyard");
+        }
+    }
+    if let Some(subject) = condition.strip_prefix("your opponents control ") {
+        return format!("an opponent controls {subject}");
+    }
+    condition.to_string()
+}
+
+/// Render a structurally complete family of source keyword grants whose
+/// conditions differ only by requiring the same keyword on matching cards.
+///
+/// This is the executable shape behind "The same is true for ..." ladders.
+/// Requiring one independent typed grant and one independent matching-filter
+/// condition per keyword prevents a malformed, concatenated condition from
+/// being made to look complete by the renderer.
+fn describe_structural_keyword_same_is_true_ladder(
+    abilities: &[Ability],
+    subject: &str,
+) -> Option<(String, usize)> {
+    let mut keywords = Vec::new();
+    let mut shared_condition_basis: Option<ObjectFilter> = None;
+    let mut first_condition = None;
+    let mut consumed = 0usize;
+
+    for ability in abilities {
+        let Some((keyword_id, keyword, condition)) = modeled_source_keyword_grant(ability) else {
+            break;
+        };
+        let Some((condition_basis, condition_surface)) =
+            modeled_keyword_count_condition(condition, keyword_id)
+        else {
+            break;
+        };
+        if let Some(shared) = &shared_condition_basis {
+            if shared != &condition_basis {
+                break;
+            }
+        } else {
+            shared_condition_basis = Some(condition_basis);
+            first_condition = Some(condition_surface.to_string());
+        }
+        keywords.push(keyword);
+        consumed += 1;
+    }
+
+    if consumed < 3 {
+        return None;
+    }
+    let first_keyword = &keywords[0];
+    let condition =
+        normalize_same_true_condition_statement(first_condition.as_deref()?, first_keyword);
+    Some((
+        format!(
+            "As long as {condition}, {subject} has {first_keyword}. The same is true for {}",
+            render_keyword_list(&keywords[1..], false),
+        ),
+        consumed,
+    ))
+}
+
+fn modeled_basic_land_count_condition(condition: &Condition) -> Option<(Subtype, &str)> {
+    let Condition::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+        comparison: Comparison::GreaterThanOrEqual(1),
+        display: Some(display),
+    } = condition
+    else {
+        return None;
+    };
+    let [subtype] = filter.subtypes.as_slice() else {
+        return None;
+    };
+    if filter.controller != Some(PlayerFilter::You)
+        || !matches!(
+            subtype,
+            Subtype::Plains
+                | Subtype::Island
+                | Subtype::Swamp
+                | Subtype::Mountain
+                | Subtype::Forest
+        )
+    {
+        return None;
+    }
+    let mut basis = filter.clone();
+    basis.controller = None;
+    basis.subtypes.clear();
+    if basis != ObjectFilter::default() {
+        return None;
+    }
+    Some((*subtype, display.trim()))
+}
+
+fn modeled_basic_land_source_modifier(ability: &Ability) -> Option<(Subtype, String)> {
+    if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+        return None;
+    }
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    if let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &model.payload {
+        if anthem.filter.is_some()
+            || anthem.set_quantifier_surface.is_some()
+            || anthem.count_uses_where_x
+            || anthem.replacement_surface.is_some()
+        {
+            return None;
+        }
+        let (
+            ironsmith_core::AnthemValue::Fixed(power),
+            ironsmith_core::AnthemValue::Fixed(toughness),
+        ) = (&anthem.power, &anthem.toughness)
+        else {
+            return None;
+        };
+        if *power == 0 && *toughness == 0 {
+            return None;
+        }
+        let (subtype, condition) = modeled_basic_land_count_condition(anthem.condition.as_ref()?)?;
+        return Some((
+            subtype,
+            format!("gets {power:+}/{toughness:+} as long as {condition}"),
+        ));
+    }
+
+    let (_, keyword, condition) = modeled_source_keyword_grant(ability)?;
+    let (subtype, condition) = modeled_basic_land_count_condition(condition)?;
+    Some((subtype, format!("has {keyword} as long as {condition}")))
+}
+
+/// Combine the full five-basic-land source-modifier ladder while retaining
+/// each independent typed condition and executable modifier.
+fn describe_structural_five_basic_land_modifier_ladder(
+    abilities: &[Ability],
+    subject: &str,
+) -> Option<(String, usize)> {
+    let mut items = Vec::new();
+    for ability in abilities.iter().take(6) {
+        let Some(item) = modeled_basic_land_source_modifier(ability) else {
+            break;
+        };
+        items.push(item);
+    }
+    if items.len() != 5 {
+        return None;
+    }
+    for required in [
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ] {
+        if items
+            .iter()
+            .filter(|(subtype, _)| *subtype == required)
+            .count()
+            != 1
+        {
+            return None;
+        }
+    }
+    let predicates = items
+        .iter()
+        .map(|(_, predicate)| predicate.clone())
+        .collect::<Vec<_>>();
+    Some((
+        format!(
+            "{} {}",
+            capitalize_first(subject),
+            join_english_list(&predicates)
+        ),
+        5,
+    ))
+}
+
+#[derive(Clone, Copy)]
+enum CrossSegmentResultEffect<'a> {
+    If(&'a crate::effects::IfEffect),
+    Reflexive(&'a crate::effects::ReflexiveTriggerEffect),
+    ForPlayers(&'a crate::effects::ForPlayersEffect),
+}
+
+fn cross_segment_result_effect(effect: &Effect) -> Option<CrossSegmentResultEffect<'_>> {
+    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        return Some(CrossSegmentResultEffect::If(if_effect));
+    }
+    if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
+        return Some(CrossSegmentResultEffect::Reflexive(reflexive));
+    }
+    if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        return Some(CrossSegmentResultEffect::ForPlayers(for_players));
+    }
+    effect
+        .downcast_ref::<crate::effects::WithIdEffect>()?
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()
+        .map(CrossSegmentResultEffect::If)
+}
+
+fn describe_cross_segment_look_optional_payment_disposition_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [
+        look_segment,
+        payment_segment,
+        accepted_segment,
+        declined_segment,
+    ] = segments.get(start..start + 4)?
+    else {
+        return None;
+    };
+    if [
+        look_segment,
+        payment_segment,
+        accepted_segment,
+        declined_segment,
+    ]
+    .iter()
+    .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+
+    let [look_effect] = look_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let look = unwrap_basic_render_wrapper(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look.player != PlayerFilter::You
+        || look.reveal
+        || !matches!(look.count.unhinted(), Value::Fixed(count) if *count >= 2)
+    {
+        return None;
+    }
+
+    let [payment_effect] = payment_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let payment_with_id = payment_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = payment_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    if may.fallback != crate::decision::FallbackStrategy::Decline
+        || !matches!(may.decider.as_ref(), None | Some(PlayerFilter::You))
+    {
+        return None;
+    }
+
+    fn result_if(effect: &Effect) -> Option<&crate::effects::IfEffect> {
+        unwrap_basic_render_wrapper(effect).downcast_ref::<crate::effects::IfEffect>()
+    }
+
+    let [accepted_effect] = accepted_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let accepted = result_if(accepted_effect)?;
+    let [declined_effect] = declined_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let declined = result_if(declined_effect)?;
+    if accepted.condition != payment_with_id.id
+        || declined.condition != payment_with_id.id
+        || accepted.predicate != EffectPredicate::Happened
+        || !matches!(
+            declined.predicate,
+            EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined
+        )
+        || !accepted.else_.is_empty()
+        || !declined.else_.is_empty()
+    {
+        return None;
+    }
+
+    fn exact_one_looked_move<'a>(
+        effects: &'a [Effect],
+        looked_tag: &TagKey,
+        zone: Zone,
+    ) -> Option<&'a crate::effects::MoveToZoneEffect> {
+        let [effect] = effects else {
+            return None;
+        };
+        let move_to_zone = unwrap_basic_render_wrapper(effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let ChooseSpec::WithCount(target, count) = move_to_zone.target.unhinted() else {
+            return None;
+        };
+        (move_to_zone.zone == zone
+            && !move_to_zone.to_top
+            && *count == ChoiceCount::exactly(1)
+            && matches!(target.base(), ChooseSpec::Tagged(tag) if tag == looked_tag)
+            && matches!(
+                move_to_zone.actor_surface.as_ref(),
+                None | Some(PlayerFilter::You)
+            )
+            && matches!(
+                move_to_zone.destination_player_surface.as_ref(),
+                None | Some(PlayerFilter::You)
+            ))
+        .then_some(move_to_zone)
+    }
+
+    exact_one_looked_move(&accepted.then, &look.tag, Zone::Hand)?;
+    exact_one_looked_move(&declined.then, &look.tag, Zone::Library)?;
+
+    let look_text = capitalize_first(describe_effect(look_effect).trim().trim_end_matches('.'));
+    let payment_text =
+        capitalize_first(describe_effect(payment_effect).trim().trim_end_matches('.'));
+    Some((
+        format!(
+            "{look_text}. {payment_text}. If you do, put one of those cards into your hand. If you don't, put one of those cards on the bottom of your library"
+        ),
+        4,
+    ))
+}
+
+fn describe_cross_segment_result_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let antecedent_segment = segments.get(start)?;
+    if !antecedent_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let antecedent_effects = &antecedent_segment.default_effects;
+    let antecedent = antecedent_effects
+        .last()?
+        .downcast_ref::<crate::effects::WithIdEffect>()?;
+
+    let mut end = start + 1;
+    let mut saw_result = false;
+    let mut saw_reflexive = false;
+    while let Some(segment) = segments.get(end) {
+        if !segment.self_replacements.is_empty() {
+            break;
+        }
+        let [effect] = segment.default_effects.as_slice() else {
+            break;
+        };
+        let Some(result) = cross_segment_result_effect(effect) else {
+            break;
+        };
+        let matches_antecedent = match result {
+            CrossSegmentResultEffect::If(if_effect) => {
+                !saw_reflexive
+                    && if_effect.condition == antecedent.id
+                    && describe_with_id_if_clause(antecedent, if_effect).is_some()
+            }
+            CrossSegmentResultEffect::Reflexive(reflexive) => {
+                !saw_result
+                    && reflexive.condition == antecedent.id
+                    && describe_with_id_then_reflexive_trigger(antecedent, reflexive).is_some()
+            }
+            CrossSegmentResultEffect::ForPlayers(for_players) => {
+                !saw_result
+                    && (describe_with_id_then_for_players_if_happened(antecedent, for_players)
+                        .is_some()
+                        || describe_with_id_then_for_players_if_didnt(antecedent, for_players)
+                            .is_some())
+            }
+        };
+        if !matches_antecedent {
+            break;
+        }
+        saw_result = true;
+        saw_reflexive = matches!(result, CrossSegmentResultEffect::Reflexive(_));
+        end += 1;
+        if saw_reflexive || matches!(result, CrossSegmentResultEffect::ForPlayers(_)) {
+            break;
+        }
+    }
+    if !saw_result {
+        return None;
+    }
+
+    let combined = segments[start..end]
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter().cloned())
+        .collect::<Vec<_>>();
+    Some((describe_effect_list(&combined), end - start))
+}
+
+fn effect_contains_zone_replacement(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_contains_zone_replacement(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return effect_contains_zone_replacement(&with_id.effect);
+    }
+    if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        return conditional
+            .if_true
+            .iter()
+            .chain(&conditional.if_false)
+            .any(effect_contains_zone_replacement);
+    }
+    false
+}
+
+fn describe_cross_segment_death_replacement_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    if segments.len().saturating_sub(start) < 2 {
+        return None;
+    }
+
+    let mut effects = Vec::new();
+    for (offset, segment) in segments[start..].iter().enumerate() {
+        if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
+            break;
+        }
+        let contains_replacement = segment
+            .default_effects
+            .iter()
+            .any(effect_contains_zone_replacement);
+        if offset == 0 && contains_replacement {
+            break;
+        }
+        effects.extend(segment.default_effects.iter().cloned());
+        if offset == 0 {
+            continue;
+        }
+        if let Some(rendered) = describe_cross_segment_death_replacement_bundle(&effects) {
+            return Some((rendered, offset + 1));
+        }
+        if contains_replacement {
+            break;
+        }
+    }
+    None
+}
+
+fn effect_consult_count_for_window(effect: &Effect) -> usize {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return effect_consult_count_for_window(&with_id.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_consult_count_for_window(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return effect_consult_count_for_window(&tag_all.effect);
+    }
+    if effect
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+        .is_some()
+    {
+        return 1;
+    }
+    effect
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .map(|schedule| {
+            schedule
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .map(effect_consult_count_for_window)
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
+fn describe_cross_segment_consult_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let mut effects = Vec::new();
+    let mut consult_count = 0usize;
+    for (offset, segment) in segments[start..].iter().take(5).enumerate() {
+        if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
+            break;
+        }
+        consult_count += segment
+            .default_effects
+            .iter()
+            .map(effect_consult_count_for_window)
+            .sum::<usize>();
+        if consult_count > 1 {
+            break;
+        }
+        effects.extend(segment.default_effects.iter().cloned());
+        if offset == 0 {
+            continue;
+        }
+        if let Some(rendered) = describe_cross_segment_consult_bundle(&effects) {
+            return Some((rendered, offset + 1));
+        }
+    }
+    None
+}
+
+fn describe_cross_segment_consult_hand_remainder_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [consult_segment, disposition_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !consult_segment.self_replacements.is_empty()
+        || !disposition_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [consult_effect] = consult_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let consult = structural_unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if consult.player != PlayerFilter::You
+        || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || !matches!(
+            consult.stop_rule,
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
+        )
+    {
+        return None;
+    }
+
+    let [sequence_effect] = disposition_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let sequence = structural_unwrap_render_wrappers(sequence_effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [move_match_effect, remainder_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let move_match = structural_unwrap_render_wrappers(move_match_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_match.zone != Zone::Hand
+        || move_match.to_top
+        || !matches!(
+            move_match.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+        )
+    {
+        return None;
+    }
+
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if remainder.tag != consult.all_tag {
+        return None;
+    }
+    let nested = if let [nested_sequence] = remainder.effects.as_slice()
+        && let Some(nested_sequence) = structural_unwrap_render_wrappers(nested_sequence)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        nested_sequence.effects.as_slice()
+    } else {
+        remainder.effects.as_slice()
+    };
+    let [conditional_effect] = nested else {
+        return None;
+    };
+    let conditional = structural_unwrap_render_wrappers(conditional_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !condition_matches_tagged_object_membership(
+        &conditional.condition,
+        consult.match_tag.as_str(),
+    ) || !conditional.if_true.is_empty()
+    {
+        return None;
+    }
+    let [move_remainder_effect] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let move_remainder = structural_unwrap_render_wrappers(move_remainder_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if !matches!(move_remainder.target.base(), ChooseSpec::Iterated)
+        && !matches!(
+            move_remainder.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == "__it__"
+        )
+    {
+        return None;
+    }
+    let disposition = match move_remainder.zone {
+        Zone::Graveyard if !move_remainder.to_top => {
+            "put that card into your hand and all other cards revealed this way into your graveyard"
+        }
+        Zone::Exile => "put that card into your hand and exile all other cards revealed this way",
+        _ => return None,
+    };
+    let rendered_consult = describe_effect(consult_effect);
+    let rendered_consult = rendered_consult.trim().trim_end_matches('.');
+    let consult_text = rendered_consult
+        .strip_prefix("you ")
+        .or_else(|| rendered_consult.strip_prefix("You "))
+        .map(capitalize_first)?;
+    Some((
+        format!("{consult_text}. {}", capitalize_first(disposition)),
+        2,
+    ))
+}
+
+fn describe_cross_segment_observation_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let mut effects = Vec::new();
+    for segment in segments[start..].iter().take(5) {
+        if !segment.self_replacements.is_empty() {
+            break;
+        }
+        let [effect] = segment.default_effects.as_slice() else {
+            break;
+        };
+        effects.push(effect);
+    }
+    if effects.len() < 2 {
+        return None;
+    }
+    let (rendered, consumed) = describe_immediate_observation_conditionals(&effects)?;
+    (consumed >= 2 && consumed <= effects.len()).then_some((rendered, consumed))
+}
+
+fn describe_cross_segment_wrapped_search_two_split_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [partition_segment, suffix_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !partition_segment.self_replacements.is_empty()
+        || !suffix_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+
+    let [sequence_effect] = partition_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+        || sequence.effects.len() != 5
+        || !matches!(suffix_segment.default_effects.len(), 1 | 2)
+    {
+        return None;
+    }
+
+    // Lowering keeps the coordinated search/reveal/split sentence inside one
+    // sequence, then starts a new resolution segment for shuffle and scry.
+    // Rejoin only that exact boundary; the established matcher still proves
+    // every tag, count, destination, player, and optional-search invariant.
+    let mut flattened =
+        Vec::with_capacity(sequence.effects.len() + suffix_segment.default_effects.len());
+    flattened.extend(sequence.effects.iter());
+    flattened.extend(suffix_segment.default_effects.iter());
+    let rendered = describe_search_two_split_hand_graveyard_sequence(&flattened)?;
+    Some((rendered, 2))
+}
+
+fn describe_cross_segment_search_move_shuffle_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [search_segment, move_segment, shuffle_segment] = segments.get(start..start + 3)? else {
+        return None;
+    };
+    if [search_segment, move_segment, shuffle_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+
+    let choose = match search_segment.default_effects.as_slice() {
+        [search_effect] => search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?,
+        [target_effect, search_effect] => {
+            let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            let choose = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            let ChooseSpec::Player(target_player) = target_only.target.base() else {
+                return None;
+            };
+            let search_owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+            if !same_search_player_filter(target_player, search_owner) {
+                return None;
+            }
+            choose
+        }
+        _ => return None,
+    };
+
+    let [move_effect] = move_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let tagged_move = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let move_to_zone = tagged_move
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || !matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == choose.tag.as_str()
+        )
+    {
+        return None;
+    }
+
+    let [shuffle_effect] = shuffle_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    let rendered = describe_search_choose_then_move(choose, None, move_to_zone, Some(shuffle))?;
+    let rendered = if choose.count.max == Some(1) {
+        rendered
+            .replacen(", put it ", ". Put that card ", 1)
+            .replacen(", then ", ". Then ", 1)
+    } else {
+        rendered
+            .replacen(", put ", ". Put ", 1)
+            .replacen(", then ", ". Then ", 1)
+    };
+    Some((rendered, 3))
+}
+
+fn count_damage_controller_references_to_tag(effect: &Effect, tag: &TagKey) -> usize {
+    let mut count = effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_some_and(|damage| {
+            matches!(
+                damage.target.base(),
+                ChooseSpec::Player(PlayerFilter::ControllerOf(
+                    crate::target::ObjectRef::Tagged(reference),
+                )) if reference == tag
+            )
+        }) as usize;
+    effect.visit_child_effects(&mut |child| {
+        count += count_damage_controller_references_to_tag(child, tag);
+    });
+    count
+}
+
+fn tagged_object_filter(effect: &Effect) -> Option<(&TagKey, &ObjectFilter)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let filter = if let Some(destroy) = tagged
+        .effect
+        .downcast_ref::<crate::effects::DestroyEffect>()
+    {
+        exact_single_target_object_filter(&destroy.spec)?
+    } else if let Some(target_only) = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+    {
+        exact_single_target_object_filter(&target_only.target)?
+    } else if let Some(counter) = tagged
+        .effect
+        .downcast_ref::<crate::effects::CounterEffect>()
+    {
+        exact_single_target_object_filter(&counter.target)?
+    } else if let Some(unless_pays) = tagged
+        .effect
+        .downcast_ref::<crate::effects::UnlessPaysEffect>()
+    {
+        let [counter_effect] = unless_pays.effects.as_slice() else {
+            return None;
+        };
+        let counter = counter_effect.downcast_ref::<crate::effects::CounterEffect>()?;
+        exact_single_target_object_filter(&counter.target)?
+    } else {
+        return None;
+    };
+    Some((&tagged.tag, filter))
+}
+
+fn collect_tagged_object_filters(effect: &Effect, filters: &mut Vec<(TagKey, ObjectFilter)>) {
+    if let Some((tag, filter)) = tagged_object_filter(effect) {
+        filters.push((tag.clone(), filter.clone()));
+    }
+    effect.visit_child_effects(&mut |child| {
+        collect_tagged_object_filters(child, filters);
+    });
+}
+
+fn effect_tree_has_tagged_destroy(effect: &Effect, tag: &TagKey) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && tagged.tag == *tag
+        && tagged
+            .effect
+            .downcast_ref::<crate::effects::DestroyEffect>()
+            .is_some()
+    {
+        return true;
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && effect_tree_has_tagged_destroy(child, tag) {
+            found = true;
+        }
+    });
+    found
+}
+
+fn describe_cross_segment_tagged_tap_untap_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [tap_segment, restriction_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !tap_segment.self_replacements.is_empty()
+        || !restriction_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [tagged_effect] = tap_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let tagged = tagged_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let tap = tagged.effect.downcast_ref::<crate::effects::TapEffect>()?;
+    let ChooseSpec::Object(tapped_filter) = tap.target.base() else {
+        return None;
+    };
+    if tap.target.count().is_single() {
+        return None;
+    }
+
+    let [restriction_effect] = restriction_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let cant = restriction_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::Untap(restricted_filter) = &cant.restriction else {
+        return None;
+    };
+    let [constraint] = restricted_filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.tag != tagged.tag
+        || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    {
+        return None;
+    }
+    let mut untagged_filter = restricted_filter.clone();
+    untagged_filter.tagged_constraints.clear();
+    let mut selected_filter = tapped_filter.clone();
+    if untagged_filter.controller.is_none() {
+        selected_filter.controller = None;
+    }
+    if untagged_filter.owner.is_none() {
+        selected_filter.owner = None;
+    }
+    if untagged_filter != selected_filter {
+        return None;
+    }
+
+    let tapped_text = describe_effect(tagged_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let mut referent_filter = tapped_filter.clone();
+    referent_filter.controller = None;
+    referent_filter.owner = None;
+    let subject = pluralize_noun_phrase(
+        referent_filter
+            .description()
+            .trim_start_matches("a ")
+            .trim_start_matches("an "),
+    );
+    let restriction_text = match cant.duration {
+        Until::ControllersNextUntapStep => {
+            format!("Those {subject} don't untap during their controller's next untap step")
+        }
+        Until::YouStopControllingThis => format!(
+            "Those {subject} don't untap during their controllers' untap steps {}",
+            describe_until(&cant.duration)
+        ),
+        _ => return None,
+    };
+    Some((format!("{tapped_text}. {restriction_text}"), 2))
+}
+
+fn describe_cross_segment_conditional_tagged_tap_untap_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [conditional_segment, restriction_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !conditional_segment.self_replacements.is_empty()
+        || !restriction_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [tag_effect, tap_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    if !conditional.if_false.is_empty()
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+    {
+        return None;
+    }
+    let tag = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let tap = tap_effect.downcast_ref::<crate::effects::TapEffect>()?;
+    let ChooseSpec::All(tapped_filter) = tap.target.base() else {
+        return None;
+    };
+    if tag.filter != *tapped_filter || !tag.additional_zones.is_empty() || tag.zone.is_some() {
+        return None;
+    }
+
+    let [restriction_effect] = restriction_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let cant = restriction_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    if cant.duration != Until::ControllersNextUntapStep {
+        return None;
+    }
+    let crate::effect::Restriction::Untap(restricted_filter) = &cant.restriction else {
+        return None;
+    };
+    let [constraint] = restricted_filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.tag != tag.tag
+        || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    {
+        return None;
+    }
+    let mut untagged_filter = restricted_filter.clone();
+    untagged_filter.tagged_constraints.clear();
+    let mut selected_filter = tapped_filter.clone();
+    if !untagged_filter.attacking {
+        selected_filter.attacking = false;
+    }
+    if untagged_filter != selected_filter {
+        return None;
+    }
+
+    let condition_text = describe_condition(&conditional.condition);
+    let label = matches!(
+        &conditional.condition,
+        Condition::ValueComparison {
+            left: Value::LifeTotal(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: Value::Fixed(5),
+        }
+    )
+    .then_some("Fateful hour — ")
+    .unwrap_or_default();
+    let tap_text = lowercase_first(describe_effect(tap_effect).trim().trim_end_matches('.'));
+    let subject = pluralize_noun_phrase(
+        untagged_filter
+            .description()
+            .trim_start_matches("a ")
+            .trim_start_matches("an "),
+    );
+    Some((
+        format!(
+            "{label}If {condition_text}, {tap_text}. Those {subject} don't untap during their controller's next untap step"
+        ),
+        2,
+    ))
+}
+
+fn describe_cross_segment_typed_controller_damage_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, damage_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !damage_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [damage_effect] = damage_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let mut tagged_filters = Vec::new();
+    for effect in &producer_segment.default_effects {
+        collect_tagged_object_filters(effect, &mut tagged_filters);
+    }
+    let candidates = tagged_filters
+        .iter()
+        .filter(|(tag, _)| count_damage_controller_references_to_tag(damage_effect, tag) == 1)
+        .collect::<Vec<_>>();
+    let [(tag, filter)] = candidates.as_slice() else {
+        return None;
+    };
+    let noun = if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
+        "spell"
+    } else if !filter.subtypes.is_empty()
+        && filter.subtypes.iter().all(crate::Subtype::is_land_subtype)
+    {
+        "land"
+    } else {
+        match filter.card_types.as_slice() {
+            [CardType::Land] => "land",
+            [CardType::Artifact] => "artifact",
+            [CardType::Creature] => "creature",
+            [CardType::Enchantment] => "enchantment",
+            [CardType::Planeswalker] => "planeswalker",
+            [CardType::Battle] => "battle",
+            _ => return None,
+        }
+    };
+    if count_damage_controller_references_to_tag(damage_effect, tag) != 1 {
+        return None;
+    }
+    let producer_text = describe_effect_list(&producer_segment.default_effects)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let mut damage_text = describe_effect(damage_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if damage_text.matches("that object's controller").count() != 1 {
+        return None;
+    }
+    damage_text = damage_text.replace(
+        "that object's controller",
+        &format!("that {noun}'s controller"),
+    );
+    if producer_segment
+        .default_effects
+        .iter()
+        .any(|effect| effect_tree_has_tagged_destroy(effect, tag))
+    {
+        damage_text = damage_text.replacen(
+            "If a permanent was destroyed this way, ",
+            &format!("If that {noun} is put into a graveyard this way, "),
+            1,
+        );
+    }
+    if noun == "land" {
+        damage_text = damage_text.replace(
+            "If it was a nonbasic permanent, ",
+            "If that land was nonbasic, ",
+        );
+    } else if noun == "creature" {
+        damage_text =
+            damage_text.replace("If it was attacking, ", "If that creature was attacking, ");
+        if damage_effect
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .is_some_and(|conditional| {
+                matches!(
+                    &conditional.condition,
+                    Condition::TaggedObjectMatches(condition_tag, condition_filter)
+                        if condition_tag == tag && condition_filter.attacking
+                )
+            })
+        {
+            damage_text = damage_text.replace(
+                "If that creature was attacking, ",
+                "If that creature is attacking, ",
+            );
+        }
+    }
+    Some((
+        format!("{producer_text}. {}", capitalize_first(&damage_text)),
+        2,
+    ))
+}
+
+fn describe_cross_segment_chain_copy_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [antecedent_segment, enabling_segment, conditional_segment] =
+        segments.get(start..start + 3)?
+    else {
+        return None;
+    };
+    if [antecedent_segment, enabling_segment, conditional_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+        || antecedent_segment.default_effects.is_empty()
+    {
+        return None;
+    }
+
+    let [enabling_effect] = enabling_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let enabling_with_id = enabling_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    enabling_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    conditional_effect.downcast_ref::<crate::effects::IfEffect>()?;
+
+    let mut combined = antecedent_segment.default_effects.clone();
+    combined.push(enabling_effect.clone());
+    combined.push(conditional_effect.clone());
+    let rendered = describe_chain_copy_effect_list(&combined)?;
+    Some((rendered, 3))
+}
+
+fn describe_cross_segment_chooser_target_exchange_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [target_segment, exchange_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !target_segment.self_replacements.is_empty()
+        || !exchange_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let effects = target_segment
+        .default_effects
+        .iter()
+        .chain(&exchange_segment.default_effects)
+        .collect::<Vec<_>>();
+    describe_target_only_then_exchange_control(&effects).map(|rendered| (rendered, 2))
+}
+
+fn describe_cross_segment_created_token_followup_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [create_segment, followup_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !create_segment.self_replacements.is_empty()
+        || !followup_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [create_effect] = create_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let (created_tag, create) = tagged_create_token_effect_for_keyword(create_effect)?;
+    if matches!(create.count.unhinted(), Value::Fixed(1)) {
+        return None;
+    }
+    let [followup_effect] = followup_segment.default_effects.as_slice() else {
+        return None;
+    };
+
+    let followup = if let Some(exile) =
+        followup_effect.downcast_ref::<crate::effects::ExileTaggedWhenSourceLeavesEffect>()
+        && &exile.tag == created_tag
+    {
+        "Exile those tokens when this permanent leaves the battlefield".to_string()
+    } else if let Some(schedule) =
+        followup_effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        && schedule.one_shot
+        && schedule.start_next_turn
+        && !schedule.until_end_of_turn
+        && schedule.controller == PlayerFilter::You
+        && schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            .is_some()
+    {
+        let [delayed_effect] = schedule.effects.flattened_default_effects() else {
+            return None;
+        };
+        let sacrifice = delayed_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+        if !matches!(&sacrifice.target, ChooseSpec::Tagged(tag) if tag == created_tag) {
+            return None;
+        }
+        "Sacrifice those tokens at the beginning of your next upkeep".to_string()
+    } else {
+        return None;
+    };
+
+    let creation = describe_effect(create_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Some((format!("{creation}. {followup}"), 2))
+}
+
+fn describe_cross_segment_shuffle_exile_top_cast_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, permission_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !permission_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [shuffle_effect, exile_effect] = producer_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [permission_effect] = permission_segment.default_effects.as_slice() else {
+        return None;
+    };
+    render_shuffle_exile_top_then_cast_any_number_with_mana_value_cap(&[
+        shuffle_effect,
+        exile_effect,
+        permission_effect,
+    ])
+    .map(|rendered| (rendered, 2))
+}
+
+fn describe_cross_segment_exile_top_put_from_among_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, disposition_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !disposition_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [exile_effect] = producer_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [selection_effect, put_effect] = disposition_segment.default_effects.as_slice() else {
+        return None;
+    };
+    render_exile_top_then_put_from_among_onto_battlefield(&[
+        exile_effect,
+        selection_effect,
+        put_effect,
+    ])
+    .map(|rendered| (rendered, 2))
+}
+
+fn describe_cross_segment_exile_top_choose_play_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [selection_segment, permission_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !selection_segment.self_replacements.is_empty()
+        || !permission_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [exile_effect, choose_effect] = selection_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [grant_effect] = permission_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let grant_play = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    describe_exile_top_choose_one_then_play(exile_top, choose, grant_play)
+        .map(|rendered| (rendered, 2))
+}
+
+fn describe_cross_segment_shuffle_exile_top_free_play_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, permission_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !permission_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [shuffle_effect, exile_effect] = producer_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [grant_play_effect, grant_free_cast_effect] = permission_segment.default_effects.as_slice()
+    else {
+        return None;
+    };
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle.player != PlayerFilter::You || shuffle.target_spec.is_some() {
+        return None;
+    }
+    let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_free_cast = grant_free_cast_effect
+        .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
+    )?;
+    let tail =
+        describe_exile_top_then_play_without_paying_mana(exile_top, grant_play, grant_free_cast)?;
+    let tail = tail.replacen(" of your library.", ".", 1);
+    Some((
+        format!("Shuffle your library, then {}", lowercase_first(&tail)),
+        2,
+    ))
+}
+
+/// Rejoin an authored choice sentence with its adjacent tagged play/free-cast
+/// permission sentence. The effect-list matcher proves the exact shared tag,
+/// exile/owner/counter filter, duration, and payment semantics; this window
+/// only exposes those typed effects across the resolution-segment boundary.
+fn describe_cross_segment_choose_exiled_card_free_play_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choice_segment, permission_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choice_segment.self_replacements.is_empty()
+        || !permission_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [choose_effect] = choice_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [grant_play_effect, grant_free_effect] = permission_segment.default_effects.as_slice()
+    else {
+        return None;
+    };
+    let effects = vec![
+        choose_effect.clone(),
+        grant_play_effect.clone(),
+        grant_free_effect.clone(),
+    ];
+    describe_choose_exiled_card_then_play_without_paying(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Preserve the typed producer target across an authored sentence boundary.
+/// The effect-list matcher still proves the implicit tag edge, matching
+/// counter type, duration, and single granted ability; this window only makes
+/// the two adjacent default-only segments visible to that matcher together.
+fn describe_cross_segment_counter_linked_grant_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [put_segment, grant_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !put_segment.self_replacements.is_empty() || !grant_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [put_effect] = put_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [grant_effect] = grant_segment.default_effects.as_slice() else {
+        return None;
+    };
+    describe_counter_linked_grant_after_put(put_effect, grant_effect).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a counted draw with the adjacent grant that consumes the exact same
+/// filter. Sentence lowering keeps these effects in separate segments, while
+/// the typed effect-list matcher proves both set identity and cardinality.
+fn describe_cross_segment_draw_count_grant_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [draw_segment, grant_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !draw_segment.self_replacements.is_empty() || !grant_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [draw_effect] = draw_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [grant_effect] = grant_segment.default_effects.as_slice() else {
+        return None;
+    };
+    describe_draw_count_then_grant_same_filter(&[draw_effect.clone(), grant_effect.clone()])
+        .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a hidden-pile producer with its adjacent manifest/cloak consumer.
+/// The effect-list matcher proves the shared accumulating tag, face-down
+/// exiles, controller, and final operation; this window only exposes those
+/// typed effects across the authored sentence boundary.
+fn describe_cross_segment_face_down_pile_manifest_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [pile_segment, manifest_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !pile_segment.self_replacements.is_empty()
+        || !manifest_segment.self_replacements.is_empty()
+        || pile_segment.default_effects.is_empty()
+        || manifest_segment.default_effects.is_empty()
+    {
+        return None;
+    }
+    let effects = pile_segment
+        .default_effects
+        .iter()
+        .chain(&manifest_segment.default_effects)
+        .cloned()
+        .collect::<Vec<_>>();
+    describe_face_down_pile_then_manifest(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin quantified choices with later consumers only when an existing
+/// structural renderer proves the shared tag edge. Parser-authored sentence
+/// boundaries are useful for execution, but they must not hide an aggregate
+/// chosen set from renderers that already understand its typed producer and
+/// consumers.
+fn describe_cross_segment_quantified_choice_collection_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let collect_default_effects = |count: usize| {
+        let window = segments.get(start..start + count)?;
+        if window.iter().any(|segment| {
+            !segment.self_replacements.is_empty() || segment.default_effects.is_empty()
+        }) {
+            return None;
+        }
+        Some(
+            window
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter().cloned())
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    if let Some(effects) = collect_default_effects(3)
+        && effects
+            .first()
+            .and_then(|effect| {
+                structural_unwrap_render_wrappers(effect)
+                    .downcast_ref::<crate::effects::ForPlayersEffect>()
+            })
+            .is_some()
+        && let Some(rendered) = describe_structural_multisentence_effect_list(&effects)
+    {
+        return Some((rendered, 3));
+    }
+
+    let effects = collect_default_effects(2)?;
+    if let Some(rendered) = describe_direct_then_players_choose_destroy_complement(&effects) {
+        return Some((rendered, 2));
+    }
+    if let Some(rendered) = describe_distinct_power_choice_destroy_complement(&effects) {
+        return Some((rendered, 2));
+    }
+    describe_split_for_players_choose_then_sacrifice(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a looked-card procedure split across source-sentence resolution
+/// segments. The effect-list helper still has to prove the shared looked tag,
+/// selected tag, destination, grant target, and exact remainder, and it must
+/// consume every flattened effect before this window crosses a boundary.
+fn describe_cross_segment_looked_cards_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let remaining = segments.len().saturating_sub(start).min(6);
+    for consumed in (2..=remaining).rev() {
+        let window = segments.get(start..start + consumed)?;
+        if window.iter().any(|segment| {
+            !segment.self_replacements.is_empty() || segment.default_effects.is_empty()
+        }) {
+            continue;
+        }
+        let effects = window
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter().cloned())
+            .collect::<Vec<_>>();
+        if let Some(rendered) = describe_complete_looked_cards_clause(&effects) {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
+/// Restore a relationship-aware fight surface when sentence lowering keeps
+/// the two targets, the conditional action, and the fight in separate
+/// resolution segments. The exact helpers prove every tag edge and require
+/// the complete four-effect shape before any boundaries are crossed.
+fn describe_cross_segment_conditional_fight_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.len() < 2
+        || program
+            .segments
+            .iter()
+            .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let effects = program
+        .flattened_default_effects()
+        .iter()
+        .collect::<Vec<_>>();
+    describe_two_distinct_targets_conditional_then_fight(&effects)
+        .or_else(|| describe_targeted_conditional_action_then_fight(&effects))
+}
+
+/// Target declarations and optional actions can occupy one or more resolution
+/// segments even when Oracle presents them as one multi-sentence procedure.
+/// Flatten only the default branches, then require the complete typed
+/// target/chooser/consult shape before choosing that authored surface.
+fn describe_cross_segment_relative_player_target_consult_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.is_empty()
+        || program
+            .segments
+            .iter()
+            .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    describe_relative_player_target_then_optional_consult(program.flattened_default_effects())
+}
+
+#[cfg(test)]
+mod relative_player_target_consult_program_tests {
+    use super::*;
+
+    #[test]
+    fn rejoins_active_player_target_and_optional_consult_across_segments() {
+        const EXPECTED: &str = "That player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard";
+
+        let all_tag = TagKey::from("revealed");
+        let match_tag = TagKey::from("matched");
+        let target = Effect::new(
+            crate::effects::TargetOnlyEffect::explicit(ChooseSpec::target(ChooseSpec::Player(
+                PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                    player: Box::new(PlayerFilter::Active),
+                    filter: Box::new(ObjectFilter::creature()),
+                },
+            )))
+            .with_chooser(PlayerFilter::Active),
+        );
+
+        let mut creature_card = ObjectFilter::creature();
+        creature_card.zone = None;
+        let consult = Effect::new(crate::effects::ConsultTopOfLibraryEffect::new(
+            PlayerFilter::Active,
+            crate::effects::consult_helpers::LibraryConsultMode::Reveal,
+            creature_card,
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch,
+            all_tag.clone(),
+            match_tag.clone(),
+        ));
+        let move_match = Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(match_tag.clone()),
+            Zone::Battlefield,
+            false,
+        ));
+        let mut iterated_is_match = ObjectFilter::default();
+        iterated_is_match
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: match_tag,
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let move_remainder = Effect::new(crate::effects::ForEachTaggedEffect::new(
+            all_tag,
+            vec![Effect::conditional(
+                Condition::TaggedObjectMatches(TagKey::from("__it__"), iterated_is_match),
+                vec![],
+                vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Iterated,
+                    Zone::Graveyard,
+                    false,
+                ))],
+            )],
+        ));
+        let may = Effect::new(crate::effects::MayEffect::new_for_player(
+            vec![consult, move_match, move_remainder],
+            PlayerFilter::Active,
+        ));
+
+        let single_segment =
+            crate::resolution::ResolutionProgram::from_effects(vec![target.clone(), may.clone()]);
+        assert_eq!(describe_resolution_program(&single_segment), EXPECTED);
+
+        let program = crate::resolution::ResolutionProgram::new(vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![target]),
+            crate::resolution::ResolutionSegment::from_effects(vec![may]),
+        ]);
+
+        assert_eq!(describe_resolution_program(&program), EXPECTED);
+    }
+}
+
+/// Rejoin the same-name extraction procedure when source sentence boundaries
+/// placed its typed effects in adjacent resolution segments. Sequence wrappers
+/// only preserve punctuation/coordination here; the shared renderer still has
+/// to prove the chosen-name or targeted-object tag, the three-zone search, the
+/// matching exile consumer, and the searched player's shuffle (and draw, when
+/// present) before this window can succeed.
+fn describe_cross_segment_same_name_extraction_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    fn collect_sequence_members(effect: &Effect, flattened: &mut Vec<Effect>) {
+        let unwrapped = structural_unwrap_render_wrappers(effect);
+        if let Some(sequence) = unwrapped.downcast_ref::<crate::effects::SequenceEffect>() {
+            for member in &sequence.effects {
+                collect_sequence_members(member, flattened);
+            }
+        } else if unwrapped
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+            || unwrapped
+                .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+                .is_some()
+            || unwrapped
+                .downcast_ref::<crate::effects::TagTriggeringBlockersEffect>()
+                .is_some()
+        {
+            // Trigger referent setup has no authored surface. The typed
+            // player/object filters on the remaining effects retain the
+            // relationship that the extraction matcher must prove.
+        } else {
+            flattened.push(effect.clone());
+        }
+    }
+
+    let remaining = segments.len().saturating_sub(start).min(6);
+    for consumed in (1..=remaining).rev() {
+        let window = segments.get(start..start + consumed)?;
+        if window.iter().any(|segment| {
+            !segment.self_replacements.is_empty() || segment.default_effects.is_empty()
+        }) {
+            continue;
+        }
+        let mut flattened = Vec::new();
+        for effect in window
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter())
+        {
+            collect_sequence_members(effect, &mut flattened);
+        }
+        if let Some(rendered) = describe_same_name_three_zone_extraction(&flattened) {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
+/// Expose same-name search pipelines across both sentence segments and
+/// punctuation-only `SequenceEffect` wrappers. The downstream matchers still
+/// require the complete typed producer/tag/search/reveal/move/shuffle graph,
+/// so flattening here cannot turn an unrelated sequence into authored prose.
+fn describe_cross_segment_same_name_search_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    fn collect_sequence_members<'a>(effect: &'a Effect, flattened: &mut Vec<&'a Effect>) {
+        let unwrapped = structural_unwrap_render_wrappers(effect);
+        if let Some(sequence) = unwrapped.downcast_ref::<crate::effects::SequenceEffect>() {
+            for member in &sequence.effects {
+                collect_sequence_members(member, flattened);
+            }
+        } else {
+            flattened.push(effect);
+        }
+    }
+
+    let remaining = segments.len().saturating_sub(start).min(4);
+    for consumed in (1..=remaining).rev() {
+        let window = segments.get(start..start + consumed)?;
+        if window.iter().any(|segment| {
+            !segment.self_replacements.is_empty() || segment.default_effects.is_empty()
+        }) {
+            continue;
+        }
+        let mut flattened = Vec::new();
+        for effect in window
+            .iter()
+            .flat_map(|segment| segment.default_effects.iter())
+        {
+            collect_sequence_members(effect, &mut flattened);
+        }
+        if let Some(rendered) = describe_single_hand_reveal_same_name_search(&flattened)
+            .or_else(|| describe_same_name_reference_search_bundle(&flattened))
+            .or_else(|| describe_target_player_search_exile_shuffle_bundle(&flattened))
+            .or_else(|| describe_single_hand_reveal_setup(&flattened))
+        {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
 pub(super) fn describe_resolution_program(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
@@ -580,9 +2511,228 @@ pub(super) fn describe_resolution_program(
     if let Some(rendered) = describe_group_pump_then_conditional_untap_program(program) {
         return rendered;
     }
+    if let Some(rendered) =
+        describe_roll_result_damage_then_random_source_attachment_program(program)
+    {
+        return rendered;
+    }
+    if let Some(rendered) = describe_cross_segment_conditional_fight_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_cross_segment_relative_player_target_consult_program(program) {
+        return rendered;
+    }
 
     let mut rendered_segments = Vec::new();
-    for segment in &program.segments {
+    let mut skipped_segments = 0usize;
+    for (segment_index, segment) in program.segments.iter().enumerate() {
+        if skipped_segments > 0 {
+            skipped_segments -= 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_same_name_search_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_same_name_extraction_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_looked_cards_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if segment.self_replacements.is_empty()
+            && let Some(rendered) = describe_face_down_pile_then_manifest(&segment.default_effects)
+        {
+            rendered_segments.push(rendered);
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_choose_exiled_card_free_play_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_counter_linked_grant_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_draw_count_grant_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_face_down_pile_manifest_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_quantified_choice_collection_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_chooser_target_exchange_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_created_token_followup_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_exile_top_put_from_among_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_exile_top_choose_play_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_shuffle_exile_top_free_play_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_shuffle_exile_top_cast_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_observation_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_consult_hand_remainder_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_consult_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_wrapped_search_two_split_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_search_move_shuffle_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_tagged_tap_untap_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_conditional_tagged_tap_untap_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_typed_controller_damage_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_chain_copy_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_look_optional_payment_disposition_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_result_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_death_replacement_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
         if segment.self_replacements.len() == 1 {
             let rendered = describe_single_self_replacement_segment(segment).unwrap_or_else(|| {
                 let branch = &segment.self_replacements[0];
@@ -882,6 +3032,369 @@ fn format_self_replacement_fallback(
     }
 }
 
+/// Render the typed replacement that prepends a scry to the same draw action.
+/// Requiring the replacement draw to match the default draw exactly prevents
+/// this presentation rule from hiding a changed player, count, or draw
+/// surface. The leading `instead` is significant for the authored
+/// replacement clause, as is the imperative surface of a spell's default
+/// draw instruction.
+fn describe_scry_then_same_draw_self_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    let [branch] = segment.self_replacements.as_slice() else {
+        return None;
+    };
+    if branch.condition_after_replacement {
+        return None;
+    }
+    let [default_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [scry_effect, replacement_draw_effect] = branch.replacement_effects.as_slice() else {
+        return None;
+    };
+    let default_draw = unwrap_basic_render_wrapper(default_effect)
+        .downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let scry =
+        unwrap_basic_render_wrapper(scry_effect).downcast_ref::<crate::effects::ScryEffect>()?;
+    let replacement_draw = unwrap_basic_render_wrapper(replacement_draw_effect)
+        .downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if default_draw.player != replacement_draw.player
+        || default_draw.count != replacement_draw.count
+    {
+        return None;
+    }
+
+    let rendered_default = describe_effect(default_effect);
+    let rendered_default = rendered_default.trim().trim_end_matches('.');
+    let default_text = if default_draw.player == PlayerFilter::You {
+        rendered_default
+            .strip_prefix("You ")
+            .or_else(|| rendered_default.strip_prefix("you "))
+            .unwrap_or(rendered_default)
+    } else {
+        rendered_default
+    };
+    let replacement_text = describe_scry_then_draw(scry, replacement_draw)?;
+    let raw_condition_text = super::normalize_common::describe_condition(&branch.condition);
+    let condition_text = normalize_target_quality_condition(&default_text, &raw_condition_text);
+    Some(format!(
+        "{}. If {condition_text}, instead {}",
+        capitalize_first(&default_text),
+        super::normalize_common::lowercase_first(replacement_text.trim().trim_end_matches('.'))
+    ))
+}
+
+fn collect_self_replacement_action_targets<'a>(
+    effect: &'a Effect,
+    targets: &mut Vec<&'a ChooseSpec>,
+) {
+    let effect = unwrap_basic_render_wrapper(effect);
+    if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+        for nested in &unless_pays.effects {
+            collect_self_replacement_action_targets(nested, targets);
+        }
+        return;
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        for nested in &sequence.effects {
+            collect_self_replacement_action_targets(nested, targets);
+        }
+        return;
+    }
+
+    let target = rendered_action_target(effect)
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .map(|damage| &damage.target)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::CounterEffect>()
+                .map(|counter| &counter.target)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .map(|exile| &exile.spec)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::ReturnToHandEffect>()
+                .map(|return_to_hand| &return_to_hand.spec)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .map(|move_to_zone| &move_to_zone.target)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+                .map(|return_to_hand| &return_to_hand.target)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+                .map(|return_to_battlefield| &return_to_battlefield.target)
+        })
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .map(|target_only| &target_only.target)
+        });
+    if let Some(target) = target {
+        targets.push(target);
+    }
+}
+
+/// Return the one target selection shared by every target-bearing action in
+/// this branch. Follow-up actions without targets (for example, scrying) are
+/// ignored, while a second, different target makes the branch ineligible for
+/// implicit-reference rendering.
+fn shared_self_replacement_action_target(effects: &[Effect]) -> Option<&ChooseSpec> {
+    let mut targets = Vec::new();
+    for effect in effects {
+        collect_self_replacement_action_targets(effect, &mut targets);
+    }
+    let first = *targets.first()?;
+    targets
+        .iter()
+        .all(|target| target_specs_select_same_objects(first, target))
+        .then_some(first)
+}
+
+fn self_replacement_target_referent(target: &ChooseSpec) -> Option<&'static str> {
+    match target.base() {
+        ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => Some("that permanent or player"),
+        ChooseSpec::Player(_) | ChooseSpec::SpecificPlayer(_) => Some("that player"),
+        ChooseSpec::PlayerOrPlaneswalker(_) | ChooseSpec::ObjectOrPlayer(_, _) => {
+            Some("that permanent or player")
+        }
+        ChooseSpec::Object(filter) => {
+            if let Some(stack_kind) = filter.stack_kind {
+                return Some(match stack_kind {
+                    crate::filter::StackObjectKind::Spell => "that spell",
+                    crate::filter::StackObjectKind::Ability
+                    | crate::filter::StackObjectKind::ActivatedAbility
+                    | crate::filter::StackObjectKind::TriggeredAbility => "that ability",
+                    crate::filter::StackObjectKind::SpellOrAbility => "that spell or ability",
+                });
+            }
+            if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) {
+                return Some("that card");
+            }
+            if filter.card_types.as_slice() == [CardType::Creature] {
+                return Some("that creature");
+            }
+            Some("that permanent")
+        }
+        _ => None,
+    }
+}
+
+fn condition_refers_to_self_replacement_target(condition_text: &str, referent: &str) -> bool {
+    let lower = condition_text.to_ascii_lowercase();
+    lower.contains(referent)
+        || lower.starts_with("it's ")
+        || lower.starts_with("it is ")
+        || lower.starts_with("it was ")
+        || lower.starts_with("it has ")
+}
+
+/// Replace a repeated rendered target only after typed target identity proves
+/// that the replacement action reuses the default action's target. The text
+/// operation is deliberately limited to the single target surface produced
+/// from that same `ChooseSpec`; multi-target/multi-action branches fall back
+/// to their ordinary explicit rendering.
+fn describe_shared_target_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let default_target = shared_self_replacement_action_target(default_effects)?;
+    let replacement_target = shared_self_replacement_action_target(replacement_effects)?;
+    if !default_target.is_target()
+        || !default_target.is_single()
+        || !replacement_target.is_target()
+        || !replacement_target.is_single()
+        || !target_specs_select_same_objects(default_target, replacement_target)
+    {
+        return None;
+    }
+
+    let target_surface = super::normalize_common::describe_choose_spec(replacement_target);
+    let mut replacement = super::normalize_common::lowercase_first(replacement_text)
+        .trim_end_matches('.')
+        .to_string();
+    let mut matches = replacement.match_indices(target_surface.as_str());
+    let (target_start, _) = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    let referent = self_replacement_target_referent(default_target)?;
+    let before_target = &replacement[..target_start];
+    let replacement_referent = if before_target.ends_with(" on ")
+        || condition_refers_to_self_replacement_target(condition_text, referent)
+    {
+        "it"
+    } else {
+        referent
+    };
+    replacement.replace_range(
+        target_start..target_start + target_surface.len(),
+        replacement_referent,
+    );
+
+    Some(format_self_replacement_fallback(
+        default_text,
+        condition_text,
+        &replacement,
+    ))
+}
+
+/// Render the common "same target, different damage result" self-replacement
+/// directly from its damage nodes. This preserves an attached scry action or
+/// the unpreventable-damage rider, neither of which survives the generic
+/// one-damage-effect conditional compactor.
+fn describe_shared_target_damage_self_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    let [branch] = segment.self_replacements.as_slice() else {
+        return None;
+    };
+    if branch.condition_after_replacement {
+        return None;
+    }
+    let [default_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let default_damage = self_replacement_damage_view(default_effect)?;
+    let (replacement_effect, scry) = match branch.replacement_effects.as_slice() {
+        [replacement_effect] => (replacement_effect, None),
+        [replacement_effect, scry_effect] => (
+            replacement_effect,
+            Some(
+                unwrap_basic_render_wrapper(scry_effect)
+                    .downcast_ref::<crate::effects::ScryEffect>()?,
+            ),
+        ),
+        _ => return None,
+    };
+    let replacement_damage = self_replacement_damage_view(replacement_effect)?;
+    if default_damage.source_is_combat
+        || default_damage.unpreventable
+        || replacement_damage.source_is_combat
+        || (scry.is_none() && !replacement_damage.unpreventable)
+        || !default_damage.target.is_target()
+        || !default_damage.target.is_single()
+        || !replacement_damage.target.is_target()
+        || !replacement_damage.target.is_single()
+        || !target_specs_select_same_objects(&default_damage.target, &replacement_damage.target)
+    {
+        return None;
+    }
+    if let Some(scry) = scry
+        && scry.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let referent = self_replacement_target_referent(&default_damage.target)?;
+    let mut replacement = format!(
+        "it deals {} damage to {referent}",
+        super::normalize_common::describe_value(&replacement_damage.amount)
+    );
+    if let Some(scry) = scry {
+        replacement.push_str(&format!(
+            " and you scry {}",
+            super::normalize_common::describe_value(&scry.count)
+        ));
+    }
+    if replacement_damage.unpreventable {
+        replacement.push_str(" and the damage can't be prevented");
+    }
+    let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    Some(format!(
+        "{}. If {condition_text}, instead {replacement}",
+        describe_effect_list(&segment.default_effects)
+            .trim()
+            .trim_end_matches('.')
+    ))
+}
+
+/// View damage through the bookkeeping wrappers used by self-replacement
+/// lowering. `ExecuteWithSourceEffect` preserves the authored damage source;
+/// it does not change the target, amount, or prevention semantics that this
+/// renderer compares.
+fn self_replacement_damage_view(effect: &Effect) -> Option<&crate::effects::DealDamageEffect> {
+    let effect = unwrap_basic_render_wrapper(effect);
+    let effect = effect
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        .map(|execute| unwrap_basic_render_wrapper(&execute.effect))
+        .unwrap_or(effect);
+    effect.downcast_ref::<crate::effects::DealDamageEffect>()
+}
+
+/// Render a trailing-condition damage replacement only when the typed damage
+/// nodes prove that both instructions use the same source and target. A bare
+/// damage effect implicitly uses the resolving spell or ability as its source,
+/// so an explicit `ChooseSpec::Source` wrapper is equivalent to that implicit
+/// source; no other implicit/explicit source pairing is safe to collapse to
+/// the pronoun "It."
+fn describe_trailing_same_source_damage_self_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    let [branch] = segment.self_replacements.as_slice() else {
+        return None;
+    };
+    if !branch.condition_after_replacement {
+        return None;
+    }
+    let [default_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [replacement_effect] = branch.replacement_effects.as_slice() else {
+        return None;
+    };
+    let (default_source, default_damage) = damage_with_source_view(default_effect)?;
+    let (replacement_source, replacement_damage) = damage_with_source_view(replacement_effect)?;
+    let sources_match = match (default_source, replacement_source) {
+        (None, None) => true,
+        (None, Some(source)) | (Some(source), None) => {
+            matches!(source.unhinted(), ChooseSpec::Source)
+        }
+        (Some(default_source), Some(replacement_source)) => {
+            default_source.unhinted() == replacement_source.unhinted()
+        }
+    };
+    if !sources_match
+        || default_damage.source_is_combat
+        || replacement_damage.source_is_combat
+        || default_damage.unpreventable
+        || replacement_damage.unpreventable
+        || !default_damage.target.is_target()
+        || !default_damage.target.is_single()
+        || !replacement_damage.target.is_target()
+        || !replacement_damage.target.is_single()
+        || !target_specs_select_same_objects(&default_damage.target, &replacement_damage.target)
+    {
+        return None;
+    }
+
+    let referent = self_replacement_target_referent(&default_damage.target)?;
+    let default_text = describe_effect_list(&segment.default_effects);
+    let default_text = default_text.trim().trim_end_matches('.');
+    let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    Some(format!(
+        "{default_text}. It deals {} damage to {referent} instead if {condition_text}",
+        super::normalize_common::describe_value(&replacement_damage.amount)
+    ))
+}
+
 fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
@@ -899,6 +3412,37 @@ fn describe_single_self_replacement_segment(
             &condition_text,
             &super::normalize_common::lowercase_first(replacement_text),
         ));
+    }
+    if let Some(rendered) = describe_scry_then_same_draw_self_replacement(segment) {
+        return Some(rendered);
+    }
+    if let Some(rendered) = describe_looked_and_or_destination_self_replacement(segment) {
+        return Some(rendered);
+    }
+    if let Some(rendered) = describe_looked_count_self_replacement(segment) {
+        return Some(rendered);
+    }
+    if let Some(rendered) = describe_trailing_same_source_damage_self_replacement(segment) {
+        return Some(rendered);
+    }
+    if let Some(rendered) = describe_shared_target_damage_self_replacement(segment) {
+        return Some(rendered);
+    }
+    if !branch.condition_after_replacement
+        && let [default_effect] = segment.default_effects.as_slice()
+        && default_effect
+            .downcast_ref::<crate::effects::DiscardEffect>()
+            .is_some()
+    {
+        let replacement_refs = branch.replacement_effects.iter().collect::<Vec<_>>();
+        if let Some(inline) = describe_reveal_hand_choose_discard_inline(&replacement_refs) {
+            let default_text = describe_effect_list(&segment.default_effects);
+            let condition_text = super::normalize_common::describe_condition(&branch.condition);
+            return Some(format!(
+                "{default_text}. If {condition_text}, instead {}",
+                super::normalize_common::lowercase_first(&inline)
+            ));
+        }
     }
     let conditional = Effect::conditional(
         branch.condition.clone(),
@@ -1040,6 +3584,17 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(shared_shuffle_text);
     }
+    if !branch.condition_after_replacement
+        && let Some(shared_target_text) = describe_shared_target_self_replacement(
+            &segment.default_effects,
+            &branch.replacement_effects,
+            &default_text,
+            &replacement_text,
+            &condition_text,
+        )
+    {
+        return Some(shared_target_text);
+    }
     let mut replacement =
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text);
     if condition_text.starts_with("that creature is ")
@@ -1099,7 +3654,13 @@ fn describe_shared_search_hand_to_battlefield_self_replacement(
     }
 
     fn pipeline(effects: &[Effect]) -> Option<Pipeline<'_>> {
-        let [choose_effect, reveal_effect, for_each_effect, shuffle_effect] = effects else {
+        let [
+            choose_effect,
+            reveal_effect,
+            for_each_effect,
+            shuffle_effect,
+        ] = effects
+        else {
             return None;
         };
         let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
@@ -1172,7 +3733,8 @@ fn describe_same_target_hand_to_battlefield_replacement(
         .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()?;
     let return_to_battlefield = replacement_tagged
         .effect
-        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
+    )?;
     if return_to_hand.target.unhinted() != return_to_battlefield.target.unhinted()
         || return_to_battlefield.as_aura.is_some()
         || !return_to_battlefield.enters_with_counters.is_empty()
@@ -2659,6 +5221,13 @@ fn describe_echo_alternative_cost(alternative: &[Effect]) -> Option<String> {
             return Some(format!("—Discard {count} cards"));
         }
 
+        if let Some(pay_life) = pay.downcast_ref::<crate::effects::PayLifeEffect>() {
+            if !matches!(pay_life.player, ChooseSpec::Player(PlayerFilter::You)) {
+                return None;
+            }
+            return Some(format!("—Pay {} life", describe_value(&pay_life.amount)));
+        }
+
         if let Some(lose_life) = pay.downcast_ref::<crate::effects::LoseLifeEffect>() {
             if !matches!(lose_life.player, ChooseSpec::Player(PlayerFilter::You)) {
                 return None;
@@ -2954,6 +5523,72 @@ fn describe_structural_graveyard_or_exile_cast_pair(
         }
         _ => None,
     }
+}
+
+fn describe_structural_play_from_with_mana_permission_pair(
+    first: &Ability,
+    second: &Ability,
+) -> Option<String> {
+    fn render(grant_ability: &Ability, mana_ability: &Ability) -> Option<String> {
+        let AbilityKind::Static(grant_static) = &grant_ability.kind else {
+            return None;
+        };
+        let grant = grant_static.grant_spec()?;
+        if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+            || grant.beneficiary != PlayerFilter::You
+        {
+            return None;
+        }
+
+        let AbilityKind::Static(mana_static) = &mana_ability.kind else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::ManaSpendPermission { permission, .. } =
+            &mana_static.compiled_model()?.payload
+        else {
+            return None;
+        };
+        let ironsmith_core::ManaSpendScope::CastingSpellsMatching(mana_filter) = &permission.scope
+        else {
+            return None;
+        };
+        if permission.player != PlayerFilter::You
+            || *mana_filter != grant.filter
+            || permission.any_color_mana_symbol.is_some()
+            || permission.other_mana_only_as_colorless
+        {
+            return None;
+        }
+
+        let source_phrase = match &permission.mana_source_filter {
+            None => "mana".to_string(),
+            Some(source_filter) => {
+                let mut normalized = source_filter.clone();
+                if normalized.supertypes.as_slice() != [Supertype::Snow] {
+                    return None;
+                }
+                normalized.supertypes.clear();
+                if normalized != ObjectFilter::default() {
+                    return None;
+                }
+                "mana from snow sources".to_string()
+            }
+        };
+        let mana_clause = match permission.mode {
+            ironsmith_core::value_model::ManaSpendMode::AnyColor => format!(
+                "you may spend {source_phrase} as though it were mana of any color to cast those spells"
+            ),
+            ironsmith_core::value_model::ManaSpendMode::AnyType
+                if permission.mana_source_filter.is_none() =>
+            {
+                "mana of any type can be spent to cast those spells".to_string()
+            }
+            _ => return None,
+        };
+        Some(format!("{}, and {mana_clause}", grant.display()))
+    }
+
+    render(first, second).or_else(|| render(second, first))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3260,6 +5895,70 @@ fn is_conspire_helper_ability(ability: &Ability) -> bool {
         && copy.copier == PlayerFilter::You
         && retarget.from_effect == with_id.id
         && retarget.may
+}
+
+fn describe_repeatable_sacrifice_copy_followup(
+    cost: &crate::cost::OptionalCost,
+    ability: &Ability,
+) -> Option<String> {
+    if cost.kind != crate::cost::OptionalCostKind::Additional || !cost.repeatable {
+        return None;
+    }
+    let [cost_component] = cost.cost.as_all()? else {
+        return None;
+    };
+    let sacrifice = unwrap_basic_render_wrapper(cost_component.effect_ref()?)
+        .downcast_ref::<crate::effects::SacrificeEffect>()?;
+    if sacrifice.player != PlayerFilter::You || sacrifice.count != Value::Fixed(1) {
+        return None;
+    }
+
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if ability.functional_zones != [Zone::Stack]
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::YouCastThisSpellTrigger>()
+            .is_none()
+        || !matches!(
+            triggered.intervening_if.as_ref(),
+            Some(Condition::ThisSpellPaidLabel(label)) if label == &cost.reference
+        )
+    {
+        return None;
+    }
+    let [copy_effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let copy = unwrap_basic_render_wrapper(copy_effect)
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    if !matches!(copy.target.unhinted(), ChooseSpec::Source)
+        || copy.copier != PlayerFilter::You
+        || !matches!(
+            &copy.count,
+            Value::TimesPaidLabel(label) if label == &cost.reference
+        )
+    {
+        return None;
+    }
+
+    let mut noun_filter = sacrifice.filter.clone();
+    noun_filter.zone = None;
+    noun_filter.controller = None;
+    noun_filter.owner = None;
+    let noun_description = noun_filter.description();
+    let noun = strip_indefinite_article(&noun_description);
+    Some(format!(
+        "When you do, copy this spell for each {noun} sacrificed this way"
+    ))
+}
+
+fn is_repeatable_sacrifice_copy_helper(def: &CardDefinition, ability: &Ability) -> bool {
+    def.optional_costs
+        .iter()
+        .any(|cost| describe_repeatable_sacrifice_copy_followup(cost, ability).is_some())
 }
 
 fn is_squad_helper_ability(ability: &Ability) -> bool {
@@ -3620,20 +6319,27 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Overload { cost, .. } => {
             format!("Overload {}", cost.to_oracle())
         }
+        AlternativeCastingMethod::Cleave { cost, .. } => {
+            format!("Cleave {}", cost.to_oracle())
+        }
         AlternativeCastingMethod::Awaken { amount, cost, .. } => {
             format!("Awaken {amount}—{}", cost.to_oracle())
         }
         AlternativeCastingMethod::Flashback { total_cost } => {
             let costs = method.non_mana_costs();
-            let mana_cost = total_cost
-                .mana_cost()
-                .map(|cost| cost.to_oracle())
-                .unwrap_or_else(|| "{0}".to_string());
+            let mana_cost = total_cost.mana_cost().map(|cost| cost.to_oracle());
             if costs.is_empty() {
-                format!("Flashback—{mana_cost}")
+                format!(
+                    "Flashback—{}",
+                    mana_cost.unwrap_or_else(|| "{0}".to_string())
+                )
             } else {
                 let extra = capitalize_first(&describe_alternative_costs(&costs));
-                format!("Flashback—{mana_cost}, {extra}")
+                if let Some(mana_cost) = mana_cost {
+                    format!("Flashback—{mana_cost}, {extra}")
+                } else {
+                    format!("Flashback—{extra}")
+                }
             }
         }
         AlternativeCastingMethod::Harmonize { total_cost } => {
@@ -3824,15 +6530,34 @@ fn aura_attaches_to_plain_creature(
     normalized == ObjectFilter::creature()
 }
 
+fn aura_attaches_to_creature_or_planeswalker(
+    attachment: Option<&crate::object::AuraAttachmentFilter>,
+) -> bool {
+    let Some(crate::object::AuraAttachmentFilter::Object(filter)) = attachment else {
+        return false;
+    };
+    let mut normalized = filter.clone();
+    normalized.zone = Some(Zone::Battlefield);
+    let mut expected = ObjectFilter::default().in_zone(Zone::Battlefield);
+    expected.card_types = vec![CardType::Creature, CardType::Planeswalker];
+    normalized == expected
+}
+
 fn rewrite_plain_creature_aura_subject(
     attachment: Option<&crate::object::AuraAttachmentFilter>,
     line: &str,
 ) -> String {
-    if !aura_attaches_to_plain_creature(attachment) {
-        return line.to_string();
+    if aura_attaches_to_plain_creature(attachment) {
+        return line
+            .replace("Enchanted permanent", "Enchanted creature")
+            .replace("enchanted permanent", "enchanted creature");
     }
-    line.replace("Enchanted permanent", "Enchanted creature")
-        .replace("enchanted permanent", "enchanted creature")
+    if aura_attaches_to_creature_or_planeswalker(attachment) {
+        return line
+            .replace("Enchanted creature", "Enchanted permanent")
+            .replace("enchanted creature", "enchanted permanent");
+    }
+    line.to_string()
 }
 
 fn is_exact_discard_source_cost(cost: &crate::costs::Cost) -> bool {
@@ -3927,6 +6652,170 @@ fn describe_structural_reinforce_ability(ability: &Ability) -> Option<String> {
     Some(format!("Reinforce {amount}—{}", mana_cost.to_oracle()))
 }
 
+/// Render the typed counter-removal prevention family as its authored inline
+/// replacement sentence. The generic conditional-static renderer otherwise
+/// presents this model as an `As long as` ability grant, even though the
+/// condition is part of the damage replacement event itself.
+fn structural_source_counter_threshold(condition: &Condition) -> Option<CounterType> {
+    match condition {
+        Condition::SourceHasCounterAtLeast {
+            counter_type,
+            count: 1,
+            ..
+        } => Some(*counter_type),
+        Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+            comparison: Comparison::GreaterThanOrEqual(1),
+            ..
+        } => {
+            let Some(ironsmith_core::CounterConstraint::Typed(counter_type)) = filter.with_counter
+            else {
+                return None;
+            };
+            (filter == &ObjectFilter::source().with_counter_type(counter_type))
+                .then_some(counter_type)
+        }
+        _ => None,
+    }
+}
+
+fn describe_structural_counter_removal_damage_prevention(
+    ability: &Ability,
+    subject: &str,
+) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::Conditional {
+        ability: prevention,
+        condition,
+    } = &model.payload
+    else {
+        return None;
+    };
+    let condition_counter = structural_source_counter_threshold(condition)?;
+    let ironsmith_core::StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
+        counter_type,
+        amount,
+        follow_up,
+    } = &prevention.payload
+    else {
+        return None;
+    };
+    if condition_counter != *counter_type {
+        return None;
+    }
+
+    let (amount_text, plural) = match amount.unhinted() {
+        Value::Fixed(1) => ("a".to_string(), false),
+        Value::Fixed(amount) if *amount > 1 => (
+            u32::try_from(*amount)
+                .ok()
+                .and_then(small_number_word)
+                .unwrap_or_else(|| amount.to_string()),
+            true,
+        ),
+        Value::EventValue(EventValueSpec::Amount) => ("that many".to_string(), true),
+        _ => return None,
+    };
+    let counter = counter_type.description();
+    let counter_noun = if plural { "counters" } else { "counter" };
+    let head = format!(
+        "If damage would be dealt to {subject} while it has a {counter} counter on it, prevent that damage"
+    );
+    let removal = format!("remove {amount_text} {counter} {counter_noun} from it");
+
+    match follow_up {
+        None => Some(format!("{head} and {removal}")),
+        Some(ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+            counter_type: gained_counter,
+            counters_per_removed,
+        }) => {
+            let (gained_amount, gained_plural) = if *counters_per_removed == 1 {
+                ("a".to_string(), "")
+            } else {
+                (
+                    small_number_word(*counters_per_removed)
+                        .unwrap_or_else(|| counters_per_removed.to_string()),
+                    "s",
+                )
+            };
+            Some(format!(
+                "{head}, {removal}, then give each player {gained_amount} {} counter{gained_plural} for each {counter} counter removed this way",
+                gained_counter.description()
+            ))
+        }
+    }
+}
+
+/// Preserve the authored pronoun and event-derived amount for the reusable
+/// "counters removed this way" damage trigger. Generic permanent damage
+/// normalization changes an effect-leading `it deals` into the source type,
+/// which loses the surface relationship carried by this exact typed shape.
+fn describe_structural_counter_removed_this_way_damage_trigger(
+    ability: &Ability,
+) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if triggered.intervening_if.is_some()
+        || triggered.choices.as_slice() != [ChooseSpec::AnyTarget].as_slice()
+        || triggered.presentation_label.is_some()
+    {
+        return None;
+    }
+    let counter_removed = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()?;
+    let mut trigger_filter = counter_removed.filter.clone();
+    trigger_filter.source_surface = None;
+    if trigger_filter != ObjectFilter::source()
+        || !counter_removed.one_or_more
+        || !counter_removed.caused_by_source
+    {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [tag_effect, execute_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let triggering = tag_effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let execute = execute_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    if !matches!(
+        execute.source.unhinted(),
+        ChooseSpec::Tagged(tag) if *tag == triggering.tag
+    ) {
+        return None;
+    }
+    let damage = execute
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if damage.source_is_combat
+        || damage.unpreventable
+        || !matches!(damage.target.base(), ChooseSpec::AnyTarget)
+        || !matches!(
+            damage.amount.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+        )
+        || !damage
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "{}, it deals that much damage to any target",
+        triggered.trigger.display()
+    ))
+}
+
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
     let mut leading_alternative_cast_lines = Vec::new();
@@ -3952,6 +6841,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         let is_prototype = method.name().eq_ignore_ascii_case("Prototype")
             && method.prototype_power_toughness().is_some();
         if is_prototype
+            || method.is_mutate()
+            || matches!(method, AlternativeCastingMethod::Cleave { .. })
             || matches!(
                 method,
                 AlternativeCastingMethod::FlashWithAdditionalCost { .. }
@@ -3965,7 +6856,14 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     }
     out.extend(leading_alternative_cast_lines);
     for cost in &def.optional_costs {
-        let line = describe_optional_cost_line(cost);
+        let mut line = describe_optional_cost_line(cost);
+        if let Some(followup) = def
+            .abilities
+            .iter()
+            .find_map(|ability| describe_repeatable_sacrifice_copy_followup(cost, ability))
+        {
+            line = format!("{}. {followup}", line.trim_end_matches('.'));
+        }
         if spell_like_card && matches!(cost.kind, crate::cost::OptionalCostKind::Conspire) {
             deferred_spell_optional_lines.push(line);
         } else {
@@ -4055,6 +6953,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if is_repeatable_sacrifice_copy_helper(def, ability) {
+                ability_idx += 1;
+                continue;
+            }
             if has_squad && is_squad_helper_ability(ability) {
                 ability_idx += 1;
                 continue;
@@ -4065,6 +6967,27 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             }
             if ability_level_range_prefix(ability).is_some() {
                 ability_idx += 1;
+                continue;
+            }
+            if let Some(text) = describe_structural_counter_removed_this_way_damage_trigger(ability)
+            {
+                output.push(format!("Triggered ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some(text) =
+                describe_structural_counter_removal_damage_prevention(ability, subject)
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
+            if let Some((text, consumed)) = describe_structural_threshold_source_modifier_bundle(
+                &def.abilities[ability_idx..],
+                subject,
+            ) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
                 continue;
             }
             if let Some((text, consumed)) =
@@ -4084,6 +7007,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
+                describe_structural_dynamic_animation_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
                 describe_structural_modifier_type_addition_bundle(&def.abilities[ability_idx..])
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
@@ -4093,6 +7023,22 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             if let Some((text, consumed)) =
                 describe_authored_attached_transform_bundle(&def.abilities[ability_idx..])
             {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) = describe_structural_keyword_same_is_true_ladder(
+                &def.abilities[ability_idx..],
+                subject,
+            ) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) = describe_structural_five_basic_land_modifier_ladder(
+                &def.abilities[ability_idx..],
+                subject,
+            ) {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
                 continue;
@@ -4107,6 +7053,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             if let Some((text, consumed)) = describe_structural_anthem_remove_all_abilities_bundle(
                 &def.abilities[ability_idx..],
             ) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
+                describe_structural_anthem_set_colors_bundle(&def.abilities[ability_idx..])
+            {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
                 continue;
@@ -4162,6 +7115,16 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     describe_structural_rampage_pair(ability, &def.abilities[ability_idx + 1])
             {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 2;
+                continue;
+            }
+            if ability_idx + 1 < def.abilities.len()
+                && let Some(permission) = describe_structural_play_from_with_mana_permission_pair(
+                    ability,
+                    &def.abilities[ability_idx + 1],
+                )
+            {
+                output.push(format!("Static ability {}: {permission}", ability_idx + 1));
                 ability_idx += 2;
                 continue;
             }
@@ -4301,14 +7264,6 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let additional_costs = def.additional_non_mana_costs();
     if !additional_costs.is_empty() {
         let additional_cost_text = describe_additional_costs(&additional_costs);
-        let additional_cost_lower = additional_cost_text.to_ascii_lowercase();
-        // Only the explicit optional keyword is Blight. A mandatory printed
-        // "put a -1/-1 counter" additional cost must stay mandatory.
-        let additional_cost_text = if additional_cost_lower == "you may blight 1" {
-            "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
-        } else {
-            additional_cost_text
-        };
         out.push(format!(
             "As an additional cost to cast this spell, {}",
             lowercase_first(&additional_cost_text)
@@ -4412,6 +7367,37 @@ fn static_display_with_id(
     })
 }
 
+fn structural_static_effect_filter(
+    ability: &Ability,
+    expected_id: crate::static_abilities::StaticAbilityId,
+) -> Option<&ObjectFilter> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    if static_ability.id() != expected_id {
+        return None;
+    }
+    match &static_ability.compiled_model()?.payload {
+        ironsmith_core::StaticAbilityPayload::Anthem(anthem)
+            if expected_id == crate::static_abilities::StaticAbilityId::Anthem =>
+        {
+            anthem.filter.as_ref()
+        }
+        ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter)
+            if expected_id
+                == crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter =>
+        {
+            Some(filter)
+        }
+        ironsmith_core::StaticAbilityPayload::SetColors { filter, .. }
+            if expected_id == crate::static_abilities::StaticAbilityId::SetColors =>
+        {
+            Some(filter)
+        }
+        _ => None,
+    }
+}
+
 fn static_bundle_subjects_match(first: &str, next: &str) -> bool {
     if first.eq_ignore_ascii_case(next) {
         return true;
@@ -4447,6 +7433,262 @@ fn render_static_bundle_list(items: &[String]) -> String {
             let (last, leading) = items.split_last().expect("nonempty static bundle list");
             format!("{}, and {last}", leading.join(", "))
         }
+    }
+}
+
+fn unwrapped_static_model(
+    ability: &crate::static_abilities::StaticAbility,
+) -> Option<(
+    &crate::static_abilities::CompiledStaticAbility,
+    Option<&Condition>,
+)> {
+    let model = ability.compiled_model()?;
+    match &model.payload {
+        ironsmith_core::StaticAbilityPayload::Conditional {
+            ability: inner,
+            condition,
+        } => Some((inner, Some(condition))),
+        _ => Some((model, None)),
+    }
+}
+
+fn describe_iterated_animation_value(value: &Value) -> Option<String> {
+    match value.unhinted() {
+        Value::ManaValueOf(value_spec) if matches!(value_spec.base(), ChooseSpec::Iterated) => {
+            Some("its mana value".to_string())
+        }
+        Value::CountersOn(value_spec, Some(counter_type))
+            if matches!(value_spec.base(), ChooseSpec::Iterated) =>
+        {
+            Some(format!(
+                "the number of {} counters on it",
+                counter_type.description()
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Recombine the layer-correct pieces of a permanent type animation. The
+/// compiler intentionally lowers type-setting, dynamic base P/T, and optional
+/// ability removal separately; this renderer rejoins them only when their
+/// typed filters, conditions, and per-object values prove they are one clause.
+fn describe_structural_dynamic_animation_bundle(abilities: &[Ability]) -> Option<(String, usize)> {
+    let first = abilities.first()?;
+    let AbilityKind::Static(first_static) = &first.kind else {
+        return None;
+    };
+    let has_remove =
+        first_static.id() == crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter;
+    let (remove_ability, set_types_ability, base_pt_ability, consumed) = if has_remove {
+        (Some(first), abilities.get(1)?, abilities.get(2)?, 3usize)
+    } else {
+        (None, first, abilities.get(1)?, 2usize)
+    };
+    if first.functional_zones.as_slice() != [Zone::Battlefield]
+        || set_types_ability.functional_zones != first.functional_zones
+        || base_pt_ability.functional_zones != first.functional_zones
+    {
+        return None;
+    }
+
+    let AbilityKind::Static(set_types_static) = &set_types_ability.kind else {
+        return None;
+    };
+    let AbilityKind::Static(base_pt_static) = &base_pt_ability.kind else {
+        return None;
+    };
+    if set_types_static.id() != crate::static_abilities::StaticAbilityId::SetCardTypes
+        || base_pt_static.id()
+            != crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter
+    {
+        return None;
+    }
+
+    let (set_types_model, set_condition) = unwrapped_static_model(set_types_static)?;
+    let (base_pt_model, base_pt_condition) = unwrapped_static_model(base_pt_static)?;
+    let ironsmith_core::StaticAbilityPayload::SetCardTypes {
+        filter: set_types_filter,
+        card_types,
+    } = &set_types_model.payload
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
+        filter: base_pt_filter,
+        power,
+        toughness,
+    } = &base_pt_model.payload
+    else {
+        return None;
+    };
+    if set_types_filter != base_pt_filter
+        || set_condition != base_pt_condition
+        || power != toughness
+        || card_types.is_empty()
+        || !card_types.contains(&CardType::Creature)
+    {
+        return None;
+    }
+    let value = describe_iterated_animation_value(power)?;
+
+    let set_types_display =
+        crate::static_abilities::StaticAbility::from_model(set_types_model.clone()).display();
+    let (subject, type_phrase, type_verb) =
+        split_static_predicate_with_verb(&set_types_display, &[" is ", " are "])?;
+    if type_verb != "is" {
+        return None;
+    }
+
+    let remove_subject = if let Some(remove_ability) = remove_ability {
+        let AbilityKind::Static(remove_static) = &remove_ability.kind else {
+            return None;
+        };
+        let (remove_model, remove_condition) = unwrapped_static_model(remove_static)?;
+        let ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(remove_filter) =
+            &remove_model.payload
+        else {
+            return None;
+        };
+        if remove_filter != set_types_filter || remove_condition != set_condition {
+            return None;
+        }
+        let remove_display =
+            crate::static_abilities::StaticAbility::from_model(remove_model.clone()).display();
+        let remove_subject = remove_display
+            .strip_suffix(" lose all abilities")
+            .or_else(|| remove_display.strip_suffix(" loses all abilities"))?;
+        static_bundle_subjects_match(subject, remove_subject).then(|| remove_subject.to_string())?
+    } else {
+        subject.to_string()
+    };
+
+    let predicate =
+        format!("{type_verb} {type_phrase} with power and toughness each equal to {value}");
+    let text = match set_condition {
+        Some(Condition::Not(inner)) => {
+            let Condition::AttachedToSourceMatches(match_filter) = inner.as_ref() else {
+                return None;
+            };
+            if has_remove {
+                return None;
+            }
+            let excluded = describe_simple_attached_match(match_filter)?;
+            format!(
+                "As long as {} isn't {excluded}, it's {type_phrase} with power and toughness each equal to {value}",
+                lowercase_first(subject),
+            )
+        }
+        Some(_) => return None,
+        None if has_remove => {
+            format!("{remove_subject} loses all abilities and {predicate}")
+        }
+        None => format!("{subject} {predicate}"),
+    };
+    Some((text, consumed))
+}
+
+#[cfg(test)]
+mod dynamic_animation_bundle_tests {
+    use super::*;
+
+    fn set_each_surface(filter: &mut ObjectFilter) {
+        filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+    }
+
+    fn modeled(model: crate::static_abilities::CompiledStaticAbility) -> Ability {
+        Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    #[test]
+    fn animate_artifact_rejoins_conditional_type_and_dynamic_pt_layers() {
+        let filter = ObjectFilter::artifact().match_tagged(
+            "enchanted",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let condition = Condition::Not(Box::new(Condition::AttachedToSourceMatches(
+            ObjectFilter::creature(),
+        )));
+        let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+        let set_types: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::set_card_types(
+                filter.clone(),
+                vec![CardType::Artifact, CardType::Creature],
+            )
+            .with_condition(condition.clone());
+        let set_pt: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::set_base_power_toughness_value(
+                filter,
+                mana_value.clone(),
+                mana_value,
+            )
+            .with_condition(condition);
+        let abilities = vec![modeled(set_types), modeled(set_pt)];
+
+        assert_eq!(
+            describe_structural_dynamic_animation_bundle(&abilities),
+            Some((
+                "As long as enchanted artifact isn't a creature, it's an artifact creature with power and toughness each equal to its mana value"
+                    .to_string(),
+                2,
+            )),
+        );
+    }
+
+    #[test]
+    fn march_rejoins_type_and_per_artifact_mana_value_layers() {
+        let mut filter = ObjectFilter::artifact().without_type(CardType::Creature);
+        set_each_surface(&mut filter);
+        let mana_value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+        let set_types: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::set_card_types(
+                filter.clone(),
+                vec![CardType::Artifact, CardType::Creature],
+            );
+        let set_pt: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::set_base_power_toughness_value(
+                filter,
+                mana_value.clone(),
+                mana_value,
+            );
+        let abilities = vec![modeled(set_types), modeled(set_pt)];
+
+        assert_eq!(
+            describe_structural_dynamic_animation_bundle(&abilities),
+            Some((
+                "Each noncreature artifact is an artifact creature with power and toughness each equal to its mana value"
+                    .to_string(),
+                2,
+            )),
+        );
+    }
+
+    #[test]
+    fn spark_rupture_rejoins_ability_loss_type_and_counter_value_layers() {
+        let mut filter = ObjectFilter::planeswalker().with_counter_type(CounterType::Loyalty);
+        set_each_surface(&mut filter);
+        filter.set_counter_requirement_surface(true, true, false);
+        let loyalty = Value::CountersOn(Box::new(ChooseSpec::Iterated), Some(CounterType::Loyalty));
+        let remove: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::remove_all_abilities(filter.clone());
+        let set_types: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::set_card_types(filter.clone(), vec![CardType::Creature]);
+        let set_pt: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::set_base_power_toughness_value(
+                filter,
+                loyalty.clone(),
+                loyalty,
+            );
+        let abilities = vec![modeled(remove), modeled(set_types), modeled(set_pt)];
+
+        assert_eq!(
+            describe_structural_dynamic_animation_bundle(&abilities),
+            Some((
+                "Each planeswalker with one or more loyalty counters on it loses all abilities and is a creature with power and toughness each equal to the number of loyalty counters on it"
+                    .to_string(),
+                3,
+            )),
+        );
     }
 }
 
@@ -4500,7 +7742,8 @@ fn describe_structural_modifier_type_addition_bundle(
                 }
                 removes_all_other_abilities = true;
             }
-            crate::static_abilities::StaticAbilityId::GrantAbility => {
+            crate::static_abilities::StaticAbilityId::GrantAbility
+            | crate::static_abilities::StaticAbilityId::GrantObjectAbilityForFilter => {
                 if saw_type_addition {
                     break;
                 }
@@ -4544,9 +7787,7 @@ fn describe_structural_modifier_type_addition_bundle(
                 {
                     (
                         tail.strip_suffix(" in addition to its other colors")
-                            .or_else(|| {
-                                tail.strip_suffix(" in addition to their other colors")
-                            })?,
+                            .or_else(|| tail.strip_suffix(" in addition to their other colors"))?,
                         true,
                     )
                 } else {
@@ -4618,9 +7859,7 @@ fn describe_structural_modifier_type_addition_bundle(
     );
 
     let text = if grant_items.is_empty() && removes_all_other_abilities {
-        format!(
-            "{subject} {first_predicate}, loses all other abilities, and {type_predicate}"
-        )
+        format!("{subject} {first_predicate}, loses all other abilities, and {type_predicate}")
     } else if grant_items.is_empty() {
         format!("{subject} {first_predicate} and {type_predicate}")
     } else {
@@ -4634,9 +7873,7 @@ fn describe_structural_modifier_type_addition_bundle(
                 "{subject} {first_predicate} and {grant_predicate}. It's {descriptor} in addition to its other types"
             )
         } else {
-            format!(
-                "{subject} {first_predicate}, {grant_predicate}, and {type_predicate}"
-            )
+            format!("{subject} {first_predicate}, {grant_predicate}, and {type_predicate}")
         }
     };
     Some((text, consumed))
@@ -4665,22 +7902,19 @@ fn static_subject_for_attached_transform_piece(ability: &Ability) -> Option<Stri
 /// Attached characteristic-setting lines lower into independent layer-correct
 /// static abilities. Preserve the authored line on SetCardTypes and consume the
 /// adjacent pieces only when their subjects prove they belong to that line.
-fn describe_authored_attached_transform_bundle(
-    abilities: &[Ability],
-) -> Option<(String, usize)> {
+fn describe_authored_attached_transform_bundle(abilities: &[Ability]) -> Option<(String, usize)> {
     let first_static = match &abilities.first()?.kind {
         AbilityKind::Static(static_ability) => static_ability,
         _ => return None,
     };
-    let (set_idx, grant_tail) = if first_static.id()
-        == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant
-    {
-        let display = first_static.display();
-        let (_, tail) = split_static_predicate(&display, " has ")?;
-        (1usize, Some(tail.to_string()))
-    } else {
-        (0usize, None)
-    };
+    let (set_idx, grant_tail) =
+        if first_static.id() == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant {
+            let display = first_static.display();
+            let (_, tail) = split_static_predicate(&display, " has ")?;
+            (1usize, Some(tail.to_string()))
+        } else {
+            (0usize, None)
+        };
 
     let AbilityKind::Static(set_types) = &abilities.get(set_idx)?.kind else {
         return None;
@@ -4700,8 +7934,7 @@ fn describe_authored_attached_transform_bundle(
     }
 
     let set_display = set_types.display();
-    let (subject, _, _) =
-        split_static_predicate_with_verb(&set_display, &[" is ", " are "])?;
+    let (subject, _, _) = split_static_predicate_with_verb(&set_display, &[" is ", " are "])?;
     let mut consumed = set_idx + 1;
     while let Some(next) = abilities.get(consumed) {
         let Some(next_subject) = static_subject_for_attached_transform_piece(next) else {
@@ -4765,8 +7998,17 @@ fn describe_structural_enchanted_combat_activation_restriction_bundle(
     if combat_condition.is_some() {
         return None;
     }
-    let crate::effect::Restriction::AttackOrBlock(combat_filter) = combat_restriction else {
-        return None;
+    let (combat_filter, combat_predicate, connector) = match combat_restriction {
+        crate::effect::Restriction::AttackOrBlock(filter) => {
+            (filter, "can't attack or block", ", and")
+        }
+        crate::effect::Restriction::Block(filter) => (filter, "can't block", ", and"),
+        crate::effect::Restriction::Untap(filter) => (
+            filter,
+            "doesn't untap during its controller's untap step",
+            " and",
+        ),
+        _ => return None,
     };
 
     let AbilityKind::Static(activation_static) = &activation_ability.kind else {
@@ -4789,7 +8031,7 @@ fn describe_structural_enchanted_combat_activation_restriction_bundle(
     let subject_lower = subject.to_ascii_lowercase();
     if !restriction_display_matches(
         combat_display,
-        &format!("{subject_lower} can't attack or block"),
+        &format!("{subject_lower} {combat_predicate}"),
     ) || !restriction_display_matches(
         activation_display,
         &format!("{subject_lower} activated abilities can't be activated"),
@@ -4798,7 +8040,9 @@ fn describe_structural_enchanted_combat_activation_restriction_bundle(
     }
 
     Some((
-        format!("{subject} can't attack or block, and its activated abilities can't be activated"),
+        format!(
+            "{subject} {combat_predicate}{connector} its activated abilities can't be activated"
+        ),
         2,
     ))
 }
@@ -4972,6 +8216,22 @@ fn describe_structural_anthem_remove_all_abilities_bundle(
     let [anthem_ability, remove_abilities_ability, ..] = abilities else {
         return None;
     };
+    if anthem_ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || remove_abilities_ability.functional_zones != anthem_ability.functional_zones
+    {
+        return None;
+    }
+    let anthem_filter = structural_static_effect_filter(
+        anthem_ability,
+        crate::static_abilities::StaticAbilityId::Anthem,
+    )?;
+    let remove_filter = structural_static_effect_filter(
+        remove_abilities_ability,
+        crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter,
+    )?;
+    if anthem_filter != remove_filter {
+        return None;
+    }
     let anthem = static_display_with_id(
         anthem_ability,
         crate::static_abilities::StaticAbilityId::Anthem,
@@ -4981,13 +8241,59 @@ fn describe_structural_anthem_remove_all_abilities_bundle(
         crate::static_abilities::StaticAbilityId::RemoveAllAbilitiesForFilter,
     )?;
     let (subject, modifier) = split_static_predicate(&anthem, " gets ")?;
-    let remove_subject = remove_abilities.strip_suffix(" lose all abilities")?.trim();
-    if remove_subject != subject {
+    let remove_subject = remove_abilities
+        .strip_suffix(" loses all abilities")
+        .or_else(|| remove_abilities.strip_suffix(" lose all abilities"))?
+        .trim();
+    if !static_bundle_subjects_match(subject, remove_subject) {
         return None;
     }
 
     Some((
         format!("{subject} gets {modifier} and loses all abilities"),
+        2,
+    ))
+}
+
+fn describe_structural_anthem_set_colors_bundle(abilities: &[Ability]) -> Option<(String, usize)> {
+    let [anthem_ability, set_colors_ability, ..] = abilities else {
+        return None;
+    };
+    if anthem_ability.functional_zones.as_slice() != [Zone::Battlefield]
+        || set_colors_ability.functional_zones != anthem_ability.functional_zones
+    {
+        return None;
+    }
+    let anthem_filter = structural_static_effect_filter(
+        anthem_ability,
+        crate::static_abilities::StaticAbilityId::Anthem,
+    )?;
+    let color_filter = structural_static_effect_filter(
+        set_colors_ability,
+        crate::static_abilities::StaticAbilityId::SetColors,
+    )?;
+    if anthem_filter != color_filter {
+        return None;
+    }
+
+    let anthem = static_display_with_id(
+        anthem_ability,
+        crate::static_abilities::StaticAbilityId::Anthem,
+    )?;
+    let set_colors = static_display_with_id(
+        set_colors_ability,
+        crate::static_abilities::StaticAbilityId::SetColors,
+    )?;
+    let (subject, modifier, get_verb) =
+        split_static_predicate_with_verb(&anthem, &[" gets ", " get "])?;
+    let (color_subject, color, is_verb) =
+        split_static_predicate_with_verb(&set_colors, &[" is ", " are "])?;
+    if !static_bundle_subjects_match(subject, color_subject) {
+        return None;
+    }
+
+    Some((
+        format!("{subject} {get_verb} {modifier} and {is_verb} {color}"),
         2,
     ))
 }
@@ -5339,7 +8645,7 @@ fn describe_structural_station_keyword(ability: &Ability) -> Option<&'static str
         return None;
     }
 
-    let costs = activated.mana_cost.costs();
+    let costs = activated.mana_cost.as_all()?;
     if !costs.iter().any(station_cost_chooses_tap_cost_creature)
         || !costs.iter().any(station_cost_taps_chosen_creature)
     {
@@ -5471,8 +8777,11 @@ fn ability_precedes_spell_resolution(ability: &Ability) -> bool {
     matches!(
         &ability.kind,
         AbilityKind::Static(static_ability)
-            if static_ability.id()
-                == crate::static_abilities::StaticAbilityId::MakeColorless
+            if matches!(
+                static_ability.id(),
+                crate::static_abilities::StaticAbilityId::MakeColorless
+                    | crate::static_abilities::StaticAbilityId::CantBeCountered
+            )
     )
 }
 
@@ -5497,6 +8806,61 @@ fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -
         && !choose.reveal
         && !choose.top_only
         && !choose.replace_tagged_objects
+}
+
+#[cfg(test)]
+mod counter_linked_cross_segment_rendering_tests {
+    use super::*;
+
+    #[test]
+    fn adjacent_counter_and_grant_segments_retain_the_typed_object_subject() {
+        for (filter, object_kind) in [
+            (ObjectFilter::land(), "land"),
+            (ObjectFilter::creature(), "creature"),
+        ] {
+            let target_tag = TagKey::from("targeted_0");
+            let put = Effect::new(crate::effects::PutCountersEffect::new(
+                CounterType::Named("test"),
+                Value::Fixed(1),
+                ChooseSpec::target(ChooseSpec::Object(filter)),
+            ))
+            .tag(target_tag.clone());
+            let granted_trigger = crate::ability::Ability::triggered(
+                crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),
+                vec![Effect::deal_damage(
+                    Value::Fixed(1),
+                    ChooseSpec::Player(PlayerFilter::You),
+                )],
+            );
+            let grant = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                ChooseSpec::Tagged(target_tag),
+                crate::continuous::Modification::AddAbilityGeneric(granted_trigger),
+                Until::ForAsLongAs(
+                    ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                        CounterType::Named("test"),
+                    ),
+                ),
+            ))
+            .tag("granted_0");
+            let program = crate::resolution::ResolutionProgram::new(vec![
+                crate::resolution::ResolutionSegment::from_effects(vec![put]),
+                crate::resolution::ResolutionSegment::from_effects(vec![grant]),
+            ]);
+
+            let rendered = describe_resolution_program(&program);
+            assert!(
+                rendered.contains(&format!(
+                    "For as long as that {object_kind} has a test counter on it"
+                )),
+                "{rendered}"
+            );
+            assert!(
+                rendered.contains(&format!("this {object_kind} deals 1 damage to you")),
+                "{rendered}"
+            );
+            assert!(!rendered.contains("For as long as it has"), "{rendered}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -5538,6 +8902,57 @@ mod self_replacement_rendering_tests {
         ));
         branch.condition_after_replacement = condition_after_replacement;
         branch
+    }
+
+    #[test]
+    fn morbid_discard_replacement_keeps_reveal_choice_discard_inline() {
+        let player = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any));
+        let chosen = TagKey::from("chosen_hand_cards");
+        let look = Effect::new(crate::effects::LookAtHandEffect::reveal(
+            ChooseSpec::Player(player.clone()),
+        ));
+        let choose = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                ObjectFilter::default()
+                    .in_zone(Zone::Hand)
+                    .owned_by(player.clone()),
+                ChoiceCount::exactly(2),
+                PlayerFilter::You,
+                chosen.clone(),
+            )
+            .in_zone(Zone::Hand),
+        );
+        let chosen_filter = ObjectFilter::tagged(chosen.clone());
+        let discard = Effect::new(crate::effects::DiscardEffect::new_with_filter(
+            Value::Count(chosen_filter.clone()),
+            player,
+            false,
+            Some(chosen_filter),
+        ));
+        let branch = crate::resolution::SelfReplacementBranch::new(
+            Condition::CreatureDiedThisTurn,
+            vec![look, choose, discard],
+        )
+        .with_presentation_label(Some(
+            crate::ability::PresentationLabel::from_ability_word("Morbid"),
+        ));
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::new(crate::effects::DiscardEffect::new(
+                Value::Fixed(2),
+                PlayerFilter::target_player(),
+                false,
+            ))],
+            self_replacements: vec![branch],
+        };
+
+        let rendered = describe_single_self_replacement_segment(&segment)
+            .expect("typed hand replacement should render");
+        let rendered =
+            apply_self_replacement_presentation_label(&segment.self_replacements[0], rendered);
+        assert_eq!(
+            rendered,
+            "Target player discards two cards. Morbid — If a creature died this turn, instead that player reveals their hand, you choose two cards from it, then that player discards those cards"
+        );
     }
 
     #[test]
@@ -5602,6 +9017,43 @@ mod self_replacement_rendering_tests {
             Some(
                 "Deal 1 damage to each creature and each player. If you control a snow Swamp, deal 2 damage to each creature and each player instead"
             )
+        );
+    }
+
+    #[test]
+    fn trailing_damage_replacement_reuses_typed_source_and_target() {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+        let replacement = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+            ChooseSpec::Source,
+            Effect::deal_damage(Value::Fixed(4), target.clone()),
+        ));
+        let mut branch = crate::resolution::SelfReplacementBranch::new(
+            Condition::ThisSpellPaidLabel(crate::cost::OptionalCostKind::Additional.into()),
+            vec![replacement],
+        );
+        branch.condition_after_replacement = true;
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::deal_damage(Value::Fixed(2), target.clone())],
+            self_replacements: vec![branch],
+        };
+
+        assert_eq!(
+            describe_single_self_replacement_segment(&segment).as_deref(),
+            Some(
+                "Deal 2 damage to target creature. It deals 4 damage to that creature instead if this spell's additional cost was paid"
+            )
+        );
+
+        let mut mismatched_source = segment;
+        mismatched_source.self_replacements[0].replacement_effects =
+            vec![Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                ChooseSpec::Tagged(TagKey::from("other_source")),
+                Effect::deal_damage(Value::Fixed(4), target),
+            ))];
+        assert_eq!(
+            describe_trailing_same_source_damage_self_replacement(&mismatched_source),
+            None,
+            "an unrelated explicit damage source must not collapse to the pronoun `It`"
         );
     }
 
@@ -5689,6 +9141,39 @@ mod self_replacement_rendering_tests {
     }
 
     #[test]
+    fn addendum_scry_then_same_draw_keeps_leading_instead_and_imperative_draw() {
+        let mut branch = crate::resolution::SelfReplacementBranch::new(
+            Condition::ThisSpellPaidLabel("CastDuringYourMainPhase".into()),
+            vec![Effect::scry(Value::Fixed(3)), Effect::draw(Value::Fixed(3))],
+        )
+        .with_presentation_label(Some(
+            crate::ability::PresentationLabel::from_ability_word("Addendum"),
+        ));
+        branch.condition_after_replacement = false;
+        let segment = crate::resolution::ResolutionSegment {
+            default_effects: vec![Effect::draw(Value::Fixed(3))],
+            self_replacements: vec![branch],
+        };
+
+        let rendered = describe_single_self_replacement_segment(&segment)
+            .expect("typed scry/draw replacement should render");
+        let rendered =
+            apply_self_replacement_presentation_label(&segment.self_replacements[0], rendered);
+        assert_eq!(
+            rendered,
+            "Draw three cards. Addendum — If you cast this spell during your main phase, instead scry 3, then draw three cards"
+        );
+
+        let mut mismatched = segment.clone();
+        mismatched.self_replacements[0].replacement_effects[1] = Effect::draw(Value::Fixed(2));
+        assert_eq!(
+            describe_scry_then_same_draw_self_replacement(&mismatched),
+            None,
+            "a replacement that changes the draw count must not use the same-draw surface"
+        );
+    }
+
+    #[test]
     fn labeled_replacement_preserves_trailing_condition_surface() {
         let rendered = apply_self_replacement_presentation_label(
             &labeled_branch("Metalcraft", true),
@@ -5717,6 +9202,31 @@ mod keyword_surface_merge_tests {
     use super::*;
 
     #[test]
+    fn named_partner_with_stays_separate_from_adjacent_intrinsic_keyword() {
+        let merged = merge_adjacent_keyword_surface_lines(vec![
+            "Keyword ability 0: Partner with Krav, the Unredeemed".to_string(),
+            "Keyword ability 2: Flying".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Keyword ability 0: Partner with Krav, the Unredeemed".to_string(),
+                "Keyword ability 2: Flying".to_string(),
+            ]
+        );
+
+        let intrinsic = merge_adjacent_keyword_surface_lines(vec![
+            "Keyword ability 0: Flying".to_string(),
+            "Keyword ability 1: Menace".to_string(),
+        ]);
+        assert_eq!(
+            intrinsic,
+            vec!["Keyword ability 0: Flying, menace".to_string()]
+        );
+    }
+
+    #[test]
     fn parameterized_keyword_marker_stays_separate_from_intrinsic_keyword() {
         let merged = merge_adjacent_keyword_surface_lines(vec![
             "Static ability 0: Mutate {4}{B}".to_string(),
@@ -5733,6 +9243,36 @@ mod keyword_surface_merge_tests {
     }
 
     #[test]
+    fn annihilator_stays_on_its_own_keyword_line() {
+        let merged = merge_adjacent_keyword_surface_lines(vec![
+            "Keyword ability 0: Annihilator 2".to_string(),
+            "Keyword ability 1: trample".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Keyword ability 0: Annihilator 2".to_string(),
+                "Keyword ability 1: trample".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn trailing_annihilator_finishes_an_intrinsic_keyword_list() {
+        let merged = merge_adjacent_keyword_surface_lines(vec![
+            "Keyword ability 0: Trample".to_string(),
+            "Keyword ability 1: haste".to_string(),
+            "Static ability 2: Annihilator 1".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec!["Keyword ability 0: Trample, haste, annihilator 1".to_string()]
+        );
+    }
+
+    #[test]
     fn adjacent_singular_protection_grants_keep_has_and_compact_colors() {
         let merged = merge_adjacent_keyword_surface_lines(vec![
             "Static ability 0: Equipped creature has protection from green".to_string(),
@@ -5745,6 +9285,215 @@ mod keyword_surface_merge_tests {
                 "Static ability 0: Equipped creature has protection from green and from blue"
                     .to_string()
             ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod keyword_condition_ladder_tests {
+    use super::*;
+
+    fn keyword_model(
+        id: crate::static_abilities::StaticAbilityId,
+        label: &str,
+    ) -> crate::static_abilities::CompiledStaticAbility {
+        ironsmith_core::StaticAbility {
+            id: Some(id),
+            label: label.to_string(),
+            payload: ironsmith_core::StaticAbilityPayload::None,
+        }
+    }
+
+    fn count_condition(filter: ObjectFilter, display: impl Into<String>) -> Condition {
+        Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+            comparison: Comparison::GreaterThanOrEqual(1),
+            display: Some(display.into()),
+        }
+    }
+
+    fn modeled_keyword_grant(
+        id: crate::static_abilities::StaticAbilityId,
+        label: &str,
+        condition: Condition,
+    ) -> Ability {
+        let granted = ironsmith_core::Ability {
+            kind: ironsmith_core::AbilityKind::Static(keyword_model(id, label)),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        let grant = ironsmith_core::GrantObjectAbilityForFilter::new(
+            ObjectFilter::source(),
+            granted,
+            label,
+        )
+        .with_condition(condition);
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::new(grant);
+        Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    fn keyword_condition_filter(id: crate::static_abilities::StaticAbilityId) -> ObjectFilter {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.static_abilities.push(id);
+        filter
+    }
+
+    fn modeled_source_anthem(power: i32, toughness: i32, condition: Condition) -> Ability {
+        let anthem = ironsmith_core::Anthem::for_source(power, toughness).with_condition(condition);
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::new(anthem);
+        Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    fn basic_land_condition(subtype: Subtype, article: &str) -> Condition {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(PlayerFilter::You);
+        filter.subtypes.push(subtype);
+        count_condition(filter, format!("you control {article}"))
+    }
+
+    #[test]
+    fn complete_typed_keyword_ladder_uses_same_is_true_surface() {
+        use crate::static_abilities::StaticAbilityId::{Flying, Haste, Vigilance};
+
+        let abilities = vec![
+            modeled_keyword_grant(
+                Flying,
+                "flying",
+                count_condition(
+                    keyword_condition_filter(Flying),
+                    "there is a card exiled with it with flying",
+                ),
+            ),
+            modeled_keyword_grant(
+                Haste,
+                "haste",
+                count_condition(
+                    keyword_condition_filter(Haste),
+                    "there is a card exiled with it with haste",
+                ),
+            ),
+            modeled_keyword_grant(
+                Vigilance,
+                "vigilance",
+                count_condition(
+                    keyword_condition_filter(Vigilance),
+                    "there is a card exiled with it with vigilance",
+                ),
+            ),
+        ];
+
+        assert_eq!(
+            describe_structural_keyword_same_is_true_ladder(&abilities, "this creature"),
+            Some((
+                "As long as a card exiled with it has flying, this creature has flying. The same is true for haste and vigilance"
+                    .to_string(),
+                3,
+            )),
+        );
+    }
+
+    #[test]
+    fn concatenated_or_mismatched_keyword_conditions_are_not_hidden() {
+        use crate::static_abilities::StaticAbilityId::{Flying, Haste, Vigilance};
+
+        let flying = count_condition(
+            keyword_condition_filter(Flying),
+            "there is a card exiled with it with flying",
+        );
+        let malformed = Condition::And(
+            Box::new(flying),
+            Box::new(count_condition(
+                keyword_condition_filter(Haste),
+                "there is a card exiled with it with haste",
+            )),
+        );
+        let abilities = vec![
+            modeled_keyword_grant(Flying, "flying", malformed),
+            modeled_keyword_grant(
+                Haste,
+                "haste",
+                count_condition(
+                    keyword_condition_filter(Haste),
+                    "there is a card exiled with it with haste",
+                ),
+            ),
+            modeled_keyword_grant(
+                Vigilance,
+                "vigilance",
+                count_condition(
+                    keyword_condition_filter(Vigilance),
+                    "there is a card exiled with it with vigilance",
+                ),
+            ),
+        ];
+        assert_eq!(
+            describe_structural_keyword_same_is_true_ladder(&abilities, "this creature"),
+            None,
+        );
+
+        let wrong_filter = vec![
+            modeled_keyword_grant(
+                Flying,
+                "flying",
+                count_condition(
+                    keyword_condition_filter(Haste),
+                    "there is a card exiled with it with flying",
+                ),
+            ),
+            abilities[1].clone(),
+            abilities[2].clone(),
+        ];
+        assert_eq!(
+            describe_structural_keyword_same_is_true_ladder(&wrong_filter, "this creature"),
+            None,
+        );
+    }
+
+    #[test]
+    fn full_five_basic_land_modifier_ladder_compacts_to_one_sentence() {
+        use crate::static_abilities::StaticAbilityId::{FirstStrike, Flying, Trample};
+
+        let abilities = vec![
+            modeled_source_anthem(0, 2, basic_land_condition(Subtype::Plains, "a plains")),
+            modeled_keyword_grant(
+                Flying,
+                "flying",
+                basic_land_condition(Subtype::Island, "an island"),
+            ),
+            modeled_source_anthem(2, 0, basic_land_condition(Subtype::Swamp, "a swamp")),
+            modeled_keyword_grant(
+                FirstStrike,
+                "first strike",
+                basic_land_condition(Subtype::Mountain, "a mountain"),
+            ),
+            modeled_keyword_grant(
+                Trample,
+                "trample",
+                basic_land_condition(Subtype::Forest, "a forest"),
+            ),
+        ];
+
+        assert_eq!(
+            describe_structural_five_basic_land_modifier_ladder(&abilities, "this creature"),
+            Some((
+                "This creature gets +0/+2 as long as you control a plains, has flying as long as you control an island, gets +2/+0 as long as you control a swamp, has first strike as long as you control a mountain, and has trample as long as you control a forest"
+                    .to_string(),
+                5,
+            )),
+        );
+    }
+
+    #[test]
+    fn incomplete_basic_land_modifier_ladder_stays_explicit() {
+        let abilities = vec![modeled_source_anthem(
+            0,
+            2,
+            basic_land_condition(Subtype::Plains, "a plains"),
+        )];
+        assert_eq!(
+            describe_structural_five_basic_land_modifier_ladder(&abilities, "this creature"),
+            None,
         );
     }
 }
@@ -5884,9 +9633,10 @@ mod attached_anthem_bundle_tests {
     }
 
     #[test]
-    fn fresh_start_and_mystic_subdual_static_pieces_recombine() {
+    fn attached_pt_and_ability_loss_static_pieces_recombine() {
         for (power, expected) in [
             (-5, "Enchanted creature gets -5/-0 and loses all abilities"),
+            (-3, "Enchanted creature gets -3/-0 and loses all abilities"),
             (-2, "Enchanted creature gets -2/-0 and loses all abilities"),
         ] {
             let filter = enchanted_creature_filter();
@@ -5906,6 +9656,51 @@ mod attached_anthem_bundle_tests {
                 Some((expected.to_string(), 2)),
             );
         }
+    }
+
+    #[test]
+    fn attached_pt_and_set_color_static_pieces_recombine() {
+        let filter = enchanted_creature_filter();
+        let abilities = vec![
+            Ability::static_ability(crate::static_abilities::StaticAbility::anthem(
+                filter.clone(),
+                3,
+                1,
+            )),
+            Ability::static_ability(crate::static_abilities::StaticAbility::set_colors(
+                filter,
+                crate::color::ColorSet::BLACK,
+            )),
+        ];
+
+        assert_eq!(
+            describe_structural_anthem_set_colors_bundle(&abilities),
+            Some(("Enchanted creature gets +3/+1 and is black".to_string(), 2,)),
+        );
+    }
+
+    #[test]
+    fn attached_characteristic_bundles_require_identical_filters() {
+        let filter = enchanted_creature_filter();
+        let other_filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        let anthem =
+            Ability::static_ability(crate::static_abilities::StaticAbility::anthem(filter, 3, 1));
+        let remove = Ability::static_ability(
+            crate::static_abilities::StaticAbility::remove_all_abilities(other_filter.clone()),
+        );
+        let color = Ability::static_ability(crate::static_abilities::StaticAbility::set_colors(
+            other_filter,
+            crate::color::ColorSet::BLACK,
+        ));
+
+        assert_eq!(
+            describe_structural_anthem_remove_all_abilities_bundle(&[anthem.clone(), remove,]),
+            None,
+        );
+        assert_eq!(
+            describe_structural_anthem_set_colors_bundle(&[anthem, color]),
+            None,
+        );
     }
 }
 
@@ -6145,6 +9940,50 @@ mod enchanted_restriction_bundle_tests {
                 vec![format!("{expected}.")],
             );
         }
+
+        let creature = enchanted_filter("Enchanted creature");
+        let block_and_activation = vec![
+            modeled_rule_ability(
+                crate::effect::Restriction::block(creature.clone()),
+                "enchanted creature can't block",
+            ),
+            modeled_rule_ability(
+                crate::effect::Restriction::activate_abilities_of(creature),
+                "enchanted creature activated abilities can't be activated",
+            ),
+        ];
+        assert_eq!(
+            describe_structural_enchanted_combat_activation_restriction_bundle(
+                &block_and_activation,
+            ),
+            Some((
+                "Enchanted creature can't block, and its activated abilities can't be activated"
+                    .to_string(),
+                2,
+            )),
+        );
+
+        let permanent = enchanted_filter("Enchanted permanent");
+        let untap_and_activation = vec![
+            modeled_rule_ability(
+                crate::effect::Restriction::untap(permanent.clone()),
+                "enchanted permanent doesn't untap during its controller's untap step",
+            ),
+            modeled_rule_ability(
+                crate::effect::Restriction::activate_abilities_of(permanent),
+                "enchanted permanent activated abilities can't be activated",
+            ),
+        ];
+        assert_eq!(
+            describe_structural_enchanted_combat_activation_restriction_bundle(
+                &untap_and_activation,
+            ),
+            Some((
+                "Enchanted permanent doesn't untap during its controller's untap step and its activated abilities can't be activated"
+                    .to_string(),
+                2,
+            )),
+        );
     }
 
     #[test]
@@ -6230,6 +10069,154 @@ mod creature_aura_subject_tests {
             ),
             "At the beginning of the upkeep of enchanted permanent's controller"
         );
+
+        let mut creature_or_planeswalker = ObjectFilter::default().in_zone(Zone::Battlefield);
+        creature_or_planeswalker.card_types = vec![CardType::Creature, CardType::Planeswalker];
+        let creature_or_planeswalker =
+            crate::object::AuraAttachmentFilter::Object(creature_or_planeswalker);
+        assert_eq!(
+            rewrite_plain_creature_aura_subject(
+                Some(&creature_or_planeswalker),
+                "When this Aura enters, tap enchanted creature and investigate"
+            ),
+            "When this Aura enters, tap enchanted permanent and investigate"
+        );
+    }
+}
+
+#[cfg(test)]
+mod threshold_source_modifier_bundle_tests {
+    use super::*;
+
+    fn threshold_abilities() -> Vec<Ability> {
+        crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Threshold Source Modifier Probe",
+        )
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Threshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target blue creature.\"",
+        )
+        .expect("threshold source modifier should parse")
+        .abilities
+    }
+
+    fn mutate_model(
+        ability: &mut Ability,
+        mutate: impl FnOnce(&mut crate::static_abilities::CompiledStaticAbility),
+    ) {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            panic!("expected static ability");
+        };
+        let mut model = static_ability
+            .compiled_model()
+            .expect("compiled static model")
+            .clone();
+        mutate(&mut model);
+        ability.kind =
+            AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
+    }
+
+    #[test]
+    fn exact_typed_threshold_siblings_recombine() {
+        let abilities = threshold_abilities();
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&abilities, "this creature"),
+            Some((
+                "Threshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{2}{B}, {T}: Destroy target blue creature.\""
+                    .to_string(),
+                3,
+            )),
+        );
+    }
+
+    #[test]
+    fn near_miss_threshold_siblings_stay_separate() {
+        let valid = threshold_abilities();
+
+        let mut wrong_anthem = valid.clone();
+        mutate_model(&mut wrong_anthem[0], |model| {
+            let ironsmith_core::StaticAbilityPayload::Anthem(anthem) = &mut model.payload else {
+                panic!("expected anthem payload");
+            };
+            anthem.power = ironsmith_core::AnthemValue::Fixed(2);
+        });
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&wrong_anthem, "this creature"),
+            None,
+        );
+
+        let mut wrong_condition = valid.clone();
+        mutate_model(&mut wrong_condition[1], |model| {
+            let ironsmith_core::StaticAbilityPayload::Conditional { condition, .. } =
+                &mut model.payload
+            else {
+                panic!("expected conditional color payload");
+            };
+            let Condition::ValueComparison { right, .. } = condition else {
+                panic!("expected threshold comparison");
+            };
+            *right = Value::Fixed(8);
+        });
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&wrong_condition, "this creature"),
+            None,
+        );
+
+        let mut wrong_color = valid.clone();
+        mutate_model(&mut wrong_color[1], |model| {
+            let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } =
+                &mut model.payload
+            else {
+                panic!("expected conditional color payload");
+            };
+            let ironsmith_core::StaticAbilityPayload::SetColors { colors, .. } =
+                &mut ability.payload
+            else {
+                panic!("expected set-colors payload");
+            };
+            *colors = crate::color::ColorSet::RED;
+        });
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&wrong_color, "this creature"),
+            None,
+        );
+
+        let mut wrong_filter = valid.clone();
+        mutate_model(&mut wrong_filter[2], |model| {
+            let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+                &mut model.payload
+            else {
+                panic!("expected object-ability grant payload");
+            };
+            grant.filter = ObjectFilter::creature();
+        });
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&wrong_filter, "this creature"),
+            None,
+        );
+
+        let mut multiple_grants = valid.clone();
+        mutate_model(&mut multiple_grants[2], |model| {
+            let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+                &mut model.payload
+            else {
+                panic!("expected object-ability grant payload");
+            };
+            let additional = grant.ability.clone();
+            grant.additional_abilities.push(additional);
+        });
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&multiple_grants, "this creature"),
+            None,
+        );
+
+        let mut wrong_zone = valid;
+        wrong_zone[1].functional_zones = vec![Zone::Hand];
+        assert_eq!(
+            describe_structural_threshold_source_modifier_bundle(&wrong_zone, "this creature"),
+            None,
+        );
     }
 }
 
@@ -6255,6 +10242,246 @@ mod prototype_surface_tests {
         assert!(
             lines.iter().skip(1).any(|line| line.ends_with("Haste")),
             "non-Prototype abilities should follow the Prototype frame line: {lines:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod counter_removal_prevention_surface_tests {
+    use super::*;
+
+    fn prevention_ability(
+        amount: Value,
+        follow_up: Option<ironsmith_core::CounterRemovalFollowUp>,
+    ) -> Ability {
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::prevent_damage_to_self_remove_counter_with_follow_up(
+                CounterType::PlusOnePlusOne,
+                amount,
+                follow_up,
+            )
+            .with_condition(Condition::CountComparison {
+                count: ironsmith_core::AnthemCountExpression::MatchingFilter(
+                    ObjectFilter::source().with_counter_type(CounterType::PlusOnePlusOne),
+                ),
+                comparison: Comparison::GreaterThanOrEqual(1),
+                display: Some("it has a +1/+1 counter on it".to_string()),
+            });
+        Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    #[test]
+    fn five_card_family_renders_inline_replacement_surface() {
+        let fixed = "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove a +1/+1 counter from it.";
+        let dynamic = "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage and remove that many +1/+1 counters from it.";
+        let bloatfly = "If damage would be dealt to this creature while it has a +1/+1 counter on it, prevent that damage, remove that many +1/+1 counters from it, then give each player a rad counter for each +1/+1 counter removed this way.";
+        let cases = [
+            ("Oathsworn Knight", Value::Fixed(1), None, fixed),
+            ("Undergrowth Champion", Value::Fixed(1), None, fixed),
+            (
+                "Ugin's Conjurant",
+                Value::EventValue(EventValueSpec::Amount),
+                None,
+                dynamic,
+            ),
+            (
+                "Magma Pummeler",
+                Value::EventValue(EventValueSpec::Amount),
+                None,
+                dynamic,
+            ),
+            (
+                "Bloatfly Swarm",
+                Value::EventValue(EventValueSpec::Amount),
+                Some(
+                    ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+                        counter_type: CounterType::Rad,
+                        counters_per_removed: 1,
+                    },
+                ),
+                bloatfly,
+            ),
+        ];
+
+        for (name, amount, follow_up, expected) in cases {
+            let definition =
+                crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+                    .card_types(vec![CardType::Creature])
+                    .with_ability(prevention_ability(amount, follow_up))
+                    .build();
+            assert_eq!(
+                crate::compiled_text::compiled_text_lines(&definition),
+                vec![expected.to_string()],
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn near_miss_condition_and_bare_payload_do_not_get_inline_surface() {
+        let mut mismatched = prevention_ability(Value::Fixed(1), None);
+        let AbilityKind::Static(static_ability) = &mut mismatched.kind else {
+            unreachable!();
+        };
+        let mut model = static_ability
+            .compiled_model()
+            .expect("compiled model")
+            .clone();
+        let ironsmith_core::StaticAbilityPayload::Conditional { condition, .. } =
+            &mut model.payload
+        else {
+            unreachable!();
+        };
+        *condition = Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::MatchingFilter(
+                ObjectFilter::source().with_counter_type(CounterType::Shield),
+            ),
+            comparison: Comparison::GreaterThanOrEqual(1),
+            display: Some("it has a shield counter on it".to_string()),
+        };
+        mismatched.kind =
+            AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
+        assert_eq!(
+            describe_structural_counter_removal_damage_prevention(&mismatched, "this creature"),
+            None
+        );
+
+        let mut non_source = prevention_ability(Value::Fixed(1), None);
+        let AbilityKind::Static(static_ability) = &mut non_source.kind else {
+            unreachable!();
+        };
+        let mut model = static_ability
+            .compiled_model()
+            .expect("compiled model")
+            .clone();
+        let ironsmith_core::StaticAbilityPayload::Conditional { condition, .. } =
+            &mut model.payload
+        else {
+            unreachable!();
+        };
+        *condition = Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::MatchingFilter(
+                ObjectFilter::creature().with_counter_type(CounterType::PlusOnePlusOne),
+            ),
+            comparison: Comparison::GreaterThanOrEqual(1),
+            display: Some("a creature has a +1/+1 counter on it".to_string()),
+        };
+        non_source.kind =
+            AbilityKind::Static(crate::static_abilities::StaticAbility::from_model(model));
+        assert_eq!(
+            describe_structural_counter_removal_damage_prevention(&non_source, "this creature"),
+            None
+        );
+
+        let bare_model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::prevent_damage_to_self_remove_counter(
+                CounterType::PlusOnePlusOne,
+                1,
+            );
+        let bare = Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
+            bare_model,
+        ));
+        assert_eq!(
+            describe_structural_counter_removal_damage_prevention(&bare, "this creature"),
+            None
+        );
+    }
+
+    fn removed_this_way_damage_ability(triggering_tag: &str, damage_source_tag: &str) -> Ability {
+        let trigger = crate::triggers::Trigger::new(
+            crate::triggers::CounterRemovedFromTrigger::new(ObjectFilter::source_with_surface(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                ),
+            ))
+            .one_or_more()
+            .caused_by_source(),
+        )
+        .with_intro_surface(crate::triggers::TriggerIntroSurface::When);
+        let amount = Value::EventValue(EventValueSpec::Amount)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay);
+        let effects = vec![
+            Effect::tag_triggering_object(TagKey::from(triggering_tag)),
+            Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                ChooseSpec::Tagged(TagKey::from(damage_source_tag)),
+                Effect::deal_damage(amount, ChooseSpec::AnyTarget),
+            )),
+        ];
+        let mut ability = Ability::triggered(trigger, effects);
+        let AbilityKind::Triggered(triggered) = &mut ability.kind else {
+            unreachable!();
+        };
+        triggered.choices = vec![ChooseSpec::AnyTarget];
+        ability
+    }
+
+    #[test]
+    fn removed_this_way_trigger_renders_event_amount_damage_to_any_target() {
+        let ability = removed_this_way_damage_ability("triggering", "triggering");
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Magma Pummeler Surface Probe",
+        )
+        .card_types(vec![CardType::Creature])
+        .with_ability(ability)
+        .build();
+
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec!["When one or more counters are removed from this creature this way, it deals that much damage to any target.".to_string()]
+        );
+    }
+
+    #[test]
+    fn removed_this_way_trigger_requires_the_tagged_triggering_object_as_damage_source() {
+        let mismatched = removed_this_way_damage_ability("triggering", "other");
+        assert_eq!(
+            describe_structural_counter_removed_this_way_damage_trigger(&mismatched),
+            None
+        );
+    }
+}
+
+#[cfg(test)]
+mod flashback_non_mana_cost_surface_tests {
+    use super::*;
+
+    fn sacrifice_creature_cost() -> crate::costs::Cost {
+        crate::costs::Cost::sacrifice(crate::filter::ObjectFilter::creature().you_control())
+    }
+
+    #[test]
+    fn effect_only_flashback_omits_invented_zero_mana_cost() {
+        let effect_only = AlternativeCastingMethod::Flashback {
+            total_cost: crate::cost::TotalCost::from_cost(sacrifice_creature_cost()),
+        };
+        assert_eq!(
+            describe_alternative_cast_line(&effect_only, 0),
+            "Flashback—Sacrifice a creature"
+        );
+    }
+
+    #[test]
+    fn explicit_zero_and_mixed_flashback_costs_keep_their_mana_surface() {
+        let explicit_zero = AlternativeCastingMethod::Flashback {
+            total_cost: crate::cost::TotalCost::free(),
+        };
+        assert_eq!(
+            describe_alternative_cast_line(&explicit_zero, 0),
+            "Flashback—{0}"
+        );
+
+        let mixed = AlternativeCastingMethod::Flashback {
+            total_cost: crate::cost::TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(crate::mana::ManaCost::from_symbols(vec![
+                    crate::mana::ManaSymbol::Generic(1),
+                ])),
+                sacrifice_creature_cost(),
+            ]),
+        };
+        assert_eq!(
+            describe_alternative_cast_line(&mixed, 0),
+            "Flashback—{1}, Sacrifice a creature"
         );
     }
 }

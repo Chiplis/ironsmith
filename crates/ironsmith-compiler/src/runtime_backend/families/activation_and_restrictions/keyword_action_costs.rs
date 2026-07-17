@@ -63,6 +63,7 @@ const MARKER_KEYWORD_FALLBACK_HEADS: &[&str] = &[
     "bestow",
     "dash",
     "overload",
+    "cleave",
     "soulshift",
     "adapt",
     "bolster",
@@ -95,6 +96,7 @@ const MARKER_KEYWORD_IDS: &[&str] = &[
     "bestow",
     "dash",
     "overload",
+    "cleave",
     "soulshift",
     "adapt",
     "bolster",
@@ -155,6 +157,7 @@ const COST_MARKER_KEYWORDS: &[&str] = &[
     "flashback",
     "foretell",
     "overload",
+    "cleave",
     "recover",
 ];
 const ECHO_MARKER_KEYWORD: &str = "echo";
@@ -212,6 +215,7 @@ const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("exalted", KeywordAction::Exalted),
     ("cascade", KeywordAction::Cascade),
     ("storm", KeywordAction::Storm),
+    ("gravestorm", KeywordAction::Gravestorm),
     ("demonstrate", KeywordAction::Demonstrate),
     ("rebound", KeywordAction::Rebound),
     ("ascend", KeywordAction::Ascend),
@@ -1062,6 +1066,14 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     if let Some(action) = parse_numeric_keyword_action(&words, "bushido", KeywordAction::Bushido) {
         return Some(action);
     }
+    if let Some(action) = parse_numeric_keyword_action(&words, "frenzy", KeywordAction::Frenzy) {
+        return Some(action);
+    }
+    if let Some(action) =
+        parse_numeric_keyword_action(&words, "poisonous", KeywordAction::Poisonous)
+    {
+        return Some(action);
+    }
     if let Some(action) =
         parse_numeric_keyword_action(&words, "bloodthirst", KeywordAction::Bloodthirst)
     {
@@ -1086,9 +1098,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
     if keyword_head_is(head, "dredge")
         && let Some(amount) = second
-        && parse_named_number(amount).is_some()
+        && let Some(amount) = parse_named_number(amount)
     {
-        return Some(KeywordAction::StaticMarkerText(format!("Dredge {amount}")));
+        return Some(KeywordAction::Dredge(amount));
     }
 
     // Crew appears as "Crew N" and is often followed by inline restrictions/reminder text.
@@ -1400,6 +1412,15 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         "overload",
         KeywordCostFallback::MarkerOrText,
         KeywordAction::Overload,
+    ) {
+        return Some(action);
+    }
+
+    if let Some(action) = parse_cost_keyword_action(
+        phrase_tokens,
+        "cleave",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Cleave,
     ) {
         return Some(action);
     }

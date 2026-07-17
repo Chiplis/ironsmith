@@ -111,6 +111,7 @@ pub(crate) enum KeywordLineKindCst {
     Squad,
     Splice,
     Transmute,
+    Transfigure,
     Entwine,
     Escalate,
     Eternalize,
@@ -181,6 +182,7 @@ pub(crate) struct ModalModeCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) point_cost: Option<u32>,
+    pub(crate) additional_mana_cost: Option<crate::mana::ManaCost>,
     pub(crate) effects_ast: Vec<EffectAst>,
 }
 
@@ -211,6 +213,7 @@ pub(crate) struct LevelItemCst {
 pub(crate) struct SagaChapterLineCst {
     pub(crate) info: LineInfo,
     pub(crate) chapters: Vec<u32>,
+    pub(crate) presentation_label: Option<String>,
     pub(crate) text: String,
     pub(crate) effects_ast: Vec<EffectAst>,
 }

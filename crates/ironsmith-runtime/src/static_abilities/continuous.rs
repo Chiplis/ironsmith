@@ -208,6 +208,52 @@ fn split_subject_suffix(subject: &str) -> (&str, &str) {
 }
 
 fn pluralized_subject_text(filter: &ObjectFilter) -> String {
+    if filter.has_relative_attachment_state_surface() && filter.any_of.len() == 2 {
+        let mut base_filter = None;
+        let mut attachments = Vec::new();
+        for branch in &filter.any_of {
+            let mut branch_base = branch.clone();
+            let Some(index) = branch_base
+                .tagged_constraints
+                .iter()
+                .position(|constraint| {
+                    constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                        && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                })
+            else {
+                attachments.clear();
+                break;
+            };
+            attachments.push(
+                branch_base
+                    .tagged_constraints
+                    .remove(index)
+                    .tag
+                    .as_str()
+                    .to_string(),
+            );
+            if base_filter
+                .as_ref()
+                .is_some_and(|base| base != &branch_base)
+            {
+                attachments.clear();
+                break;
+            }
+            base_filter = Some(branch_base);
+        }
+        if attachments.len() == 2
+            && attachments[0] != attachments[1]
+            && let Some(mut base) = base_filter
+        {
+            base.set_relative_attachment_state_surface(false);
+            return format!(
+                "{} that are {} or {}",
+                pluralized_subject_text(&base),
+                attachments[0],
+                attachments[1]
+            );
+        }
+    }
     let mut subject = subject_text(filter);
     if filter.has_relative_attachment_state_surface()
         && let Some(attachment) = filter.tagged_constraints.iter().find_map(|constraint| {
@@ -218,10 +264,7 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     {
         let without_article = strip_plural_subject_article(&subject);
         if let Some(base) = without_article.strip_prefix(&format!("{attachment} ")) {
-            return format!(
-                "{} that are {attachment}",
-                pluralize_subject_clause(base)
-            );
+            return format!("{} that are {attachment}", pluralize_subject_clause(base));
         }
     }
     if subject.starts_with("another ") {
@@ -504,13 +547,13 @@ fn grant_subject_with_set_quantifier(
     surface: Option<ironsmith_core::SetQuantifierSurface>,
 ) -> (String, bool) {
     match surface {
-        Some(ironsmith_core::SetQuantifierSurface::Each) => (
-            format!(
-                "Each {}",
-                lowercase_first_ascii(&strip_article(filter.description()))
-            ),
-            true,
-        ),
+        Some(ironsmith_core::SetQuantifierSurface::Each) => {
+            let mut subject = strip_article(filter.description());
+            if subject.starts_with("another ") {
+                subject = subject.replacen("another ", "other ", 1);
+            }
+            (format!("Each {}", lowercase_first_ascii(&subject)), true)
+        }
         Some(ironsmith_core::SetQuantifierSurface::All) => (
             format!("All {}", lowercase_first_ascii(&grant_subject_text(filter))),
             false,
@@ -694,7 +737,8 @@ fn subject_verb_and_possessive(subject: &str) -> (&'static str, &'static str) {
     let singular = subject.starts_with("enchanted ")
         || subject.starts_with("equipped ")
         || subject.starts_with("this ")
-        || subject.starts_with("that ");
+        || subject.starts_with("that ")
+        || subject.starts_with("Each ");
     if singular {
         ("is", "its")
     } else {
@@ -951,6 +995,13 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
 }
 
 fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Option<String> {
+    if let AnthemCountExpression::MatchingFilter(filter) = expr
+        && filter.zone == Some(Zone::Hand)
+        && matches!(filter.owner.as_ref(), Some(PlayerFilter::You))
+    {
+        return Some("card in your hand".to_string());
+    }
+
     if let AnthemCountExpression::MatchingFilter(filter) = expr
         && filter.zone == Some(Zone::Hand)
         && matches!(
@@ -1237,6 +1288,9 @@ fn describe_source_keyword_condition(filter: &ObjectFilter) -> Option<String> {
 }
 
 pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
+    if source_is_attacking_alone_condition(condition) {
+        return "as long as this creature is attacking alone".to_string();
+    }
     match condition {
         crate::ConditionExpr::And(_, _) => {
             let mut clauses = Vec::new();
@@ -1745,6 +1799,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::HasMoreLifeThanYou { .. } => {
                 "as long as that player is the monarch".to_string()
             }
+            crate::target::PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
             crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
@@ -1789,6 +1846,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::You => "as long as you have the initiative".to_string(),
             _ => "as long as that player has the initiative".to_string(),
         },
+        crate::ConditionExpr::PlayerHasCitysBlessing { player } => match player {
+            crate::target::PlayerFilter::You => {
+                "as long as you have the city's blessing".to_string()
+            }
+            _ => "as long as that player has the city's blessing".to_string(),
+        },
         crate::ConditionExpr::ActivationTiming(
             crate::ability::ActivationTiming::DuringYourTurn,
         ) => "during your turn".to_string(),
@@ -1823,6 +1886,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
 }
 
 fn describe_same_source_static_condition(condition: &crate::ConditionExpr) -> String {
+    if source_is_attacking_alone_condition(condition) {
+        return "as long as it's attacking alone".to_string();
+    }
     match condition {
         crate::ConditionExpr::SourceIsEquipped => "as long as it's equipped".to_string(),
         crate::ConditionExpr::SourceIsEnchanted => "as long as it's enchanted".to_string(),
@@ -1831,6 +1897,32 @@ fn describe_same_source_static_condition(condition: &crate::ConditionExpr) -> St
         crate::ConditionExpr::SourceIsUntapped => "as long as it's untapped".to_string(),
         other => describe_static_condition(other),
     }
+}
+
+fn source_is_attacking_alone_condition(condition: &crate::ConditionExpr) -> bool {
+    fn is_source_attacking(condition: &crate::ConditionExpr) -> bool {
+        matches!(condition, crate::ConditionExpr::SourceIsAttacking)
+    }
+
+    fn counts_exactly_one_attacking_creature(condition: &crate::ConditionExpr) -> bool {
+        let crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            comparison: Comparison::Equal(1),
+            ..
+        } = condition
+        else {
+            return false;
+        };
+        let mut attacking_creatures = ObjectFilter::creature();
+        attacking_creatures.attacking = true;
+        *filter == attacking_creatures
+    }
+
+    let crate::ConditionExpr::And(left, right) = condition else {
+        return false;
+    };
+    (is_source_attacking(left) && counts_exactly_one_attacking_creature(right))
+        || (is_source_attacking(right) && counts_exactly_one_attacking_creature(left))
 }
 
 fn describe_static_possessive_player(player: &crate::target::PlayerFilter) -> &'static str {
@@ -3315,18 +3407,64 @@ pub struct RemoveAbilityForFilter {
     /// Filter for which permanents lose the ability.
     pub filter: ObjectFilter,
     /// The ability to remove.
-    pub ability: StaticAbility,
+    pub abilities: Vec<Ability>,
+    pub display: String,
+    pub mode: ironsmith_core::AbilityLossMode,
 }
 
 impl RemoveAbilityForFilter {
     pub fn new(filter: ObjectFilter, ability: StaticAbility) -> Self {
-        Self { filter, ability }
+        Self::new_with_mode(filter, ability, ironsmith_core::AbilityLossMode::Lose)
+    }
+
+    pub fn new_with_mode(
+        filter: ObjectFilter,
+        ability: StaticAbility,
+        mode: ironsmith_core::AbilityLossMode,
+    ) -> Self {
+        let display = ability.display();
+        Self {
+            filter,
+            abilities: vec![Ability::static_ability(ability)],
+            display,
+            mode,
+        }
+    }
+
+    pub fn object_abilities(
+        filter: ObjectFilter,
+        abilities: Vec<Ability>,
+        display: String,
+    ) -> Self {
+        Self::object_abilities_with_mode(
+            filter,
+            abilities,
+            display,
+            ironsmith_core::AbilityLossMode::Lose,
+        )
+    }
+
+    pub fn object_abilities_with_mode(
+        filter: ObjectFilter,
+        abilities: Vec<Ability>,
+        display: String,
+        mode: ironsmith_core::AbilityLossMode,
+    ) -> Self {
+        Self {
+            filter,
+            abilities,
+            display,
+            mode,
+        }
     }
 }
 
 impl PartialEq for RemoveAbilityForFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.filter == other.filter && self.ability == other.ability
+        self.filter == other.filter
+            && self.abilities == other.abilities
+            && self.display == other.display
+            && self.mode == other.mode
     }
 }
 
@@ -3336,19 +3474,26 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        if self.ability.landwalk_kind().is_some()
+        if self
+            .abilities
+            .first()
+            .and_then(|ability| match &ability.kind {
+                AbilityKind::Static(ability) => ability.landwalk_kind(),
+                _ => None,
+            })
+            .is_some()
             && self.filter.card_types.len() == 1
             && self.filter.card_types[0] == crate::types::CardType::Creature
             && self
                 .filter
                 .ability_markers
                 .iter()
-                .any(|marker| marker.eq_ignore_ascii_case(&self.ability.display()))
+                .any(|marker| marker.eq_ignore_ascii_case(&self.display))
         {
             return format!(
                 "{} can be blocked as though they didn't have {}",
                 pluralized_subject_text(&self.filter),
-                self.ability.display().to_ascii_lowercase()
+                self.display.to_ascii_lowercase()
             );
         }
         let subject = pluralized_subject_text(&self.filter);
@@ -3357,7 +3502,16 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
             || subject.starts_with("this ")
             || subject.starts_with("that ");
         let verb = if singular_subject { "loses" } else { "lose" };
-        format!("{subject} {verb} {}", self.ability.display())
+        let suffix = match self.mode {
+            ironsmith_core::AbilityLossMode::Lose => String::new(),
+            ironsmith_core::AbilityLossMode::LoseAndCantGain => {
+                format!(" and can't gain {}", self.display)
+            }
+            ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain => {
+                format!(" and can't have or gain {}", self.display)
+            }
+        };
+        format!("{subject} {verb} {}{suffix}", self.display)
     }
 
     fn generate_effects(
@@ -3366,15 +3520,22 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        vec![
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Filter(self.filter.clone()),
-                Modification::RemoveAbility(self.ability.clone()),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-        ]
+        self.abilities
+            .iter()
+            .cloned()
+            .map(|ability| {
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    EffectTarget::Filter(self.filter.clone()),
+                    Modification::RemoveAbilityGeneric {
+                        ability,
+                        mode: self.mode,
+                    },
+                )
+                .with_source_type(EffectSourceType::StaticAbility)
+            })
+            .collect()
     }
 }
 
@@ -3397,10 +3558,11 @@ impl StaticAbilityKind for RemoveAllAbilitiesForFilter {
     }
 
     fn display(&self) -> String {
-        format!(
-            "{} lose all abilities",
-            pluralized_subject_text(&self.filter)
-        )
+        let (subject, _) =
+            grant_subject_with_set_quantifier(&self.filter, self.filter.set_quantifier_surface());
+        let (copula, _) = subject_verb_and_possessive(&subject);
+        let verb = if copula == "is" { "loses" } else { "lose" };
+        format!("{subject} {verb} all abilities")
     }
 
     fn generate_effects(
@@ -3440,10 +3602,11 @@ impl StaticAbilityKind for RemoveAllAbilitiesExceptManaForFilter {
     }
 
     fn display(&self) -> String {
-        format!(
-            "{} lose all abilities except mana abilities",
-            pluralized_subject_text(&self.filter)
-        )
+        let (subject, _) =
+            grant_subject_with_set_quantifier(&self.filter, self.filter.set_quantifier_surface());
+        let (copula, _) = subject_verb_and_possessive(&subject);
+        let verb = if copula == "is" { "loses" } else { "lose" };
+        format!("{subject} {verb} all abilities except mana abilities")
     }
 
     fn generate_effects(
@@ -3642,11 +3805,11 @@ impl SetBasePowerToughnessValueForFilter {
     }
 }
 
-fn describe_static_iterated_value(value: &Value) -> String {
+fn describe_static_iterated_value(value: &Value, possessive: &str) -> String {
     if let Value::ManaValueOf(spec) = value.unhinted()
         && matches!(spec.base(), ChooseSpec::Iterated)
     {
-        return "its mana value".to_string();
+        return format!("{possessive} mana value");
     }
     crate::compiled_text::describe_value(value)
 }
@@ -3657,22 +3820,20 @@ impl StaticAbilityKind for SetBasePowerToughnessValueForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
-        let singular = subject.starts_with("enchanted ")
-            || subject.starts_with("equipped ")
-            || subject.starts_with("this ")
-            || subject.starts_with("that ");
-        let verb = if singular { "has" } else { "have" };
+        let (subject, _) =
+            grant_subject_with_set_quantifier(&self.filter, self.filter.set_quantifier_surface());
+        let (copula, possessive) = subject_verb_and_possessive(&subject);
+        let verb = if copula == "is" { "has" } else { "have" };
         let mut text = if self.power == self.toughness {
             format!(
                 "{subject} {verb} base power and base toughness each equal to {}",
-                describe_static_iterated_value(&self.power)
+                describe_static_iterated_value(&self.power, possessive)
             )
         } else {
             format!(
                 "{subject} {verb} base power {} and base toughness {}",
-                describe_static_iterated_value(&self.power),
-                describe_static_iterated_value(&self.toughness)
+                describe_static_iterated_value(&self.power, possessive),
+                describe_static_iterated_value(&self.toughness, possessive)
             )
         };
         if let Some(condition) = &self.condition {
@@ -3696,7 +3857,7 @@ impl StaticAbilityKind for SetBasePowerToughnessValueForFilter {
             ContinuousEffect::new(
                 source,
                 controller,
-                EffectTarget::Filter(self.filter.clone()),
+                effect_target_for_filter(source, &self.filter),
                 Modification::SetPowerToughness {
                     power: self.power.clone(),
                     toughness: self.toughness.clone(),
@@ -3818,6 +3979,88 @@ impl StaticAbilityKind for CopyActivatedAbilities {
             return true;
         };
 
+        let Some(source_obj) = game.object(source) else {
+            return false;
+        };
+        static_condition_is_active(condition, game, source, game.controller_of(source_obj))
+    }
+}
+
+/// Inherit complete static-ability variants from objects matching a filter.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CopyStaticAbilityVariants {
+    pub filter: ObjectFilter,
+    pub selectors: Vec<ironsmith_core::StaticAbilityVariantSelector>,
+    pub exclude_source_id: bool,
+    pub condition: Option<crate::ConditionExpr>,
+    pub display: String,
+}
+
+impl CopyStaticAbilityVariants {
+    pub fn new(
+        filter: ObjectFilter,
+        selectors: Vec<ironsmith_core::StaticAbilityVariantSelector>,
+        display: String,
+    ) -> Self {
+        Self {
+            filter,
+            selectors,
+            exclude_source_id: true,
+            condition: None,
+            display,
+        }
+    }
+
+    pub fn with_exclude_source_id(mut self, exclude: bool) -> Self {
+        self.exclude_source_id = exclude;
+        self
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+impl StaticAbilityKind for CopyStaticAbilityVariants {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CopyStaticAbilityVariants
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::CopyStaticAbilityVariants {
+                    filter: self.filter.clone(),
+                    selectors: self.selectors.clone(),
+                    exclude_source_id: self.exclude_source_id,
+                },
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+
+    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
         let Some(source_obj) = game.object(source) else {
             return false;
         };
@@ -4143,7 +4386,8 @@ impl StaticAbilityKind for AddCardTypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
+        let (subject, _) =
+            grant_subject_with_set_quantifier(&self.filter, self.filter.set_quantifier_surface());
         let (verb, possessive) = subject_verb_and_possessive(&subject);
         let types = self
             .card_types
@@ -4157,9 +4401,18 @@ impl StaticAbilityKind for AddCardTypesForFilter {
                 }
             })
             .collect::<Vec<_>>();
+        let types = if self.filter.set_quantifier_surface()
+            == Some(ironsmith_core::SetQuantifierSurface::Each)
+            && verb == "is"
+            && types.len() == 1
+        {
+            format!("{} {}", indefinite_article_for(&types[0]), types[0])
+        } else {
+            join_with_and(&types)
+        };
         let mut text = format!(
             "{subject} {verb} {} in addition to {possessive} other types",
-            join_with_and(&types)
+            types
         );
         if let Some(condition) = &self.condition {
             if static_condition_is_during_your_turn(condition) {
@@ -4327,7 +4580,8 @@ impl StaticAbilityKind for SetCardTypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
+        let (subject, _) =
+            grant_subject_with_set_quantifier(&self.filter, self.filter.set_quantifier_surface());
         let (verb, _) = subject_verb_and_possessive(&subject);
         let mut types = self
             .card_types
@@ -5150,6 +5404,7 @@ impl StaticAbilityKind for EquipmentGrant {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AttachedAbilityGrant {
     pub ability: Ability,
+    pub additional_abilities: Vec<Ability>,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
 }
@@ -5158,9 +5413,15 @@ impl AttachedAbilityGrant {
     pub fn new(ability: Ability, display: String) -> Self {
         Self {
             ability,
+            additional_abilities: Vec::new(),
             display,
             condition: None,
         }
+    }
+
+    pub fn with_additional_abilities(mut self, abilities: Vec<Ability>) -> Self {
+        self.additional_abilities = abilities;
+        self
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
@@ -5224,6 +5485,11 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         if let crate::ability::AbilityKind::Static(static_ability) = &self.ability.kind {
             static_ability.apply_restrictions(game, attached_to, attached_controller);
         }
+        for ability in &self.additional_abilities {
+            if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind {
+                static_ability.apply_restrictions(game, attached_to, attached_controller);
+            }
+        }
     }
 
     fn generate_effects(
@@ -5232,7 +5498,8 @@ impl StaticAbilityKind for AttachedAbilityGrant {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        vec![effect_with_optional_static_condition(
+        let mut effects = Vec::with_capacity(1 + self.additional_abilities.len());
+        effects.push(effect_with_optional_static_condition(
             ContinuousEffect::new(
                 source,
                 controller,
@@ -5241,7 +5508,20 @@ impl StaticAbilityKind for AttachedAbilityGrant {
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
-        )]
+        ));
+        effects.extend(self.additional_abilities.iter().cloned().map(|ability| {
+            effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    EffectTarget::AttachedTo(source),
+                    Modification::AddAbilityGeneric(ability),
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )
+        }));
+        effects
     }
 
     fn generate_replacement_effect(
@@ -5260,7 +5540,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
             source,
             controller,
             crate::events::DamageToAttachedObjectMatcher::new(),
-            crate::replacement::ReplacementAction::Prevent,
+            crate::replacement::ReplacementAction::PreventDamage,
         ))
     }
 }

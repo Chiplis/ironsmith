@@ -22,6 +22,47 @@ struct EffectCompileHandlerDef {
     run: EffectCompileHandler,
 }
 
+fn lower_source_top_only_choice(
+    spec: &ChooseSpec,
+    player: PlayerAst,
+    ctx: &mut EffectLoweringContext,
+    tag_prefix: &str,
+) -> Result<(Effect, ChooseSpec), CardTextError> {
+    let ChooseSpec::Object(source_filter) = spec.base() else {
+        return Err(CardTextError::ParseError(
+            "top-of-zone selection requires an object filter".to_string(),
+        ));
+    };
+    let mut filter = source_filter.clone();
+    match filter.zone {
+        Some(Zone::Graveyard | Zone::Library) => {}
+        // This helper is reached only from an AST carrying the lexically
+        // proven `source_top_only` marker. A bare "the top N cards" therefore
+        // has the same ordered-library source as the explicit "of your
+        // library" form; do not make that default available to ordinary
+        // object choices.
+        None => filter.zone = Some(Zone::Library),
+        Some(_) => {
+            return Err(CardTextError::ParseError(
+                "top-of-zone selection requires an ordered graveyard or library source".to_string(),
+            ));
+        }
+    }
+    let chooser = match player {
+        PlayerAst::Target => PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+        PlayerAst::TargetOpponent => PlayerFilter::Target(Box::new(PlayerFilter::Opponent)),
+        player => resolve_non_target_player_filter(player, &current_reference_env(ctx))?,
+    };
+    let tag = ctx.next_tag(tag_prefix);
+    ctx.last_object_tag = Some(tag.clone());
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(filter, spec.count(), chooser, tag.clone())
+            .with_count_value_opt(spec.count_value().cloned())
+            .top_only(),
+    );
+    Ok((choose, ChooseSpec::tagged(tag)))
+}
+
 fn coordinated_introduced_target(effect: &Effect) -> Option<(TagKey, ChooseSpec)> {
     if let Some(with_id) = effect.as_with_id() {
         return coordinated_introduced_target(&with_id.effect);
@@ -421,6 +462,16 @@ fn compile_effect_inner(
         }
         return Ok((vec![runtime_effect], Vec::new()));
     }
+    if let EffectAst::PlaySubgame { nonwinner_effects } = effect {
+        let (compiled, choices) =
+            compile_effects_in_iterated_player_context(nonwinner_effects, ctx, None)?;
+        return Ok((
+            vec![Effect::new(crate::effects::PlaySubgameEffect::new(
+                compiled,
+            ))],
+            choices,
+        ));
+    }
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }
@@ -551,6 +602,22 @@ fn compile_effect_inner(
         ));
     }
     if let EffectAst::RepeatEffects { count, effects } = effect {
+        let repeats_manifest_dread = matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ManifestDread,
+                ..
+            })]
+        );
+        let hoisted_result_tag = (ctx.auto_tag_object_targets && repeats_manifest_dread)
+            .then(|| reserved_or_next_object_tag(ctx, "manifested"));
+        let saved_auto_tag_object_targets = ctx.auto_tag_object_targets;
+        if hoisted_result_tag.is_some() {
+            // The repeated action's results form one provenance set for a
+            // following plural reference. Tag the aggregate RepeatEffects
+            // outcome, rather than overwriting the tag once per iteration.
+            ctx.auto_tag_object_targets = false;
+        }
         let mut compiled_effects = Vec::new();
         let mut choices = Vec::new();
         for child in effects {
@@ -558,10 +625,13 @@ fn compile_effect_inner(
             compiled_effects.append(&mut child_effects);
             choices.append(&mut child_choices);
         }
-        return Ok((
-            vec![Effect::repeat_effects(count.clone(), compiled_effects)],
-            choices,
-        ));
+        ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
+        let mut repeated = Effect::repeat_effects(count.clone(), compiled_effects);
+        if let Some(tag) = hoisted_result_tag {
+            repeated = repeated.tag(tag.clone());
+            ctx.last_object_tag = Some(tag);
+        }
+        return Ok((vec![repeated], choices));
     }
     if let EffectAst::BidLife {
         target,
@@ -832,11 +902,14 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::CardTypesAmong(filter)
         | Value::ColorsAmong(filter)
         | Value::DistinctNames(filter)
-        | Value::DistinctPowers(filter)
-        | Value::PlayersWhoControlMoreThanYou(filter) => {
+        | Value::DistinctPowers(filter) => {
             collect_object_filter_player_target_choices(filter, choices);
         }
-        Value::PlayersWhoControlAtLeastMoreThanYou { filter, .. } => {
+        Value::PlayersWhoControlMoreThanYou { players, filter }
+        | Value::PlayersWhoControlAtLeastMoreThanYou {
+            players, filter, ..
+        } => {
+            collect_player_filter_target_choice(players, choices);
             collect_object_filter_player_target_choices(filter, choices);
         }
         Value::StaticAbilitiesAmong { filter, .. } => {

@@ -67,6 +67,7 @@ const RUNTIME_EVALUATION_METHODS = new Set([
 const CARD_ZONE_KEYS = [
   "battlefield",
   "battlefield_cards",
+  "ante_cards",
   "command_zone_cards",
   "exile_cards",
   "graveyard_cards",
@@ -135,7 +136,7 @@ function cardRouteKey(name) {
     .toLocaleLowerCase("en-US")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9_]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return normalized || "";
 }

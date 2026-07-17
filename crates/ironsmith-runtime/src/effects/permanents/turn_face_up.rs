@@ -34,7 +34,9 @@ impl EffectExecutor for TurnFaceUpEffect {
                 continue;
             }
             let on_battlefield = object.zone == Zone::Battlefield;
-            game.set_face_up(object_id);
+            if !game.set_face_up(object_id) {
+                continue;
+            }
             turned += 1;
             if on_battlefield {
                 let event_provenance = game.alloc_child_event_provenance(

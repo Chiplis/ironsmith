@@ -523,7 +523,16 @@ pub(super) fn describe_effect_list_preserves_distinct_power_choice_complement() 
     let destroy = Effect::destroy_all(destroy_filter).tag("destroyed_power_complement");
 
     assert_eq!(
-        describe_effect_list(&[repeat, destroy]),
+        describe_effect_list(&[repeat.clone(), destroy.clone()]),
+        "For each different power among creatures on the battlefield, choose a creature with that power. Destroy each creature not chosen this way"
+    );
+
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![repeat]),
+        crate::resolution::ResolutionSegment::from_effects(vec![destroy]),
+    ]);
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
         "For each different power among creatures on the battlefield, choose a creature with that power. Destroy each creature not chosen this way"
     );
 }
@@ -1988,6 +1997,342 @@ pub(super) fn describe_effect_list_compacts_nonbasic_name_multi_zone_search_rewa
 }
 
 #[test]
+pub(super) fn describe_same_name_extraction_preserves_finite_count_and_hand_draw() {
+    let chosen_name_tag = TagKey::from("__chosen_name__");
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let choose_name =
+        crate::effects::ChooseCardNameEffect::new(PlayerFilter::You, None, chosen_name_tag.clone());
+    let target_opponent = crate::effects::TargetOnlyEffect::new(ChooseSpec::target_opponent());
+    let mut search_filter = ObjectFilter::default().owned_by(PlayerFilter::target_opponent());
+    search_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_name_tag,
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    let search = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::up_to(4),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+    .as_optional_search();
+    let exile = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched_tag.clone()),
+            Zone::Exile,
+            false,
+        ))],
+    );
+    let shuffle = crate::effects::ShuffleLibraryEffect::new(PlayerFilter::target_opponent());
+    let draw = crate::effects::DrawForEachTaggedMatchingEffect::new(
+        PlayerFilter::target_opponent(),
+        searched_tag,
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::target_opponent()),
+    );
+    let effects = vec![
+        Effect::new(choose_name),
+        Effect::new(target_opponent),
+        Effect::new(search),
+        Effect::new(exile),
+        Effect::new(shuffle),
+        Effect::new(draw),
+    ];
+    let expected = "Choose a card name. Search target opponent's graveyard, hand, and library for up to four cards with that name and exile them. That player shuffles, then draws a card for each card exiled from their hand this way";
+    let expected_clause = lowercase_first(expected);
+
+    assert_eq!(describe_effect_list(&effects), expected);
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(expected_clause.as_str())
+    );
+
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::coordinated(effects[..2].to_vec()),
+        )]),
+        crate::resolution::ResolutionSegment::from_effects(effects[2..4].to_vec()),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::coordinated(effects[4..].to_vec()),
+        )]),
+    ]);
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        expected
+    );
+}
+
+#[test]
+pub(super) fn cross_segment_basic_land_exception_extraction_links_target_owner() {
+    let target_tag = TagKey::from("targeted_0");
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let graveyard = ObjectFilter::default().in_zone(Zone::Graveyard);
+    let mut nonland = graveyard.clone();
+    nonland.excluded_card_types.push(CardType::Land);
+    let mut nonbasic = graveyard;
+    nonbasic
+        .excluded_supertypes
+        .push(crate::types::Supertype::Basic);
+    let mut target_filter = ObjectFilter::default();
+    target_filter.any_of = vec![nonland, nonbasic];
+    let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+        ChooseSpec::Object(target_filter),
+    )))
+    .tag(target_tag.clone());
+
+    let owner = PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target);
+    let mut search_filter = ObjectFilter::default().owned_by(owner.clone());
+    search_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: target_tag,
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    let search = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            search_filter,
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            searched_tag.clone(),
+        )
+        .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+        .as_optional_search(),
+    );
+    let exile = Effect::new(crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched_tag),
+            Zone::Exile,
+            false,
+        ))],
+    ));
+    let shuffle = Effect::new(crate::effects::ShuffleLibraryEffect::new(owner));
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![target]),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::coordinated(vec![search, exile]),
+        )]),
+        crate::resolution::ResolutionSegment::from_effects(vec![shuffle]),
+    ]);
+
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        "Choose target card in a graveyard other than a basic land card. Search its owner's graveyard, hand, and library for any number of cards with the same name as that card and exile them. Then that player shuffles"
+    );
+}
+
+#[test]
+pub(super) fn describe_revealed_hand_same_name_extraction_keeps_card_reference() {
+    let chosen_tag = TagKey::from("__it__");
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let look =
+        crate::effects::LookAtHandEffect::reveal(ChooseSpec::Player(PlayerFilter::DamagedPlayer));
+    let mut chosen_filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(PlayerFilter::DamagedPlayer);
+    chosen_filter.excluded_card_types.push(CardType::Land);
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        chosen_filter,
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        chosen_tag.clone(),
+    )
+    .in_zone(Zone::Hand);
+    let mut search_filter = ObjectFilter::default().owned_by(PlayerFilter::DamagedPlayer);
+    search_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_tag,
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    let search = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::any_number(),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+    .as_all_matching_search();
+    let exile = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched_tag),
+            Zone::Exile,
+            false,
+        ))],
+    );
+    let effects = vec![
+        Effect::new(look),
+        Effect::new(choose),
+        Effect::new(search),
+        Effect::new(exile),
+        Effect::new(crate::effects::ShuffleLibraryEffect::new(
+            PlayerFilter::DamagedPlayer,
+        )),
+    ];
+    let expected = "That player reveals their hand. You choose a nonland card from it. Search that player's graveyard, hand, and library for all cards with the same name as that card and exile them. Then that player shuffles";
+
+    assert_eq!(describe_effect_list(&effects), expected);
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![effects[0].clone()]),
+        crate::resolution::ResolutionSegment::from_effects(vec![effects[1].clone()]),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::coordinated(effects[2..4].to_vec()),
+        )]),
+        crate::resolution::ResolutionSegment::from_effects(vec![effects[4].clone()]),
+    ]);
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        expected
+    );
+}
+
+#[test]
+pub(super) fn describe_countered_spell_same_name_extraction_keeps_spell_reference_and_draw() {
+    let countered_tag = TagKey::from("countered_0");
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let counter = Effect::with_id(
+        17,
+        Effect::new(crate::effects::CounterEffect::new(ChooseSpec::target(
+            ChooseSpec::spell(),
+        )))
+        .tag(countered_tag.clone()),
+    );
+    let search_owner =
+        PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Tagged(countered_tag.clone()));
+    let mut search_filter = ObjectFilter::default().owned_by(search_owner.clone());
+    search_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: countered_tag,
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    let search = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::any_number(),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+    .as_optional_search();
+    let exile = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched_tag.clone()),
+            Zone::Exile,
+            false,
+        ))],
+    );
+    let draw = crate::effects::DrawForEachTaggedMatchingEffect::new(
+        search_owner.clone(),
+        searched_tag,
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(search_owner.clone()),
+    );
+    let effects = vec![
+        counter,
+        Effect::new(search),
+        Effect::new(exile),
+        Effect::new(crate::effects::ShuffleLibraryEffect::new(
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+        )),
+        Effect::new(draw),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Counter target spell. Search its controller's graveyard, hand, and library for any number of cards with the same name as that spell and exile them. That player shuffles, then draws a card for each card exiled from their hand this way"
+    );
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![effects[0].clone()]),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::coordinated(effects[1..3].to_vec()),
+        )]),
+        crate::resolution::ResolutionSegment::from_effects(effects[3..].to_vec()),
+    ]);
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        "Counter target spell. Search its controller's graveyard, hand, and library for any number of cards with the same name as that spell and exile them. That player shuffles, then draws a card for each card exiled from their hand this way"
+    );
+}
+
+#[test]
+pub(super) fn describe_exiled_target_same_name_extraction_accepts_exact_controller_aliases() {
+    let exiled_tag = TagKey::from("exiled_target_0");
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let target_filter = ObjectFilter::creature().with_type(CardType::Planeswalker);
+    let exile = Effect::with_id(
+        23,
+        Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(target_filter)),
+            Zone::Exile,
+            false,
+        ))
+        .tag(exiled_tag.clone()),
+    );
+    let search_owner =
+        PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Tagged(exiled_tag.clone()));
+    let mut search_filter = ObjectFilter::default().owned_by(search_owner.clone());
+    search_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: exiled_tag,
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    let search = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::any_number(),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+    .as_optional_search();
+    let searched_exile = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched_tag.clone()),
+            Zone::Exile,
+            false,
+        ))],
+    );
+    let draw = crate::effects::DrawForEachTaggedMatchingEffect::new(
+        search_owner.clone(),
+        searched_tag,
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(search_owner),
+    );
+    let effects = vec![
+        exile,
+        Effect::new(search),
+        Effect::new(searched_exile),
+        Effect::new(crate::effects::ShuffleLibraryEffect::new(
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+        )),
+        Effect::new(draw),
+    ];
+    let expected = "Exile target creature or planeswalker. Search its controller's graveyard, hand, and library for any number of cards with the same name as that permanent and exile them. That player shuffles, then draws a card for each card exiled from their hand this way.";
+
+    assert_eq!(describe_effect_list(&effects), expected);
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![effects[0].clone()]),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::coordinated(effects[1..3].to_vec()),
+        )]),
+        crate::resolution::ResolutionSegment::from_effects(effects[3..].to_vec()),
+    ]);
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        expected
+    );
+}
+
+#[test]
 pub(super) fn describe_effect_list_compacts_chosen_name_consult_after_top_exile() {
     let chosen_name_tag = TagKey::from("__chosen_name__");
     let revealed_tag = TagKey::from("revealed");
@@ -2091,6 +2436,139 @@ pub(super) fn describe_effect_list_compacts_reveal_hand_choose_discard_then_rand
     assert_eq!(
         describe_effect_list(&effects),
         "Target opponent reveals their hand. You choose a card from it. That player discards that card, then discards a card at random"
+    );
+}
+
+fn chosen_hand_discard_effects(
+    look: crate::effects::LookAtHandEffect,
+    owner: PlayerFilter,
+    excluded_land: bool,
+) -> (Effect, Effect, Effect) {
+    let chosen_tag = TagKey::from("__it__");
+    let mut choice_filter = ObjectFilter::default().in_zone(Zone::Hand);
+    choice_filter.owner = Some(owner.clone());
+    if excluded_land {
+        choice_filter.excluded_card_types.push(CardType::Land);
+        choice_filter.set_explicit_card_noun(true);
+    }
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        choice_filter,
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        chosen_tag.clone(),
+    )
+    .in_zone(Zone::Hand);
+    let mut discard_filter = ObjectFilter::default().in_zone(Zone::Hand);
+    discard_filter.owner = Some(owner.clone());
+    discard_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let discard = crate::effects::DiscardEffect::new_with_filter(
+        Value::Fixed(1),
+        owner,
+        false,
+        Some(discard_filter),
+    );
+    (Effect::new(look), Effect::new(choose), Effect::new(discard))
+}
+
+#[test]
+pub(super) fn nested_look_hand_pipeline_ignores_trigger_bookkeeping() {
+    let (look, choose, discard) = chosen_hand_discard_effects(
+        crate::effects::LookAtHandEffect::new(ChooseSpec::Player(PlayerFilter::DamagedPlayer)),
+        PlayerFilter::DamagedPlayer,
+        false,
+    );
+    let effects = vec![
+        Effect::new(crate::effects::TagTriggeringObjectEffect::new("triggering")),
+        Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            look, choose,
+        ])),
+        discard,
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Look at that player's hand and choose a card from it. The player discards that card"
+    );
+}
+
+#[test]
+pub(super) fn implicit_target_reveal_hand_pipeline_compacts_inside_conditional_branch() {
+    let target = ChooseSpec::Player(PlayerFilter::Any);
+    let owner = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any));
+    let (look, choose, discard) = chosen_hand_discard_effects(
+        crate::effects::LookAtHandEffect::reveal(target.clone()),
+        owner,
+        true,
+    );
+    let effects = vec![
+        Effect::new(crate::effects::TargetOnlyEffect::new(target)),
+        look,
+        choose,
+        discard,
+    ];
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(
+            "target player reveals their hand. You choose a nonland card from it. That player discards that card"
+        )
+    );
+
+    let conditional = Effect::new(crate::effects::ConditionalEffect::if_only(
+        Condition::ManaSpentToCastThisSpellAtLeast {
+            amount: 1,
+            symbol: Some(ManaSymbol::Black),
+        },
+        effects,
+    ));
+    assert_eq!(
+        describe_effect(&conditional),
+        "If {B} was spent to cast this spell, target player reveals their hand, you choose a nonland card from it, then that player discards that card"
+    );
+}
+
+#[test]
+pub(super) fn hand_pipeline_preserves_independent_negated_control_followup() {
+    let owner = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent));
+    let (look, choose, discard) = chosen_hand_discard_effects(
+        crate::effects::LookAtHandEffect::reveal(ChooseSpec::target_opponent()),
+        owner,
+        true,
+    );
+    let exiled_tag = TagKey::from("ego_exiled");
+    let exile_choice = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You),
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        exiled_tag.clone(),
+    )
+    .in_zone(Zone::Hand);
+    let conditional = crate::effects::ConditionalEffect::if_only(
+        Condition::Not(Box::new(Condition::PlayerControls {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::default()
+                .controlled_by(PlayerFilter::You)
+                .with_subtype(Subtype::Faerie),
+        })),
+        vec![
+            Effect::new(exile_choice),
+            Effect::new(crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(
+                exiled_tag,
+            ))),
+        ],
+    );
+    let effects = vec![look, choose, discard, Effect::new(conditional)];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. If you don't control a Faerie, exile a card from your hand"
     );
 }
 
@@ -2326,7 +2804,10 @@ pub(super) fn describe_effect_list_compacts_search_reveal_move_then_shuffle() {
         PlayerFilter::You,
         tag.clone(),
     )
-    .with_count_value(Value::PlayersWhoControlMoreThanYou(ObjectFilter::land()))
+    .with_count_value(Value::PlayersWhoControlMoreThanYou {
+        players: PlayerFilter::Any,
+        filter: ObjectFilter::land(),
+    })
     .in_zone(Zone::Library)
     .as_optional_search();
     let effects = vec![
@@ -2472,6 +2953,22 @@ pub(super) fn describe_effect_list_compacts_optional_search_battlefield_hand_par
     assert_eq!(
         describe_effect_list(&with_scry),
         "Search your library for up to two basic land cards, reveal those cards, and put one onto the battlefield tapped and the other into your hand. Shuffle, then scry 1"
+    );
+
+    let wrapped_with_scry = vec![
+        Effect::new(crate::effects::SequenceEffect::new(with_scry[..5].to_vec())),
+        with_scry[5].clone(),
+        with_scry[6].clone(),
+    ];
+    assert_eq!(
+        describe_effect_list(&wrapped_with_scry),
+        "Search your library for up to two basic land cards, reveal those cards, and put one onto the battlefield tapped and the other into your hand. Shuffle, then scry 1"
+    );
+    assert_eq!(
+        describe_effect_clause_list(&wrapped_with_scry).as_deref(),
+        Some(
+            "search your library for up to two basic land cards, reveal those cards, and put one onto the battlefield tapped and the other into your hand. Shuffle, then scry 1"
+        )
     );
 }
 
@@ -3443,6 +3940,51 @@ pub(super) fn return_subtype_cards_from_your_graveyard_compacts_do_the_same_list
 }
 
 #[test]
+pub(super) fn counter_linked_grant_uses_typed_producer_kind_for_nested_self_subject() {
+    for (filter, expected_self) in [
+        (ObjectFilter::land(), "this land"),
+        (ObjectFilter::creature(), "this creature"),
+    ] {
+        let target_tag = TagKey::from("targeted_0");
+        let put = Effect::new(crate::effects::PutCountersEffect::new(
+            CounterType::Named("test"),
+            Value::Fixed(1),
+            ChooseSpec::target(ChooseSpec::Object(filter)),
+        ))
+        .tag(target_tag.clone());
+        let granted_trigger = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),
+            vec![Effect::deal_damage(
+                Value::Fixed(1),
+                ChooseSpec::Player(PlayerFilter::You),
+            )],
+        );
+        let grant = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::Tagged(target_tag),
+            crate::continuous::Modification::AddAbilityGeneric(granted_trigger),
+            Until::ForAsLongAs(
+                ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                    CounterType::Named("test"),
+                ),
+            ),
+        ))
+        .tag("granted_0");
+
+        let rendered = describe_effect_list(&[put, grant]);
+        let normalized_rendered = rendered.to_ascii_lowercase();
+        assert!(
+            rendered.contains(&format!("{expected_self} deals 1 damage to you")),
+            "{rendered}"
+        );
+        assert!(
+            normalized_rendered.contains("for as long as that")
+                && normalized_rendered.contains("has a test counter on it"),
+            "{rendered}"
+        );
+    }
+}
+
+#[test]
 pub(super) fn source_return_from_contextual_graveyard_uses_card_surface() {
     let effect = Effect::new(
         crate::effects::ReturnFromGraveyardToHandEffect::new(ChooseSpec::Source, false)
@@ -3530,5 +4072,51 @@ pub(super) fn describe_become_creature_type_choice_uses_each_for_all_creatures()
         lower
             == "choose a creature type other than wall. each creature becomes that type until end of turn",
         "expected plural creature-type choice wording, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn describe_dynamic_choice_preserves_for_each_surface() {
+    let mut count_filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    count_filter.owner = Some(PlayerFilter::IteratedPlayer);
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::permanent(),
+        ChoiceCount::dynamic_x(),
+        PlayerFilter::IteratedPlayer,
+        TagKey::from("chosen_permanents"),
+    )
+    .with_count_value(Value::Count(count_filter).with_surface_hint(ValueSurfaceHint::ForEach));
+
+    assert_eq!(
+        describe_choose_selection(&choose),
+        "a permanent for each card in their graveyard"
+    );
+}
+
+#[test]
+pub(super) fn describe_each_player_choose_then_untap_preserves_chosen_set() {
+    let chosen = TagKey::from("chosen_permanents");
+    let mut count_filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+    count_filter.owner = Some(PlayerFilter::IteratedPlayer);
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::permanent(),
+        ChoiceCount::dynamic_x(),
+        PlayerFilter::IteratedPlayer,
+        chosen.clone(),
+    )
+    .with_count_value(Value::Count(count_filter).with_surface_hint(ValueSurfaceHint::ForEach));
+    let for_players = crate::effects::ForPlayersEffect::new(
+        PlayerFilter::Any,
+        vec![
+            Effect::new(choose),
+            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Tagged(
+                chosen,
+            ))),
+        ],
+    );
+
+    assert_eq!(
+        describe_effect(&Effect::new(for_players)),
+        "Each player chooses a permanent for each card in their graveyard, then untaps those permanents"
     );
 }

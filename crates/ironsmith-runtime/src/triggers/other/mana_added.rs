@@ -32,7 +32,7 @@ impl TriggerMatcher for ManaAddedTrigger {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => e.player != ctx.controller,
             PlayerFilter::Any => true,
-            PlayerFilter::Active => e.player == ctx.game.turn.active_player,
+            PlayerFilter::Active => ctx.game.is_active_player(e.player),
             PlayerFilter::Specific(id) => e.player == *id,
             PlayerFilter::IteratedPlayer => event.trigger_player() == Some(e.player),
             _ => true,

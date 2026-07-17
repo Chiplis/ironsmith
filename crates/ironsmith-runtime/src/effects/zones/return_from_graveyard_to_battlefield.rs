@@ -1,7 +1,7 @@
 //! Return from graveyard to battlefield effect implementation.
 
 use super::battlefield_entry::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
     resolve_battlefield_entry_counters,
 };
 use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
@@ -176,21 +176,29 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
             None
         };
 
+        let requests = target_ids
+            .iter()
+            .map(|target_id| {
+                resolve_battlefield_entry_counters(
+                    game,
+                    ctx,
+                    *target_id,
+                    &self.enters_with_counters,
+                )
+                .map(|initial_counters| {
+                    (
+                        *target_id,
+                        BattlefieldEntryOptions::preserve(self.tapped)
+                            .with_initial_counters(initial_counters),
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let outcomes = move_to_battlefield_batch_with_options(game, ctx, requests);
+
         let mut moved = Vec::new();
-        for target_id in target_ids {
-            let initial_counters = resolve_battlefield_entry_counters(
-                game,
-                ctx,
-                target_id,
-                &self.enters_with_counters,
-            )?;
-            match move_to_battlefield_with_options(
-                game,
-                ctx,
-                target_id,
-                BattlefieldEntryOptions::preserve(self.tapped)
-                    .with_initial_counters(initial_counters),
-            ) {
+        for outcome in outcomes {
+            match outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     if let Some(as_aura) = &self.as_aura {
                         apply_returned_aura_effect(game, ctx, new_id, as_aura);

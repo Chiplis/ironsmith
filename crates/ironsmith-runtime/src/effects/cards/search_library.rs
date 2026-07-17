@@ -31,7 +31,8 @@ impl EffectExecutor for SearchLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let chooser_id = resolve_player_filter(game, &self.chooser, ctx)?;
+        let chooser_id =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let search_override = opposition_agent_search(game, chooser_id, player_id);
 
@@ -47,7 +48,7 @@ impl EffectExecutor for SearchLibraryEffect {
                 .player(player_id)
                 .map(|player| player.library.clone())
                 .unwrap_or_default();
-            let search_viewer = game.controlling_player_for(chooser_id);
+            let search_viewer = chooser_id;
             view_hidden_candidate_objects(
                 game,
                 ctx,
@@ -237,6 +238,7 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::filter::ObjectFilter;
     use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::target::PlayerFilter;
     use crate::types::CardType;
 
@@ -486,6 +488,79 @@ mod tests {
                     && call.cards == vec![first, second]
             }),
             "hidden placeholders should be opened privately for the searching player"
+        );
+    }
+
+    #[test]
+    fn transfigure_search_uses_the_sacrificed_sources_last_known_mana_value() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::new(), "Transfigure Source")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let source_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                game.object(source).expect("source exists"),
+                &game,
+            );
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("source should be sacrificed before resolution");
+
+        let matching = CardBuilder::new(CardId::new(), "Matching Creature")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let _matching = game.create_object_from_card(&matching, alice, Zone::Library);
+        let wrong_value = CardBuilder::new(CardId::new(), "Wrong-Value Creature")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        let wrong_value = game.create_object_from_card(&wrong_value, alice, Zone::Library);
+        let wrong_type = CardBuilder::new(CardId::new(), "Wrong-Type Relic")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let wrong_type = game.create_object_from_card(&wrong_type, alice, Zone::Library);
+
+        let filter = ObjectFilter::default()
+            .with_type(CardType::Creature)
+            .with_mana_value(crate::filter::Comparison::EqualExpr(Box::new(
+                crate::effect::Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source)),
+            )));
+        let effect = SearchLibraryEffect::to_battlefield(filter, PlayerFilter::You, false);
+        let mut dm = CaptureSearchDm::default();
+        let mut ctx =
+            ExecutionContext::new(source, alice, &mut dm).with_source_snapshot(source_snapshot);
+        let filter_ctx = ctx.filter_context(&game);
+        assert!(
+            effect.filter.matches(
+                game.object(_matching).expect("matching card exists"),
+                &filter_ctx,
+                &game,
+            ),
+            "the dynamic filter should match against source LKI before the search"
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("search resolves");
+
+        assert!(game.battlefield.iter().any(|object| {
+            game.object(*object)
+                .is_some_and(|object| object.name == "Matching Creature")
+        }));
+        assert_eq!(
+            game.object(wrong_value)
+                .expect("wrong-value card exists")
+                .zone,
+            Zone::Library
+        );
+        assert_eq!(
+            game.object(wrong_type)
+                .expect("wrong-type card exists")
+                .zone,
+            Zone::Library
         );
     }
 }

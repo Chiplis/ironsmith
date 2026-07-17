@@ -879,7 +879,7 @@ pub(super) fn priority_loop_resolves_next_spell_granted_protection_after_counter
         alice,
         bolt_id,
         crate::target::ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
-        StaticAbility::cant_be_countered_ability(),
+        StaticAbility::cant_be_countered_ability().into(),
         1,
     );
     game.apply_temporary_spell_ability_grants_for_cast_proposal(bolt_id, alice);
@@ -2830,7 +2830,7 @@ pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_ba
         alice,
         spell_id,
         ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
-        StaticAbility::keyword_marker("Conspire"),
+        StaticAbility::keyword_marker("Conspire").into(),
         1,
     );
 

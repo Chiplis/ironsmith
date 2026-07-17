@@ -21,9 +21,9 @@ pub use ironsmith_core::{
     DetainEffect, DevourEffect, DirectionalAdjacentPlayerControlEffect, DiscardEffect,
     DiscardHandEffect, DiscoverEffect, DoubleCountersEffect, DoubleManaPoolEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect, EmitGiftGivenEffect,
-    EmitKeywordActionEffect, EmptyManaPoolEffect, EndTurnEffect, EnergyCountersEffect,
-    EvolveEffect, ExchangeControlEffect, ExchangeLifeTotalsEffect, ExchangeTextBoxesEffect,
-    ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect,
+    EmitKeywordActionEffect, EmptyManaPoolEffect, EndCombatPhaseEffect, EndTurnEffect,
+    EnergyCountersEffect, EvolveEffect, ExchangeControlEffect, ExchangeLifeTotalsEffect,
+    ExchangeTextBoxesEffect, ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect,
     ExecuteWithSourceEffect as CoreExecuteWithSourceEffect, ExertCostEffect, ExileEffect,
     ExileInsteadOfGraveyardEffect, ExileTaggedWhenSourceLeavesEffect, ExileTopOfLibraryEffect,
     ExileUntilDuration, ExileUntilEffect, ExperienceCountersEffect, ExploreEffect,
@@ -35,20 +35,21 @@ pub use ironsmith_core::{
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
-    HauntExileEffect as CoreHauntExileEffect, IfEffect as CoreIfEffect, IncubateEffect,
-    InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode, LibraryPlacementOrder,
-    LifeBidStart, LocalRewriteEffect as CoreLocalRewriteEffect, LookAtHandEffect,
-    LookAtObjectsEffect, LookAtTopCardsEffect, LoseLifeEffect, LoseTheGameEffect,
-    ManaRestrictedEffect as CoreManaRestrictedEffect, ManaTypeSource, ManifestCardFromHandEffect,
-    ManifestDreadEffect, ManifestTopCardOfLibraryEffect,
+    HauntExileEffect as CoreHauntExileEffect, HealDamageEffect, IfEffect as CoreIfEffect,
+    IncubateEffect, InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode,
+    LibraryPlacementOrder, LifeBidStart, LocalRewriteEffect as CoreLocalRewriteEffect,
+    LookAtHandEffect, LookAtObjectsEffect, LookAtTopCardsEffect, LoseLifeEffect, LoseTheGameEffect,
+    ManaRestrictedEffect as CoreManaRestrictedEffect, ManaRetainedEffect as CoreManaRetainedEffect,
+    ManaRetentionDuration, ManaTypeSource, ManifestCardFromHandEffect, ManifestDreadEffect,
+    ManifestObjectsEffect, ManifestTopCardOfLibraryEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, MayEffect, MayMoveToZoneEffect, MeldEffect,
     MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     NewTargetRestriction, NinjutsuCostEffect, NinjutsuEffect, NoteLifeTotalEffect,
-    OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PayManaEffect,
-    PhaseInEffect, PhaseOutDuration, PhaseOutEffect, PoisonCountersEffect, PopulateEffect,
-    PreventAllCombatDamageEffect, PreventAllDamageEffect,
+    OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect,
+    PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect,
+    PoisonCountersEffect, PopulateEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect as CorePreventAllDamageToTargetEffect,
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect,
@@ -100,6 +101,7 @@ pub type HauntExileEffect = CoreHauntExileEffect<Effect>;
 pub type IfEffect = CoreIfEffect<Effect>;
 pub type LocalRewriteEffect = CoreLocalRewriteEffect<Effect>;
 pub type ManaRestrictedEffect = CoreManaRestrictedEffect<Effect>;
+pub type ManaRetainedEffect = CoreManaRetainedEffect<Effect>;
 pub type PreventDamageEffect = CorePreventDamageEffect<Effect>;
 pub type PreventAllDamageToTargetEffect = CorePreventAllDamageToTargetEffect<Effect>;
 pub type RegenerateEffect = CoreRegenerateEffect<Effect>;
@@ -140,7 +142,7 @@ pub type ApplyContinuousEffect = ironsmith_core::ApplyContinuousEffect<
 >;
 
 pub type GrantNextSpellAbilityEffect =
-    ironsmith_core::GrantNextSpellAbilityEffect<crate::static_abilities::StaticAbility>;
+    ironsmith_core::GrantNextSpellAbilityEffect<crate::ability::Ability>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScaleXValueEffect {

@@ -1,7 +1,7 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext, IfResultPredicate,
-    PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst, THIS_WAY_SACRIFICED_TAG,
-    TargetAst, TriggerSpec,
+    ADDITIONAL_COST_OBJECT_TAG, CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext,
+    IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    THIS_WAY_SACRIFICED_TAG, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::TaggedOpbjectRelation;
@@ -86,7 +86,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::IsDealtCombatDamage(_)
                     | TriggerSpec::ThisDealsDamage
                     | TriggerSpec::ThisDealsDamageTo(_)
-                    | TriggerSpec::DealsDamage(_)
+                    | TriggerSpec::DealsDamage { .. }
                     | TriggerSpec::DealsDamageTo { .. }
                     | TriggerSpec::ThisDealsDamageToPlayer { .. }
                     | TriggerSpec::DealsDamageToPlayer { .. }
@@ -103,6 +103,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
                     | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
                     | TriggerSpec::CounterPutOn { .. }
+                    | TriggerSpec::CounterRemovedFrom { .. }
                     | TriggerSpec::EntersBattlefieldOneOrMore { .. }
             ) || matches!(
                 trigger,
@@ -161,6 +162,34 @@ fn remember_chosen_object_alias(frame: &mut ReferenceFrame, tag: &str) {
         .push((CHOSEN_OBJECTS_TAG.to_string(), tag.to_string()));
 }
 
+fn remember_local_sacrifice_alias_if_unbound(frame: &mut ReferenceFrame, tag: &str) {
+    // The filter grammar uses this stable alias for an explicit noun such as
+    // "the sacrificed creature." A spell's prepared additional-cost export
+    // remains authoritative when one exists; otherwise a sacrifice performed
+    // during resolution is the typed producer for the same authored noun.
+    if frame
+        .snapshot_tag_aliases
+        .iter()
+        .any(|(alias, _)| alias == ADDITIONAL_COST_OBJECT_TAG)
+    {
+        return;
+    }
+    frame
+        .snapshot_tag_aliases
+        .push((ADDITIONAL_COST_OBJECT_TAG.to_string(), tag.to_string()));
+}
+
+fn remember_public_revealed_alias(frame: &mut ReferenceFrame, tag: Option<&str>) {
+    frame
+        .snapshot_tag_aliases
+        .retain(|(alias, _)| alias != "__public_revealed");
+    if let Some(tag) = tag {
+        frame
+            .snapshot_tag_aliases
+            .push(("__public_revealed".to_string(), tag.to_string()));
+    }
+}
+
 fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str> {
     match effect {
         EffectAst::SubjectVerb(subject_verb)
@@ -186,6 +215,7 @@ fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str
                 &subject_verb.action,
                 SubjectVerbActionAst::ManifestTopCardOfLibrary
                     | SubjectVerbActionAst::ManifestCardFromHand
+                    | SubjectVerbActionAst::ManifestDread
             ) =>
         {
             Some("manifested")
@@ -269,17 +299,40 @@ fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilte
 
 fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
     match target {
-        TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
+        TargetAst::Player(filter, explicit_target_span) => {
             frame.last_player_filter = Some(if matches!(filter, PlayerFilter::IteratedPlayer) {
                 frame
                     .last_player_filter
                     .clone()
                     .unwrap_or(PlayerFilter::IteratedPlayer)
-            } else {
+            } else if explicit_target_span.is_some() {
                 PlayerFilter::Target(Box::new(filter.clone()))
+            } else {
+                as_followup_player_alias(filter.clone())
             });
         }
-        TargetAst::Object(filter, _, _) => track_player_from_object_filter(filter, frame),
+        TargetAst::PlayerOrPlaneswalker(filter, _) => {
+            frame.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+        }
+        TargetAst::Object(filter, explicit_target_span, _) => {
+            if explicit_target_span.is_some()
+                && (filter.owner.is_some() || filter.controller.is_some())
+            {
+                // The lexical owner/controller filter describes the legal
+                // target set, not the concrete player selected at runtime.
+                // A later "that player" must follow the selected object's
+                // exact provenance even when no later object reference forced
+                // us to create a tag for that target.
+                let reference = ObjectRef::Target;
+                frame.last_player_filter = Some(if filter.owner.is_some() {
+                    PlayerFilter::AliasedOwnerOf(reference)
+                } else {
+                    PlayerFilter::AliasedControllerOf(reference)
+                });
+            } else {
+                track_player_from_object_filter(filter, frame);
+            }
+        }
         TargetAst::ObjectOrPlayer(object_filter, player_filter, _) => {
             track_player_from_object_filter(object_filter, frame);
             frame.last_player_filter =
@@ -293,6 +346,19 @@ fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
                 });
         }
         _ => {}
+    }
+}
+
+fn resolved_explicit_target_player_filter(spec: &ChooseSpec) -> Option<PlayerFilter> {
+    if !spec.is_target() {
+        return None;
+    }
+    match spec.inner() {
+        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            Some(filter.clone())
+        }
+        ChooseSpec::ObjectOrPlayer(_, filter) => Some(filter.clone()),
+        _ => None,
     }
 }
 
@@ -377,12 +443,33 @@ fn maybe_tag_target(
         // capture a following elided `it` subject in the same effect chain.
         frame.last_object_tag = None;
     }
-    if frame.auto_tag_object_targets
-        && let Some(tag) = propagated_or_generated_object_tag(&spec, id_gen, prefix)
-    {
-        frame.last_object_tag = Some(tag);
+    let current_object_tag = if frame.auto_tag_object_targets {
+        propagated_or_generated_object_tag(&spec, id_gen, prefix)
+    } else {
+        None
+    };
+    if let Some(tag) = current_object_tag.as_ref() {
+        frame.last_object_tag = Some(tag.clone());
     }
     track_target_player(target, frame);
+    if let (Some(tag), TargetAst::Object(filter, Some(_), _)) = (current_object_tag, target)
+        && (filter.owner.is_some() || filter.controller.is_some())
+    {
+        let reference = ObjectRef::tagged(tag);
+        frame.last_player_filter = Some(if filter.owner.is_some() {
+            PlayerFilter::AliasedOwnerOf(reference)
+        } else {
+            PlayerFilter::AliasedControllerOf(reference)
+        });
+    }
+    if let Some(filter) = resolved_explicit_target_player_filter(&spec) {
+        // `track_target_player` sees the parser's lexical filter. Relative
+        // filters such as `another target player` still contain their
+        // IteratedPlayer placeholder there. Export the already-resolved target
+        // choice instead so a following `the chosen player` aliases the exact
+        // legal target set established by this declaration.
+        frame.last_player_filter = Some(PlayerFilter::Target(Box::new(filter)));
+    }
     Ok(())
 }
 
@@ -489,6 +576,9 @@ fn advance_reference_frame_for_effect(
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
     match effect {
+        EffectAst::PlaySubgame { nonwinner_effects } => {
+            advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
+        }
         EffectAst::Sequence { effects }
         | EffectAst::SourceSentence { effects }
         | EffectAst::Coordinated { effects, .. } => {
@@ -509,7 +599,8 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::Discover { .. }
                 | SubjectVerbActionAst::ManifestTopCardOfLibrary
                 | SubjectVerbActionAst::CloakTopCardOfLibrary
-                | SubjectVerbActionAst::ManifestCardFromHand => {
+                | SubjectVerbActionAst::ManifestCardFromHand
+                | SubjectVerbActionAst::ManifestDread => {
                     maybe_tag_generated_object_results(effect, frame, id_gen);
                 }
                 SubjectVerbActionAst::Populate { .. } => {
@@ -808,12 +899,14 @@ fn advance_reference_frame_for_effect(
                     filter,
                     count,
                     target,
+                    one_of_referenced_set,
                 } => {
-                    if target.is_some() {
-                        frame.last_object_tag = Some(next_reference_tag(id_gen, "sacrificed"));
+                    let sacrificed_tag = if target.is_some() {
+                        Some(next_reference_tag(id_gen, "sacrificed"))
                     } else if filter.source {
                         // Source sacrifice lowers directly to SacrificeTargetEffect(Source) and
                         // does not materialize a new tagged object reference.
+                        None
                     } else {
                         let refs = lowering_reference_frame(frame);
                         let resolved_filter = match resolve_it_tag(filter, &refs) {
@@ -826,12 +919,18 @@ fn advance_reference_frame_for_effect(
                             }
                             Err(err) => return Err(err),
                         };
-                        if !(*count == 1
+                        if !(!*one_of_referenced_set
+                            && *count == 1
                             && object_filter_as_tagged_reference(&resolved_filter).is_some())
                         {
-                            frame.last_object_tag =
-                                Some(next_reference_tag(id_gen, "sacrificed"));
+                            Some(next_reference_tag(id_gen, "sacrificed"))
+                        } else {
+                            None
                         }
+                    };
+                    if let Some(sacrificed_tag) = sacrificed_tag {
+                        remember_local_sacrifice_alias_if_unbound(frame, &sacrificed_tag);
+                        frame.last_object_tag = Some(sacrificed_tag);
                     }
                 }
                 SubjectVerbActionAst::SacrificeAll { .. } => {
@@ -997,9 +1096,14 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::RevealHand => {
                     frame.last_object_tag = None;
+                    // Reveal-hand execution owns the canonical public tag.
+                    // Drop any older consult snapshot so it cannot shadow it.
+                    remember_public_revealed_alias(frame, None);
                 }
                 SubjectVerbActionAst::RevealTop => {
-                    frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
+                    let tag = next_reference_tag(id_gen, "revealed");
+                    remember_public_revealed_alias(frame, Some(&tag));
+                    frame.last_object_tag = Some(tag);
                 }
                 SubjectVerbActionAst::ExileTopOfLibrary {
                     tags,
@@ -1015,21 +1119,25 @@ fn advance_reference_frame_for_effect(
                     }
                 }
                 SubjectVerbActionAst::RevealCardsFromHand { tag, .. } => {
-                    frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
+                    let tag = if tag.as_str() == IT_TAG {
                         next_reference_tag(id_gen, "revealed")
                     } else {
                         tag.as_str().to_string()
-                    });
+                    };
+                    remember_public_revealed_alias(frame, Some(&tag));
+                    frame.last_object_tag = Some(tag);
                 }
                 SubjectVerbActionAst::RevealTagged { tag } => {
-                    frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
+                    let tag = if tag.as_str() == IT_TAG {
                         frame
                             .last_object_tag
                             .clone()
                             .unwrap_or_else(|| next_reference_tag(id_gen, "revealed"))
                     } else {
                         tag.as_str().to_string()
-                    });
+                    };
+                    remember_public_revealed_alias(frame, Some(&tag));
+                    frame.last_object_tag = Some(tag);
                 }
                 SubjectVerbActionAst::LookAtTopCards { tag, .. } => {
                     frame.last_object_tag = Some(if tag.as_str() == IT_TAG {
@@ -1066,6 +1174,9 @@ fn advance_reference_frame_for_effect(
                         }
                     }
                     track_target_player(target, frame);
+                }
+                SubjectVerbActionAst::PutOntoBattlefield { target, .. } => {
+                    maybe_tag_target(target, frame, id_gen, "moved")?;
                 }
                 SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. } => {
                     if frame.auto_tag_object_targets {
@@ -1143,13 +1254,36 @@ fn advance_reference_frame_for_effect(
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::ConsultTopOfLibrary {
-                    player, match_tag, ..
+                    player,
+                    all_tag,
+                    match_tag,
+                    ..
                 } => {
                     track_effect_player(*player, frame, true, true)?;
+                    // A consult exposes two independently referenceable results:
+                    // the singular matching card ("that card") and the complete
+                    // revealed collection ("cards revealed this way"). Keep the
+                    // match as ordinary object memory while preserving the public
+                    // revealed alias for later typed collection counts.
+                    remember_public_revealed_alias(frame, Some(all_tag.as_str()));
                     frame.last_object_tag = Some(match_tag.as_str().to_string());
                 }
-                SubjectVerbActionAst::SearchLibrary { player, .. } => {
-                    track_effect_player(*player, frame, true, true)?;
+                SubjectVerbActionAst::SearchLibrary { filter, player, .. } => {
+                    if matches!(*player, PlayerAst::That)
+                        && let Some(owner) = filter.owner.as_ref()
+                        && matches!(owner, PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))
+                    {
+                        // The filter's explicit target owner is the selected
+                        // library owner. Preserve it as the discourse export
+                        // even when a source-sentence boundary later compiles
+                        // this search independently from its TargetOnly
+                        // prelude; otherwise a following "that player's
+                        // library" falls back to IteratedPlayer.
+                        frame.last_player_filter =
+                            Some(as_followup_player_alias(owner.clone()));
+                    } else {
+                        track_effect_player(*player, frame, true, true)?;
+                    }
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "searched"));
                     }
@@ -1338,6 +1472,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedTriggerForDuration { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
@@ -1382,7 +1517,8 @@ fn advance_reference_frame_for_effect(
                 frame.iterated_player = saved.iterated_player;
             }
         }
-        EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::TrailingIf { predicate, effects }
+        | EffectAst::TrailingUnless { predicate, effects } => {
             let mut branch_frame = frame.clone();
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
                 branch_frame.last_player_filter = Some(player_filter);
@@ -1931,6 +2067,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayAnyLife { .. }
+                | SubjectVerbActionAst::PayLife { .. }
                 | SubjectVerbActionAst::CopySpell { .. }
                 | SubjectVerbActionAst::CopySpellForEachTarget { .. }
                 | SubjectVerbActionAst::TargetOnly { .. }
@@ -1951,6 +2088,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         }
         EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::TrailingIf { effects, .. }
         | EffectAst::TrailingUnless { effects, .. }
         | EffectAst::RepeatProcess { effects, .. }
         | EffectAst::RepeatEffects { effects, .. } => {
@@ -1973,7 +2111,9 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
         EffectAst::TagAffected { effect, .. } => effect_can_supply_prior_effect_memory(effect),
-        EffectAst::MoveTaggedGroupToZone { .. } | EffectAst::RestartGame { .. } => true,
+        EffectAst::MoveTaggedGroupToZone { .. }
+        | EffectAst::RestartGame { .. }
+        | EffectAst::PlaySubgame { .. } => true,
         _ => false,
     }
 }
@@ -2329,6 +2469,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. }
         | SubjectVerbActionAst::Monstrosity { amount: count }
         | SubjectVerbActionAst::LoseLife { amount: count }
+        | SubjectVerbActionAst::PayLife { amount: count }
         | SubjectVerbActionAst::GainLife { amount: count }
         | SubjectVerbActionAst::DealDamage { amount: count, .. }
         | SubjectVerbActionAst::DealDamageEqualToPower { amount: count, .. }
@@ -2361,6 +2502,11 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             position: count, ..
         }
         | SubjectVerbActionAst::AdditionalLandPlays { count, .. } => visit(count),
+        SubjectVerbActionAst::HealDamage {
+            amount: Some(amount),
+            ..
+        } => visit(amount),
+        SubjectVerbActionAst::HealDamage { amount: None, .. } => {}
         SubjectVerbActionAst::Incubate { amount, count } => {
             visit(amount);
             visit(count);
@@ -2534,6 +2680,9 @@ fn resolve_effect_references_in_effect(
 
     if let EffectAst::DelayedTriggerThisTurn {
         trigger, effects, ..
+    }
+    | EffectAst::DelayedTriggerForDuration {
+        trigger, effects, ..
     } = &mut effect
     {
         let nested_state = EffectReferenceResolutionState {
@@ -2668,7 +2817,8 @@ fn advance_reference_env_for_effect(
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
         }
-        EffectAst::TrailingUnless { predicate, effects } => {
+        EffectAst::TrailingIf { predicate, effects }
+        | EffectAst::TrailingUnless { predicate, effects } => {
             let mut branch_env = env.clone();
             branch_env.source_object_antecedent |= predicate.establishes_source_object_antecedent();
             if let Some(player_filter) = predicate_bound_player_filter(predicate) {
@@ -2688,8 +2838,21 @@ fn advance_reference_env_for_effect(
             nested_env.last_effect_id = RefState::Known(*condition);
             nested_env.bind_unbound_x_to_last_effect =
                 predicate != &IfResultPredicate::AcceptedChoice;
-            let nested =
-                annotate_effect_sequence_with_env_internal(effects, nested_env, config, id_gen)?;
+            // The result branch is one control-flow node in the surrounding
+            // sequence. If a later outer effect refers to its affected object,
+            // preserve that export demand while annotating the branch itself.
+            // Lowering already compiles the branch with the outer node's
+            // auto-tag setting; mirroring it here keeps the exported reference
+            // environment aligned with the tags emitted at runtime.
+            let mut nested_config = config;
+            nested_config.force_auto_tag_object_targets |=
+                auto_tag_object_targets && !suppress_force_auto_tag_object_targets;
+            let nested = annotate_effect_sequence_with_env_internal(
+                effects,
+                nested_env,
+                nested_config,
+                id_gen,
+            )?;
             let mut out_env = nested.final_env;
             if matches!(predicate, IfResultPredicate::Value(_)) {
                 // Numeric result rows are mutually exclusive siblings. Keep
@@ -2739,6 +2902,7 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::Draw { count: amount }
             | SubjectVerbActionAst::ExileTopOfLibrary { count: amount, .. }
             | SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::PayLife { amount }
             | SubjectVerbActionAst::GainLife { amount }
             | SubjectVerbActionAst::Mill { count: amount }
             | SubjectVerbActionAst::Scry { count: amount }
@@ -2780,7 +2944,11 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::MoveToLibraryNthFromTop {
                 position: amount, ..
             }
-            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
+            | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. }
+            | SubjectVerbActionAst::HealDamage {
+                amount: Some(amount),
+                ..
+            } => {
                 resolve_effect_result_value(amount, state)?;
             }
             SubjectVerbActionAst::Incubate { amount, count } => {
@@ -2829,6 +2997,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RollDie { .. }
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
@@ -2859,6 +3028,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::EndTurn
+            | SubjectVerbActionAst::EndCombatPhase
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -2971,7 +3141,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
-            | SubjectVerbActionAst::PutOntoBattlefield { .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
@@ -3088,8 +3257,10 @@ fn resolve_effect_result_values_in_fields(
             }
             SubjectVerbActionAst::Learn
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
+            SubjectVerbActionAst::HealDamage { amount: None, .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
         | EffectAst::ChooseObjectsBottomOfLibrary { count_value, .. }
@@ -3365,6 +3536,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::RollDie { .. }
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
@@ -3378,6 +3550,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
             | SubjectVerbActionAst::EndTurn
+            | SubjectVerbActionAst::EndCombatPhase
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -3399,6 +3572,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 .as_mut()
                 .map_or(0, |value| bind_unresolved_it_in_value(value, seed_tag)),
             SubjectVerbActionAst::LoseLife { amount }
+            | SubjectVerbActionAst::PayLife { amount }
             | SubjectVerbActionAst::GainLife { amount }
             | SubjectVerbActionAst::PayEnergy { amount }
             | SubjectVerbActionAst::SetLifeTotal { amount } => {
@@ -3432,6 +3606,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 count,
                 tags,
                 accumulated_tags,
+                ..
             } => {
                 let mut replacements = bind_unresolved_it_in_value(count, seed_tag);
                 for tag in tags {
@@ -3498,6 +3673,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 source,
                 amount,
                 target,
+                ..
             } => {
                 bind_unresolved_it_in_target(source, seed_tag)
                     + bind_unresolved_it_in_value(amount, seed_tag)
@@ -3585,6 +3761,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::AddManaCommanderIdentity { amount }
             | SubjectVerbActionAst::AdditionalLandPlays { count: amount, .. } => {
                 bind_unresolved_it_in_value(amount, seed_tag)
+            }
+            SubjectVerbActionAst::HealDamage { target, amount } => {
+                amount
+                    .as_mut()
+                    .map_or(0, |amount| bind_unresolved_it_in_value(amount, seed_tag))
+                    + bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::LookAtTopCards { count, tag, .. } => {
                 bind_unresolved_it_in_value(count, seed_tag)
@@ -4025,6 +4207,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
         EffectAst::Conditional { predicate, .. }
+        | EffectAst::TrailingIf { predicate, .. }
         | EffectAst::TrailingUnless { predicate, .. }
         | EffectAst::SelfReplacement { predicate, .. } => {
             bind_unresolved_it_in_predicate(predicate, seed_tag)
@@ -4780,6 +4963,7 @@ mod tests {
                     count: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
                     dynamic_power_toughness: None,
                     player: PlayerAst::Implicit,
+                    actor_surface_explicit: false,
                     attached_to: None,
                     tapped: false,
                     attacking: false,
@@ -5237,6 +5421,7 @@ mod tests {
                     count: Value::Fixed(1),
                     dynamic_power_toughness: None,
                     player: PlayerAst::You,
+                    actor_surface_explicit: false,
                     attached_to: None,
                     tapped: false,
                     attacking: false,
@@ -5408,6 +5593,7 @@ mod tests {
                     },
                     dynamic_power_toughness: None,
                     player: PlayerAst::Implicit,
+                    actor_surface_explicit: false,
                     attached_to: None,
                     tapped: false,
                     attacking: false,
@@ -5543,5 +5729,21 @@ mod tests {
             &first,
             Some(&second)
         ));
+    }
+
+    #[test]
+    fn public_revealed_collection_alias_refreshes_and_clears() {
+        let mut frame =
+            crate::runtime_backend::references::reference_model::ReferenceFrame::default();
+
+        remember_public_revealed_alias(&mut frame, Some("consult_all"));
+        remember_public_revealed_alias(&mut frame, Some("later_reveal"));
+        assert_eq!(
+            frame.snapshot_tag_aliases,
+            vec![("__public_revealed".to_string(), "later_reveal".to_string())]
+        );
+
+        remember_public_revealed_alias(&mut frame, None);
+        assert!(frame.snapshot_tag_aliases.is_empty());
     }
 }

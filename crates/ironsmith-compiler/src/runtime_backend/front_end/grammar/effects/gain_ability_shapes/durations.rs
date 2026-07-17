@@ -1,10 +1,12 @@
-use winnow::combinator::{alt, opt};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
+use winnow::token::any;
 
 use crate::ConditionExpr;
 use crate::effect::Until;
-use crate::runtime_backend::front_end::grammar::primitives::{self, WordSliceInput};
+use crate::runtime_backend::front_end::grammar::primitives::WordSliceInput;
+use crate::runtime_backend::front_end::grammar::{filters, primitives};
 use crate::runtime_backend::front_end::lexer::{
     LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas,
 };
@@ -84,6 +86,102 @@ fn for_as_long_as(input: &mut WordSliceInput<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
+fn affected_object_counter_duration_lexed(input: &mut LexStream<'_>) -> WResult<Until> {
+    primitives::phrase(&["for", "as", "long", "as"]).parse_next(input)?;
+    alt((
+        primitives::kw("it").void(),
+        (
+            alt((primitives::kw("that"), primitives::kw("this"))),
+            alt((
+                primitives::kw("artifact"),
+                primitives::kw("creature"),
+                primitives::kw("enchantment"),
+                primitives::kw("land"),
+                primitives::kw("permanent"),
+            )),
+        )
+            .void(),
+    ))
+    .parse_next(input)?;
+    primitives::kw("has").parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let counter_tokens = repeat_till(
+        1..,
+        any.void(),
+        peek(alt((primitives::kw("counter"), primitives::kw("counters")))),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    alt((primitives::kw("counter"), primitives::kw("counters"))).parse_next(input)?;
+    primitives::phrase(&["on", "it"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+
+    let counter_type =
+        filters::parse_counter_type_from_tokens(counter_tokens).ok_or_else(|| {
+            primitives::backtrack_err("counter-linked duration", "known counter type")
+        })?;
+    Ok(Until::ForAsLongAs(
+        ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(counter_type),
+    ))
+}
+
+/// Parse an authored leading duration such as
+/// `for as long as that permanent has a charge counter on it, ...`.
+///
+/// The surrounding gain-ability parser uses the returned word count to start
+/// verb recognition after the condition, so the condition's own `has` cannot
+/// be mistaken for the grant verb.
+pub(crate) fn parse_leading_affected_object_counter_duration_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<LeadingGainDurationShape> {
+    let (duration, rest) =
+        primitives::parse_prefix(tokens, affected_object_counter_duration_lexed)?;
+    if rest.is_empty() {
+        return None;
+    }
+    let consumed_tokens = tokens.len().checked_sub(rest.len())?;
+    Some(LeadingGainDurationShape {
+        consumed_words: TokenWordView::new(&tokens[..consumed_tokens]).len(),
+        duration,
+    })
+}
+
+fn source_remains_on_battlefield(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    for_as_long_as.parse_next(input)?;
+    alt((
+        (
+            alt((
+                primitives::word_slice_exact("this"),
+                primitives::word_slice_exact("thiss"),
+            )),
+            opt(alt((
+                primitives::word_slice_exact("artifact"),
+                primitives::word_slice_exact("creature"),
+                primitives::word_slice_exact("enchantment"),
+                primitives::word_slice_exact("permanent"),
+                primitives::word_slice_exact("source"),
+            ))),
+        )
+            .void(),
+        primitives::word_slice_exact("source").void(),
+    ))
+    .parse_next(input)?;
+    alt((
+        primitives::word_slice_exact("remain"),
+        primitives::word_slice_exact("remains"),
+    ))
+    .parse_next(input)?;
+    primitives::word_slice_exact("on").parse_next(input)?;
+    opt(primitives::word_slice_exact("the")).parse_next(input)?;
+    primitives::word_slice_exact("battlefield").parse_next(input)?;
+    Ok(Until::ThisLeavesTheBattlefield)
+}
+
+fn continuous_duration(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    alt((simple_turn_duration, source_remains_on_battlefield)).parse_next(input)
+}
+
 fn you_control(input: &mut WordSliceInput<'_>) -> WResult<()> {
     (
         for_as_long_as,
@@ -134,7 +232,7 @@ pub(crate) fn parse_simple_ability_duration_shape(
     let mut start = 0usize;
     while start < words.len() {
         let mut input = &words[start..];
-        if let Ok(duration) = simple_turn_duration.parse_next(&mut input) {
+        if let Ok(duration) = continuous_duration.parse_next(&mut input) {
             return Some(GainAbilityDurationShape {
                 start,
                 len: words[start..].len().saturating_sub(input.len()),
@@ -166,7 +264,7 @@ pub(crate) fn parse_leading_gain_duration_shape(
     words: &[&str],
 ) -> Option<LeadingGainDurationShape> {
     let mut input: WordSliceInput<'_> = words;
-    let duration = simple_turn_duration.parse_next(&mut input).ok()?;
+    let duration = continuous_duration.parse_next(&mut input).ok()?;
     Some(LeadingGainDurationShape {
         consumed_words: words.len().saturating_sub(input.len()),
         duration,
@@ -211,6 +309,24 @@ mod tests {
         assert_eq!(duration.len, 4);
         assert_eq!(duration.duration, Until::YourNextTurn);
 
+        let source_lifetime = parse_simple_ability_duration_shape(&[
+            "all",
+            "abilities",
+            "for",
+            "as",
+            "long",
+            "as",
+            "this",
+            "creature",
+            "remains",
+            "on",
+            "the",
+            "battlefield",
+        ])
+        .unwrap();
+        assert_eq!(source_lifetime.start, 2);
+        assert_eq!(source_lifetime.duration, Until::ThisLeavesTheBattlefield);
+
         let tapped_tokens =
             lex_line("flying for as long as this creature remains tapped.", 0).unwrap();
         let tapped = parse_source_tapped_gain_duration_shape(&tapped_tokens).unwrap();
@@ -235,6 +351,38 @@ mod tests {
                 .unwrap()
                 .duration,
             Until::EndOfTurn
+        );
+    }
+
+    #[test]
+    fn parses_leading_affected_object_counter_duration_before_real_grant_verb() {
+        let tokens = lex_line(
+            "For as long as that creature has a bounty counter on it, it has \"When this creature dies, draw a card.\"",
+            0,
+        )
+        .unwrap();
+        let shape = parse_leading_affected_object_counter_duration_shape(&tokens)
+            .expect("counter-linked grant duration should parse");
+
+        assert_eq!(shape.consumed_words, 12);
+        assert_eq!(
+            shape.duration,
+            Until::ForAsLongAs(
+                ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(
+                    crate::object::CounterType::Named("bounty")
+                )
+            )
+        );
+
+        let normalized_without_comma = lex_line(
+            "For as long as that land has a blaze counter on it it has \"At the beginning of your upkeep, this land deals 1 damage to you.\"",
+            0,
+        )
+        .unwrap();
+        assert!(
+            parse_leading_affected_object_counter_duration_shape(&normalized_without_comma)
+                .is_some(),
+            "multi-sentence normalization may omit the duration comma"
         );
     }
 }

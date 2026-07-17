@@ -30,6 +30,8 @@ mod player_and_zone_effects;
 mod quantified_player_actions;
 #[path = "render_effects/returned_object_type_setting.rs"]
 mod returned_object_type_setting;
+#[path = "render_effects/roll_result_surfaces.rs"]
+mod roll_result_surfaces;
 #[path = "render_effects/search_reveal_and_sacrifice.rs"]
 mod search_reveal_and_sacrifice;
 #[path = "render_effects/sequences_and_votes.rs"]
@@ -47,6 +49,9 @@ pub(super) use clause_and_ability_surfaces::*;
 pub(super) use continuous_and_choices::*;
 pub(super) use costs_and_triggers::*;
 pub(super) use effect_lists::*;
+pub(super) use effect_lists::{
+    describe_face_down_pile_then_manifest, rendered_action_target, target_specs_select_same_objects,
+};
 pub(super) use emblem_surfaces::*;
 pub(super) use looked_partition::*;
 pub(super) use looked_top_bottom::*;
@@ -54,6 +59,7 @@ pub(super) use observation_conditionals::*;
 pub(super) use player_and_zone_effects::*;
 pub(super) use quantified_player_actions::*;
 pub(super) use returned_object_type_setting::*;
+pub(super) use roll_result_surfaces::*;
 pub(super) use search_reveal_and_sacrifice::*;
 pub(super) use sequences_and_votes::*;
 pub(super) use single_effects_early::*;

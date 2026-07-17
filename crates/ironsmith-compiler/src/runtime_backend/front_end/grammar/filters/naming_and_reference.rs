@@ -125,16 +125,31 @@ const LTE_MANA_VALUE_AS_TAGGED_PHRASES: &[&[&str]] = &[
     ],
 ];
 const LESSER_MANA_VALUE_PHRASE: &[&str] = &["lesser", "mana", "value"];
-const SACRIFICE_COST_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
+const ADDITIONAL_COST_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
     &["the", "sacrificed", "creature"],
     &["the", "sacrificed", "artifact"],
+    &["the", "sacrificed", "enchantment"],
     &["the", "sacrificed", "permanent"],
     &["a", "sacrificed", "creature"],
     &["a", "sacrificed", "artifact"],
+    &["a", "sacrificed", "enchantment"],
     &["a", "sacrificed", "permanent"],
     &["sacrificed", "creature"],
     &["sacrificed", "artifact"],
+    &["sacrificed", "enchantment"],
     &["sacrificed", "permanent"],
+    &["the", "exiled", "creature"],
+    &["the", "exiled", "artifact"],
+    &["the", "exiled", "enchantment"],
+    &["the", "exiled", "permanent"],
+    &["an", "exiled", "creature"],
+    &["an", "exiled", "artifact"],
+    &["an", "exiled", "enchantment"],
+    &["an", "exiled", "permanent"],
+    &["exiled", "creature"],
+    &["exiled", "artifact"],
+    &["exiled", "enchantment"],
+    &["exiled", "permanent"],
 ];
 const IT_OR_ITS_REFERENCE_WORDS: &[&str] = &["it", "its"];
 const ATTACKING_THAT_PLAYER_PHRASES: &[&[&str]] = &[
@@ -217,6 +232,20 @@ const SAME_NAME_AS_TAGGED_OBJECT_PHRASES: &[&[&str]] = &[
     &["same", "name", "as", "that", "permanent"],
 ];
 
+fn same_name_antecedent_surface(
+    words: &[&str],
+) -> Option<ironsmith_core::SameNameAntecedentSurface> {
+    words.windows(3).enumerate().find_map(|(idx, window)| {
+        if window != ["same", "name", "as"] {
+            return None;
+        }
+        words[idx + 3..]
+            .iter()
+            .copied()
+            .find_map(ironsmith_core::SameNameAntecedentSurface::from_noun)
+    })
+}
+
 fn find_any_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
     let mut start = 0usize;
     while start < words.len() {
@@ -225,6 +254,31 @@ fn find_any_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
             return Some(start);
         }
         start += 1;
+    }
+    None
+}
+
+fn additional_cost_object_surface(
+    words: &[&str],
+) -> Option<ironsmith_core::AdditionalCostObjectSurface> {
+    for (idx, word) in words.iter().enumerate() {
+        let action = match *word {
+            "sacrificed" => ironsmith_core::AdditionalCostObjectAction::Sacrificed,
+            "exiled" => ironsmith_core::AdditionalCostObjectAction::Exiled,
+            _ => continue,
+        };
+        let kind = match words.get(idx + 1).copied() {
+            Some("creature" | "creatures") => ironsmith_core::SacrificedObjectKind::Creature,
+            Some("artifact" | "artifacts") => ironsmith_core::SacrificedObjectKind::Artifact,
+            Some("enchantment" | "enchantments") => {
+                ironsmith_core::SacrificedObjectKind::Enchantment
+            }
+            Some("permanent" | "permanents") => ironsmith_core::SacrificedObjectKind::Permanent,
+            _ => continue,
+        };
+        return Some(ironsmith_core::AdditionalCostObjectSurface::new(
+            action, kind,
+        ));
     }
     None
 }
@@ -772,10 +826,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
 
         let word = words[idx];
         if word == "non"
-            && let Some(subtype) = words
-                .get(idx + 1)
-                .copied()
-                .and_then(parse_subtype_flexible)
+            && let Some(subtype) = words.get(idx + 1).copied().and_then(parse_subtype_flexible)
         {
             push_unique_filter_value(&mut filter.excluded_subtypes, subtype);
             idx += 2;
@@ -803,10 +854,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if let Some(supertype) = parse_supertype_word(word) {
             push_unique_filter_value(&mut filter.supertypes, supertype);
         }
-        if let Some(subtype) = word
-            .strip_prefix("non-")
-            .and_then(parse_subtype_flexible)
-        {
+        if let Some(subtype) = word.strip_prefix("non-").and_then(parse_subtype_flexible) {
             push_unique_filter_value(&mut filter.excluded_subtypes, subtype);
         } else if let Some(subtype) = parse_subtype_flexible(word) {
             push_unique_filter_value(&mut filter.subtypes, subtype);
@@ -1395,20 +1443,29 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.drain(..2);
     }
 
-    let references_sacrifice_cost_object =
-        find_any_phrase_start(all_words, SACRIFICE_COST_OBJECT_REFERENCE_PHRASES).is_some();
+    let additional_cost_surface = additional_cost_object_surface(all_words);
+    let references_additional_cost_object = additional_cost_surface.is_some()
+        || find_any_phrase_start(all_words, ADDITIONAL_COST_OBJECT_REFERENCE_PHRASES).is_some();
+    if references_additional_cost_object {
+        filter.set_additional_cost_object_surface(additional_cost_surface);
+    }
     let has_share_card_type = find_any_phrase_start(all_words, SHARED_CARD_TYPE_PHRASES).is_some()
         && words_contain_any_word(all_words, SHARE_WORDS)
         && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
-            || references_sacrifice_cost_object);
-    let has_share_color = words_contain_all(all_words, SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS);
+            || references_additional_cost_object);
+    let has_share_color = words_contain_all(all_words, SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS)
+        || (references_additional_cost_object
+            && words_contain_any_word(all_words, SHARE_WORDS)
+            && words_contain_any_word(all_words, COLOR_OR_COLORS_WORDS));
     let references_tapped_cost_objects =
         find_phrase_start(all_words, TAPPED_THIS_WAY_PHRASE).is_some();
     let references_each_tapped_cost_object =
         find_phrase_start(all_words, EACH_CREATURE_TAPPED_THIS_WAY_PHRASE).is_some();
     let has_share_creature_type = find_any_phrase_start(all_words, CREATURE_TYPE_PHRASES).is_some()
         && words_contain_any_word(all_words, SHARE_WORDS)
-        && (words_contain_any_word(all_words, IT_OR_THEM_WORDS) || references_tapped_cost_objects);
+        && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
+            || references_tapped_cost_objects
+            || references_additional_cost_object);
     let has_same_mana_value = find_phrase_start(all_words, SAME_MANA_VALUE_AS_PHRASE).is_some();
     let has_equal_or_lesser_mana_value =
         find_phrase_start(all_words, EQUAL_OR_LESSER_MANA_VALUE_PHRASE).is_some();
@@ -1427,8 +1484,8 @@ pub(super) fn apply_reference_and_tag_stage(
         find_any_phrase_start(all_words, SAME_NAME_AS_TAGGED_OBJECT_PHRASES).is_some();
 
     if has_share_card_type {
-        let tag = if references_sacrifice_cost_object {
-            TagKey::from("sacrificed_0")
+        let tag = if references_additional_cost_object {
+            TagKey::from(ADDITIONAL_COST_OBJECT_TAG)
         } else {
             IT_TAG.into()
         };
@@ -1439,13 +1496,21 @@ pub(super) fn apply_reference_and_tag_stage(
     }
     if has_share_color {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: IT_TAG.into(),
+            tag: if references_additional_cost_object {
+                TagKey::from(ADDITIONAL_COST_OBJECT_TAG)
+            } else {
+                IT_TAG.into()
+            },
             relation: TaggedOpbjectRelation::SharesColorWithTagged,
         });
     }
     if has_share_creature_type {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: IT_TAG.into(),
+            tag: if references_additional_cost_object {
+                TagKey::from(ADDITIONAL_COST_OBJECT_TAG)
+            } else {
+                IT_TAG.into()
+            },
             relation: if references_each_tapped_cost_object {
                 TaggedOpbjectRelation::SharesSubtypeWithEachTagged
             } else {
@@ -1453,9 +1518,9 @@ pub(super) fn apply_reference_and_tag_stage(
             },
         });
     }
-    if has_same_mana_value && references_sacrifice_cost_object {
+    if has_same_mana_value && references_additional_cost_object {
         filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from("sacrifice_cost_0"),
+            tag: TagKey::from(ADDITIONAL_COST_OBJECT_TAG),
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     } else if has_same_mana_value && references_it_for_mana_value {
@@ -1484,6 +1549,7 @@ pub(super) fn apply_reference_and_tag_stage(
         });
     }
     if has_same_name_as_tagged_object {
+        filter.set_same_name_antecedent_surface(same_name_antecedent_surface(all_words));
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: if source_exiled_is_same_name_antecedent {
                 TagKey::from(crate::tag::SOURCE_EXILED_TAG)

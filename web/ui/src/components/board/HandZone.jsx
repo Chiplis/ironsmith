@@ -73,6 +73,7 @@ function buildPlayableMaps(state, player) {
     addZoneCards(snapshotPlayer?.graveyard_cards);
     addZoneCards(snapshotPlayer?.exile_cards);
     addZoneCards(snapshotPlayer?.command_cards);
+    addZoneCards(snapshotPlayer?.ante_cards);
     addZoneCards(snapshotPlayer?.hand_cards);
   }
 
@@ -139,6 +140,7 @@ function buildPlayableMaps(state, player) {
     addPseudoHandCandidates(snapshotPlayer?.graveyard_cards, "graveyard");
     addPseudoHandCandidates(snapshotPlayer?.exile_cards, "exile");
     addPseudoHandCandidates(snapshotPlayer?.command_cards, "command");
+    addPseudoHandCandidates(snapshotPlayer?.ante_cards, "ante");
   }
 
   return { handPlayable, extraPlayable };

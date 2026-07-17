@@ -355,18 +355,15 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
 
     let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
     let subject_words = subject_words.to_word_refs();
-    let intrinsic_attachment_state = subject_words
-        .iter()
-        .enumerate()
-        .find_map(|(idx, word)| {
-            if !matches!(*word, "enchanted" | "equipped") {
-                return None;
-            }
-            idx.checked_sub(1)
-                .and_then(|prev| subject_words.get(prev))
-                .is_some_and(|copula| matches!(*copula, "is" | "are" | "that's" | "thats"))
-                .then_some(*word)
-        });
+    let intrinsic_attachment_state = subject_words.iter().enumerate().find_map(|(idx, word)| {
+        if !matches!(*word, "enchanted" | "equipped") {
+            return None;
+        }
+        idx.checked_sub(1)
+            .and_then(|prev| subject_words.get(prev))
+            .is_some_and(|copula| matches!(*copula, "is" | "are" | "that's" | "thats"))
+            .then_some(*word)
+    });
     if let Some(filter) = parse_source_or_another_trigger_subject_filter_lexed(subject_tokens)? {
         return Ok(Some(filter));
     }
@@ -470,10 +467,12 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 })
             {
-                filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
-                    tag: crate::tag::TagKey::from(tag),
-                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-                });
+                filter
+                    .tagged_constraints
+                    .push(crate::filter::TaggedObjectConstraint {
+                        tag: crate::tag::TagKey::from(tag),
+                        relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                    });
             }
             if intrinsic_attachment_state.is_some() {
                 filter.set_relative_attachment_state_surface(true);
@@ -556,6 +555,9 @@ pub(crate) fn parse_spell_activity_trigger(
     let exact_spells_this_turn = activity_facts.exact_spells_this_turn;
     let min_spells_this_turn = activity_facts.min_spells_this_turn;
     let from_not_hand = activity_facts.from_not_hand;
+    let timing = activity_facts
+        .during_combat
+        .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
 
     let parse_filter =
         |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
@@ -641,6 +643,7 @@ pub(crate) fn parse_spell_activity_trigger(
             let cast_trigger = TriggerSpec::SpellCast {
                 filter: filter.clone(),
                 caster: actor.clone(),
+                timing,
                 during_turn: during_turn.clone(),
                 min_spells_this_turn,
                 exact_spells_this_turn,
@@ -676,6 +679,7 @@ pub(crate) fn parse_spell_activity_trigger(
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
             caster: actor,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -1247,6 +1251,7 @@ mod typed_trigger_subject_migration_tests {
             TriggerSpec::SpellCast {
                 filter: None,
                 caster: PlayerFilter::You,
+                timing: None,
                 during_turn: Some(PlayerFilter::You),
                 min_spells_this_turn: None,
                 exact_spells_this_turn: None,
@@ -1262,6 +1267,7 @@ mod typed_trigger_subject_migration_tests {
         let TriggerSpec::SpellCast {
             filter: Some(filter),
             caster,
+            timing,
             during_turn,
             ..
         } = trigger
@@ -1269,6 +1275,7 @@ mod typed_trigger_subject_migration_tests {
             panic!("expected a filtered passive cast trigger, got {trigger:?}");
         };
         assert_eq!(caster, PlayerFilter::Any);
+        assert_eq!(timing, None);
         assert_eq!(during_turn, Some(PlayerFilter::You));
         assert_eq!(
             filter.card_types,
@@ -1277,6 +1284,79 @@ mod typed_trigger_subject_migration_tests {
                 crate::types::CardType::Sorcery
             ]
         );
+    }
+
+    #[test]
+    fn spell_cast_during_combat_keeps_typed_timing() {
+        let tokens = lex_line("you cast a spell during combat", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        assert!(matches!(
+            trigger,
+            TriggerSpec::SpellCast {
+                filter: None,
+                caster: PlayerFilter::You,
+                timing: Some(ironsmith_core::TriggerTimingRestriction::DuringCombat),
+                during_turn: None,
+                min_spells_this_turn: None,
+                exact_spells_this_turn: None,
+                from_not_hand: false,
+            }
+        ));
+    }
+
+    #[test]
+    fn spell_cast_filters_preserve_serial_type_and_subtype_unions() {
+        let tokens = lex_line("you cast an instant, sorcery, or Wizard spell", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        } = trigger
+        else {
+            panic!("expected a filtered spell-cast trigger, got {trigger:?}");
+        };
+        assert_eq!(
+            filter.card_types,
+            vec![
+                crate::types::CardType::Instant,
+                crate::types::CardType::Sorcery,
+            ]
+        );
+        assert_eq!(filter.subtypes, vec![crate::types::Subtype::Wizard]);
+        assert!(filter.type_or_subtype_union);
+
+        let tokens = lex_line("you cast a Pegasus, Unicorn, or Horse creature spell", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        } = trigger
+        else {
+            panic!("expected a filtered spell-cast trigger, got {trigger:?}");
+        };
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        assert_eq!(
+            filter.subtypes,
+            vec![
+                crate::types::Subtype::Pegasus,
+                crate::types::Subtype::Unicorn,
+                crate::types::Subtype::Horse,
+            ]
+        );
+        assert!(!filter.type_or_subtype_union);
+
+        let tokens = lex_line("you cast a creature spell", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        } = trigger
+        else {
+            panic!("expected a filtered spell-cast trigger, got {trigger:?}");
+        };
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        assert!(filter.subtypes.is_empty());
+        assert!(!filter.type_or_subtype_union);
     }
 
     #[test]

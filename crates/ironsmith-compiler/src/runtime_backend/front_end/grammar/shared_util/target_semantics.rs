@@ -71,6 +71,47 @@ fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
     }
 }
 
+fn contextual_other_player_filter(base: PlayerFilter) -> PlayerFilter {
+    PlayerFilter::excluding(base, PlayerFilter::IteratedPlayer)
+}
+
+fn source_owner_exclusion(words: &[&str]) -> Option<PlayerFilter> {
+    let (&owner, source_words) = words.split_last()?;
+    if !matches!(owner, "owner" | "owners") {
+        return None;
+    }
+    let normalized = source_words
+        .iter()
+        .filter_map(|word| match *word {
+            "s" | "'" | "’" => None,
+            word => Some(strip_possessive_suffix(word)),
+        })
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    this_source_surface_for_words(&normalized)?;
+    Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+        crate::tag::SOURCE_OBJECT_TAG,
+    )))
+}
+
+fn explicit_player_exclusion(words: &[&str]) -> Option<PlayerFilter> {
+    let split = words
+        .windows(2)
+        .position(|window| window == ["other", "than"])?;
+    let base = match &words[..split] {
+        ["player"] | ["players"] => PlayerFilter::Any,
+        ["opponent"] | ["opponents"] => PlayerFilter::Opponent,
+        _ => return None,
+    };
+    let excluded_words = &words[split + 2..];
+    let excluded = match excluded_words {
+        ["you"] => PlayerFilter::You,
+        ["that", "player"] | ["that", "players"] => PlayerFilter::IteratedPlayer,
+        _ => source_owner_exclusion(excluded_words)?,
+    };
+    Some(PlayerFilter::excluding(base, excluded))
+}
+
 fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
     let words = match words {
         [article @ ("the" | "a" | "an"), rest @ ..] => {
@@ -272,6 +313,12 @@ pub(crate) fn parse_target_phrase_inner(
         &remaining_words,
         CREATURE_TAPPED_FOR_THIS_SPELL_COST_PATTERN,
     ) {
+        record_source_reference_surface(
+            span,
+            SourceReferenceSurface::ThisPermanentType(
+                "the creature tapped to pay this spell's additional cost".to_string(),
+            ),
+        );
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from("tap_cost_0"), span),
             target_count,
@@ -358,9 +405,18 @@ pub(crate) fn parse_target_phrase_inner(
             target_count,
         ));
     }
+    if let Some(filter) = explicit_player_exclusion(&remaining_words) {
+        return Ok(wrap_target_count(
+            TargetAst::Player(filter, target_span),
+            target_count,
+        ));
+    }
     if other && matches_surface(&remaining_words, ANY_PLAYER_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Player(PlayerFilter::NotYou, target_span),
+            TargetAst::Player(
+                contextual_other_player_filter(PlayerFilter::Any),
+                target_span,
+            ),
             target_count,
         ));
     }
@@ -476,14 +532,28 @@ pub(crate) fn parse_target_phrase_inner(
 
     if matches_surface(&remaining_words, ONE_OF_YOUR_OPPONENTS_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Player(PlayerFilter::Opponent, target_span),
+            TargetAst::Player(
+                if other {
+                    contextual_other_player_filter(PlayerFilter::Opponent)
+                } else {
+                    PlayerFilter::Opponent
+                },
+                target_span,
+            ),
             target_count,
         ));
     }
 
     if matches_surface(&remaining_words, OPPONENT_TARGET_PATTERN) {
         return Ok(wrap_target_count(
-            TargetAst::Player(PlayerFilter::Opponent, target_span),
+            TargetAst::Player(
+                if other {
+                    contextual_other_player_filter(PlayerFilter::Opponent)
+                } else {
+                    PlayerFilter::Opponent
+                },
+                target_span,
+            ),
             target_count,
         ));
     }

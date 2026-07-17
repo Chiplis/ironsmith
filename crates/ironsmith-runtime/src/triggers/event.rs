@@ -15,6 +15,7 @@ pub enum DamageEventTarget {
 pub enum AttackEventTarget {
     Player(PlayerId),
     Planeswalker(ObjectId),
+    Battle(ObjectId),
 }
 
 #[cfg(test)]
@@ -32,6 +33,8 @@ mod tests {
     fn test_attack_event_target() {
         let player_target = AttackEventTarget::Player(PlayerId::from_index(0));
         let planeswalker_target = AttackEventTarget::Planeswalker(ObjectId::from_raw(1));
+        let battle_target = AttackEventTarget::Battle(ObjectId::from_raw(2));
         assert_ne!(player_target, planeswalker_target);
+        assert_ne!(planeswalker_target, battle_target);
     }
 }

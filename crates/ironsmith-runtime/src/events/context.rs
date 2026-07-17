@@ -25,6 +25,12 @@ pub struct EventContext<'a> {
     /// Reference to the game state for additional lookups.
     pub game: &'a GameState,
 
+    /// Isolated battlefield view for an evolving ETB proposal.
+    ///
+    /// Replacement matchers use this instead of the object's current old-zone
+    /// characteristics when CR 614.12/614.17d prospective evaluation applies.
+    pub prospective_etb_game: Option<&'a GameState>,
+
     /// Last known information for the event's source, when the source has left
     /// the zone it was expected to be in before event matching.
     pub event_source_snapshot: Option<&'a ObjectSnapshot>,
@@ -43,8 +49,14 @@ impl<'a> EventContext<'a> {
             source,
             filter_ctx,
             game,
+            prospective_etb_game: None,
             event_source_snapshot: None,
         }
+    }
+
+    pub fn with_prospective_etb_game(mut self, game: Option<&'a GameState>) -> Self {
+        self.prospective_etb_game = game;
+        self
     }
 
     /// Attach LKI for the source of the event being matched.

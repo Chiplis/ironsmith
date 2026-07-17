@@ -135,6 +135,7 @@ pub(crate) enum StatusConditionStateAst {
     Tapped,
     Untapped,
     Attacking,
+    AttackingAlone,
     Monstrous,
 }
 
@@ -421,6 +422,18 @@ impl SubjectStatusConditionAst {
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Attacking) => {
                 Some(crate::ConditionExpr::SourceIsAttacking)
             }
+            (StatusConditionSubjectAst::Source, StatusConditionStateAst::AttackingAlone) => {
+                let mut attacking_creatures = ObjectFilter::creature();
+                attacking_creatures.attacking = true;
+                Some(crate::ConditionExpr::And(
+                    Box::new(crate::ConditionExpr::SourceIsAttacking),
+                    Box::new(crate::ConditionExpr::CountComparison {
+                        count: AnthemCountExpression::MatchingFilter(attacking_creatures),
+                        comparison: Comparison::Equal(1),
+                        display: Some("no other creatures are attacking".to_string()),
+                    }),
+                ))
+            }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Monstrous) => {
                 Some(crate::ConditionExpr::SourceIsMonstrous)
             }
@@ -440,6 +453,12 @@ impl SubjectStatusConditionAst {
 
 impl SubjectDescriptorConditionAst {
     pub(crate) fn condition_expr(self, display: String) -> crate::ConditionExpr {
+        if self.subject == SubjectDescriptorConditionSubjectAst::AttachedObject {
+            let mut descriptor_filter = ObjectFilter::default();
+            apply_object_descriptor_to_filter(&mut descriptor_filter, self.descriptor);
+            return crate::ConditionExpr::AttachedToSourceMatches(descriptor_filter);
+        }
+
         if self.subject == SubjectDescriptorConditionSubjectAst::EnchantedPermanent {
             match self.descriptor {
                 ObjectDescriptorAst::CardType(CardType::Creature) => {
@@ -1794,6 +1813,13 @@ mod tests {
                 SubjectStatusConditionAst {
                     subject: StatusConditionSubjectAst::EquippedCreature,
                     state: StatusConditionStateAst::Attacking,
+                },
+            ),
+            (
+                "it is attacking alone",
+                SubjectStatusConditionAst {
+                    subject: StatusConditionSubjectAst::Source,
+                    state: StatusConditionStateAst::AttackingAlone,
                 },
             ),
         ];

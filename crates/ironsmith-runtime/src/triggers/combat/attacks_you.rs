@@ -38,6 +38,9 @@ impl AttacksYouTrigger {
                 .game
                 .object(*pw)
                 .is_some_and(|o| ctx.game.controller_of(o) == ctx.controller),
+            AttackEventTarget::Battle(battle) => {
+                ctx.game.battle_protector(*battle) == Some(ctx.controller)
+            }
         }
     }
 
@@ -48,6 +51,9 @@ impl AttacksYouTrigger {
                 .game
                 .object(*pw)
                 .is_some_and(|o| ctx.game.controller_of(o) == ctx.controller),
+            AttackTarget::Battle(battle) => {
+                ctx.game.battle_protector(*battle) == Some(ctx.controller)
+            }
         }
     }
 

@@ -40,6 +40,10 @@ impl EffectExecutor for TargetOnlyEffect {
         Some(&self.target)
     }
 
+    fn target_chooser(&self) -> Option<&crate::target::PlayerFilter> {
+        self.chooser.as_ref()
+    }
+
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         Some(self.target.count())
     }

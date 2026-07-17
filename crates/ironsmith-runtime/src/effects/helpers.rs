@@ -81,10 +81,20 @@ pub(crate) fn view_hidden_candidate_objects(
                     .view_cards(game, public_viewer, &cards, &view_ctx);
             }
         } else {
-            let view_ctx =
-                ViewCardsContext::new(viewer, subject, Some(ctx.source), zone, description.clone());
-            ctx.decision_maker
-                .view_cards(game, viewer, &cards, &view_ctx);
+            for entitled_viewer in game.private_information_viewers_for(viewer, zone) {
+                let view_ctx = ViewCardsContext::new(
+                    entitled_viewer,
+                    subject,
+                    Some(ctx.source),
+                    zone,
+                    description.clone(),
+                );
+                ctx.decision_maker
+                    .view_cards(game, entitled_viewer, &cards, &view_ctx);
+            }
+            // Persist the rules player's entitlement, not the controller's
+            // temporary derived access. CR 722.4 makes that access follow the
+            // current player-control effect.
             ctx.remember_face_down_exile_viewers(&cards, viewer);
         }
     }
@@ -615,12 +625,14 @@ pub fn resolve_value(
                 + count_as_card_named_for_spell_effect_bonus(game, filter, ctx, &filter_ctx);
             Ok(count as i32)
         }
-        Value::PlayersWhoControlMoreThanYou(filter) => {
+        Value::PlayersWhoControlMoreThanYou { players, filter } => {
             let your_count = count_matching_objects_for_player(game, filter, ctx.controller, ctx);
+            let filter_ctx = ctx.filter_context(game);
             let count = game
                 .players
                 .iter()
                 .filter(|player| player.is_in_game())
+                .filter(|player| players.matches_player(player.id, &filter_ctx))
                 .filter(|player| {
                     count_matching_objects_for_player(game, filter, player.id, ctx) > your_count
                 })
@@ -628,14 +640,17 @@ pub fn resolve_value(
             Ok(count as i32)
         }
         Value::PlayersWhoControlAtLeastMoreThanYou {
+            players,
             filter,
             minimum_difference,
         } => {
             let your_count = count_matching_objects_for_player(game, filter, ctx.controller, ctx);
+            let filter_ctx = ctx.filter_context(game);
             let count = game
                 .players
                 .iter()
                 .filter(|player| player.is_in_game())
+                .filter(|player| players.matches_player(player.id, &filter_ctx))
                 .filter(|player| {
                     let player_count =
                         count_matching_objects_for_player(game, filter, player.id, ctx);
@@ -1407,19 +1422,29 @@ pub fn resolve_value(
             spec: target_spec,
             color,
         } => {
-            let target_id =
-                resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
-            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.base() {
-                ctx.get_tagged(tag)
-            } else {
-                None
-            };
             let count_symbols = |cost: &crate::mana::ManaCost| {
                 let symbol = crate::mana::ManaSymbol::from_color(*color);
                 cost.pips()
                     .iter()
                     .filter(|pip| pip.contains(&symbol))
                     .count() as i32
+            };
+
+            if matches!(target_spec.base(), ChooseSpec::All(_)) {
+                return Ok(resolve_objects_from_spec(game, target_spec, ctx)?
+                    .into_iter()
+                    .filter_map(|id| game.object(id))
+                    .filter_map(|object| object.mana_cost.as_deref())
+                    .map(count_symbols)
+                    .sum());
+            }
+
+            let target_id =
+                resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
+            let tagged_snapshot = if let ChooseSpec::Tagged(tag) = target_spec.base() {
+                ctx.get_tagged(tag)
+            } else {
+                None
             };
 
             if matches!(target_spec.base(), ChooseSpec::Source)
@@ -1986,6 +2011,11 @@ pub fn resolve_value(
             if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
                 return Ok(damage_event.amount as i32);
             }
+            if let Some(prevented_event) =
+                triggering_event.downcast::<crate::events::DamagePreventedEvent>()
+            {
+                return Ok(prevented_event.amount as i32);
+            }
             if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
                 return Ok(markers_event.amount as i32);
             }
@@ -2035,6 +2065,10 @@ pub fn resolve_value(
                 life_gain_event.amount as i32
             } else if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
                 damage_event.amount as i32
+            } else if let Some(prevented_event) =
+                triggering_event.downcast::<crate::events::DamagePreventedEvent>()
+            {
+                prevented_event.amount as i32
             } else if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
                 markers_event.amount as i32
             } else if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
@@ -2122,8 +2156,17 @@ pub fn resolve_value(
             Ok(paid.kick_count() as i32)
         }
         Value::PlayerCounters(player_spec, counter_type) => {
-            let player_ids =
+            let mut player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            if matches!(counter_type, crate::object::CounterType::Poison)
+                && game.two_headed_giant().is_some()
+            {
+                let mut seen_teams = HashSet::new();
+                player_ids.retain(|player| {
+                    game.team_index_for(*player)
+                        .is_none_or(|team| seen_teams.insert(team))
+                });
+            }
             Ok(player_ids
                 .into_iter()
                 .filter_map(|player_id| game.player(player_id))
@@ -2406,7 +2449,11 @@ fn value_tagged_snapshots_for_filter<'a>(
 ) -> Option<Vec<&'a ObjectSnapshot>> {
     let only_is_tagged_constraints = !filter.tagged_constraints.is_empty()
         && filter.tagged_constraints.iter().all(|constraint| {
-            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    | crate::filter::TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+            )
         });
     if !only_is_tagged_constraints {
         return None;
@@ -2529,6 +2576,9 @@ pub fn resolve_player_from_spec(
                     .ok_or(ExecutionError::ObjectNotFound(planeswalker_id))?;
                 Ok(game.controller_of(planeswalker))
             }
+            Some(AttackEventTarget::Battle(battle_id)) => game
+                .battle_protector(battle_id)
+                .ok_or(ExecutionError::ObjectNotFound(battle_id)),
             None => ctx.combat.defending_player.ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
                     "Attacked player/planeswalker not set".to_string(),
@@ -2585,40 +2635,13 @@ pub fn resolve_player_from_spec(
     }
 }
 
-fn unique_player_with_most_cards_in_hand(game: &GameState) -> Result<PlayerId, ExecutionError> {
-    let max_hand = game
-        .players
-        .iter()
-        .filter(|player| player.is_in_game())
-        .map(|player| player.hand.len())
-        .max()
-        .ok_or_else(|| {
-            ExecutionError::UnresolvableValue("No players are in the game".to_string())
-        })?;
-    let leaders = game
-        .players
-        .iter()
-        .filter(|player| player.is_in_game() && player.hand.len() == max_hand)
-        .map(|player| player.id)
-        .collect::<Vec<_>>();
-    match leaders.as_slice() {
-        [leader] => Ok(*leader),
-        [] => Err(ExecutionError::UnresolvableValue(
-            "MostCardsInHand requires an in-game player".to_string(),
-        )),
-        _ => Err(ExecutionError::UnresolvableValue(
-            "MostCardsInHand requires a unique player".to_string(),
-        )),
-    }
-}
-
 /// Resolve a PlayerFilter to a concrete PlayerId.
 pub fn resolve_player_filter(
     game: &GameState,
     spec: &PlayerFilter,
     ctx: &ExecutionContext,
 ) -> Result<PlayerId, ExecutionError> {
-    match spec {
+    let player = (|| match spec {
         PlayerFilter::You => Ok(ctx.controller),
         PlayerFilter::EffectController => Ok(ctx.controller),
         PlayerFilter::Any => {
@@ -2631,8 +2654,12 @@ pub fn resolve_player_filter(
             Ok(ctx.controller)
         }
         PlayerFilter::NotYou => {
+            let filter_ctx = ctx.filter_context(game);
             for player in game.players.iter() {
-                if player.id != ctx.controller && player.is_in_game() {
+                if player.id != ctx.controller
+                    && player.is_in_game()
+                    && PlayerFilter::NotYou.matches_player(player.id, &filter_ctx)
+                {
                     return Ok(player.id);
                 }
             }
@@ -2646,23 +2673,47 @@ pub fn resolve_player_filter(
                     return Ok(*id);
                 }
             }
-            let mut opponents = game
+            let filter_ctx = ctx.filter_context(game);
+            let opponents = game
                 .players
                 .iter()
-                .filter(|player| player.id != ctx.controller && player.is_in_game())
-                .map(|player| player.id);
-            if let Some(opponent) = opponents.next()
-                && opponents.next().is_none()
-            {
-                return Ok(opponent);
+                .filter(|player| {
+                    player.id != ctx.controller
+                        && player.is_in_game()
+                        && PlayerFilter::Opponent.matches_player(player.id, &filter_ctx)
+                })
+                .map(|player| player.id)
+                .collect::<Vec<_>>();
+            if let [opponent] = opponents.as_slice() {
+                return Ok(*opponent);
             }
             Err(ExecutionError::UnresolvableValue(
                 "Opponent filter requires a targeted player".to_string(),
             ))
         }
-        PlayerFilter::Teammate => Err(ExecutionError::UnresolvableValue(
-            "Teammate filter not supported in 2-player games".to_string(),
-        )),
+        PlayerFilter::Teammate => {
+            for target in &ctx.targets {
+                if let ResolvedTarget::Player(id) = target {
+                    return Ok(*id);
+                }
+            }
+            let filter_ctx = ctx.filter_context(game);
+            let teammates = game
+                .players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game()
+                        && PlayerFilter::Teammate.matches_player(player.id, &filter_ctx)
+                })
+                .map(|player| player.id)
+                .collect::<Vec<_>>();
+            if let [teammate] = teammates.as_slice() {
+                return Ok(*teammate);
+            }
+            Err(ExecutionError::UnresolvableValue(
+                "Teammate filter requires a targeted player".to_string(),
+            ))
+        }
         PlayerFilter::Attacking => ctx.combat.attacking_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
         }),
@@ -2706,7 +2757,9 @@ pub fn resolve_player_filter(
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
-        | PlayerFilter::MaxSpeed { .. } => {
+        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
+        | PlayerFilter::MaxSpeed { .. }
+        | PlayerFilter::MostCardsInHand => {
             let filter_ctx = ctx.filter_context(game);
             let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
             players
@@ -2714,7 +2767,6 @@ pub fn resolve_player_filter(
                 .next()
                 .ok_or_else(|| ExecutionError::UnresolvableValue("No matching players".to_string()))
         }
-        PlayerFilter::MostCardsInHand => unique_player_with_most_cards_in_hand(game),
         PlayerFilter::ChosenPlayer => ctx
             .combat
             .chosen_player
@@ -2745,7 +2797,11 @@ pub fn resolve_player_filter(
             }
             resolve_controller_of(game, ctx, &ObjectRef::Target)
         }
-        PlayerFilter::Active => Ok(game.turn.active_player),
+        PlayerFilter::Active => game
+            .singular_active_player(ctx.combat.chosen_player)
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue("There is no active player".to_string())
+            }),
         PlayerFilter::Defending => ctx.combat.defending_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue("DefendingPlayer not set".to_string())
         }),
@@ -2762,7 +2818,46 @@ pub fn resolve_player_filter(
                         .to_string(),
                 )
             }),
+    })()?;
+
+    if game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref())
+        || game.player_is_within_range(ctx.controller, player)
+    {
+        Ok(player)
+    } else {
+        Err(ExecutionError::OutOfRange)
     }
+}
+
+/// Resolve the player who is instructed to make a choice. CR 801.5c is
+/// intentionally confined to chooser resolution: it must not make an
+/// otherwise out-of-range player eligible for the effect itself.
+pub fn resolve_player_filter_as_chooser(
+    game: &GameState,
+    spec: &PlayerFilter,
+    ctx: &ExecutionContext,
+) -> Result<PlayerId, ExecutionError> {
+    let filter_ctx = ctx.filter_context(game);
+    if filter_ctx.players_in_range.is_none() {
+        return resolve_player_filter(game, spec, ctx);
+    }
+
+    let candidates = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
+    if !candidates.is_empty() {
+        return resolve_player_filter(game, spec, ctx);
+    }
+
+    let mut unrestricted_ctx = filter_ctx;
+    unrestricted_ctx.players_in_range = None;
+    let appropriate = resolve_player_filter_to_list(game, spec, &unrestricted_ctx, ctx)?;
+    game.closest_in_game_player_to_left_matching(ctx.controller, |candidate| {
+        appropriate.contains(&candidate)
+    })
+    .ok_or_else(|| {
+        ExecutionError::UnresolvableValue(
+            "no appropriate player can make the required choice".to_string(),
+        )
+    })
 }
 
 fn resolve_controller_of(
@@ -3007,6 +3102,25 @@ pub fn validate_target(
     ctx: &ExecutionContext,
 ) -> bool {
     let filter_ctx = ctx.filter_context(game);
+    let range_exempt =
+        game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref());
+    let within_range = match target {
+        ResolvedTarget::Object(id) => game.object(*id).map_or_else(
+            || {
+                ctx.target_snapshots.get(id).is_some_and(|snapshot| {
+                    range_exempt
+                        || game.snapshot_is_within_range(ctx.controller, snapshot, Some(ctx.source))
+                })
+            },
+            |_| range_exempt || game.object_is_within_range(ctx.controller, *id, Some(ctx.source)),
+        ),
+        ResolvedTarget::Player(id) => {
+            range_exempt || game.player_is_within_range(ctx.controller, *id)
+        }
+    };
+    if !within_range {
+        return false;
+    }
 
     match (target, spec) {
         // Selection wrappers do not change target legality.
@@ -3270,7 +3384,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
             view_hidden_candidate_objects(
                 game,
                 ctx,
-                game.controlling_player_for(choosing_player),
+                choosing_player,
                 &candidates,
                 description,
                 false,
@@ -3638,10 +3752,10 @@ pub fn resolve_objects_from_spec(
             Ok(objects)
         }
         ChooseSpec::AttackedPlayerOrPlaneswalker => {
-            if let Some(AttackEventTarget::Planeswalker(planeswalker_id)) =
-                attacked_target_from_trigger(ctx)
-            {
-                return Ok(vec![planeswalker_id]);
+            match attacked_target_from_trigger(ctx) {
+                Some(AttackEventTarget::Planeswalker(object_id))
+                | Some(AttackEventTarget::Battle(object_id)) => return Ok(vec![object_id]),
+                Some(AttackEventTarget::Player(_)) | None => {}
             }
             Err(ExecutionError::InvalidTarget)
         }
@@ -3755,6 +3869,10 @@ pub fn resolve_players_from_spec(
                     .ok_or(ExecutionError::ObjectNotFound(planeswalker_id))?;
                 Ok(vec![game.controller_of(planeswalker)])
             }
+            Some(AttackEventTarget::Battle(battle_id)) => game
+                .battle_protector(battle_id)
+                .map(|protector| vec![protector])
+                .ok_or(ExecutionError::ObjectNotFound(battle_id)),
             None => {
                 if let Some(defending) = ctx.combat.defending_player {
                     Ok(vec![defending])
@@ -3828,7 +3946,7 @@ pub(crate) fn resolve_player_filter_to_list(
     _filter_ctx: &FilterContext,
     ctx: &ExecutionContext,
 ) -> Result<Vec<PlayerId>, ExecutionError> {
-    match filter {
+    let mut players = match filter {
         PlayerFilter::You => Ok(vec![ctx.controller]),
         PlayerFilter::EffectController => Ok(vec![ctx.controller]),
         PlayerFilter::Any => Ok(game
@@ -3875,7 +3993,13 @@ pub(crate) fn resolve_player_filter_to_list(
             let max_life = game
                 .players
                 .iter()
-                .filter(|player| player.is_in_game())
+                .filter(|player| {
+                    player.is_in_game()
+                        && _filter_ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
+                })
                 .map(|player| player.life)
                 .max()
                 .ok_or_else(|| {
@@ -3884,7 +4008,14 @@ pub(crate) fn resolve_player_filter_to_list(
             Ok(game
                 .players
                 .iter()
-                .filter(|player| player.is_in_game() && player.life == max_life)
+                .filter(|player| {
+                    player.is_in_game()
+                        && player.life == max_life
+                        && _filter_ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
+                })
                 .map(|player| player.id)
                 .collect())
         }
@@ -3892,7 +4023,13 @@ pub(crate) fn resolve_player_filter_to_list(
             let min_life = game
                 .players
                 .iter()
-                .filter(|player| player.is_in_game())
+                .filter(|player| {
+                    player.is_in_game()
+                        && _filter_ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
+                })
                 .map(|player| player.life)
                 .min()
                 .ok_or_else(|| {
@@ -3901,13 +4038,55 @@ pub(crate) fn resolve_player_filter_to_list(
             Ok(game
                 .players
                 .iter()
-                .filter(|player| player.is_in_game() && player.life == min_life)
+                .filter(|player| {
+                    player.is_in_game()
+                        && player.life == min_life
+                        && _filter_ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
+                })
                 .map(|player| player.id)
                 .collect())
         }
         PlayerFilter::MostCardsInHand => {
-            let leader = unique_player_with_most_cards_in_hand(game)?;
-            Ok(vec![leader])
+            let max_hand = game
+                .players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game()
+                        && _filter_ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
+                })
+                .map(|player| player.hand.len())
+                .max()
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("No players are in the game".to_string())
+                })?;
+            let leaders = game
+                .players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game()
+                        && player.hand.len() == max_hand
+                        && _filter_ctx
+                            .players_in_range
+                            .as_ref()
+                            .is_none_or(|players| players.contains(&player.id))
+                })
+                .map(|player| player.id)
+                .collect::<Vec<_>>();
+            match leaders.as_slice() {
+                [leader] => Ok(vec![*leader]),
+                [] => Err(ExecutionError::UnresolvableValue(
+                    "MostCardsInHand requires an in-game player".to_string(),
+                )),
+                _ => Err(ExecutionError::UnresolvableValue(
+                    "MostCardsInHand requires a unique player".to_string(),
+                )),
+            }
         }
         PlayerFilter::CastCardTypeThisTurn(card_type) => Ok(game
             .players
@@ -3925,7 +4104,8 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
-        | PlayerFilter::HasMoreLifeThanYou { .. } => Ok(game
+        | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())
@@ -3955,7 +4135,12 @@ pub(crate) fn resolve_player_filter_to_list(
                     "TaggedPlayer requires a tagged player for '{tag}'"
                 ))
             }),
-        PlayerFilter::Active => Ok(vec![game.turn.active_player]),
+        PlayerFilter::Active => game
+            .singular_active_player(ctx.combat.chosen_player)
+            .map(|id| vec![id])
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue("There is no active player".to_string())
+            }),
         PlayerFilter::Defending => {
             ctx.combat
                 .defending_player
@@ -4020,7 +4205,11 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::Teammate => Err(ExecutionError::UnresolvableValue(
             "Teammate filter not supported".to_string(),
         )),
+    }?;
+    if let Some(players_in_range) = &_filter_ctx.players_in_range {
+        players.retain(|player| players_in_range.contains(player));
     }
+    Ok(players)
 }
 
 #[cfg(test)]
@@ -4033,6 +4222,7 @@ mod tests {
     use crate::effect::ChoiceCount;
     use crate::ids::{ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::target::ObjectFilter;
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -4507,6 +4697,148 @@ mod tests {
 
         let value = Value::Fixed(5);
         assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 5);
+    }
+
+    #[test]
+    fn aggregate_mana_symbols_sum_filtered_objects_at_resolution() {
+        fn add_permanent(
+            game: &mut GameState,
+            id: u32,
+            name: &str,
+            controller: PlayerId,
+            zone: Zone,
+            mana_cost: Option<ManaCost>,
+        ) {
+            let mut builder = CardBuilder::new(crate::ids::CardId::from_raw(id), name)
+                .card_types(vec![CardType::Enchantment]);
+            if let Some(mana_cost) = mana_cost {
+                builder = builder.mana_cost(mana_cost);
+            }
+            let card = builder.build();
+            game.create_object_from_card(&card, controller, zone);
+        }
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        add_permanent(
+            &mut game,
+            9150,
+            "Double Green",
+            alice,
+            Zone::Battlefield,
+            Some(ManaCost::from_symbols(vec![
+                ManaSymbol::Green,
+                ManaSymbol::Green,
+            ])),
+        );
+        add_permanent(
+            &mut game,
+            9151,
+            "Hybrid Green",
+            alice,
+            Zone::Battlefield,
+            Some(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Green, ManaSymbol::White],
+                vec![ManaSymbol::Generic(2), ManaSymbol::Green],
+                vec![ManaSymbol::Green, ManaSymbol::Life(2)],
+            ])),
+        );
+        add_permanent(
+            &mut game,
+            9152,
+            "No Mana Cost",
+            alice,
+            Zone::Battlefield,
+            None,
+        );
+        add_permanent(
+            &mut game,
+            9153,
+            "Opponent Green",
+            bob,
+            Zone::Battlefield,
+            Some(ManaCost::from_symbols(vec![
+                ManaSymbol::Green,
+                ManaSymbol::Green,
+                ManaSymbol::Green,
+            ])),
+        );
+        add_permanent(
+            &mut game,
+            9154,
+            "Green in Hand",
+            alice,
+            Zone::Hand,
+            Some(ManaCost::from_symbols(vec![
+                ManaSymbol::Green,
+                ManaSymbol::Green,
+            ])),
+        );
+
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+        let value = Value::ManaSymbolsInManaCostOf {
+            spec: Box::new(ChooseSpec::All(ObjectFilter::permanent().you_control())),
+            color: crate::color::Color::Green,
+        };
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 5);
+    }
+
+    #[test]
+    fn players_who_control_more_respects_the_player_domain() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let charlie = game.players[2].id;
+
+        add_battlefield_permanent(
+            &mut game,
+            9101,
+            "Alice Creature",
+            alice,
+            vec![CardType::Creature],
+        );
+        for (id, name) in [(9102, "Bob Creature A"), (9103, "Bob Creature B")] {
+            add_battlefield_permanent(&mut game, id, name, bob, vec![CardType::Creature]);
+        }
+        for (id, name) in [
+            (9104, "Charlie Creature A"),
+            (9105, "Charlie Creature B"),
+            (9106, "Charlie Creature C"),
+        ] {
+            add_battlefield_permanent(&mut game, id, name, charlie, vec![CardType::Creature]);
+        }
+
+        let source_id = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source_id, alice);
+        let creatures = ObjectFilter::creature();
+
+        for (players, expected) in [
+            (PlayerFilter::Any, 2),
+            (PlayerFilter::Opponent, 2),
+            (PlayerFilter::Specific(bob), 1),
+        ] {
+            let value = Value::PlayersWhoControlMoreThanYou {
+                players,
+                filter: creatures.clone(),
+            };
+            assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), expected);
+        }
+
+        let at_least_two_more = Value::PlayersWhoControlAtLeastMoreThanYou {
+            players: PlayerFilter::Opponent,
+            filter: creatures,
+            minimum_difference: 2,
+        };
+        assert_eq!(resolve_value(&game, &at_least_two_more, &ctx).unwrap(), 1);
     }
 
     #[test]

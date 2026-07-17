@@ -3,7 +3,7 @@
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::effects::{ExecutionContext, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError, SimultaneousEffectProposal};
 use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
@@ -38,6 +38,69 @@ pub struct SetLifeTotalEffect {
     pub player: PlayerFilter,
 }
 
+#[derive(Debug)]
+struct SetLifeTotalProposal {
+    player: crate::ids::PlayerId,
+    amount: i32,
+    current: i32,
+    can_change: bool,
+    provenance: crate::provenance::ProvNodeId,
+}
+
+impl SimultaneousEffectProposal for SetLifeTotalProposal {
+    fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+        apply_set_life_total(
+            game,
+            self.player,
+            self.amount,
+            self.current,
+            self.can_change,
+            self.provenance,
+        )
+    }
+}
+
+fn apply_set_life_total(
+    game: &mut GameState,
+    player_id: crate::ids::PlayerId,
+    amount: i32,
+    current: i32,
+    can_change: bool,
+    provenance: crate::provenance::ProvNodeId,
+) -> Result<EffectOutcome, ExecutionError> {
+    if amount == current {
+        return Ok(EffectOutcome::resolved());
+    }
+
+    if amount > current {
+        let gained = process_life_gain_with_event(game, player_id, (amount - current) as u32);
+        if gained > 0 {
+            game.gain_life(player_id, gained);
+            return Ok(EffectOutcome::count(gained as i32).with_event(
+                TriggerEvent::new_with_provenance(
+                    crate::events::LifeGainEvent::new(player_id, gained),
+                    provenance,
+                ),
+            ));
+        }
+        return Ok(EffectOutcome::resolved());
+    }
+
+    if !can_change || !game.can_lose_life(player_id) {
+        return Ok(EffectOutcome::from_status(
+            crate::effect::OutcomeStatus::Prevented,
+        ));
+    }
+    let lost = (current - amount) as u32;
+    game.lose_life(player_id, lost);
+    Ok(
+        EffectOutcome::count(lost as i32).with_event(TriggerEvent::new_with_provenance(
+            crate::events::LifeLossEvent::from_effect(player_id, lost),
+            provenance,
+        )),
+    )
+}
+
 impl SetLifeTotalEffect {
     /// Create a new set life total effect.
     pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
@@ -68,47 +131,32 @@ impl EffectExecutor for SetLifeTotalEffect {
         let amount = resolve_value(game, &self.amount, ctx)?;
 
         let current = game.player(player_id).map(|p| p.life).unwrap_or(amount);
-        if amount == current {
-            return Ok(EffectOutcome::resolved());
-        }
+        let can_change = game.can_change_life_total(player_id);
+        apply_set_life_total(game, player_id, amount, current, can_change, ctx.provenance)
+    }
 
-        if amount > current {
-            let gained = process_life_gain_with_event(game, player_id, (amount - current) as u32);
-            if gained > 0
-                && let Some(player) = game.player_mut(player_id)
-            {
-                player.gain_life(gained);
-            }
-            if gained > 0 {
-                return Ok(EffectOutcome::count(gained as i32).with_event(
-                    TriggerEvent::new_with_provenance(
-                        crate::events::LifeGainEvent::new(player_id, gained),
-                        ctx.provenance,
-                    ),
-                ));
-            }
-            return Ok(EffectOutcome::resolved());
-        }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
 
-        let lost = (current - amount) as u32;
-        if !game.can_change_life_total(player_id) {
-            return Ok(EffectOutcome::from_status(
-                crate::effect::OutcomeStatus::Prevented,
-            ));
-        }
-        if let Some(player) = game.player_mut(player_id) {
-            player.lose_life(lost);
-        }
-        if lost > 0 {
-            Ok(
-                EffectOutcome::count(lost as i32).with_event(TriggerEvent::new_with_provenance(
-                    crate::events::LifeLossEvent::from_effect(player_id, lost),
-                    ctx.provenance,
-                )),
-            )
-        } else {
-            Ok(EffectOutcome::resolved())
-        }
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        let player = resolve_player_filter(game, &self.player, ctx)?;
+        let amount = resolve_value(game, &self.amount, ctx)?;
+        let current = game
+            .player(player)
+            .map(|candidate| candidate.life)
+            .unwrap_or(amount);
+        Ok(Box::new(SetLifeTotalProposal {
+            player,
+            amount,
+            current,
+            can_change: game.can_change_life_total(player),
+            provenance: ctx.provenance,
+        }))
     }
 }
 

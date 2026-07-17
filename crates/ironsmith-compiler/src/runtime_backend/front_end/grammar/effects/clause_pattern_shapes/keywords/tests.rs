@@ -25,6 +25,17 @@ fn parses_counted_manifest_dread() {
 }
 
 #[test]
+fn parses_bare_manifest_dread() {
+    let tokens = lex_line("Manifest dread.", 0).unwrap();
+    assert!(matches!(
+        parse_keyword_mechanic_tokens(&tokens),
+        Some(KeywordMechanicShape::ManifestDread {
+            repeat: KeywordRepeatShape::Once,
+        })
+    ));
+}
+
+#[test]
 fn parses_cloak_top_card_for_you_and_that_player() {
     for (text, expected_player) in [
         (

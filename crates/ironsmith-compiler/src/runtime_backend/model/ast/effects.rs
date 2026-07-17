@@ -16,6 +16,11 @@ pub(crate) enum EffectAst {
         cards_left_in_exile: Option<ChooseSpec>,
         source_surface: Option<SourceReferenceSurface>,
     },
+    PlaySubgame {
+        /// Effects performed in the resumed parent game for each participant
+        /// who did not win the child game.
+        nonwinner_effects: Vec<EffectAst>,
+    },
     Sequence {
         effects: Vec<EffectAst>,
     },
@@ -78,6 +83,17 @@ pub(crate) enum EffectAst {
         until_end_of_combat: bool,
         attach_to_previous_ability: bool,
     },
+    /// Register a repeating or one-shot delayed trigger with an explicit
+    /// duration. This is distinct from granting an object a temporary
+    /// triggered ability: the registration captures referenced objects when
+    /// this effect resolves and then watches them independently.
+    DelayedTriggerForDuration {
+        trigger: TriggerSpec,
+        effects: Vec<EffectAst>,
+        one_shot: bool,
+        duration: Until,
+        either_of_watched_objects: bool,
+    },
     DelayedWhenLastObjectDiesThisTurn {
         filter: Option<ObjectFilter>,
         effects: Vec<EffectAst>,
@@ -93,6 +109,14 @@ pub(crate) enum EffectAst {
         predicate: PredicateAst,
         if_true: Vec<EffectAst>,
         if_false: Vec<EffectAst>,
+    },
+    /// A resolution-time gate authored after the effect as
+    /// "<effect> if <predicate>". Keeping this distinct from an ordinary
+    /// conditional preserves word order and prevents trigger preparation from
+    /// treating it as an intervening-if condition.
+    TrailingIf {
+        predicate: PredicateAst,
+        effects: Vec<EffectAst>,
     },
     /// A resolution-time gate printed after the effect as
     /// "<effect> unless <positive predicate>". Keeping this distinct from a
@@ -255,6 +279,7 @@ pub(crate) enum EffectAst {
     },
     ForEachTargetPlayers {
         count: ChoiceCount,
+        filter: PlayerFilter,
         effects: Vec<EffectAst>,
     },
     ForEachObject {
@@ -925,6 +950,22 @@ impl EffectAst {
         order: LibraryBottomOrderAst,
         player: PlayerAst,
     ) -> Self {
+        Self::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
+            tag,
+            keep_tagged,
+            order,
+            player,
+            ironsmith_core::LibraryRemainderSurface::Rest,
+        )
+    }
+
+    pub(crate) fn subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
+        tag: TagKey,
+        keep_tagged: Option<TagKey>,
+        order: LibraryBottomOrderAst,
+        player: PlayerAst,
+        surface: ironsmith_core::LibraryRemainderSurface,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -933,6 +974,7 @@ impl EffectAst {
                 keep_tagged,
                 order,
                 player,
+                surface,
             },
         )
     }
@@ -1120,6 +1162,28 @@ impl EffectAst {
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 filter,
+                during_turns_counter_put_on_source: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        counter_type: crate::object::CounterType,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost: false,
+                allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode::Normal,
+                filter: None,
+                during_turns_counter_put_on_source: Some(counter_type),
             },
         )
     }
@@ -1328,6 +1392,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::MoveToZone {
                 target,
+                source_top_only: false,
                 zone,
                 to_top,
                 library_order: None,
@@ -1361,6 +1426,7 @@ impl EffectAst {
             PlayerAst::Implicit,
             SubjectVerbActionAst::MoveToZone {
                 target,
+                source_top_only: false,
                 zone,
                 to_top,
                 library_order: None,
@@ -1423,6 +1489,24 @@ impl EffectAst {
                 | SubjectVerbActionAst::ReturnAllToBattlefield { verb_surface, .. } => {
                     *verb_surface = surface;
                 }
+                _ => {}
+            }
+        }
+        self
+    }
+
+    pub(crate) fn with_source_top_only(mut self, source_top_only: bool) -> Self {
+        if !source_top_only {
+            return self;
+        }
+        if let Self::SubjectVerb(subject_verb) = &mut self {
+            match &mut subject_verb.action {
+                SubjectVerbActionAst::Exile {
+                    source_top_only, ..
+                }
+                | SubjectVerbActionAst::MoveToZone {
+                    source_top_only, ..
+                } => *source_top_only = true,
                 _ => {}
             }
         }
@@ -1536,6 +1620,20 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_explicit_target_only_for_chooser(
+        target: TargetAst,
+        chooser: PlayerAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            chooser,
+            SubjectVerbActionAst::TargetOnly {
+                target,
+                explicit_declaration: true,
+            },
+        )
+    }
+
     pub(crate) fn subject_verb_tag_matching_objects(
         filter: ObjectFilter,
         zones: Vec<Zone>,
@@ -1601,6 +1699,8 @@ impl EffectAst {
         granted_abilities: Vec<GrantedAbilityAst>,
         preserve_other_types: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
+        animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
+        animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
         duration: Until,
     ) -> Self {
         Self::subject_verb(
@@ -1618,6 +1718,8 @@ impl EffectAst {
                 granted_abilities,
                 preserve_other_types,
                 type_retention_surface,
+                animation_pt_surface,
+                animation_duration_surface,
                 duration,
             },
         )
@@ -1992,6 +2094,7 @@ impl EffectAst {
                 duration,
                 condition: None,
                 set_quantifier_surface: None,
+                lock_filter_at_resolution: true,
             },
         )
     }
@@ -2011,6 +2114,26 @@ impl EffectAst {
                 duration,
                 condition: Some(condition),
                 set_quantifier_surface: None,
+                lock_filter_at_resolution: true,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_abilities_all_dynamically(
+        filter: ObjectFilter,
+        abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantAbilitiesAll {
+                filter,
+                abilities,
+                duration,
+                condition: None,
+                set_quantifier_surface: None,
+                lock_filter_at_resolution: false,
             },
         )
     }
@@ -2027,6 +2150,26 @@ impl EffectAst {
                 filter,
                 abilities,
                 duration,
+                condition: None,
+                set_quantifier_surface: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_remove_abilities_all_with_condition(
+        filter: ObjectFilter,
+        abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+        condition: crate::ConditionExpr,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RemoveAbilitiesAll {
+                filter,
+                abilities,
+                duration,
+                condition: Some(condition),
                 set_quantifier_surface: None,
             },
         )
@@ -2748,6 +2891,7 @@ impl EffectAst {
                 source,
                 amount,
                 target,
+                unpreventable: false,
             },
         )
     }
@@ -3331,6 +3475,24 @@ impl EffectAst {
                 count,
                 tags,
                 accumulated_tags,
+                face_down: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_exile_top_of_library_face_down(
+        player: PlayerAst,
+        count: Value,
+        accumulated_tag: TagKey,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::ExileTopOfLibrary {
+                count,
+                tags: Vec::new(),
+                accumulated_tags: vec![accumulated_tag],
+                face_down: true,
             },
         )
     }
@@ -3356,6 +3518,28 @@ impl EffectAst {
                 target,
                 tapped,
                 controller,
+                cloak: false,
+                shuffle_before: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_cloak_onto_battlefield(
+        player: PlayerAst,
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+        shuffle_before: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+                cloak: true,
+                shuffle_before,
             },
         )
     }
@@ -3574,6 +3758,16 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary,
+        )
+    }
+
+    pub(crate) fn subject_verb_shuffle_hand_graveyard_and_owned_permanents_into_library(
+        player: PlayerAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
         )
     }
 
@@ -3846,7 +4040,11 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Exile { target, face_down },
+            SubjectVerbActionAst::Exile {
+                target,
+                face_down,
+                source_top_only: false,
+            },
         )
     }
 
@@ -4318,6 +4516,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_pay_life(player: PlayerAst, amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::PayLife { amount },
+        )
+    }
+
     pub(crate) fn subject_verb_pay_any_energy(player: PlayerAst, min_amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -4382,6 +4588,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::EndTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_end_combat_phase(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::EndCombatPhase,
         )
     }
 
@@ -4543,6 +4757,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_heal_damage(target: TargetAst, amount: Option<Value>) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::HealDamage { target, amount },
+        )
+    }
+
     pub(crate) fn subject_verb_remove_from_combat(target: TargetAst) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4605,8 +4827,24 @@ impl EffectAst {
                 filter,
                 count,
                 target,
+                one_of_referenced_set: false,
             },
         )
+    }
+
+    pub(crate) fn with_sacrifice_one_of_referenced_set(mut self) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Sacrifice {
+                    one_of_referenced_set,
+                    ..
+                },
+            ..
+        }) = &mut self
+        {
+            *one_of_referenced_set = true;
+        }
+        self
     }
 
     pub(crate) fn subject_verb_sacrifice_all(player: PlayerAst, filter: ObjectFilter) -> Self {

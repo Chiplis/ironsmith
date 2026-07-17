@@ -41,6 +41,7 @@ pub enum CounterType {
     Cube,
     Currency,
     Death,
+    Defense,
     Depletion,
     Despair,
     Devotion,

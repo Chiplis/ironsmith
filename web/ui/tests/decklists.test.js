@@ -2,11 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MATCH_FORMAT_PLANECHASE,
+  evaluateLobbyDeckSubmission,
   parseDeckList,
   parseSideboardList,
   readDefaultLobbyDeck,
   saveDefaultLobbyDeck,
 } from "../src/lib/decklists.js";
+
+test("Planechase lobby submissions require a normal deck and ten unique planar cards", () => {
+  const mainDeck = Array.from({ length: 60 }, (_, index) => `Main ${index}`);
+  const planarDeck = Array.from({ length: 10 }, (_, index) => `Plane ${index}`);
+
+  assert.equal(
+    evaluateLobbyDeckSubmission(MATCH_FORMAT_PLANECHASE, mainDeck, planarDeck).ready,
+    true,
+  );
+  assert.equal(
+    evaluateLobbyDeckSubmission(MATCH_FORMAT_PLANECHASE, mainDeck, planarDeck.slice(0, 9)).ready,
+    false,
+  );
+  assert.equal(
+    evaluateLobbyDeckSubmission(
+      MATCH_FORMAT_PLANECHASE,
+      mainDeck,
+      [...planarDeck.slice(0, 9), "PLANE 0"],
+    ).ready,
+    false,
+  );
+});
 
 function withMockLocalStorage(fn) {
   const previousWindow = globalThis.window;

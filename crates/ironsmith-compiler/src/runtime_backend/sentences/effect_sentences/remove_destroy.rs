@@ -1,6 +1,8 @@
 use super::*;
 use crate::runtime_backend::front_end::grammar::effects::remove_destroy_shapes as shapes;
-use crate::runtime_backend::util::parse_filter_counter_constraint_words;
+use crate::runtime_backend::util::{
+    parse_filter_counter_constraint_words, strip_leading_token_words_any,
+};
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let shape = shapes::parse_remove_clause_shape(tokens).map_err(|error| match error {
@@ -35,6 +37,17 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             leave_one,
         } => {
             let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
+            let target_words = crate::runtime_backend::token_word_refs(target_tokens);
+            if !leave_one && target_words.first().copied() == Some("all") {
+                let filter_tokens = strip_leading_token_words_any(target_tokens, &["all"]);
+                let filter = parse_object_filter(filter_tokens, false)?;
+                return Ok(EffectAst::subject_verb_remove_counters_all(
+                    Value::CountersOn(Box::new(ChooseSpec::Iterated), counter_type),
+                    filter,
+                    counter_type,
+                    false,
+                ));
+            }
             let target = if source_like_target {
                 TargetAst::Source(span_from_tokens(target_tokens))
             } else {

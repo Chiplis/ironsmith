@@ -1056,7 +1056,7 @@ pub(super) fn render_activation_return_cost_preserves_numeric_count() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_shard_style_or_tap_activation_cost_uses_single_tap_and_alternative_mana() {
+pub(super) fn parse_shard_style_activation_cost_preserves_complete_alternative_branches() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Pearl Shard Variant")
         .card_types(vec![CardType::Artifact])
         .parse_text(
@@ -1073,36 +1073,37 @@ pub(super) fn parse_shard_style_or_tap_activation_cost_uses_single_tap_and_alter
         })
         .expect("expected activated ability");
 
-    let mana = activated
+    let branches = activated
         .mana_cost
-        .mana_cost()
-        .expect("expected mana component in activation cost");
-    assert_eq!(
-        mana.pips().len(),
-        1,
-        "expected single alternative mana pip in shard-style cost"
-    );
-    let alternatives = &mana.pips()[0];
+        .as_one_of()
+        .expect("shard-style cost should be a choice between complete costs");
+    assert_eq!(branches.len(), 2);
+    for (branch, expected_mana) in branches.iter().zip([
+        vec![vec![ManaSymbol::Generic(3)]],
+        vec![vec![ManaSymbol::White]],
+    ]) {
+        let costs = branch
+            .as_all()
+            .expect("each alternative should be conjunctive");
+        let mana = branch
+            .mana_cost()
+            .expect("each shard branch should include a mana component");
+        assert_eq!(mana.pips(), expected_mana);
+        assert_eq!(
+            costs.iter().filter(|cost| cost.requires_tap()).count(),
+            1,
+            "each complete branch should retain its own tap cost"
+        );
+    }
     assert!(
-        alternatives.contains(&ManaSymbol::Generic(3)) && alternatives.contains(&ManaSymbol::White),
-        "expected {{3}} or {{W}} in same mana pip, got {alternatives:?}"
-    );
-
-    let tap_cost_count = activated
-        .mana_cost
-        .costs()
-        .iter()
-        .filter(|cost| cost.requires_tap())
-        .count();
-    assert_eq!(
-        tap_cost_count, 1,
-        "expected exactly one tap cost, got {tap_cost_count}"
+        activated.choices.iter().any(ChooseSpec::is_target),
+        "the prevention recipient must remain a target, not a payment choice"
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("{3/W}, {T}: Prevent the next 2 damage"),
-        "expected rendered shard-style cost to preserve mana-or-tap meaning, got {rendered}"
+        rendered.contains("{3}, {T} or {W}, {T}: Prevent the next 2 damage"),
+        "expected rendered shard-style cost to preserve complete alternatives, got {rendered}"
     );
 }
 
@@ -2888,13 +2889,17 @@ pub(super) fn render_if_they_dont_uses_negative_may_condition() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let lower = rendered.to_ascii_lowercase();
     assert!(
-        lower.contains("doesn't"),
-        "expected negative may/if phrasing, got {rendered}"
+        rendered.contains(
+            "At the beginning of each player's upkeep, that player may pay 2 life. If they don't, they return a permanent they control to its owner's hand"
+        ),
+        "expected typed life payment and contextualized negative branch, got {rendered}"
     );
     assert!(
         !lower.contains("if that player does,"),
         "did-not branch should not be rendered as affirmative branch, got {rendered}"
     );
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("PayLifeEffect"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

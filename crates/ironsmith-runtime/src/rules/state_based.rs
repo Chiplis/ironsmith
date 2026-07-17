@@ -14,7 +14,7 @@ use crate::targeting::has_protection_from_source;
 use crate::triggers::TriggerQueue;
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// A state-based action that needs to be performed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +24,12 @@ pub enum StateBasedAction {
 
     /// A planeswalker has 0 or less loyalty and is put into graveyard.
     PlaneswalkerDies(ObjectId),
+
+    /// A battle has defense 0, or has no legal protector, and is put into its owner's graveyard.
+    BattleDies(ObjectId),
+
+    /// A battle's controller must choose a legal protector.
+    BattleProtectorChoice(ObjectId),
 
     /// A player loses the game (life <= 0, poison >= 10, or tried to draw from empty library).
     PlayerLoses {
@@ -39,6 +45,12 @@ pub enum StateBasedAction {
         permanents: Vec<ObjectId>,
     },
 
+    /// The world rule puts this already-determined simultaneous group into
+    /// their owners' graveyards. Unlike the legend rule, no player choice is
+    /// involved: the most recently acquired unique World supertype survives,
+    /// and a tie for most recent removes every World permanent.
+    WorldRuleViolation { permanents: Vec<ObjectId> },
+
     /// An Aura is not attached to anything or is attached to an illegal permanent.
     AuraFallsOff(ObjectId),
 
@@ -50,6 +62,13 @@ pub enum StateBasedAction {
 
     /// +1/+1 and -1/-1 counters on a permanent annihilate (remove pairs).
     CountersAnnihilate { permanent: ObjectId, count: u32 },
+
+    /// Remove counters above the smallest active static cap (CR 704.5r).
+    CountersExceedMaximum {
+        permanent: ObjectId,
+        counter_type: CounterType,
+        count: u32,
+    },
 
     // Note: Undying and Persist are handled as triggered abilities, not SBAs.
     // See triggers.rs for the implementation.
@@ -68,8 +87,29 @@ pub enum StateBasedAction {
     /// A player controlling Start your engines gets speed 1.
     StartEngines { player: PlayerId },
 
+    /// All existing sector designations end because no space sculptor remains.
+    ClearSectorDesignations,
+
+    /// Controllers choose sectors for all currently undesignated creatures.
+    ///
+    /// The vector is already in the two CR 704.5u choice partitions, with
+    /// APNAP order inside each partition. Every choice is collected before any
+    /// designation is committed.
+    SectorDesignationChoices {
+        source: ObjectId,
+        creatures: Vec<(PlayerId, ObjectId)>,
+    },
+
     /// A soulbond pair no longer satisfies the pairing requirements.
     SoulbondUnpairs(ObjectId),
+
+    /// A face-up phenomenon's encounter trigger has left the stack, so the
+    /// planar controller planeswalks (CR 704.6f / 312.7).
+    PlaneswalkFromPhenomenon(ObjectId),
+
+    /// A face-up nonongoing scheme has no triggered ability pending or on the
+    /// stack, so its owner turns it face down on the bottom of their scheme deck.
+    RecycleScheme(ObjectId),
 }
 
 /// Reason why a player loses the game.
@@ -88,6 +128,8 @@ pub enum LoseReason {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct StateBasedActionContext {
     pending_chapter_ability_sources: HashSet<ObjectId>,
+    pending_battle_defeat_sources: HashSet<ObjectId>,
+    pending_ability_sources: HashSet<ObjectId>,
 }
 
 impl StateBasedActionContext {
@@ -98,13 +140,34 @@ impl StateBasedActionContext {
             .filter(|entry| entry.ability.trigger.saga_chapters().is_some())
             .map(|entry| entry.source)
             .collect();
+        let pending_battle_defeat_sources = trigger_queue
+            .entries
+            .iter()
+            .filter(|entry| crate::triggers::check::is_intrinsic_siege_defeat_trigger(entry))
+            .map(|entry| entry.source)
+            .collect();
+        let pending_ability_sources = trigger_queue
+            .entries
+            .iter()
+            .map(|entry| entry.source)
+            .collect();
         Self {
             pending_chapter_ability_sources,
+            pending_battle_defeat_sources,
+            pending_ability_sources,
         }
     }
 
     fn has_pending_chapter_ability_from(&self, source: ObjectId) -> bool {
         self.pending_chapter_ability_sources.contains(&source)
+    }
+
+    fn has_pending_battle_defeat_from(&self, source: ObjectId) -> bool {
+        self.pending_battle_defeat_sources.contains(&source)
+    }
+
+    fn has_pending_ability_from(&self, source: ObjectId) -> bool {
+        self.pending_ability_sources.contains(&source)
     }
 }
 
@@ -145,6 +208,8 @@ pub(crate) fn check_state_based_actions_with_context(
     check_player_sbas(game, &mut actions);
     check_commander_zone_sbas(game, &mut actions);
     check_start_engines_sbas_with_view(game, view, &mut actions);
+    check_phenomenon_sba(game, context, &mut actions);
+    check_scheme_sba(game, context, &mut actions);
 
     // Check permanent state-based actions
     check_permanent_sbas_with_view(game, view, context, &mut actions);
@@ -157,6 +222,7 @@ pub(crate) fn check_state_based_actions_with_context(
 
     // Check counter annihilation
     check_counter_annihilation(game, &mut actions);
+    check_counter_limits_with_view(game, view, &mut actions);
 
     // Check soulbond pair validity
     check_soulbond_pair_sbas_with_view(game, view, &mut actions);
@@ -164,7 +230,181 @@ pub(crate) fn check_state_based_actions_with_context(
     // Check legend rule
     check_legend_rule_with_view(game, view, &mut actions);
 
+    // Check world rule
+    check_world_rule_with_view(game, view, &mut actions);
+
+    // Space sculptor designation assignment/expiry (CR 704.5u, 702.158b-c).
+    check_space_sculptor_sbas_with_view(game, view, &mut actions);
+
     actions
+}
+
+fn check_phenomenon_sba(
+    game: &GameState,
+    context: &StateBasedActionContext,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    use crate::events::{KeywordActionEvent, KeywordActionKind};
+    use crate::game_state::PlanarCardKind;
+
+    for &object in game.face_up_planar_objects() {
+        if game.planar_card_kind(object) != Some(PlanarCardKind::Phenomenon) {
+            continue;
+        }
+        let encounter_event_pending =
+            game.effect_store
+                .pending_trigger_events
+                .iter()
+                .any(|event| {
+                    event.downcast::<KeywordActionEvent>().is_some_and(|event| {
+                        event.action == KeywordActionKind::EncounterPhenomenon
+                            && event.source == object
+                    })
+                });
+        let ability_pending = context.has_pending_ability_from(object)
+            || game
+                .effect_store
+                .pending_trigger_entries
+                .iter()
+                .any(|entry| entry.source == object)
+            || game
+                .stack
+                .iter()
+                .any(|entry| entry.is_ability && entry.object_id == object);
+        if !encounter_event_pending && !ability_pending {
+            actions.push(StateBasedAction::PlaneswalkFromPhenomenon(object));
+        }
+    }
+}
+
+fn check_scheme_sba(
+    game: &GameState,
+    context: &StateBasedActionContext,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    use crate::events::{KeywordActionEvent, KeywordActionKind};
+
+    let face_up = game
+        .face_up_schemes()
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    if face_up.is_empty() {
+        return;
+    }
+    // CR 704.6e considers triggered abilities of every scheme, rather than
+    // only the nonongoing scheme that would be turned face down.
+    let set_event_pending = game
+        .effect_store
+        .pending_trigger_events
+        .iter()
+        .any(|event| {
+            event.downcast::<KeywordActionEvent>().is_some_and(|event| {
+                event.action == KeywordActionKind::SetSchemeInMotion
+                    && face_up.contains(&event.source)
+            })
+        });
+    let scheme_ability_pending = face_up.iter().any(|source| {
+        context.has_pending_ability_from(*source)
+            || game
+                .effect_store
+                .pending_trigger_entries
+                .iter()
+                .any(|entry| entry.source == *source)
+            || game
+                .stack
+                .iter()
+                .any(|entry| entry.is_ability && entry.object_id == *source)
+    });
+    if set_event_pending || scheme_ability_pending {
+        return;
+    }
+    actions.extend(
+        face_up
+            .into_iter()
+            .filter(|object| !game.scheme_is_ongoing(*object))
+            .map(StateBasedAction::RecycleScheme),
+    );
+}
+
+fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
+    game.team_apnap_player_order()
+}
+
+/// Check the sector-assignment state-based action (CR 704.5u).
+fn check_space_sculptor_sbas_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    let mut sculptors = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|&object| !game.is_phased_out(object))
+        .filter(|&object| view.object_has_static_ability_id(object, StaticAbilityId::SpaceSculptor))
+        .collect::<Vec<_>>();
+    sculptors.sort_by_key(|object| object.0);
+
+    if sculptors.is_empty() {
+        // CR 702.158b also retains designations while a player controls an
+        // ability whose source has space sculptor. The source snapshot is the
+        // correct LKI surface after that permanent leaves the battlefield.
+        let sculptor_source_ability_on_stack = game.stack.iter().any(|entry| {
+            entry.is_ability
+                && entry.source_snapshot.as_ref().is_some_and(|source| {
+                    source.has_static_ability_id(StaticAbilityId::SpaceSculptor)
+                })
+        });
+        if !sculptor_source_ability_on_stack && game.has_sector_designations() {
+            actions.push(StateBasedAction::ClearSectorDesignations);
+        }
+        return;
+    }
+
+    let sculptor_controllers = sculptors
+        .iter()
+        .filter_map(|&object| game.current_controller(object))
+        .collect::<HashSet<_>>();
+    let mut creatures_by_controller = HashMap::<PlayerId, Vec<ObjectId>>::new();
+    for &object in &game.battlefield {
+        if game.is_phased_out(object)
+            || game.sector_designation(object).is_some()
+            || !view.object_has_card_type(object, CardType::Creature)
+        {
+            continue;
+        }
+        if let Some(controller) = game.current_controller(object) {
+            creatures_by_controller
+                .entry(controller)
+                .or_default()
+                .push(object);
+        }
+    }
+    if creatures_by_controller.is_empty() {
+        return;
+    }
+
+    let apnap = players_in_apnap_order(game);
+    let mut creatures = Vec::new();
+    // CR 704.5u's explicit first partition: players without a sculptor source.
+    for controls_sculptor in [false, true] {
+        for &player in &apnap {
+            if sculptor_controllers.contains(&player) != controls_sculptor {
+                continue;
+            }
+            if let Some(player_creatures) = creatures_by_controller.get(&player) {
+                creatures.extend(player_creatures.iter().map(|&object| (player, object)));
+            }
+        }
+    }
+
+    if !creatures.is_empty() {
+        actions.push(StateBasedAction::SectorDesignationChoices {
+            source: sculptors[0],
+            creatures,
+        });
+    }
 }
 
 fn check_soulbond_pair_sbas_with_view(
@@ -195,8 +435,56 @@ fn check_soulbond_pair_sbas_with_view(
     }
 }
 
+/// Check permanent-specific counter caps (CR 704.5r).
+fn check_counter_limits_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    for &permanent in &game.battlefield {
+        if game.is_phased_out(permanent) {
+            continue;
+        }
+        let Some(object) = game.object(permanent) else {
+            continue;
+        };
+        let Some(chars) = view.calculated_characteristics(permanent) else {
+            continue;
+        };
+
+        let mut limits = Vec::<(CounterType, u32)>::new();
+        for (counter_type, maximum) in chars
+            .static_abilities
+            .iter()
+            .filter_map(|ability| ability.counter_limit())
+        {
+            if let Some((_, existing)) = limits
+                .iter_mut()
+                .find(|(existing_type, _)| *existing_type == counter_type)
+            {
+                *existing = (*existing).min(maximum);
+            } else {
+                limits.push((counter_type, maximum));
+            }
+        }
+        limits.sort_by_key(|(counter_type, _)| counter_type.description());
+
+        for (counter_type, maximum) in limits {
+            let current = object.counters.get(&counter_type).copied().unwrap_or(0);
+            if current > maximum {
+                actions.push(StateBasedAction::CountersExceedMaximum {
+                    permanent,
+                    counter_type,
+                    count: current - maximum,
+                });
+            }
+        }
+    }
+}
+
 /// Check player-related state-based actions.
 fn check_player_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
+    let mut checked_two_headed_teams = std::collections::HashSet::new();
     for player in &game.players {
         if !player.is_in_game() {
             continue;
@@ -207,23 +495,49 @@ fn check_player_sbas(game: &GameState, actions: &mut Vec<StateBasedAction>) {
             continue;
         }
 
-        // Life total 0 or less
-        if player.has_lethal_life() {
-            actions.push(StateBasedAction::PlayerLoses {
-                player: player.id,
-                reason: LoseReason::ZeroLife,
-            });
+        if let Some(team) = game
+            .two_headed_giant()
+            .and_then(|state| state.team_index(player.id))
+        {
+            if checked_two_headed_teams.insert(team) {
+                if player.has_lethal_life() {
+                    actions.push(StateBasedAction::PlayerLoses {
+                        player: player.id,
+                        reason: LoseReason::ZeroLife,
+                    });
+                }
+                if player.poison_counters
+                    >= game
+                        .two_headed_giant_poison_threshold(player.id)
+                        .expect("Two-Headed Giant team has a poison threshold")
+                {
+                    actions.push(StateBasedAction::PlayerLoses {
+                        player: player.id,
+                        reason: LoseReason::Poison,
+                    });
+                }
+            }
+        } else {
+            // Life total 0 or less
+            if player.has_lethal_life() {
+                actions.push(StateBasedAction::PlayerLoses {
+                    player: player.id,
+                    reason: LoseReason::ZeroLife,
+                });
+            }
+
+            // 10 or more poison counters
+            if player.has_lethal_poison() {
+                actions.push(StateBasedAction::PlayerLoses {
+                    player: player.id,
+                    reason: LoseReason::Poison,
+                });
+            }
         }
 
-        // 10 or more poison counters
-        if player.has_lethal_poison() {
-            actions.push(StateBasedAction::PlayerLoses {
-                player: player.id,
-                reason: LoseReason::Poison,
-            });
-        }
-
-        if player.commander_damage.values().any(|&damage| damage >= 21) {
+        if game.commander_damage_loss_enabled()
+            && player.commander_damage.values().any(|&damage| damage >= 21)
+        {
             actions.push(StateBasedAction::PlayerLoses {
                 player: player.id,
                 reason: LoseReason::CommanderDamage,
@@ -346,6 +660,38 @@ fn check_permanent_sbas_with_view(
             }
         }
 
+        if view.object_has_card_type(obj_id, CardType::Battle) {
+            let defense_counters = obj
+                .counters
+                .get(&CounterType::Defense)
+                .copied()
+                .unwrap_or(0);
+            let defeat_ability_pending_or_stacked = context.has_pending_battle_defeat_from(obj_id)
+                || game
+                    .stack
+                    .iter()
+                    .any(|entry| entry.battle_defeat_source == Some(obj_id));
+            if defense_counters == 0 && !defeat_ability_pending_or_stacked {
+                actions.push(StateBasedAction::BattleDies(obj_id));
+                continue;
+            }
+
+            let is_being_attacked = game.combat.as_ref().is_some_and(|combat| {
+                !crate::combat_state::attackers_targeting_battle(combat, obj_id).is_empty()
+            });
+            let protector_is_legal = game
+                .battle_protector(obj_id)
+                .is_some_and(|protector| game.legal_battle_protectors(obj_id).contains(&protector));
+            if !is_being_attacked && !protector_is_legal {
+                if game.legal_battle_protectors(obj_id).is_empty() {
+                    actions.push(StateBasedAction::BattleDies(obj_id));
+                } else {
+                    actions.push(StateBasedAction::BattleProtectorChoice(obj_id));
+                }
+                continue;
+            }
+        }
+
         // Aura not attached to anything or attached to an illegal object or player
         if view.object_has_card_type(obj_id, CardType::Enchantment)
             && calculated_subtypes.contains(&Subtype::Aura)
@@ -362,7 +708,11 @@ fn check_permanent_sbas_with_view(
         if let Some(attached_target) = obj.attached_to {
             let is_aura = view.object_has_card_type(obj_id, CardType::Enchantment)
                 && calculated_subtypes.contains(&Subtype::Aura);
-            if is_aura {
+            if view.object_has_card_type(obj_id, CardType::Battle)
+                || view.object_has_card_type(obj_id, CardType::Creature)
+            {
+                actions.push(StateBasedAction::AttachmentBecomesUnattached(obj_id));
+            } else if is_aura {
                 if !attachment_can_attach_to_target(game, obj_id, attached_target)
                     || matches!(attached_target, AttachmentTarget::Object(attached_id) if has_protection_from_source(game, attached_id, obj_id))
                 {
@@ -662,16 +1012,11 @@ fn check_legend_rule_with_view(
     }
 
     // Simultaneous choices by different players happen in APNAP order (rule 101.4).
-    let turn_order = &game.turn_store.turn_order;
-    let active_position = turn_order
-        .iter()
-        .position(|&player| player == game.turn.active_player)
-        .unwrap_or(0);
+    let apnap = game.team_apnap_player_order();
     let apnap_position = |player: PlayerId| {
-        turn_order
+        apnap
             .iter()
-            .position(|&candidate| candidate == player)
-            .map(|position| (position + turn_order.len() - active_position) % turn_order.len())
+            .position(|candidate| *candidate == player)
             .unwrap_or(usize::MAX)
     };
     legends.sort_by_key(|&((player, _), _)| apnap_position(player));
@@ -686,6 +1031,89 @@ fn check_legend_rule_with_view(
             });
         }
     }
+}
+
+/// Check the world rule (CR 704.5k).
+///
+/// `world_supertype_since` is calculated through layers. That makes a later
+/// copy/type-changing effect newer than a printed World permanent and gives
+/// every object affected by one simultaneous grant the same timestamp.
+fn check_world_rule_with_view(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    actions: &mut Vec<StateBasedAction>,
+) {
+    let mut worlds = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|&id| !game.is_phased_out(id))
+        .filter_map(|id| {
+            let chars = view.calculated_characteristics(id)?;
+            chars.supertypes.contains(&Supertype::World).then_some((
+                id,
+                chars.world_supertype_since.unwrap_or(0),
+                chars.controller,
+            ))
+        })
+        .collect::<Vec<_>>();
+    if worlds.len() < 2 {
+        return;
+    }
+
+    worlds.sort_by_key(|&(id, timestamp, _)| (timestamp, id.0));
+    let mut permanents: Vec<ObjectId> = if game.limited_range_of_influence().is_none() {
+        let newest_timestamp = worlds
+            .last()
+            .map(|(_, timestamp, _)| *timestamp)
+            .unwrap_or(0);
+        let newest_count = worlds
+            .iter()
+            .filter(|(_, timestamp, _)| *timestamp == newest_timestamp)
+            .count();
+        if newest_count == 1 {
+            worlds
+                .iter()
+                .filter_map(|(id, timestamp, _)| (*timestamp != newest_timestamp).then_some(*id))
+                .collect()
+        } else {
+            worlds.iter().map(|(id, _, _)| *id).collect()
+        }
+    } else {
+        // CR 801.12 applies the world rule to each permanent only when another
+        // World is in its controller's (potentially asymmetric) range.
+        worlds
+            .iter()
+            .filter_map(|&(world, timestamp, controller)| {
+                let local = worlds
+                    .iter()
+                    .filter(|&&(candidate, _, _)| {
+                        candidate == world
+                            || game.object_is_within_range(controller, candidate, None)
+                    })
+                    .collect::<Vec<_>>();
+                if local.len() < 2 {
+                    return None;
+                }
+                let newest_timestamp = local
+                    .iter()
+                    .map(|(_, timestamp, _)| *timestamp)
+                    .max()
+                    .unwrap_or(timestamp);
+                let newest_count = local
+                    .iter()
+                    .filter(|(_, candidate_timestamp, _)| *candidate_timestamp == newest_timestamp)
+                    .count();
+                (timestamp != newest_timestamp || newest_count > 1).then_some(world)
+            })
+            .collect()
+    };
+    permanents.sort_by_key(|id| id.0);
+    permanents.dedup();
+    if permanents.is_empty() {
+        return;
+    }
+    actions.push(StateBasedAction::WorldRuleViolation { permanents });
 }
 
 /// Apply state-based actions to the game state.
@@ -743,6 +1171,28 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
         return false;
     }
 
+    let mut simultaneous_zone_changes: HashMap<ObjectId, Zone> = HashMap::new();
+    for action in &actions {
+        match action {
+            StateBasedAction::ObjectDies(object)
+            | StateBasedAction::PlaneswalkerDies(object)
+            | StateBasedAction::BattleDies(object)
+            | StateBasedAction::AuraFallsOff(object)
+            | StateBasedAction::SagaSacrifice(object) => {
+                simultaneous_zone_changes.insert(*object, Zone::Graveyard);
+            }
+            StateBasedAction::WorldRuleViolation { permanents } => {
+                simultaneous_zone_changes.extend(
+                    permanents
+                        .iter()
+                        .copied()
+                        .map(|object| (object, Zone::Graveyard)),
+                );
+            }
+            _ => {}
+        }
+    }
+
     // Per Rule 704.8, pre-capture snapshots for all dying creatures BEFORE
     // any state-based actions are applied. This ensures LKI is derived from
     // the game state before any SBAs were performed.
@@ -780,9 +1230,18 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
     };
 
     let mut any_applied = false;
+    let mut processed_player_losses = HashSet::new();
     for action in actions {
         // Skip legend rule - it requires player choice
         if matches!(action, StateBasedAction::LegendRuleViolation { .. }) {
+            continue;
+        }
+        // CR 704.7: one replacement effect replaces every simultaneous SBA
+        // that would make the same player lose. Collapse all loss reasons for
+        // that player into one replaceable game-loss event.
+        if let StateBasedAction::PlayerLoses { player, .. } = &action
+            && !processed_player_losses.insert(*player)
+        {
             continue;
         }
         apply_single_sba_with_snapshots(
@@ -790,6 +1249,7 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
             action,
             &pre_captured_snapshots,
             &damage_destroyed_object_ids,
+            &simultaneous_zone_changes,
             decision_maker,
         );
         any_applied = true;
@@ -945,6 +1405,39 @@ pub fn apply_legend_rule_choice_from_group(
     }
 }
 
+/// Commit one already-collected CR 704.5u assignment batch atomically.
+///
+/// Revalidating the whole candidate vector before the first write prevents a
+/// stale asynchronous answer from partially designating a changed battlefield.
+pub(crate) fn apply_sector_designation_choices_from_group(
+    game: &mut GameState,
+    source: ObjectId,
+    creatures: &[(PlayerId, ObjectId)],
+    choices: &[crate::marker::SectorDesignation],
+) -> bool {
+    if creatures.is_empty() || creatures.len() != choices.len() {
+        return false;
+    }
+    let current = check_state_based_actions(game);
+    let still_current = current.iter().any(|action| {
+        matches!(
+            action,
+            StateBasedAction::SectorDesignationChoices {
+                source: current_source,
+                creatures: current_creatures,
+            } if *current_source == source && current_creatures == creatures
+        )
+    });
+    if !still_current {
+        return false;
+    }
+
+    for (&(_, creature), &sector) in creatures.iter().zip(choices) {
+        game.set_sector_designation(creature, sector);
+    }
+    true
+}
+
 /// Apply a single state-based action with pre-captured snapshots.
 ///
 /// Per Rule 704.8, creature death snapshots must be captured BEFORE any SBAs are applied.
@@ -954,6 +1447,7 @@ fn apply_single_sba_with_snapshots(
     action: StateBasedAction,
     pre_captured_snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
     damage_destroyed_object_ids: &HashSet<ObjectId>,
+    simultaneous_zone_changes: &HashMap<ObjectId, Zone>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) {
     match action {
@@ -1012,30 +1506,91 @@ fn apply_single_sba_with_snapshots(
             }
         }
 
-        StateBasedAction::PlayerLoses { player, reason: _ } => {
-            let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
-            let lost_now = if let Some(p) = game.player_mut(player) {
-                if p.has_lost {
-                    false
-                } else {
-                    p.has_lost = true;
-                    true
-                }
-            } else {
-                false
-            };
-            if lost_now {
-                game.queue_trigger_event(
-                    crate::provenance::ProvNodeId::default(),
-                    crate::events::Event::player_loses_game(player)
-                        .into_raw()
-                        .with_lookback_source_snapshots(lookback_source_snapshots),
-                );
+        StateBasedAction::BattleDies(obj_id) => {
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change};
+            let outcome = process_zone_change(
+                game,
+                obj_id,
+                Zone::Battlefield,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::from_sba(),
+                decision_maker,
+            );
+            if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
+                game.move_object_by_sba(obj_id, final_zone);
             }
+        }
+
+        StateBasedAction::PlaneswalkFromPhenomenon(source) => {
+            if let Some(controller) = game
+                .planar_controller_of_face(source)
+                .or_else(|| game.planar_controller())
+            {
+                let _ = game.planeswalk(controller, source);
+            }
+        }
+
+        StateBasedAction::RecycleScheme(source) => {
+            let _ = game.turn_face_up_scheme_down(source);
+        }
+
+        StateBasedAction::BattleProtectorChoice(obj_id) => {
+            game.choose_battle_protector(obj_id, decision_maker);
+        }
+
+        StateBasedAction::PlayerLoses { player, reason: _ } => {
+            crate::events::processing::process_player_loss_with_simultaneous_zone_changes(
+                game,
+                player,
+                decision_maker,
+                simultaneous_zone_changes,
+            );
         }
 
         StateBasedAction::StartEngines { player } => {
             game.start_engines(player);
+        }
+
+        StateBasedAction::ClearSectorDesignations => {
+            game.clear_sector_designations();
+        }
+
+        StateBasedAction::SectorDesignationChoices { source, creatures } => {
+            let options = crate::marker::SectorDesignation::ALL
+                .into_iter()
+                .enumerate()
+                .map(|(index, sector)| {
+                    crate::decisions::context::SelectableOption::new(index, sector.description())
+                })
+                .collect::<Vec<_>>();
+            let mut choices = Vec::with_capacity(creatures.len());
+            for &(player, creature) in &creatures {
+                let name = game
+                    .object(creature)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| "this creature".to_string());
+                let context = crate::decisions::context::SelectOptionsContext::new(
+                    player,
+                    Some(source),
+                    format!("Choose a sector for {name}"),
+                    options.clone(),
+                    1,
+                    1,
+                );
+                let index = decision_maker
+                    .decide_options(game, &context)
+                    .first()
+                    .copied()
+                    .unwrap_or(0);
+                if decision_maker.awaiting_choice() {
+                    return;
+                }
+                choices.push(
+                    crate::marker::SectorDesignation::from_option_index(index)
+                        .unwrap_or(crate::marker::SectorDesignation::Alpha),
+                );
+            }
+            apply_sector_designation_choices_from_group(game, source, &creatures, &choices);
         }
 
         StateBasedAction::SoulbondUnpairs(obj_id) => {
@@ -1054,6 +1609,52 @@ fn apply_single_sba_with_snapshots(
                     obj_id,
                     Zone::Graveyard,
                     crate::events::cause::EventCause::from_legend_rule(player),
+                );
+            }
+        }
+
+        StateBasedAction::WorldRuleViolation { permanents } => {
+            use crate::events::processing::{ZoneChangeOutcome, process_zone_change_with_snapshot};
+
+            // Determine every replacement result while all World permanents
+            // still exist, then commit the zone changes with one shared
+            // pre-event lookback set. This preserves simultaneous LKI for
+            // leaves/dies observers even though storage commits one object at
+            // a time.
+            let mut prepared = Vec::new();
+            for obj_id in permanents {
+                let snapshot = pre_captured_snapshots.get(&obj_id).cloned().or_else(|| {
+                    game.object(obj_id).map(|object| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                    })
+                });
+                let outcome = process_zone_change_with_snapshot(
+                    game,
+                    obj_id,
+                    Zone::Battlefield,
+                    Zone::Graveyard,
+                    crate::events::cause::EventCause::from_sba(),
+                    decision_maker,
+                    snapshot.clone(),
+                );
+                if let ZoneChangeOutcome::Proceed(final_zone) = outcome {
+                    prepared.push((obj_id, final_zone, snapshot));
+                }
+            }
+            let lookback = if game
+                .may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
+            {
+                game.trigger_source_lookback_snapshots()
+            } else {
+                Vec::new()
+            };
+            for (obj_id, final_zone, snapshot) in prepared {
+                game.move_object_with_snapshot_and_pre_event_lookback(
+                    obj_id,
+                    final_zone,
+                    crate::events::cause::EventCause::from_sba(),
+                    snapshot,
+                    &lookback,
                 );
             }
         }
@@ -1093,6 +1694,18 @@ fn apply_single_sba_with_snapshots(
                 {
                     game.queue_trigger_event(event.provenance(), event);
                 }
+            }
+        }
+
+        StateBasedAction::CountersExceedMaximum {
+            permanent,
+            counter_type,
+            count,
+        } => {
+            if let Some((_, event)) =
+                game.remove_counters(permanent, counter_type, count, None, None)
+            {
+                game.queue_trigger_event(event.provenance(), event);
             }
         }
 
@@ -1644,6 +2257,139 @@ mod tests {
     }
 
     #[test]
+    fn simultaneous_loss_reasons_are_one_replaceable_event() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Loss Replacement")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            crate::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::other::WouldLoseGameMatcher,
+                crate::replacement::ReplacementAction::Instead(vec![
+                    crate::effect::Effect::energy_counters(1),
+                ]),
+            ),
+        );
+        {
+            let player = game.player_mut(alice).expect("alice");
+            player.life = 0;
+            player.poison_counters = 10;
+        }
+
+        let actions = check_state_based_actions(&game);
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| matches!(action, StateBasedAction::PlayerLoses { .. }))
+                .count(),
+            2
+        );
+        let all_effects = game.all_continuous_effects();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(apply_state_based_actions_from_actions_with(
+            &mut game,
+            actions,
+            &all_effects,
+            &mut dm,
+        ));
+
+        let player = game.player(alice).expect("alice");
+        assert!(player.is_in_game());
+        assert_eq!(
+            player.energy_counters, 1,
+            "CR 704.7 requires one replacement to cover both simultaneous loss reasons"
+        );
+    }
+
+    #[test]
+    fn loss_replacement_source_controller_chooses_simultaneous_death_destination() {
+        struct ChooseZone {
+            player: PlayerId,
+            option: usize,
+        }
+
+        impl DecisionMaker for ChooseZone {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                assert_eq!(ctx.player, self.player);
+                assert_eq!(ctx.options.len(), 2);
+                vec![self.option]
+            }
+        }
+
+        for (option, expected_zone) in [(0, Zone::Exile), (1, Zone::Graveyard)] {
+            let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+            let alice = PlayerId::from_index(0);
+            let angel = game.create_object_from_card(
+                &CardBuilder::new(CardId::new(), "Loss-Replacement Angel")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(5, 5))
+                    .build(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.effect_store.replacement_effects.add_resolution_effect(
+                crate::replacement::ReplacementEffect::with_matcher(
+                    angel,
+                    alice,
+                    crate::events::other::WouldLoseGameMatcher,
+                    crate::replacement::ReplacementAction::Instead(vec![
+                        crate::effect::Effect::exile(crate::target::ChooseSpec::Source),
+                        crate::effect::Effect::set_life_total(20),
+                    ]),
+                ),
+            );
+            game.player_mut(alice).expect("alice").life = 0;
+            game.mark_damage(angel, 5);
+
+            let actions = check_state_based_actions(&game);
+            assert!(actions.contains(&StateBasedAction::ObjectDies(angel)));
+            assert!(actions.iter().any(|action| matches!(
+                action,
+                StateBasedAction::PlayerLoses { player, .. } if *player == alice
+            )));
+            let all_effects = game.all_continuous_effects();
+            let mut dm = ChooseZone {
+                player: alice,
+                option,
+            };
+            assert!(apply_state_based_actions_from_actions_with(
+                &mut game,
+                actions,
+                &all_effects,
+                &mut dm,
+            ));
+
+            let player = game.player(alice).expect("alice");
+            assert!(player.is_in_game());
+            assert_eq!(player.life, 20);
+            assert!(game.objects_in_zone(expected_zone).iter().any(|object_id| {
+                game.object(*object_id)
+                    .is_some_and(|object| object.name == "Loss-Replacement Angel")
+            }));
+            let other_zone = if expected_zone == Zone::Exile {
+                Zone::Graveyard
+            } else {
+                Zone::Exile
+            };
+            assert!(!game.objects_in_zone(other_zone).iter().any(|object_id| {
+                game.object(*object_id)
+                    .is_some_and(|object| object.name == "Loss-Replacement Angel")
+            }));
+        }
+    }
+
+    #[test]
     fn commander_damage_loss_requires_twenty_one_from_one_commander() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 40);
         let bob = PlayerId::from_index(1);
@@ -1674,6 +2420,26 @@ mod tests {
 
         let actions = check_state_based_actions(&game);
         assert!(actions.iter().any(|action| {
+            matches!(
+                action,
+                StateBasedAction::PlayerLoses {
+                    player,
+                    reason: LoseReason::CommanderDamage,
+                } if *player == bob
+            )
+        }));
+    }
+
+    #[test]
+    fn brawl_profile_disables_commander_damage_loss() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 25);
+        let bob = PlayerId::from_index(1);
+        game.player_mut(bob)
+            .expect("bob should exist")
+            .record_commander_damage(ObjectId::from_raw(100), 21);
+        game.set_commander_damage_loss_enabled(false);
+
+        assert!(!check_state_based_actions(&game).iter().any(|action| {
             matches!(
                 action,
                 StateBasedAction::PlayerLoses {
@@ -1886,5 +2652,648 @@ mod tests {
         assert!(apply_state_based_actions_with(&mut game, &mut dm));
         assert_eq!(game.soulbond_partner(creature_id), None);
         assert_eq!(game.soulbond_partner(land_id), None);
+    }
+
+    fn siege_card(name: &str, defense: u32) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Battle])
+            .subtypes(vec![Subtype::Siege])
+            .defense(defense)
+            .build()
+    }
+
+    #[test]
+    fn battle_intrinsics_seed_defense_and_siege_protector() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let battle =
+            game.create_object_from_card(&siege_card("Test Siege", 4), alice, Zone::Battlefield);
+
+        assert_eq!(game.counter_count(battle, CounterType::Defense), 4);
+        assert_eq!(game.battle_protector(battle), Some(bob));
+    }
+
+    #[test]
+    fn zero_defense_battle_waits_for_defeat_ability_on_stack() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let battle = game.create_object_from_card(
+            &siege_card("Defeated Siege", 1),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(battle)
+            .expect("battle")
+            .counters
+            .remove(&CounterType::Defense);
+        game.stack.push(
+            crate::game_state::StackEntry::new(battle, alice).with_battle_defeat_source(battle),
+        );
+
+        assert!(!check_state_based_actions(&game).contains(&StateBasedAction::BattleDies(battle)));
+        game.stack.clear();
+        assert!(check_state_based_actions(&game).contains(&StateBasedAction::BattleDies(battle)));
+    }
+
+    #[test]
+    fn removing_last_siege_defense_counter_queues_intrinsic_defeat_ability() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let battle = game.create_object_from_card(
+            &siege_card("Triggered Siege", 1),
+            alice,
+            Zone::Battlefield,
+        );
+        let (_, markers_event) = game
+            .remove_counters(battle, CounterType::Defense, 1, None, Some(alice))
+            .expect("the defense counter should be removed");
+        let trigger_event = markers_event;
+        let entries = crate::triggers::check_triggers(&game, &trigger_event);
+        assert_eq!(entries.len(), 1);
+        assert!(crate::triggers::check::is_intrinsic_siege_defeat_trigger(
+            &entries[0]
+        ));
+
+        let mut queue = TriggerQueue::new();
+        queue.add(entries[0].clone());
+        let context = StateBasedActionContext::from_trigger_queue(&queue);
+        let view = crate::derived_view::DerivedGameView::new(&game);
+        assert!(
+            !check_state_based_actions_with_context(&game, &view, &context)
+                .contains(&StateBasedAction::BattleDies(battle)),
+            "the zero-defense SBA must wait while the intrinsic trigger is pending"
+        );
+    }
+
+    #[test]
+    fn siege_defeat_trigger_uses_the_event_time_defense_count() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let battle = game.create_object_from_card(
+            &siege_card("Event-Time Siege", 1),
+            alice,
+            Zone::Battlefield,
+        );
+        let (_, removal_event) = game
+            .remove_counters(battle, CounterType::Defense, 1, None, Some(alice))
+            .expect("the last defense counter should be removed");
+
+        game.add_counters(battle, CounterType::Defense, 1)
+            .expect("the later counter should be added");
+        let entries = crate::triggers::check_triggers(&game, &removal_event);
+
+        assert_eq!(entries.len(), 1);
+        assert!(crate::triggers::check::is_intrinsic_siege_defeat_trigger(
+            &entries[0]
+        ));
+    }
+
+    #[test]
+    fn intrinsic_siege_defeat_exiles_and_casts_the_linked_face() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let front_id = CardId::from_raw(991_001);
+        let back_id = CardId::from_raw(991_002);
+        let front = crate::cards::CardDefinitionBuilder::new(front_id, "Resolving Siege")
+            .card_types(vec![CardType::Battle])
+            .subtypes(vec![Subtype::Siege])
+            .defense(1)
+            .other_face(back_id)
+            .other_face_name("Resolving Victory")
+            .linked_face_layout(crate::card::LinkedFaceLayout::TransformLike)
+            .build();
+        let back = crate::cards::CardDefinitionBuilder::new(back_id, "Resolving Victory")
+            .card_types(vec![CardType::Sorcery])
+            .other_face(front_id)
+            .other_face_name("Resolving Siege")
+            .linked_face_layout(crate::card::LinkedFaceLayout::TransformLike)
+            .build();
+        game.register_linked_face_definition(&back);
+        let battle = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+        let (_, markers_event) = game
+            .remove_counters(battle, CounterType::Defense, 1, None, Some(alice))
+            .expect("last defense counter");
+        let mut queue = TriggerQueue::new();
+        for entry in crate::triggers::check_triggers(&game, &markers_event) {
+            queue.add(entry);
+        }
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut queue)
+            .expect("intrinsic defeat trigger should stack");
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].battle_defeat_source, Some(battle));
+
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
+            .expect("intrinsic defeat trigger should resolve");
+
+        assert_eq!(game.stack.len(), 1, "the linked face should be cast");
+        let spell = game
+            .object(game.stack[0].object_id)
+            .expect("linked-face spell on stack");
+        assert_eq!(spell.name, "Resolving Victory");
+        assert!(spell.has_card_type(CardType::Sorcery));
+    }
+
+    #[test]
+    fn battle_becomes_unattached_even_if_attachment_would_otherwise_be_legal() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let battle = game.create_object_from_card(
+            &siege_card("Attached Siege", 3),
+            alice,
+            Zone::Battlefield,
+        );
+        let target = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Target")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(battle).expect("battle").attached_to =
+            Some(AttachmentTarget::Object(target));
+        game.object_mut(target)
+            .expect("target")
+            .attachments
+            .push(battle);
+
+        assert!(
+            check_state_based_actions(&game)
+                .contains(&StateBasedAction::AttachmentBecomesUnattached(battle))
+        );
+        assert!(apply_state_based_actions(&mut game));
+        assert_eq!(game.object(battle).expect("battle").attached_to, None);
+    }
+
+    #[test]
+    fn siege_controller_chooses_a_new_protector_when_the_old_one_leaves() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let battle = game.create_object_from_card(
+            &siege_card("Multiplayer Siege", 3),
+            alice,
+            Zone::Battlefield,
+        );
+        assert_eq!(game.battle_protector(battle), Some(bob));
+        game.player_mut(bob).expect("Bob").has_left_game = true;
+
+        let actions = check_state_based_actions(&game);
+        assert!(actions.contains(&StateBasedAction::BattleProtectorChoice(battle)));
+        let all_effects = game.all_continuous_effects();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(apply_state_based_actions_from_actions_with(
+            &mut game,
+            actions,
+            &all_effects,
+            &mut dm,
+        ));
+        assert_eq!(game.battle_protector(battle), Some(charlie));
+    }
+
+    #[test]
+    fn siege_with_no_legal_protector_goes_to_its_owners_graveyard() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let battle = game.create_object_from_card(
+            &siege_card("Unprotected Siege", 3),
+            alice,
+            Zone::Battlefield,
+        );
+        game.player_mut(bob).expect("Bob").has_left_game = true;
+
+        assert!(check_state_based_actions(&game).contains(&StateBasedAction::BattleDies(battle)));
+        assert!(apply_state_based_actions(&mut game));
+        assert!(game.object(battle).is_none());
+        assert!(
+            game.player(alice)
+                .expect("Alice")
+                .graveyard
+                .iter()
+                .any(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.name == "Unprotected Siege")
+                })
+        );
+    }
+
+    #[test]
+    fn battle_protector_designation_persists_through_type_changes() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let battle = game.create_object_from_card(
+            &siege_card("Changing Siege", 3),
+            alice,
+            Zone::Battlefield,
+        );
+        game.object_mut(battle)
+            .expect("battle")
+            .card_types
+            .retain(|card_type| *card_type != CardType::Battle);
+        assert_eq!(game.battle_protector(battle), Some(bob));
+        game.object_mut(battle)
+            .expect("battle")
+            .card_types
+            .push(CardType::Battle);
+        assert_eq!(game.battle_protector(battle), Some(bob));
+    }
+
+    fn world_permanent(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .supertypes(vec![Supertype::World])
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn ordinary_enchantment(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn grant_world_at(game: &mut GameState, object: ObjectId, timestamp: u64) {
+        let controller = game.current_controller(object).expect("controller");
+        let mut effect = ContinuousEffect::new(
+            object,
+            controller,
+            EffectTarget::Specific(object),
+            Modification::AddSupertypes(vec![Supertype::World]),
+        );
+        effect.timestamp = timestamp;
+        game.effect_store.continuous_effects.add_effect(effect);
+        game.mark_continuous_state_dirty();
+    }
+
+    fn counter_limited_permanent(
+        game: &mut GameState,
+        owner: PlayerId,
+        limits: &[(CounterType, u32)],
+    ) -> ObjectId {
+        let mut builder = crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(),
+            "Counter-Limited Permanent",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2));
+        for &(counter_type, maximum) in limits {
+            builder =
+                builder.with_ability(Ability::static_ability(StaticAbility::counter_limit_rule(
+                    counter_type,
+                    maximum,
+                    format!(
+                        "This permanent can't have more than {maximum} {} counters on it",
+                        counter_type.description()
+                    ),
+                )));
+        }
+        let definition = builder.build();
+        game.create_object_from_definition(&definition, owner, Zone::Battlefield)
+    }
+
+    #[test]
+    fn u034_world_rule_keeps_only_the_unique_newest_world_permanent() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let old_world = world_permanent(&mut game, alice, "Old World");
+        let new_world = world_permanent(&mut game, alice, "New World");
+
+        assert_eq!(
+            check_state_based_actions(&game)
+                .into_iter()
+                .find(|action| matches!(action, StateBasedAction::WorldRuleViolation { .. })),
+            Some(StateBasedAction::WorldRuleViolation {
+                permanents: vec![old_world]
+            })
+        );
+
+        assert!(apply_state_based_actions(&mut game));
+        assert!(
+            game.object(new_world)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+        );
+        assert!(
+            game.object(old_world).is_none(),
+            "zone changes use a new object id"
+        );
+        assert!(
+            game.player(alice)
+                .expect("Alice")
+                .graveyard
+                .iter()
+                .any(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.name == "Old World")
+                })
+        );
+    }
+
+    #[test]
+    fn u034_simultaneous_world_grants_tie_and_remove_every_world_permanent() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let printed_world = world_permanent(&mut game, alice, "Printed World");
+        let first = ordinary_enchantment(&mut game, alice, "Granted World One");
+        let second = ordinary_enchantment(&mut game, alice, "Granted World Two");
+        let printed_world_timestamp = crate::derived_view::DerivedGameView::new(&game)
+            .calculated_characteristics(printed_world)
+            .and_then(|chars| chars.world_supertype_since)
+            .expect("printed World timestamp");
+        let simultaneous_grant_timestamp =
+            game.effect_store.continuous_effects.current_timestamp() + 1;
+        grant_world_at(&mut game, first, simultaneous_grant_timestamp);
+        grant_world_at(&mut game, second, simultaneous_grant_timestamp);
+
+        let effects = crate::static_ability_processor::get_all_continuous_effects(&game);
+        let view = crate::derived_view::DerivedGameView::from_effects(&game, effects);
+        let printed_chars = view
+            .calculated_characteristics(printed_world)
+            .expect("printed World characteristics");
+        assert!(printed_chars.supertypes.contains(&Supertype::World));
+        assert_eq!(
+            printed_chars.world_supertype_since,
+            Some(printed_world_timestamp)
+        );
+        assert_eq!(
+            view.calculated_characteristics(first)
+                .and_then(|chars| chars.world_supertype_since),
+            Some(simultaneous_grant_timestamp)
+        );
+        assert_eq!(
+            view.calculated_characteristics(second)
+                .and_then(|chars| chars.world_supertype_since),
+            Some(simultaneous_grant_timestamp)
+        );
+
+        let action = check_state_based_actions(&game)
+            .into_iter()
+            .find(|action| matches!(action, StateBasedAction::WorldRuleViolation { .. }))
+            .expect("world rule violation");
+        let StateBasedAction::WorldRuleViolation { permanents } = action else {
+            unreachable!()
+        };
+        assert_eq!(permanents, vec![printed_world, first, second]);
+
+        assert!(apply_state_based_actions(&mut game));
+        assert!(game.battlefield.is_empty());
+        assert_eq!(game.player(alice).expect("Alice").graveyard.len(), 3);
+    }
+
+    #[test]
+    fn u034_later_world_grant_uses_the_grant_timestamp_not_entry_timestamp() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let older_object = ordinary_enchantment(&mut game, alice, "Older Object");
+        let later_printed_world = world_permanent(&mut game, alice, "Later Printed World");
+        let later_grant_timestamp = game.effect_store.continuous_effects.current_timestamp() + 1;
+        grant_world_at(&mut game, older_object, later_grant_timestamp);
+
+        assert_eq!(
+            check_state_based_actions(&game)
+                .into_iter()
+                .find(|action| matches!(action, StateBasedAction::WorldRuleViolation { .. })),
+            Some(StateBasedAction::WorldRuleViolation {
+                permanents: vec![later_printed_world]
+            })
+        );
+    }
+
+    #[test]
+    fn u034_new_permanent_under_older_world_grant_uses_its_entry_timestamp() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let printed_world = world_permanent(&mut game, alice, "Printed World");
+        let mut grant = ContinuousEffect::new(
+            printed_world,
+            alice,
+            EffectTarget::AllPermanents,
+            Modification::AddSupertypes(vec![Supertype::World]),
+        );
+        grant.timestamp = game.effect_store.continuous_effects.current_timestamp() + 1;
+        game.effect_store.continuous_effects.add_effect(grant);
+        game.mark_continuous_state_dirty();
+
+        let newcomer = ordinary_enchantment(&mut game, alice, "Newly Affected World");
+        let newcomer_entry = game
+            .effect_store
+            .continuous_effects
+            .get_entry_timestamp(newcomer)
+            .expect("newcomer entry timestamp");
+        let newcomer_world_since = crate::derived_view::DerivedGameView::new(&game)
+            .calculated_characteristics(newcomer)
+            .and_then(|chars| chars.world_supertype_since);
+        assert_eq!(newcomer_world_since, Some(newcomer_entry));
+        assert_eq!(
+            check_state_based_actions(&game)
+                .into_iter()
+                .find(|action| matches!(action, StateBasedAction::WorldRuleViolation { .. })),
+            Some(StateBasedAction::WorldRuleViolation {
+                permanents: vec![printed_world]
+            })
+        );
+    }
+
+    #[test]
+    fn u035_counter_limit_removes_only_excess_and_queues_removal_event() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let permanent = counter_limited_permanent(&mut game, alice, &[(CounterType::Dream, 7)]);
+        game.add_counters(permanent, CounterType::Dream, 10);
+
+        assert!(check_state_based_actions(&game).contains(
+            &StateBasedAction::CountersExceedMaximum {
+                permanent,
+                counter_type: CounterType::Dream,
+                count: 3,
+            }
+        ));
+        assert!(apply_state_based_actions(&mut game));
+        assert_eq!(
+            game.object(permanent)
+                .and_then(|object| object.counters.get(&CounterType::Dream).copied()),
+            Some(7)
+        );
+        assert_eq!(game.effect_store.pending_trigger_events.len(), 1);
+    }
+
+    #[test]
+    fn u035_smallest_active_limit_wins_without_touching_other_counter_kinds() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let permanent = counter_limited_permanent(
+            &mut game,
+            alice,
+            &[(CounterType::Dream, 7), (CounterType::Dream, 5)],
+        );
+        game.add_counters(permanent, CounterType::Dream, 8);
+        game.add_counters(permanent, CounterType::Time, 9);
+
+        assert!(apply_state_based_actions(&mut game));
+        let object = game.object(permanent).expect("limited permanent");
+        assert_eq!(object.counters.get(&CounterType::Dream), Some(&5));
+        assert_eq!(object.counters.get(&CounterType::Time), Some(&9));
+    }
+
+    #[test]
+    fn u035_lost_counter_limit_does_not_generate_a_state_based_action() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let permanent = counter_limited_permanent(&mut game, alice, &[(CounterType::Dream, 7)]);
+        game.add_counters(permanent, CounterType::Dream, 10);
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::from_resolution(
+                permanent,
+                alice,
+                vec![permanent],
+                Modification::RemoveAllAbilities,
+            ));
+
+        assert!(!check_state_based_actions(&game).iter().any(|action| {
+            matches!(
+                action,
+                StateBasedAction::CountersExceedMaximum {
+                    permanent: candidate,
+                    ..
+                } if *candidate == permanent
+            )
+        }));
+    }
+
+    fn u036_space_sculptor_source(
+        game: &mut GameState,
+        controller: PlayerId,
+        name: &str,
+    ) -> ObjectId {
+        let definition = crate::cards::CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::static_ability(StaticAbility::space_sculptor()))
+            .build();
+        game.create_object_from_definition(&definition, controller, Zone::Battlefield)
+    }
+
+    fn u036_creature(game: &mut GameState, controller: PlayerId, name: &str) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
+    #[test]
+    fn u036_sector_sba_uses_opponent_first_partitions_and_apnap_within_them() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Dana".into(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let dana = PlayerId::from_index(3);
+        game.turn.active_player = alice;
+        let source = u036_space_sculptor_source(&mut game, alice, "Alice Sculptor");
+        u036_space_sculptor_source(&mut game, charlie, "Charlie Sculptor");
+        let alice_creature = u036_creature(&mut game, alice, "Alice Creature");
+        let bob_creature = u036_creature(&mut game, bob, "Bob Creature");
+        let charlie_creature = u036_creature(&mut game, charlie, "Charlie Creature");
+        let dana_creature = u036_creature(&mut game, dana, "Dana Creature");
+
+        let action = check_state_based_actions(&game)
+            .into_iter()
+            .find(|action| matches!(action, StateBasedAction::SectorDesignationChoices { .. }))
+            .expect("sector assignment SBA");
+        assert_eq!(
+            action,
+            StateBasedAction::SectorDesignationChoices {
+                source,
+                creatures: vec![
+                    (bob, bob_creature),
+                    (dana, dana_creature),
+                    (alice, alice_creature),
+                    (charlie, charlie_creature),
+                ],
+            }
+        );
+    }
+
+    struct SectorDecisionMaker {
+        choices: std::collections::VecDeque<usize>,
+    }
+
+    impl DecisionMaker for SectorDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            vec![self.choices.pop_front().unwrap_or(0)]
+        }
+    }
+
+    #[test]
+    fn u036_designations_are_noncopying_zone_scoped_and_expire_without_sculptor() {
+        use crate::marker::SectorDesignation::{Alpha, Beta};
+
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = u036_space_sculptor_source(&mut game, alice, "Space Sculptor");
+        let copied_card = CardBuilder::new(CardId::new(), "Original")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature = game.create_object_from_card(&copied_card, alice, Zone::Battlefield);
+        assert!(game.set_sector_designation(creature, Alpha));
+        let independent_copy = game.create_object_from_card(&copied_card, alice, Zone::Battlefield);
+        assert_eq!(game.sector_designation(creature), Some(Alpha));
+        assert_eq!(game.sector_designation(independent_copy), None);
+        let mut dm = SectorDecisionMaker {
+            choices: [1].into_iter().collect(),
+        };
+
+        assert!(apply_state_based_actions_with(&mut game, &mut dm));
+        assert_eq!(game.sector_designation(creature), Some(Alpha));
+        assert_eq!(game.sector_designation(independent_copy), Some(Beta));
+        assert!(!game.permanents_are_in_same_sector(creature, independent_copy));
+
+        let new_id = game
+            .move_object_by_effect(creature, Zone::Exile)
+            .expect("zone change creates a new object");
+        assert_eq!(game.sector_designation(creature), None);
+        assert_eq!(game.sector_designation(new_id), None);
+
+        let source_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                game.object(source).expect("sculptor source"),
+                &game,
+            );
+        game.stack.push(
+            crate::game_state::StackEntry::ability(
+                source,
+                alice,
+                crate::resolution::ResolutionProgram::default(),
+            )
+            .with_source_snapshot(source_snapshot),
+        );
+        game.move_object_by_effect(source, Zone::Graveyard);
+        assert!(
+            !check_state_based_actions(&game).contains(&StateBasedAction::ClearSectorDesignations),
+            "a controlled ability whose source had space sculptor retains designations"
+        );
+        game.stack.pop();
+        assert!(
+            check_state_based_actions(&game).contains(&StateBasedAction::ClearSectorDesignations)
+        );
+        assert!(apply_state_based_actions(&mut game));
+        assert_eq!(game.sector_designation(independent_copy), None);
     }
 }

@@ -185,6 +185,23 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::Battlefield)),
                 Some(zone_name(Zone::Battlefield)),
             ),
+            ironsmith::special_actions::SpecialAction::RollPlanarDie => {
+                ("special_action", None, None, None, None)
+            }
+            ironsmith::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => (
+                "special_action",
+                Some(conspiracy_id.0),
+                None,
+                Some(zone_name(Zone::Command)),
+                Some(zone_name(Zone::Command)),
+            ),
+            ironsmith::special_actions::SpecialAction::Companion { card_id } => (
+                "special_action",
+                Some(card_id.0),
+                None,
+                Some(zone_name(Zone::OutsideGame)),
+                Some(zone_name(Zone::Hand)),
+            ),
         },
     }
 }
@@ -198,6 +215,7 @@ pub(super) fn zone_name(zone: Zone) -> String {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside_game",
     }
     .to_string()
@@ -462,6 +480,27 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
             ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
                 format!("Unlock {}", object_name(game, *room_id))
             }
+            ironsmith::special_actions::SpecialAction::RollPlanarDie => game
+                .planar_die_roll_cost(game.turn.priority_player.unwrap_or(game.turn.active_player))
+                .map_or_else(
+                    || "Roll the planar die".to_string(),
+                    |cost| {
+                        if cost == 0 {
+                            "Roll the planar die".to_string()
+                        } else {
+                            format!("{{{cost}}}: Roll the planar die")
+                        }
+                    },
+                ),
+            ironsmith::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
+                format!("Turn conspiracy #{} face up", conspiracy_id.0)
+            }
+            ironsmith::special_actions::SpecialAction::Companion { card_id } => {
+                format!(
+                    "{{3}}: Put your companion {} into your hand",
+                    object_name(game, *card_id)
+                )
+            }
         },
     }
 }
@@ -475,6 +514,7 @@ pub(super) fn zone_display_name(zone: Zone) -> &'static str {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command zone",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
     }
 }
@@ -511,7 +551,13 @@ pub(super) fn decision_exposes_object_to_perspective(
     let Some(decision) = decision else {
         return false;
     };
-    if decision_player_for_context(game, decision) != perspective {
+    let outside_game_private = game
+        .object(id)
+        .is_some_and(|object| object.zone == Zone::OutsideGame);
+    if outside_game_private && decision.player() != perspective {
+        return false;
+    }
+    if !outside_game_private && decision_player_for_context(game, decision) != perspective {
         return false;
     }
 
@@ -536,7 +582,7 @@ pub(super) fn decision_exposes_object_to_perspective(
         DecisionContext::Attackers(attackers) => attackers.attacker_options.iter().any(|option| {
             option.creature == id
                     || option.valid_targets.iter().any(|target| {
-                        matches!(target, AttackTarget::Planeswalker(object_id) if *object_id == id)
+                        matches!(target, AttackTarget::Planeswalker(object_id) | AttackTarget::Battle(object_id) if *object_id == id)
                 })
         }),
         DecisionContext::Blockers(blockers) => blockers.blocker_options.iter().any(|option| {
@@ -571,15 +617,30 @@ pub(super) fn object_visible_to_perspective(
     };
 
     let visible_via_view_effect = viewed_cards.is_some_and(|view| {
-        (view.public || view.viewer == perspective) && view.contains_object(game, id)
+        (view.public
+            || view.viewer == perspective
+            || (view.zone != Zone::OutsideGame
+                && game.controlling_player_for(view.viewer) == perspective))
+            && view.contains_object(game, id)
     });
+    if obj.zone == Zone::OutsideGame {
+        return obj.owner == perspective || visible_via_view_effect;
+    }
     if obj.zone == Zone::Exile && game.is_face_down(id) {
         return game.can_player_look_at_face_down_exiled_card(id, perspective)
             || visible_via_view_effect;
     }
 
-    if !obj.zone.is_hidden() || game.controlling_player_for(obj.owner) == perspective {
-        return true;
+    match obj.zone {
+        Zone::Hand => {
+            return obj.owner == perspective
+                || game.controlling_player_for(obj.owner) == perspective
+                || game.can_review_teammate_hand(perspective, obj.owner)
+                || visible_via_view_effect;
+        }
+        Zone::Library => return visible_via_view_effect,
+        _ if !obj.zone.is_hidden() => return true,
+        _ => {}
     }
 
     visible_via_view_effect
@@ -699,6 +760,15 @@ pub(super) fn special_action_ref(
         },
         ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
             SpecialActionRef::UnlockRoomDoor { room_id: room_id.0 }
+        }
+        ironsmith::special_actions::SpecialAction::RollPlanarDie => SpecialActionRef::RollPlanarDie,
+        ironsmith::special_actions::SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => {
+            SpecialActionRef::TurnConspiracyFaceUp {
+                conspiracy_id: conspiracy_id.0,
+            }
+        }
+        ironsmith::special_actions::SpecialAction::Companion { card_id } => {
+            SpecialActionRef::Companion { card_id: card_id.0 }
         }
     }
 }
@@ -906,6 +976,10 @@ pub(super) fn attack_target_view(game: &GameState, target: &AttackTarget) -> Att
             object: id.0,
             name: object_name(game, *id),
         },
+        AttackTarget::Battle(id) => AttackTargetView::Battle {
+            object: id.0,
+            name: object_name(game, *id),
+        },
     }
 }
 
@@ -915,6 +989,7 @@ pub(super) fn attack_target_from_input(input: &AttackTargetInput) -> AttackTarge
         AttackTargetInput::Planeswalker { object } => {
             AttackTarget::Planeswalker(ObjectId::from_raw(*object))
         }
+        AttackTargetInput::Battle { object } => AttackTarget::Battle(ObjectId::from_raw(*object)),
     }
 }
 

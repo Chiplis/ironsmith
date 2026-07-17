@@ -10,6 +10,15 @@ enum StaticAbilityShapeResolution {
 }
 
 fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityShapeResolution> {
+    if let Some(fact) = cant_shapes::parse_counter_limit_fact_tokens(tokens) {
+        return Some(StaticAbilityShapeResolution::Ability(
+            StaticAbility::counter_limit(
+                fact.counter_type,
+                fact.maximum,
+                format_negated_restriction_display(tokens),
+            ),
+        ));
+    }
     let fact = cant_shapes::parse_direct_cant_fact_tokens(tokens)?;
     let ability = match fact {
         DirectCantFact::TemporaryUnblockable => return Some(StaticAbilityShapeResolution::Decline),
@@ -167,6 +176,127 @@ fn fallback_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
     }
 }
 
+fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    for (index, token) in tokens.iter().enumerate() {
+        if !token.is_word("for") {
+            continue;
+        }
+        let tail = crate::runtime_backend::token_word_refs(&tokens[index..]);
+        if matches!(
+            tail.as_slice(),
+            ["for", "each", "of", "those", "creatures"]
+                | ["for", "each", "blocking", "creature", "they", "control"]
+                | ["for", "each", "blocking", "creature"]
+        ) {
+            return &tokens[..index];
+        }
+    }
+    tokens
+}
+
+/// Parse a CR 509.1d blocking cost before the generic negated-restriction
+/// family can incorrectly turn it into an unconditional prohibition.
+fn block_cost_static_ability(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(cant_index) = tokens.iter().position(|token| {
+        token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
+    }) else {
+        return Ok(None);
+    };
+    let Some(unless_index) = tokens
+        .iter()
+        .enumerate()
+        .skip(cant_index + 1)
+        .find_map(|(index, token)| token.is_word("unless").then_some(index))
+    else {
+        return Ok(None);
+    };
+
+    let subject_words = crate::runtime_backend::token_word_refs(&tokens[..cant_index]);
+    let (blockers, blocker_is_attached_to_source) = match subject_words.as_slice() {
+        ["this"] | ["this", "creature"] => (ObjectFilter::source(), false),
+        ["creatures"] => (ObjectFilter::creature(), false),
+        ["enchanted", "creature"] | ["equipped", "creature"] => (ObjectFilter::creature(), true),
+        _ => return Ok(None),
+    };
+
+    let action_tokens = trim_edge_punctuation_tokens(&tokens[cant_index + 1..unless_index]);
+    let action_words = crate::runtime_backend::token_word_refs(action_tokens);
+    let attackers = match action_words.as_slice() {
+        ["block"] | ["attack", "or", "block"] => ObjectFilter::creature(),
+        ["block", ..] => {
+            let Some(block_token_index) = action_tokens
+                .iter()
+                .position(|token| token.is_word("block"))
+            else {
+                return Ok(None);
+            };
+            let attacker_tokens =
+                trim_edge_punctuation_tokens(&action_tokens[block_token_index + 1..]);
+            parse_subject_object_filter(attacker_tokens)?
+                .or_else(|| parse_object_filter(attacker_tokens, false).ok())
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported attacker filter for blocking cost (clause: '{}')",
+                        crate::runtime_backend::token_word_refs(attacker_tokens).join(" ")
+                    ))
+                })?
+        }
+        _ => return Ok(None),
+    };
+
+    let payment_tokens = trim_edge_punctuation_tokens(&tokens[unless_index + 1..]);
+    let direct_action_cost = payment_tokens
+        .first()
+        .is_some_and(|token| token.is_word("you"))
+        && !payment_tokens
+            .iter()
+            .any(|token| token.is_word("pay") || token.is_word("pays"));
+    let mut cost_tokens = if direct_action_cost {
+        // Some declaration costs state the action directly ("unless you tap
+        // ...") rather than introducing it with "pay". Feed the ordinary
+        // activation-cost grammar the action after the payer pronoun.
+        trim_edge_punctuation_tokens(&payment_tokens[1..])
+    } else {
+        let Some(pay_index) = payment_tokens
+            .iter()
+            .position(|token| token.is_word("pay") || token.is_word("pays"))
+        else {
+            return Ok(None);
+        };
+        let payer_words = crate::runtime_backend::token_word_refs(&payment_tokens[..pay_index]);
+        if !matches!(
+            payer_words.as_slice(),
+            ["you"] | ["its", "controller"] | ["their", "controller"]
+        ) {
+            return Ok(None);
+        }
+        trim_edge_punctuation_tokens(&payment_tokens[pay_index.saturating_add(1)..])
+    };
+    if subject_words.as_slice() == ["creatures"] {
+        cost_tokens = trim_edge_punctuation_tokens(strip_per_blocking_creature_tail(cost_tokens));
+    }
+    let parsed_cost = if direct_action_cost {
+        Some(parse_activation_cost(cost_tokens)?)
+    } else {
+        parse_payment_clause_as_total_cost(cost_tokens)?
+    };
+    let Some(cost) = parsed_cost else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported blocking payment cost (clause: '{}')",
+            crate::runtime_backend::token_word_refs(cost_tokens).join(" ")
+        )));
+    };
+
+    let display = format_negated_restriction_display(tokens);
+    Ok(Some(if blocker_is_attached_to_source {
+        StaticAbility::attached_block_cost(blockers, attackers, cost, display)
+    } else {
+        StaticAbility::block_cost(blockers, attackers, cost, display)
+    }))
+}
+
 pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -190,6 +320,10 @@ pub(crate) fn parse_cant_clauses(
             })
             .collect::<Vec<_>>();
         return Ok(Some(conditioned));
+    }
+
+    if let Some(ability) = block_cost_static_ability(tokens)? {
+        return Ok(Some(vec![ability]));
     }
 
     if let Some(resolution) = direct_cant_static_ability(tokens) {
@@ -510,6 +644,30 @@ mod tests {
                     .contains("cant attack or block unless there are seven or more cards in exile"),
             "expected original conditional attack/block restriction text, got {display}"
         );
+    }
+
+    #[test]
+    fn u035_lowers_source_counter_limit_to_typed_static_payload() {
+        let tokens = tokenize_line(
+            "This creature can't have more than seven dream counters on it.",
+            0,
+        );
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("counter limit should parse")
+            .expect("counter limit should lower to a static ability");
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(
+            abilities[0].id(),
+            crate::static_abilities::StaticAbilityId::CounterLimit
+        );
+        assert!(matches!(
+            &abilities[0].payload,
+            ironsmith_core::StaticAbilityPayload::CounterLimit {
+                counter_type: CounterType::Dream,
+                maximum: 7,
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -26,13 +26,9 @@ pub(crate) fn parse_additional_cost_choices(
         }
     }
     if normalized.len() < 2
-        || normalized.iter().any(|option| {
-            find_verb(option).is_none()
-                && !permission_shapes::prefix_words(
-                    &TokenWordView::new(option).word_refs(),
-                    &["behold"],
-                )
-        })
+        || normalized
+            .iter()
+            .any(|option| find_verb(option).is_none() && !is_verbless_keyword_cost_option(option))
     {
         return Ok(None);
     }
@@ -52,6 +48,12 @@ pub(crate) fn parse_additional_cost_choices(
         });
     }
     Ok((choices.len() >= 2).then_some(choices))
+}
+
+fn is_verbless_keyword_cost_option(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    permission_shapes::prefix_words(&words, &["behold"])
+        || permission_shapes::prefix_words(&words, &["blight"])
 }
 
 fn is_and_or(token: &OwnedLexToken) -> bool {

@@ -46,6 +46,18 @@ pub(super) fn compile_subject_verb_early(
             Effect::lose_life,
             Effect::lose_life_player,
         ),
+        SubjectVerbActionAst::PayLife { amount } => compile_subject_verb_player_value_effect(
+            role,
+            player,
+            amount,
+            ctx,
+            true,
+            true,
+            true,
+            true,
+            Effect::pay_life,
+            Effect::pay_life_player,
+        ),
         SubjectVerbActionAst::GainLife { amount } => compile_subject_verb_player_value_effect(
             role,
             player,
@@ -415,7 +427,15 @@ pub(super) fn compile_subject_verb_early(
             }
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::ManifestDread => Ok((vec![Effect::manifest_dread()], Vec::new())),
+        SubjectVerbActionAst::ManifestDread => {
+            let mut effect = Effect::manifest_dread();
+            if ctx.auto_tag_object_targets {
+                let tag = reserved_or_next_object_tag(ctx, "manifested");
+                effect = effect.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
+            Ok((vec![effect], Vec::new()))
+        }
         SubjectVerbActionAst::Earthbend { counters } => {
             let spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
             let effect = tag_object_target_effect(
@@ -502,6 +522,13 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::shuffle_hand_and_graveyard_into_library_player(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::shuffle_hand_graveyard_and_owned_permanents_into_library_player(
+                    subject.into_player_filter(),
+                )
             })
         }
         SubjectVerbActionAst::ShuffleGraveyardIntoLibrary => {
@@ -865,7 +892,7 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Attach { object, target } => {
             let (objects, object_choices) =
                 resolve_attach_object_spec(object, &current_reference_env(ctx))?;
-            let (target, target_choices) =
+            let (mut target, target_choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut choices = Vec::new();
             for choice in object_choices {
@@ -874,7 +901,30 @@ pub(super) fn compile_subject_verb_early(
             for choice in target_choices {
                 push_choice(&mut choices, choice);
             }
-            Ok((vec![Effect::attach_objects(objects, target)], choices))
+            let chooser = LoweredSubject::resolve_chooser(player, ctx, true, true, true)?;
+            for choice in chooser.clone().into_choices() {
+                push_choice(&mut choices, choice);
+            }
+            let chooser = chooser.as_chooser();
+
+            let mut effects = Vec::new();
+            if !target.is_target()
+                && target.count().is_single()
+                && let Some(filter) = selected_object_filter(&target)
+            {
+                let mut filter = filter.clone();
+                filter.zone.get_or_insert(Zone::Battlefield);
+                let tag = TagKey::from(ctx.next_tag("attachment_target").as_str());
+                effects.push(Effect::choose_objects(
+                    filter,
+                    ChoiceCount::exactly(1),
+                    chooser,
+                    tag.clone(),
+                ));
+                target = ChooseSpec::Tagged(tag);
+            }
+            effects.push(Effect::attach_objects(objects, target));
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::Unattach { object } => {
             let (mut objects, choices) =
@@ -1176,6 +1226,7 @@ pub(super) fn compile_subject_verb_early(
             count,
             tags,
             accumulated_tags,
+            face_down,
         } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let resolved_count =
@@ -1191,6 +1242,9 @@ pub(super) fn compile_subject_verb_early(
             for tag in accumulated_tags {
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
                 effect = effect.append_tagged(resolved_tag);
+            }
+            if *face_down {
+                effect = effect.face_down();
             }
             if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
@@ -1281,6 +1335,8 @@ pub(super) fn compile_subject_verb_early(
             target,
             tapped,
             controller,
+            cloak,
+            shuffle_before,
         } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
@@ -1299,12 +1355,26 @@ pub(super) fn compile_subject_verb_early(
             for choice in choices {
                 push_choice(&mut all_choices, choice);
             }
-            let mut effect = Effect::put_onto_battlefield(spec.clone(), *tapped, controller_filter);
+            let mut effect = if *cloak {
+                let mut manifest =
+                    crate::effects::ManifestObjectsEffect::new(spec.clone(), controller_filter)
+                        .cloak();
+                if *tapped {
+                    manifest = manifest.tapped();
+                }
+                if *shuffle_before {
+                    manifest = manifest.shuffled();
+                }
+                Effect::new(manifest)
+            } else {
+                Effect::put_onto_battlefield(spec.clone(), *tapped, controller_filter)
+            };
             if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
                 let tag = reserved_or_next_object_tag(ctx, "moved");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
             }
+            track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], all_choices))
         }
         SubjectVerbActionAst::LookAtObjects { filter } => {
@@ -1615,13 +1685,12 @@ pub(super) fn compile_subject_verb_early(
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::PreventNextTimeDamageSource::Choice
                 }
-                PreventNextTimeDamageSourceAst::Target(TargetAst::Object(
-                    filter,
-                    None,
-                    None,
-                )) => crate::effects::PreventNextTimeDamageSource::ChoiceMatching(
-                    resolve_it_tag(filter, &current_reference_env(ctx))?,
-                ),
+                PreventNextTimeDamageSourceAst::Target(TargetAst::Object(filter, None, None)) => {
+                    crate::effects::PreventNextTimeDamageSource::ChoiceMatching(resolve_it_tag(
+                        filter,
+                        &current_reference_env(ctx),
+                    )?)
+                }
                 PreventNextTimeDamageSourceAst::Target(target) => {
                     let (spec, _) =
                         resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1767,10 +1836,8 @@ pub(super) fn compile_subject_verb_early(
             source_target,
         } => {
             if let Some(source_target) = source_target {
-                let (source_spec, choices) = resolve_target_spec_with_choices(
-                    source_target,
-                    &current_reference_env(ctx),
-                )?;
+                let (source_spec, choices) =
+                    resolve_target_spec_with_choices(source_target, &current_reference_env(ctx))?;
                 let protect_source = matches!(target, TargetAst::Source(_));
                 let protected = if protect_source {
                     ironsmith_core::PreventionTarget::All

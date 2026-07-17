@@ -25,7 +25,7 @@ use super::grammar::structure::{
 use super::lexer::{OwnedLexToken, split_lexed_sentences};
 use super::object_filters::parse_object_filter_lexed;
 use super::util::{
-    parse_card_type, parse_color, parse_filter_counter_constraint_words,
+    is_source_reference_words, parse_card_type, parse_color, parse_filter_counter_constraint_words,
     parse_flashback_keyword_line, parse_subtype_flexible, strip_leading_word_refs_any, trim_commas,
 };
 use crate::runtime_backend::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
@@ -98,6 +98,57 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
             _ => {}
         }
     }
+}
+
+fn parse_source_and_another_attack_with_trigger(
+    object_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let object_view = TokenWordView::new(object_tokens);
+    let object_words = object_view.word_refs();
+    let Some(and_word) = object_words
+        .windows(2)
+        .position(|window| window == ["and", "another"])
+    else {
+        return Ok(None);
+    };
+    if and_word == 0
+        || and_word + 2 >= object_words.len()
+        || !is_source_reference_words(&object_words[..and_word])
+    {
+        return Ok(None);
+    }
+
+    let token_starts = object_view.token_start_indices();
+    let Some(&and_token) = token_starts.get(and_word) else {
+        return Ok(None);
+    };
+    let Some(&other_filter_token) = token_starts.get(and_word + 2) else {
+        return Ok(None);
+    };
+    let source_tokens = trim_commas(&object_tokens[..and_token]);
+    let other_tokens = trim_commas(&object_tokens[other_filter_token..]);
+    if source_tokens.is_empty() || other_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let other_filter = parse_object_filter_lexed(&other_tokens, true).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported other-attacker filter in trigger clause (clause: '{}')",
+            object_words.join(" ")
+        ))
+    })?;
+    let display_subject = super::lexer::render_token_slice(&source_tokens)
+        .trim()
+        .to_string();
+    if display_subject.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(TriggerSpec::ThisAttacksWithNOthers {
+        other_count: 1,
+        display_subject: Some(display_subject),
+        other_filter: Some(other_filter),
+    }))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -341,6 +392,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("toxic", KeywordAction::Toxic) {
             return Some(action);
         }
+        if let Some(action) = parse_count_keyword("poisonous", KeywordAction::Poisonous) {
+            return Some(action);
+        }
         if let Some(action) = parse_count_keyword("afflict", KeywordAction::Afflict) {
             return Some(action);
         }
@@ -357,6 +411,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return Some(action);
         }
         if let Some(action) = parse_count_keyword("bushido", KeywordAction::Bushido) {
+            return Some(action);
+        }
+        if let Some(action) = parse_count_keyword("frenzy", KeywordAction::Frenzy) {
             return Some(action);
         }
         if let Some(action) = parse_count_keyword("bloodthirst", KeywordAction::Bloodthirst) {
@@ -407,9 +464,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         }
         if words.first().is_some_and(|word| *word == "dredge")
             && let Some(amount) = words.get(1)
-            && parse_named_number(amount).is_some()
+            && let Some(amount) = parse_named_number(amount)
         {
-            return Some(KeywordAction::StaticMarkerText(format!("Dredge {amount}")));
+            return Some(KeywordAction::Dredge(amount));
         }
 
         if clause_grammar::parse_read_ahead_prefix_words(&words) {
@@ -439,6 +496,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
+    }
+    if let Some(action) = super::keyword_static::parse_dynamic_firebending(tokens) {
+        return Some(vec![action]);
     }
     let words = TokenWordView::new(tokens).word_refs();
     if let Some(action) =
@@ -728,6 +788,7 @@ pub(crate) fn parse_triggered_line_lexed(
                 Box::new(TriggerSpec::SpellCast {
                     filter: Some(spell_filter),
                     caster: PlayerFilter::You,
+                    timing: None,
                     during_turn: None,
                     min_spells_this_turn: None,
                     exact_spells_this_turn: None,
@@ -851,6 +912,21 @@ pub(crate) fn parse_triggered_line_lexed(
                 )
             {
                 let mut object_tokens = &trigger_tokens[shape.object_token_first..];
+                if player == PlayerFilter::You
+                    && let Some(trigger) =
+                        parse_source_and_another_attack_with_trigger(object_tokens)?
+                {
+                    let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+                        trigger_tokens,
+                        &tokens[split_idx + 1..],
+                    );
+                    let effects = parse_effect_sentences_lexed(&effects_tokens)?;
+                    return Ok(LineAst::Triggered {
+                        trigger,
+                        effects,
+                        max_triggers_per_turn: None,
+                    });
+                }
                 let mut min_total_attackers = None;
                 let mut exact_total_attackers = None;
                 let mut one_or_more = false;
@@ -1230,6 +1306,42 @@ mod tests {
                         )
                 )
         ));
+    }
+
+    #[test]
+    fn typed_attack_with_source_and_another_preserves_source_bound_trigger() {
+        let tokens = lex_line(
+            "Whenever you attack with Merry and another legendary creature, draw a card.",
+            0,
+        )
+        .unwrap();
+        let parsed = crate::runtime_backend::util::with_source_reference_context(
+            "Merry, Esquire of Rohan",
+            || parse_triggered_line_lexed(&tokens).unwrap(),
+        );
+        let LineAst::Triggered {
+            trigger:
+                TriggerSpec::ThisAttacksWithNOthers {
+                    other_count,
+                    display_subject,
+                    other_filter: Some(other_filter),
+                },
+            effects,
+            ..
+        } = &parsed
+        else {
+            panic!("expected source-bound attack trigger, got {parsed:#?}");
+        };
+        assert_eq!(*other_count, 1);
+        assert_eq!(display_subject.as_deref(), Some("Merry"));
+        assert!(other_filter.other);
+        assert!(
+            other_filter
+                .supertypes
+                .contains(&crate::types::Supertype::Legendary)
+        );
+        assert!(other_filter.card_types.contains(&CardType::Creature));
+        assert!(format!("{effects:#?}").contains("Draw"));
     }
 
     #[test]

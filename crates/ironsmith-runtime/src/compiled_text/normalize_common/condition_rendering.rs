@@ -113,6 +113,13 @@ fn describe_phase_step_value_comparison(
 ) -> Option<String> {
     use crate::effect::ValueComparisonOperator::{Equal, GreaterThanOrEqual};
 
+    if let (Value::CardsInLibrary(player), Equal, Value::Fixed(0)) = (left, operator, right) {
+        return Some(format!(
+            "{} library has no cards in it",
+            describe_possessive_player_filter(player)
+        ));
+    }
+
     if let (Value::LifeTotal(player), GreaterThanOrEqual, Value::Add(starting_total, offset)) =
         (left, operator, right)
         && let (Value::StartingLifeTotal(starting_player), Value::Fixed(offset)) =
@@ -351,9 +358,7 @@ fn describe_turn_history_value_comparison(
 ) -> Option<String> {
     use crate::effect::ValueComparisonOperator::{Equal, GreaterThan, GreaterThanOrEqual};
 
-    if let Some((player, fragment)) =
-        triggering_spell_ordinal_fragment(query, operator, right)
-    {
+    if let Some((player, fragment)) = triggering_spell_ordinal_fragment(query, operator, right) {
         return Some(describe_triggering_spell_ordinal_sentence(
             &player,
             &[fragment],
@@ -756,6 +761,9 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::SourceAttackedThisTurn { surface } => {
             format!("{} attacked this turn", surface.display_text())
         }
+        TurnHistoryCondition::TriggeringObjectEnlistedThisCombat => {
+            "it enlisted a creature this combat".to_string()
+        }
         TurnHistoryCondition::TriggeringObjectWasCast => "it was cast".to_string(),
         TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => {
             format!("it was cast from your {zone}")
@@ -823,6 +831,50 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         }
         TurnHistoryCondition::TriggeringAbilityIsManaAbility => "it is a mana ability".to_string(),
     }
+}
+
+fn describe_behold_or_controlled_subtype_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn pair<'a>(
+        paid: &'a Condition,
+        controlled: &'a Condition,
+    ) -> Option<&'a crate::types::Subtype> {
+        let Condition::ThisSpellPaidLabel(label) = paid else {
+            return None;
+        };
+        if label.kind != crate::cost::OptionalCostKind::Behold {
+            return None;
+        }
+        let filter = match controlled {
+            Condition::PlayerControls {
+                player: PlayerFilter::You,
+                filter,
+            }
+            | Condition::YouControl(filter) => filter,
+            _ => return None,
+        };
+        let [subtype] = filter.subtypes.as_slice() else {
+            return None;
+        };
+        let mut expected = ObjectFilter::default();
+        expected.subtypes.push(subtype.clone());
+        if filter != &expected
+            || label.discriminator.as_deref().is_some_and(|label_subtype| {
+                !label_subtype.eq_ignore_ascii_case(&subtype.to_string())
+            })
+        {
+            return None;
+        }
+        Some(subtype)
+    }
+
+    let subtype = pair(left, right).or_else(|| pair(right, left))?;
+    let subtype = subtype.to_string();
+    Some(format!(
+        "you revealed a {subtype} card or controlled a {subtype} as you cast this spell"
+    ))
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
@@ -1369,6 +1421,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 count
             )
         }
+        Condition::PlayerHasCountersOrMore {
+            player,
+            counter_type,
+            count,
+        } => format!(
+            "{} has {} or more {} counters",
+            describe_player_filter(player),
+            count,
+            counter_type.description()
+        ),
         Condition::YouHaveCardInHandMatching(filter) => {
             let object_text = with_indefinite_article(&filter.description());
             format!("you have {object_text} in hand")
@@ -1380,7 +1442,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
             format!("it is one of your first {count} turns of the game")
         }
-        Condition::CreatureDiedThisTurn => "one or more creatures died this turn".to_string(),
+        Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
         Condition::CreatureDiedThisTurnOrMore(count) => {
             format!("{count} or more creatures died this turn")
         }
@@ -1538,6 +1600,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::ItIsNight => "it's night".to_string(),
         Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
+        Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
@@ -1549,6 +1612,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
             let display_label = label.display_label();
+            if label.kind == crate::cost::OptionalCostKind::Behold {
+                return label.discriminator.as_deref().map_or_else(
+                    || "this spell's behold cost was paid".to_string(),
+                    |subtype| format!("{} was beheld", with_indefinite_article(subtype)),
+                );
+            }
             if display_label.eq_ignore_ascii_case("gift")
                 || display_label.to_ascii_lowercase().starts_with("gift ")
             {
@@ -2306,6 +2375,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     Zone::Battlefield => zone_phrases.push("on the battlefield".to_string()),
                     Zone::Stack => zone_phrases.push("on the stack".to_string()),
                     Zone::Command => zone_phrases.push("in the command zone".to_string()),
+                    Zone::Ante => zone_phrases.push("in ante".to_string()),
                     Zone::OutsideGame => zone_phrases.push("outside the game".to_string()),
                 }
             }
@@ -2384,6 +2454,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             Zone::Library => "this card is in your library".to_string(),
             Zone::Exile => "this card is in exile".to_string(),
             Zone::Command => "this card is in the command zone".to_string(),
+            Zone::Ante => "this card is in ante".to_string(),
             Zone::OutsideGame => "this card is outside the game".to_string(),
             Zone::Battlefield => "this object is on the battlefield".to_string(),
             Zone::Stack => "this object is on the stack".to_string(),
@@ -2408,6 +2479,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsEquipped => "this permanent is equipped".to_string(),
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
+        Condition::SourceIsRenowned => "this creature is renowned".to_string(),
         Condition::EnchantedPermanentIsCreature => {
             "enchanted permanent is a creature".to_string()
         }
@@ -2715,6 +2787,19 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     describe_spell_cast_condition_object(filter)
                 );
             }
+            if matches!(left.unhinted(), Value::PowerOf(_) | Value::ToughnessOf(_))
+                && let Value::Fixed(count) = right.unhinted()
+            {
+                match operator {
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                        return format!("{} is {count} or greater", describe_value(left));
+                    }
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                        return format!("{} is {count} or less", describe_value(left));
+                    }
+                    _ => {}
+                }
+            }
             let operator_text = match operator {
                 crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
@@ -2789,6 +2874,64 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Condition::TargetObjectsHaveDifferentColorSets
             ) {
                 "the target objects have the same color set".to_string()
+            } else if let Condition::PlayerCompletedDungeon {
+                player,
+                dungeon_name,
+            } = inner.as_ref()
+            {
+                let subject = describe_player_filter(player);
+                match dungeon_name {
+                    Some(name) => format!(
+                        "{} {} completed {}",
+                        subject,
+                        player_verb(&subject, "haven't", "hasn't"),
+                        title_case_card_name_fragment(name)
+                    ),
+                    None => format!(
+                        "{} {} completed a dungeon",
+                        subject,
+                        player_verb(&subject, "haven't", "hasn't")
+                    ),
+                }
+            } else if let Condition::TriggeringObjectHadCounters {
+                counter_type,
+                min_count,
+            } = inner.as_ref()
+            {
+                if *min_count == 1 {
+                    format!(
+                        "the triggering object had no {} counters",
+                        counter_type.description()
+                    )
+                } else {
+                    format!(
+                        "the triggering object had fewer than {min_count} {} counters",
+                        counter_type.description()
+                    )
+                }
+            } else if let Condition::SourceIsSaddled = inner.as_ref() {
+                "this creature isn't saddled".to_string()
+            } else if let Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } =
+                inner.as_ref()
+            {
+                let amount_text = small_number_word(*amount).unwrap_or_else(|| amount.to_string());
+                match symbol {
+                    Some(symbol) => format!(
+                        "fewer than {amount_text} {} mana was spent to cast this spell",
+                        describe_mana_symbol(*symbol)
+                    ),
+                    None => format!(
+                        "fewer than {amount_text} mana was spent to cast this spell"
+                    ),
+                }
+            } else if let Condition::ValueComparison {
+                left: left @ Value::Count(_),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(count),
+            } = inner.as_ref()
+            {
+                let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                format!("{} is less than {count_text}", describe_value(left))
             } else if let Condition::TargetSpellManaSpentToCastAtLeast {
                 amount: 1,
                 symbol: None,
@@ -2809,6 +2952,8 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 "no colored mana was spent to cast it".to_string()
             } else if let Condition::SourceIsTapped = inner.as_ref() {
                 "this source is untapped".to_string()
+            } else if let Condition::SourceIsRenowned = inner.as_ref() {
+                "this creature isn't renowned".to_string()
             } else if let Condition::YourTurn = inner.as_ref() {
                 "it is not your turn".to_string()
             } else if let Condition::TurnHistory(
@@ -2873,7 +3018,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 } else if *filter == ObjectFilter::creature() {
                     "this permanent isn't a creature".to_string()
                 } else {
-                    format!("not ({})", describe_condition(inner))
+                    format!("it isn't the case that {}", describe_condition(inner))
                 }
             } else if let Condition::ThisSpellWasKicked = inner.as_ref() {
                 "this creature wasn't kicked".to_string()
@@ -2906,13 +3051,42 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 let positive = describe_last_known_tagged_object_condition(tag, filter);
                 if let Some(rest) = positive.strip_prefix("it was ") {
                     format!("it wasn't {rest}")
+                } else if let Some(rest) = positive.strip_prefix("it had ") {
+                    format!("it didn't have {rest}")
+                } else if let Some((before, after)) = positive.split_once(" was ") {
+                    format!("{before} wasn't {after}")
+                } else if let Some((before, after)) = positive.split_once(" were ") {
+                    format!("{before} weren't {after}")
+                } else if let Some((before, after)) = positive.split_once(" had ") {
+                    format!("{before} didn't have {after}")
+                } else {
+                    format!("it isn't the case that {positive}")
+                }
+            } else if let Condition::TaggedObjectMatches(_, _) = inner.as_ref() {
+                let positive = describe_condition(inner);
+                if let Some(rest) = positive.strip_prefix("it's ") {
+                    format!("it isn't {rest}")
+                } else if let Some((before, after)) = positive.split_once(" is ") {
+                    format!("{before} isn't {after}")
+                } else if let Some((before, after)) = positive.split_once(" are ") {
+                    format!("{before} aren't {after}")
                 } else if let Some((before, after)) = positive.split_once(" was ") {
                     format!("{before} wasn't {after}")
                 } else if let Some((before, after)) = positive.split_once(" were ") {
                     format!("{before} weren't {after}")
                 } else {
-                    format!("not ({positive})")
+                    format!("it isn't the case that {positive}")
                 }
+            } else if let Condition::PlayerTaggedObjectMatches {
+                player,
+                tag,
+                filter,
+            } = inner.as_ref()
+                && *player == PlayerFilter::You
+                && crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed")
+                && filter.zone == Some(Zone::Hand)
+            {
+                "you didn't put the card into your hand".to_string()
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref()
                 && *player == PlayerFilter::You
                 && filter.excluded_colors.count() == 1
@@ -2945,14 +3119,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     described_filter.controller = None;
                 }
                 let described = described_filter.description();
-                let mut object_text = strip_indefinite_article(&described).to_string();
-                if let Some(rest) = object_text.strip_prefix("another ") {
-                    // "You control no other permanents" is substantially closer to oracle text than
-                    // the ungrammatical "You control no another permanent".
-                    object_text = format!("other {}", pluralize_noun_phrase(rest));
-                } else {
-                    object_text = pluralize_noun_phrase(&object_text);
-                }
+                let object_text = strip_indefinite_article(&described).to_string();
                 let references_tagged_object =
                     described_filter.tagged_constraints.iter().any(|constraint| {
                         matches!(
@@ -2961,6 +3128,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         )
                     });
                 if references_tagged_object {
+                    let object_text = pluralize_noun_phrase(&object_text);
                     return format!(
                         "{} {} neither {}",
                         subject,
@@ -2969,10 +3137,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     );
                 }
                 format!(
-                    "{} {} no {}",
+                    "{} {} {}",
                     subject,
-                    player_verb(&subject, "control", "controls"),
-                    object_text
+                    player_verb(&subject, "don't control", "doesn't control"),
+                    with_indefinite_article(&object_text)
                 )
             } else if let Condition::ValueComparison {
                 left:
@@ -2998,7 +3166,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     )
                 }
             } else {
-                format!("not ({})", describe_condition(inner))
+                // Parentheses here are internal grouping, not reminder text. The
+                // semantic text pipeline removes parentheticals, so keep the
+                // fallback flat rather than silently collapsing the predicate to
+                // the single word "not".
+                format!("it isn't the case that {}", describe_condition(inner))
             }
         }
         Condition::And(left, right) => {
@@ -3034,6 +3206,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{} and {}", describe_condition(left), describe_condition(right))
         }
         Condition::Or(left, right) => {
+            if let Some(behold_or_controlled) =
+                describe_behold_or_controlled_subtype_condition(left, right)
+            {
+                return behold_or_controlled;
+            }
             let mut ordinal_fragments = Vec::new();
             if let Some(left_player) =
                 collect_triggering_spell_ordinal_fragments(left, &mut ordinal_fragments)
@@ -3781,6 +3958,26 @@ pub(crate) fn describe_source_exiled_with_counter_condition(
 #[cfg(test)]
 mod greatest_power_control_tests {
     use super::*;
+
+    #[test]
+    fn negated_player_control_preserves_dont_control_surface() {
+        let condition = Condition::Not(Box::new(Condition::PlayerControls {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::default()
+                .controlled_by(PlayerFilter::You)
+                .with_subtype(crate::types::Subtype::Faerie),
+        }));
+
+        assert_eq!(describe_condition(&condition), "you don't control a Faerie");
+    }
+
+    #[test]
+    fn morbid_condition_uses_singular_creature_surface() {
+        assert_eq!(
+            describe_condition(&Condition::CreatureDiedThisTurn),
+            "a creature died this turn"
+        );
+    }
 
     #[test]
     fn renders_control_of_every_global_greatest_power_creature() {

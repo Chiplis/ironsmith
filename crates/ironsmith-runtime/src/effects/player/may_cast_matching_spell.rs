@@ -44,6 +44,7 @@ fn object_ids_in_zone(game: &GameState, player: PlayerId, zone: Zone) -> Vec<Obj
         Zone::Battlefield => game.battlefield.clone(),
         Zone::Stack => game.stack.iter().map(|entry| entry.object_id).collect(),
         Zone::Command => game.command_zone.clone(),
+        Zone::Ante => game.ante.clone(),
         Zone::OutsideGame => Vec::new(),
     }
 }

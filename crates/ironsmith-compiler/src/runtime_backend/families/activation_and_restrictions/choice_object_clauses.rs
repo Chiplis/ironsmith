@@ -20,6 +20,15 @@ use crate::runtime_backend::grammar::choices::{
 pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
+    Ok(
+        parse_target_player_choose_objects_clause_with_count_value(tokens)?
+            .map(|(chooser, filter, count, _count_value)| (chooser, filter, count)),
+    )
+}
+
+pub(crate) fn parse_target_player_choose_objects_clause_with_count_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount, Option<Value>)>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let parsed = match parse_typed_target_player_choice_tokens(tokens) {
         Ok(Some(parsed)) => parsed,
@@ -66,7 +75,17 @@ pub(crate) fn parse_target_player_choose_objects_clause(
     ) {
         choose_filter.controller = None;
     }
-    if choose_filter.controller.is_none() && choose_filter.owner.is_none() {
+    // Choosing an unrestricted battlefield object does not imply that the
+    // chooser controls it. Preserve an inferred controller only for a tagged
+    // antecedent whose actor is explicitly derived from that object; ordinary
+    // text must say `they control` when that restriction is intended.
+    if choose_filter.controller.is_none()
+        && choose_filter.owner.is_none()
+        && choose_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+    {
         choose_filter.controller = Some(match chooser {
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
             PlayerAst::That => PlayerFilter::IteratedPlayer,
@@ -77,7 +96,44 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         });
     }
 
-    Ok(Some((chooser, choose_filter, parsed.count)))
+    let count_value = choice_count_value(parsed.count_source, &clause_words)?;
+
+    Ok(Some((chooser, choose_filter, parsed.count, count_value)))
+}
+
+fn choice_count_value(
+    count_source: Option<ChoiceObjectCountSource>,
+    clause_words: &[&str],
+) -> Result<Option<Value>, CardTextError> {
+    match count_source {
+        Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => Ok(Some(Value::Count(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+        ))),
+        Some(ChoiceObjectCountSource::ThatMany) => Ok(Some(Value::EventValue(
+            crate::effect::EventValueSpec::Amount,
+        ))),
+        Some(ChoiceObjectCountSource::ForEach(count_words)) => {
+            let count_word_refs = count_words.iter().map(String::as_str).collect::<Vec<_>>();
+            let Some((value, consumed)) =
+                crate::runtime_backend::util::parse_for_each_count_value_words(&count_word_refs)
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported for-each object-choice count (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            };
+            if consumed != count_word_refs.len() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing words in object-choice count (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            Ok(Some(value.with_surface_hint(
+                ironsmith_core::ValueSurfaceHint::ForEach,
+            )))
+        }
+        None => Ok(None),
+    }
 }
 
 pub(crate) fn parse_you_choose_objects_clause(
@@ -116,14 +172,7 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
         }
     };
     let references_it = parsed.references.references_it;
-    let count_value = parsed.count_source.map(|source| match source {
-        ChoiceObjectCountSource::CardsDiscardedThisWay => {
-            Value::Count(ObjectFilter::tagged(TagKey::from(IT_TAG)))
-        }
-        ChoiceObjectCountSource::ThatMany => {
-            Value::EventValue(crate::effect::EventValueSpec::Amount)
-        }
-    });
+    let count_value = choice_count_value(parsed.count_source, &clause_words)?;
     let mut choose_filter = parsed.filter;
     let chooser = match parsed.actor {
         // Preserve the implicit actor until the enclosing sentence shape is
@@ -925,6 +974,93 @@ mod result_choice_tests {
         assert_eq!(
             count_value,
             Some(Value::EventValue(crate::effect::EventValueSpec::Amount))
+        );
+    }
+
+    #[test]
+    fn for_each_choice_count_lowers_to_a_typed_dynamic_value() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Choose a permanent for each card in their graveyard.",
+            0,
+        )
+        .expect("lex choice");
+        let (_, _, count, count_value) = parse_you_choose_objects_clause_with_count_value(&tokens)
+            .expect("parse choice")
+            .expect("match choice");
+
+        assert!(count.is_dynamic_x());
+        let value = count_value.expect("for-each count value");
+        assert!(value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        let Value::Count(filter) = value.unhinted() else {
+            panic!("expected an object-count value: {value:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+    }
+
+    #[test]
+    fn that_player_for_each_choice_keeps_its_dynamic_count_basis() {
+        let tokens = crate::runtime_backend::lex_line(
+            "That player chooses a permanent for each card in their graveyard.",
+            0,
+        )
+        .expect("lex participant choice");
+        let (chooser, filter, count, count_value) =
+            parse_target_player_choose_objects_clause_with_count_value(&tokens)
+                .expect("parse participant choice")
+                .expect("match participant choice");
+
+        assert_eq!(chooser, PlayerAst::That);
+        assert!(count.is_dynamic_x());
+        assert_eq!(filter.controller, None);
+        let value = count_value.expect("for-each count value");
+        assert!(value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        let Value::Count(filter) = value.unhinted() else {
+            panic!("expected an object-count value: {value:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+    }
+
+    #[test]
+    fn participant_choice_only_restricts_control_when_oracle_says_so() {
+        let unrestricted =
+            crate::runtime_backend::lex_line("That player chooses up to two Plains.", 0)
+                .expect("lex unrestricted choice");
+        let (_, unrestricted_filter, _, _) =
+            parse_target_player_choose_objects_clause_with_count_value(&unrestricted)
+                .expect("parse unrestricted choice")
+                .expect("match unrestricted choice");
+        assert_eq!(unrestricted_filter.controller, None);
+
+        let controlled = crate::runtime_backend::lex_line(
+            "That player chooses up to two Plains they control.",
+            0,
+        )
+        .expect("lex controlled choice");
+        let (_, controlled_filter, _, _) =
+            parse_target_player_choose_objects_clause_with_count_value(&controlled)
+                .expect("parse controlled choice")
+                .expect("match controlled choice");
+        assert_eq!(
+            controlled_filter.controller,
+            Some(PlayerFilter::IteratedPlayer)
+        );
+
+        let negative_tag_only = crate::runtime_backend::lex_line(
+            "That player chooses a permanent that hasn't been chosen this way.",
+            0,
+        )
+        .expect("lex complement-only choice");
+        let (_, negative_filter, _, _) =
+            parse_target_player_choose_objects_clause_with_count_value(&negative_tag_only)
+                .expect("parse complement-only choice")
+                .expect("match complement-only choice");
+        assert_eq!(negative_filter.controller, None);
+        assert!(
+            negative_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+            })
         );
     }
 }

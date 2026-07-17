@@ -635,6 +635,30 @@ pub(super) fn test_parse_manifest_dread_trigger_without_fallback_marker() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn paranormal_analyst_manifest_dread_observer_round_trips_exactly() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Paranormal Analyst Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you manifest dread, put a card you put into your graveyard this way into your hand.",
+        )
+        .expect("manifest-dread observer should parse strictly");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join(" "),
+        "Whenever you manifest dread, put a card you put into your graveyard this way into your hand."
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("ManifestDread"), "{debug}");
+    assert!(debug.contains("TagTriggeringObjectEffect"), "{debug}");
+    assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    assert!(
+        debug.contains(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG),
+        "{debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn they_came_from_the_pipes_strict_parse_includes_manifest_dread_twice_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "They Came from the Pipes")
         .card_types(vec![CardType::Enchantment])
@@ -647,8 +671,7 @@ pub(super) fn they_came_from_the_pipes_strict_parse_includes_manifest_dread_twic
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("manifest dread")
-            && (rendered.contains("twice") || rendered.contains("2 times")),
+        rendered.contains("manifest dread twice") && !rendered.contains("repeat manifest dread"),
         "expected compiled text to preserve the manifest-dread-twice clause, got {rendered}"
     );
     assert!(
@@ -665,6 +688,98 @@ pub(super) fn they_came_from_the_pipes_strict_parse_includes_manifest_dread_twic
         abilities_debug.contains("RepeatEffects") && abilities_debug.contains("Fixed(2)"),
         "expected manifest dread twice to lower to a repeat effect with count 2, got {abilities_debug}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn standalone_manifest_dread_card_parses_as_a_keyword_action_statement() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Dread")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Manifest dread.")
+        .expect("a bare manifest-dread instruction should parse strictly");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join(" "),
+        "Manifest dread."
+    );
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("ManifestDreadEffect"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn valgavoths_onslaught_counters_only_the_permanents_manifested_by_the_repeat() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valgavoth's Onslaught")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Manifest dread X times, then put X +1/+1 counters on each of those creatures.")
+        .expect("Valgavoth's Onslaught should parse strictly");
+    let spell_effects = def.spell_effect.clone().expect("spell effects");
+    let debug = format!("{spell_effects:#?}");
+    assert!(
+        debug.contains("TaggedEffect")
+            && debug.contains("RepeatEffectsEffect")
+            && debug.contains("manifested_")
+            && debug.contains("IsTaggedObject"),
+        "the repeated action and plural followup should share tagged provenance: {debug}"
+    );
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let unrelated = CardDefinitionBuilder::new(CardId::from_raw(20), "Unrelated Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let unrelated_id = game.create_object_from_definition(&unrelated, alice, Zone::Battlefield);
+    for index in 0..4 {
+        let library_card =
+            CardDefinitionBuilder::new(CardId::from_raw(30 + index), format!("Dread Card {index}"))
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build();
+        game.create_object_from_definition(&library_card, alice, Zone::Library);
+    }
+
+    let source = game.new_object_id();
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_x(2)
+        .with_decision_maker(&mut decisions);
+    for effect in &spell_effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Valgavoth's Onslaught effect should resolve");
+    }
+
+    assert_eq!(
+        game.object(unrelated_id)
+            .and_then(|object| object.counters.get(&CounterType::PlusOnePlusOne))
+            .copied()
+            .unwrap_or(0),
+        0,
+        "an unrelated battlefield creature must not receive counters"
+    );
+    let manifested = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| *id != unrelated_id)
+        .collect::<Vec<_>>();
+    assert_eq!(manifested.len(), 2, "X=2 should manifest two permanents");
+    for object_id in manifested {
+        let object = game.object(object_id).expect("manifested permanent");
+        assert!(
+            game.is_face_down(object_id),
+            "manifest dread should create a face-down permanent"
+        );
+        assert_eq!(
+            object
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied()
+                .unwrap_or(0),
+            2,
+            "each manifested permanent should receive X counters"
+        );
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -801,12 +916,24 @@ pub(super) fn test_vault_101_birthday_party_parses_strictly() {
         )
         .expect("Vault 101: Birthday Party should parse strictly");
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let lines = unprocessed_compiled_lines(&def);
+    let rendered = lines.join(" ").to_ascii_lowercase();
     assert!(
         !rendered.contains("unsupported predicate") && !rendered.contains("unsupported effect"),
         "Vault 101: Birthday Party should parse without unsupported markers, got {rendered}"
+    );
+    let chapter_one = lines
+        .iter()
+        .find(|line| line.trim_start().starts_with("I —"))
+        .unwrap_or_else(|| panic!("expected Vault 101 chapter I, got {lines:#?}"))
+        .to_ascii_lowercase();
+    assert!(
+        chapter_one.contains("human soldier creature token") && chapter_one.contains("food token"),
+        "Vault 101 chapter I should retain both coordinated token creations, got {chapter_one}"
+    );
+    assert!(
+        !chapter_one.contains("sacrifice"),
+        "Food reminder text must not become a Vault 101 chapter effect, got {chapter_one}"
     );
 }
 
@@ -824,16 +951,10 @@ pub(super) fn test_vault_101_birthday_party_renders_equipment_only_attach_branch
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("if an equipment is put onto the battlefield this way")
-            || rendered.contains("if that permanent is an equipment")
-            || rendered.contains("if it is an equipment")
-            || rendered.contains("if it's an equipment")
-            || rendered.contains("if it matches equipment"),
-        "expected conditional Equipment-only attach branch, got {rendered}"
-    );
-    assert!(
-        rendered.contains("attach") && rendered.contains("creature you control"),
-        "expected optional attach branch targeting your creature, got {rendered}"
+        rendered.contains(
+            "you may put an aura or equipment card from your hand or graveyard onto the battlefield. if an equipment is put onto the battlefield this way, you may attach it to a creature you control"
+        ),
+        "expected exact multi-zone move and conditional attach surface, got {rendered}"
     );
 
     let effect_debug = format!("{:?}", def.spell_effect);

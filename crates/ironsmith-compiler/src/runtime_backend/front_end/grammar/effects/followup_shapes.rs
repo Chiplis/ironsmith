@@ -178,6 +178,15 @@ pub(crate) fn parse_conditional_followup(
     .ok()
 }
 
+pub(crate) fn is_anaphoric_damage_self_replacement(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    words.starts_with(&["it", "deals"])
+        && words
+            .windows(3)
+            .any(|window| window == ["to", "that", "creature"])
+        && words.contains(&"instead")
+}
+
 fn lifecycle_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((primitives::kw("exile"), primitives::kw("sacrifice")))
         .void()

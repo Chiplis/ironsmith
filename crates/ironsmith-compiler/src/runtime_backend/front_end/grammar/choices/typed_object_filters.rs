@@ -1,4 +1,4 @@
-use crate::cards::builders::{IT_TAG, TagKey};
+use crate::cards::builders::{CHOSEN_OBJECTS_TAG, IT_TAG, TagKey};
 use crate::effect::ChoiceCount;
 #[cfg(test)]
 use crate::effect::Value;
@@ -36,6 +36,7 @@ pub(crate) enum TypedChoiceObjectClauseKind {
 pub(crate) struct TypedTargetPlayerChoice {
     pub(crate) actor: TargetPlayerChoiceActor,
     pub(crate) count: ChoiceCount,
+    pub(crate) count_source: Option<ChoiceObjectCountSource>,
     pub(crate) filter: ObjectFilter,
 }
 
@@ -78,12 +79,17 @@ pub(crate) fn parse_typed_target_player_choice_tokens(
         return Ok(None);
     }
 
-    let filter_words = TokenWordView::new(shape.filter_tokens).word_refs();
-    let filter = parse_typed_choice_filter_words(&filter_words)?;
-    let filter = expand_graveyard_or_hand_disjunction_filter(filter, shape.filter_facts);
+    let Some(TypedChoiceObjectClauseKind::Object(object_choice)) =
+        parse_typed_choice_object_clause_tokens(shape.object_choice_tokens)?
+    else {
+        return Ok(None);
+    };
+    let filter =
+        expand_graveyard_or_hand_disjunction_filter(object_choice.filter, shape.filter_facts);
     Ok(Some(TypedTargetPlayerChoice {
         actor: shape.actor,
-        count: shape.count,
+        count: object_choice.count,
+        count_source: object_choice.count_source,
         filter,
     }))
 }
@@ -138,6 +144,17 @@ pub(crate) fn parse_typed_choice_object_clause_tokens(
             });
         }
         filter = expand_tagged_hand_or_graveyard_disjunction_filter(filter, shape.filter_facts);
+    }
+    if shape.references.excludes_chosen_this_way
+        && !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        })
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(CHOSEN_OBJECTS_TAG),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
     }
     if matches!(
         filter.zone,
@@ -362,5 +379,26 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn typed_choice_filter_excludes_the_accumulated_chosen_set() {
+        let tokens = lex_line(
+            "Choose a nonland permanent they don't control that hasn't been chosen this way.",
+            0,
+        )
+        .unwrap();
+        let TypedChoiceObjectClauseKind::Object(parsed) =
+            parse_typed_choice_object_clause_tokens(&tokens)
+                .unwrap()
+                .unwrap()
+        else {
+            panic!("expected object choice");
+        };
+
+        assert!(parsed.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == CHOSEN_OBJECTS_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        }));
     }
 }

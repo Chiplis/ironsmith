@@ -7,7 +7,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilterExt;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
-use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
+use crate::triggers::matcher_trait::{SimultaneousTriggerKey, TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealsCombatDamageToPlayerTrigger {
@@ -85,6 +85,14 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
         Some(vec![EventKind::Damage])
+    }
+
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
+        if !self.one_or_more {
+            return None;
+        }
+        let damage = event.downcast::<DamageEvent>()?;
+        Some(SimultaneousTriggerKey::DamageTarget(damage.target))
     }
 
     fn display(&self) -> String {

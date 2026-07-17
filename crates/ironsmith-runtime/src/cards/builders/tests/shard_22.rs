@@ -3580,3 +3580,26 @@ pub(super) fn summon_esper_maduin_test_definition() -> CardDefinition {
         )
         .expect("Summon: Esper Maduin back face should parse")
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn grouped_dice_roll_cards_preserve_one_or_more_trigger_surface() {
+    for name in [
+        "Brazen Dwarf",
+        "Feywild Trickster",
+        "Vrondiss, Rage of Ancients",
+    ] {
+        let def = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains("Whenever you roll one or more dice"),
+            "{name} should preserve its grouped dice-roll trigger surface, got {rendered}"
+        );
+
+        let debug = format!("{:#?}", def.abilities);
+        assert!(
+            debug.contains("PlayerRollsDieTrigger") && debug.contains("one_or_more: true"),
+            "{name} should lower to the grouped typed die-roll matcher, got {debug}"
+        );
+    }
+}

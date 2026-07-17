@@ -1,4 +1,4 @@
-use winnow::combinator::alt;
+use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
@@ -219,15 +219,13 @@ pub(crate) fn parse_remove_clause_shape(
     }
 
     if let Some(((), after_all)) = primitives::parse_prefix(tokens, primitives::kw("all").void())
-        && let (leave_one, after_quantity) =
-            if let Some(((), rest)) = primitives::parse_prefix(
-                after_all,
-                primitives::phrase(&["but", "one"]).void(),
-            ) {
-                (true, rest)
-            } else {
-                (false, after_all)
-            }
+        && let (leave_one, after_quantity) = if let Some(((), rest)) =
+            primitives::parse_prefix(after_all, primitives::phrase(&["but", "one"]).void())
+        {
+            (true, rest)
+        } else {
+            (false, after_all)
+        }
         && let Some((counter_idx, (), after_counter)) =
             primitives::find_prefix(after_quantity, || counter_word)
     {
@@ -465,12 +463,44 @@ fn color_choice_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 fn chosen_this_way_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    alt((
-        primitives::phrase(&["chosen", "this", "way"]),
-        primitives::phrase(&["that", "were", "chosen", "this", "way"]),
-        primitives::phrase(&["that", "was", "chosen", "this", "way"]),
-    ))
-    .parse_next(input)
+    (
+        alt((
+            primitives::phrase(&["chosen", "this", "way"]),
+            primitives::phrase(&["that", "were", "chosen", "this", "way"]),
+            primitives::phrase(&["that", "was", "chosen", "this", "way"]),
+        )),
+        opt(alt((
+            primitives::phrase(&["by", "any", "player"]),
+            primitives::phrase(&["by", "a", "player"]),
+        ))),
+    )
+        .void()
+        .parse_next(input)
+}
+
+fn strip_negated_chosen_copula(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    const SUFFIXES: &[&[&str]] = &[
+        &["that", "werent"],
+        &["that", "weren't"],
+        &["that", "were", "not"],
+        &["that", "wasnt"],
+        &["that", "wasn't"],
+        &["that", "was", "not"],
+        &["werent"],
+        &["weren't"],
+        &["were", "not"],
+        &["wasnt"],
+        &["wasn't"],
+        &["was", "not"],
+        &["not"],
+    ];
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    let suffix = SUFFIXES.iter().find(|suffix| {
+        words
+            .get(words.len().saturating_sub(suffix.len())..)
+            .is_some_and(|tail| tail.iter().copied().eq(suffix.iter().copied()))
+    })?;
+    Some(&tokens[..tokens.len().saturating_sub(suffix.len())])
 }
 
 fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
@@ -514,12 +544,8 @@ fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
         // "not chosen this way" is the complement of the accumulated chosen
         // set. Keep the negation out of the object filter and preserve it as
         // the typed tagged-set relation.
-        if base_tokens
-            .last()
-            .and_then(OwnedLexToken::as_word)
-            .is_some_and(|word| word == "not")
-        {
-            base_tokens = trim_lexed_commas(&base_tokens[..base_tokens.len() - 1]);
+        if let Some(positive_base) = strip_negated_chosen_copula(base_tokens) {
+            base_tokens = trim_lexed_commas(positive_base);
             return DestroyAllShape::ChosenThisWay {
                 filter_tokens: base_tokens,
                 relation: TaggedDestroyRelation::ExceptMatching,

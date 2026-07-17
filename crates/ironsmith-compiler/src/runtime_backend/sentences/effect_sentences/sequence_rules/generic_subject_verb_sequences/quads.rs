@@ -4,9 +4,9 @@ use super::super::super::dispatch_entry::{
     parse_if_you_dont_put_card_from_among_them_into_your_hand,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, LibraryBottomOrderAst, ObjectFilter, PlayerAst,
-    PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, TagKey, TargetAst,
+    CardTextError, ChooseOneModeAst, EffectAst, IfResultPredicate, LibraryBottomOrderAst,
+    ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::ChoiceCount;
 use crate::filter::TaggedObjectConstraint;
@@ -82,6 +82,195 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
     }
 }
 
+fn independent_and_or_looked_card_filters(filter: &ObjectFilter) -> Option<Vec<ObjectFilter>> {
+    if filter.card_types.len() > 1
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.static_abilities.is_empty()
+        && filter.any_of.is_empty()
+    {
+        return Some(
+            filter
+                .card_types
+                .iter()
+                .map(|card_type| {
+                    let mut branch = filter.clone();
+                    branch.card_types = vec![*card_type];
+                    branch
+                })
+                .collect(),
+        );
+    }
+
+    if filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.static_abilities.is_empty()
+        && !filter.any_of.is_empty()
+    {
+        return Some(filter.any_of.clone());
+    }
+
+    None
+}
+
+fn compose_independent_looked_card_choices(
+    mut filter: ObjectFilter,
+    looked_tag: &TagKey,
+    chosen_tag: &TagKey,
+    player: PlayerAst,
+) -> Option<Vec<EffectAst>> {
+    filter.zone = Some(Zone::Library);
+    let branches = independent_and_or_looked_card_filters(&filter)?;
+    if branches.len() < 2 {
+        return None;
+    }
+
+    Some(
+        branches
+            .into_iter()
+            .map(|mut branch| {
+                branch.zone = Some(Zone::Library);
+                branch.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: looked_tag.clone(),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+                // All independent branches append to one selected collection.
+                // Excluding that collection prevents a multitype card from
+                // being selected twice while still allowing one card of each
+                // authored `and/or` kind.
+                branch.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: chosen_tag.clone(),
+                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+                EffectAst::ChooseTaggedObjectsInZone {
+                    filter: branch,
+                    count: ChoiceCount::up_to(1),
+                    player,
+                    tag: chosen_tag.clone(),
+                    zone: Zone::Library,
+                }
+            })
+            .collect(),
+    )
+}
+
+/// Composes a four-sentence looked-card procedure whose final sentence is a
+/// threshold self-replacement of the chosen-set disposition. Both branches
+/// repeat the public look and independent typed choices, because a resolution
+/// self-replacement replaces the whole executable segment at runtime.
+pub(crate) fn parse_reveal_top_choose_and_or_hand_rest_bottom_with_destination_override(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, true)) =
+        effect_sentences::parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let Some(choice_shape) =
+        quad_grammar::parse_choose_looked_card_and_or_shape(sentences[sentence_idx + 1].lowered())
+    else {
+        return Ok(None);
+    };
+    if !choice_shape.uses_and_or {
+        return Ok(None);
+    }
+    let Some(default_disposition) = quad_grammar::parse_chosen_cards_hand_remainder_shape(
+        sentences[sentence_idx + 2].lowered(),
+    ) else {
+        return Ok(None);
+    };
+    let Some(replacement_shape) = quad_grammar::parse_chosen_cards_destination_replacement_shape(
+        sentences[sentence_idx + 3].lowered(),
+    ) else {
+        return Ok(None);
+    };
+    if replacement_shape.order != default_disposition.order {
+        return Ok(None);
+    }
+
+    let Some(filter) =
+        effect_sentences::parse_looked_card_choice_filter(choice_shape.filter_tokens)
+    else {
+        return Ok(None);
+    };
+    let predicate =
+        crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+            replacement_shape.predicate_tokens,
+        )?;
+    if !matches!(
+        &predicate,
+        PredicateAst::ValueComparison {
+            left: crate::effect::Value::X,
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(_),
+        }
+    ) {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let look = EffectAst::subject_verb_reveal_top_cards(player, count, looked_tag.clone());
+    let Some(choices) =
+        compose_independent_looked_card_choices(filter, &looked_tag, &chosen_tag, player)
+    else {
+        return Ok(None);
+    };
+
+    let mut default_effects = vec![look.clone()];
+    default_effects.extend(choices.clone());
+    default_effects.push(EffectAst::MoveTaggedGroupToZone {
+        tag: chosen_tag.clone(),
+        zone: Zone::Hand,
+    });
+    default_effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag.clone(),
+            Some(chosen_tag.clone()),
+            default_disposition.order,
+            player,
+        ),
+    );
+
+    let mut replacement_effects = vec![look];
+    replacement_effects.extend(choices);
+    replacement_effects.push(EffectAst::ChooseOneOf {
+        modes: vec![
+            ChooseOneModeAst {
+                description: "Put the chosen cards onto the battlefield".to_string(),
+                effects: vec![EffectAst::MoveTaggedGroupToZone {
+                    tag: chosen_tag.clone(),
+                    zone: Zone::Battlefield,
+                }],
+            },
+            ChooseOneModeAst {
+                description: "Put the chosen cards into your hand".to_string(),
+                effects: vec![EffectAst::MoveTaggedGroupToZone {
+                    tag: chosen_tag.clone(),
+                    zone: Zone::Hand,
+                }],
+            },
+        ],
+    });
+    replacement_effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(chosen_tag),
+            replacement_shape.order,
+            player,
+        ),
+    );
+
+    Ok(Some(vec![EffectAst::SelfReplacement {
+        predicate,
+        if_true: replacement_effects,
+        if_false: default_effects,
+        attach_to_previous_ability: false,
+    }]))
+}
+
 /// A trailing reflexive "When ... this way" refers to the selected-card zone
 /// move, even when the oracle text describes the remainder before stating the
 /// reflexive ability.  Keep the runtime antecedent adjacent to the result node
@@ -119,6 +308,89 @@ pub(crate) fn parse_top_cards_move_rest_then_typed_when_result(
         return Ok(None);
     }
     effects.push(when_result.clone());
+    effects.push(remainder);
+    Ok(Some(effects))
+}
+
+/// Keeps an optional looked-card battlefield move, a grant to the moved card,
+/// and the exact looked-set complement in one linked program.  The ordinary
+/// four-sentence fallback lowers the deployment as a generic May target
+/// choice; composing through the shared looked-card producer instead gives
+/// the choice, move, grant pronoun, and remainder one stable selected tag.
+pub(crate) fn parse_top_cards_move_then_grant_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let partition_sentences = [
+        SentenceInput::from_lexed(sentences[sentence_idx].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 1].lexed()),
+        SentenceInput::from_lexed(sentences[sentence_idx + 3].lexed()),
+    ];
+    let Some(mut effects) = super::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom(
+        &partition_sentences,
+        0,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let Ok(grant_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 2].lowered())
+    else {
+        return Ok(None);
+    };
+    let selected_tag = match effects.as_slice() {
+        [
+            _,
+            EffectAst::ChooseTaggedObjectsInZone {
+                tag: chosen_tag, ..
+            },
+            EffectAst::ForEachTagged { tag: moved_tag, .. },
+            _,
+        ] if chosen_tag == moved_tag => chosen_tag.clone(),
+        _ => return Ok(None),
+    };
+
+    let [grant] = grant_effects.as_slice() else {
+        return Ok(None);
+    };
+    let mut grant = grant.clone();
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target,
+                duration: crate::effect::Until::Forever,
+                condition: None,
+                ..
+            },
+        ..
+    }) = &mut grant
+    else {
+        return Ok(None);
+    };
+    if !matches!(target, TargetAst::Tagged(tag, None) if tag.as_str() == crate::cards::builders::IT_TAG)
+    {
+        return Ok(None);
+    }
+    // The grant is parsed in isolation, so its pronoun still carries the
+    // generic `it` tag. Bind it explicitly to the singleton selected from the
+    // looked-card pool before lowering; the move, grant, and complement now
+    // share one stable identity.
+    *target = TargetAst::Tagged(selected_tag, None);
+
+    let Some(remainder) = effects.pop() else {
+        return Ok(None);
+    };
+    if !matches!(
+        remainder,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+    effects.push(grant);
     effects.push(remainder);
     Ok(Some(effects))
 }
@@ -1184,6 +1456,86 @@ pub(crate) fn parse_search_reveal_named_match_battlefield_else_hand_then_shuffle
 mod looked_partition_tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn battlefield_grant_keeps_selected_tag_and_exact_looked_complement() {
+        let raw = [
+            "Reveal the top four cards of your library",
+            "You may put a creature card from among them onto the battlefield",
+            "It gains \"At the beginning of your end step, return this creature to its owner's hand.\"",
+            "Then put the rest of the cards revealed this way on the bottom of your library in any order",
+        ];
+        let lexed = raw
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
+            .collect::<Vec<_>>();
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+
+        let effects = parse_top_cards_move_then_grant_rest_bottom(&sentences, 0)
+            .expect("grant partition parser should not error")
+            .expect("looked battlefield/grant/remainder shape");
+        let [look, choose, move_each, grant, remainder] = effects.as_slice() else {
+            panic!("expected look/choose/move/grant/remainder program: {effects:#?}");
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::LookAtTopCards {
+                    reveal: true,
+                    tag: looked_tag,
+                    ..
+                },
+            ..
+        }) = look
+        else {
+            panic!("expected one public reveal producer: {look:#?}");
+        };
+        let EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count,
+            tag: selected_tag,
+            ..
+        } = choose
+        else {
+            panic!("expected tagged looked-card choice: {choose:#?}");
+        };
+        assert_eq!(*count, ChoiceCount::up_to(1));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *looked_tag
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(matches!(
+            move_each,
+            EffectAst::ForEachTagged { tag, .. } if tag == selected_tag
+        ));
+        assert!(matches!(
+            grant,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        target: TargetAst::Tagged(tag, None),
+                        ..
+                    },
+                ..
+            }) if tag == selected_tag
+        ));
+        assert!(matches!(
+            remainder,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        tag,
+                        keep_tagged: Some(keep_tagged),
+                        order: LibraryBottomOrderAst::ChooserChooses,
+                        ..
+                    },
+                ..
+            }) if tag == looked_tag && keep_tagged == selected_tag
+        ));
+    }
 
     #[test]
     fn conditional_cardinality_branches_share_one_selected_tag_and_one_complement() {

@@ -7,6 +7,7 @@ export const STACK_TARGET_ZONE_ORDER = [
   "library",
   "exile",
   "command",
+  "ante",
   "sideboard",
 ];
 
@@ -82,6 +83,7 @@ export function buildRenderableObjectIndex(state) {
     indexPlayerZone(index, player?.graveyard_cards || [], "graveyard", playerId);
     indexPlayerZone(index, player?.exile_cards || [], "exile", playerId);
     indexPlayerZone(index, player?.command_cards || [], "command", playerId);
+    indexPlayerZone(index, player?.ante_cards || [], "ante", playerId);
     indexPlayerZone(index, player?.sideboard_cards || [], "sideboard", playerId);
   }
 

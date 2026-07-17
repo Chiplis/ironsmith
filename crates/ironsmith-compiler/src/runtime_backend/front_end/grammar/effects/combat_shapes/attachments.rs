@@ -49,9 +49,6 @@ pub(crate) enum CombatAttachObjectShape<'a> {
         object_tokens: &'a [OwnedLexToken],
         starts_with_target: bool,
     },
-    TargetBeforeAttachedTo {
-        target_tokens: &'a [OwnedLexToken],
-    },
     Target {
         target_tokens: &'a [OwnedLexToken],
     },
@@ -149,14 +146,6 @@ pub(crate) fn parse_combat_attach_object_shape_lexed(
         });
     }
     if primitives::parse_prefix(tokens, primitives::kw("target")).is_some() {
-        if let Some((head, _)) = primitives::split_lexed_once_on_separator(tokens, || {
-            primitives::phrase(&["attached", "to"]).void()
-        }) {
-            let target_tokens = trim_lexed_commas(head);
-            if !target_tokens.is_empty() {
-                return Some(CombatAttachObjectShape::TargetBeforeAttachedTo { target_tokens });
-            }
-        }
         return Some(CombatAttachObjectShape::Target {
             target_tokens: tokens,
         });

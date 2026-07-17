@@ -17,6 +17,8 @@ pub enum GameLoopError {
     ActionCancelled(String),
     /// No players remaining.
     GameOver,
+    /// A mandatory rules-procedure cycle was proven under CR 104.4b.
+    MandatoryLoopDraw,
     /// Invalid player response.
     ResponseError(ResponseError),
     /// Combat error.
@@ -86,6 +88,7 @@ impl std::fmt::Display for GameLoopError {
             GameLoopError::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
             GameLoopError::ActionCancelled(msg) => write!(f, "Action cancelled: {}", msg),
             GameLoopError::GameOver => write!(f, "Game over"),
+            GameLoopError::MandatoryLoopDraw => write!(f, "mandatory action loop is a draw"),
             GameLoopError::ResponseError(e) => write!(f, "Response error: {}", e),
             GameLoopError::CombatError(e) => write!(f, "Combat error: {}", e),
             GameLoopError::ActionError(e) => write!(f, "Action error: {e}"),

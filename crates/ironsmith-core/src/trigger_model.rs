@@ -20,11 +20,31 @@ pub enum EndStepSurface {
     Definite,
 }
 
+/// Authored wording for a zone change into a graveyard.
+///
+/// This is presentation metadata only. It distinguishes authored "dies" text
+/// from explicit "is put into a graveyard" text without changing which zone
+/// change events match the trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraveyardTriggerSurface {
+    Dies,
+    PutIntoGraveyard,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamagedBySource {
     ThisCreature,
     EquippedCreature,
     EnchantedCreature,
+}
+
+/// A game-state boundary that is part of a trigger event's qualification.
+///
+/// This is evaluated only when the event occurs. It is intentionally distinct
+/// from an intervening-if condition, which is checked again on resolution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerTimingRestriction {
+    DuringCombat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +181,7 @@ pub enum TriggerKind {
     },
     DealsDamage {
         filter: ObjectFilter,
+        source_surface: DamageSourceSurface,
     },
     DealsDamageTo {
         source: ObjectFilter,
@@ -170,6 +191,7 @@ pub enum TriggerKind {
     DealsDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
+        source_surface: DamageSourceSurface,
     },
     DealsNoncombatDamageToPlayer {
         source: ObjectFilter,
@@ -216,6 +238,11 @@ pub enum TriggerKind {
     },
     PlayerRollsDie {
         player: PlayerFilter,
+        one_or_more: bool,
+    },
+    PlayerCoinFlipResult {
+        player: PlayerFilter,
+        won: bool,
     },
     AbilityActivatedQualified {
         activator: PlayerFilter,
@@ -223,6 +250,9 @@ pub enum TriggerKind {
         non_mana_only: bool,
         loyalty_only: bool,
         activation_cost_has_tap: Option<bool>,
+    },
+    AbilityTriggered {
+        another: bool,
     },
     IsDealtDamage {
         target: ChooseSpec,
@@ -316,6 +346,7 @@ pub enum TriggerKind {
     SpellCastQualified {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        timing: Option<TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
@@ -753,7 +784,19 @@ impl Trigger {
         )
     }
     pub fn deals_damage(filter: ObjectFilter) -> Self {
-        Self::typed("deals_damage", TriggerKind::DealsDamage { filter })
+        Self::deals_damage_with_source_surface(filter, DamageSourceSurface::Filter)
+    }
+    pub fn deals_damage_with_source_surface(
+        filter: ObjectFilter,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
+        Self::typed(
+            "deals_damage",
+            TriggerKind::DealsDamage {
+                filter,
+                source_surface,
+            },
+        )
     }
     pub fn deals_damage_to(source: ObjectFilter, target: ObjectFilter) -> Self {
         Self::deals_damage_to_with_source_surface(source, target, DamageSourceSurface::Filter)
@@ -773,9 +816,24 @@ impl Trigger {
         )
     }
     pub fn deals_damage_to_player(source: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::deals_damage_to_player_with_source_surface(
+            source,
+            player,
+            DamageSourceSurface::Filter,
+        )
+    }
+    pub fn deals_damage_to_player_with_source_surface(
+        source: ObjectFilter,
+        player: PlayerFilter,
+        source_surface: DamageSourceSurface,
+    ) -> Self {
         Self::typed(
             "deals_damage_to_player",
-            TriggerKind::DealsDamageToPlayer { source, player },
+            TriggerKind::DealsDamageToPlayer {
+                source,
+                player,
+                source_surface,
+            },
         )
     }
     pub fn deals_noncombat_damage_to_player(source: ObjectFilter, player: PlayerFilter) -> Self {
@@ -882,7 +940,22 @@ impl Trigger {
         )
     }
     pub fn player_rolls_die(player: PlayerFilter) -> Self {
-        Self::typed("player_rolls_die", TriggerKind::PlayerRollsDie { player })
+        Self::player_rolls_die_with_surface(player, false)
+    }
+    pub fn player_rolls_die_with_surface(player: PlayerFilter, one_or_more: bool) -> Self {
+        Self::typed(
+            "player_rolls_die",
+            TriggerKind::PlayerRollsDie {
+                player,
+                one_or_more,
+            },
+        )
+    }
+    pub fn player_coin_flip_result(player: PlayerFilter, won: bool) -> Self {
+        Self::typed(
+            "player_coin_flip_result",
+            TriggerKind::PlayerCoinFlipResult { player, won },
+        )
     }
     pub fn ability_activated_qualified(
         activator: PlayerFilter,
@@ -915,6 +988,16 @@ impl Trigger {
                 loyalty_only,
                 activation_cost_has_tap,
             },
+        )
+    }
+    pub fn ability_triggered(another: bool) -> Self {
+        Self::typed(
+            if another {
+                "Whenever another ability triggers"
+            } else {
+                "Whenever an ability triggers"
+            },
+            TriggerKind::AbilityTriggered { another },
         )
     }
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
@@ -1160,6 +1243,7 @@ impl Trigger {
     pub fn spell_cast_qualified(
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
+        timing: Option<TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
@@ -1170,6 +1254,7 @@ impl Trigger {
             TriggerKind::SpellCastQualified {
                 filter,
                 caster,
+                timing,
                 during_turn,
                 min_spells_this_turn,
                 exact_spells_this_turn,
@@ -1464,6 +1549,7 @@ pub struct ZoneChangeTrigger {
     pub cause_filter: Option<CauseFilter>,
     pub during_turn: Option<PlayerFilter>,
     pub origin_condition: Option<ZoneChangeOriginCondition>,
+    pub graveyard_surface: Option<GraveyardTriggerSurface>,
 }
 
 impl ZoneChangeTrigger {
@@ -1480,6 +1566,7 @@ impl ZoneChangeTrigger {
             cause_filter: None,
             during_turn: None,
             origin_condition: None,
+            graveyard_surface: None,
         }
     }
 
@@ -1542,6 +1629,11 @@ impl ZoneChangeTrigger {
 
     pub fn origin_condition(mut self, condition: ZoneChangeOriginCondition) -> Self {
         self.origin_condition = Some(condition);
+        self
+    }
+
+    pub fn graveyard_surface(mut self, surface: GraveyardTriggerSurface) -> Self {
+        self.graveyard_surface = Some(surface);
         self
     }
 }
@@ -1641,11 +1733,31 @@ impl CompilerTriggerMatcher for CounterPutOnTrigger {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CounterRemovedFromTrigger {
     pub filter: ObjectFilter,
+    /// Preserve the grouped Oracle surface "one or more counters". A grouped
+    /// marker-change event still queues this trigger exactly once.
+    pub one_or_more: bool,
+    /// Require the counter removal event to have been caused by this trigger's
+    /// source. This is the event-provenance meaning of Oracle's "this way".
+    pub caused_by_source: bool,
 }
 
 impl CounterRemovedFromTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+        Self {
+            filter,
+            one_or_more: false,
+            caused_by_source: false,
+        }
+    }
+
+    pub fn one_or_more(mut self) -> Self {
+        self.one_or_more = true;
+        self
+    }
+
+    pub fn caused_by_source(mut self) -> Self {
+        self.caused_by_source = true;
+        self
     }
 }
 

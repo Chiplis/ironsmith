@@ -18,6 +18,8 @@ pub struct LifeLossEvent {
     pub amount: u32,
     /// Whether this loss is from damage (false = payment or effect)
     pub from_damage: bool,
+    /// Whether this loss was caused by the inherent rad-counter ability (CR 728.1a).
+    pub from_radiation: bool,
 }
 
 impl LifeLossEvent {
@@ -27,12 +29,23 @@ impl LifeLossEvent {
             player,
             amount,
             from_damage,
+            from_radiation: false,
         }
     }
 
     /// Create a life loss event from a non-damage effect.
     pub fn from_effect(player: PlayerId, amount: u32) -> Self {
         Self::new(player, amount, false)
+    }
+
+    /// Create a life loss event caused by the inherent rad-counter ability.
+    pub fn from_radiation(player: PlayerId, amount: u32) -> Self {
+        Self {
+            player,
+            amount,
+            from_damage: false,
+            from_radiation: true,
+        }
     }
 
     /// Return a new event with reduced life loss.
@@ -111,6 +124,14 @@ mod tests {
         let event = LifeLossEvent::from_effect(PlayerId::from_index(0), 5);
         assert_eq!(event.amount, 5);
         assert!(!event.from_damage);
+        assert!(!event.from_radiation);
+    }
+
+    #[test]
+    fn radiation_life_loss_has_distinct_provenance() {
+        let event = LifeLossEvent::from_radiation(PlayerId::from_index(0), 1);
+        assert!(!event.from_damage);
+        assert!(event.from_radiation);
     }
 
     #[test]

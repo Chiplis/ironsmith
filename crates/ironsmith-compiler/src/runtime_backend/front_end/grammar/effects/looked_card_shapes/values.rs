@@ -7,7 +7,6 @@ use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, trim_le
 use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, parse_where_x_greatest_commander_mana_value,
 };
-use crate::runtime_backend::util::parse_number_or_x_value_lexed;
 use ironsmith_core::{EffectMetric, EffectMetricSource, EventValueSpec, ValueSurfaceHint};
 
 use super::super::super::{permission_shapes, primitives};
@@ -125,7 +124,7 @@ pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<Top
         });
     }
     let (revealed, count_tokens) = primitives::parse_prefix(tokens, top_cards_view_head)?;
-    let (count, used) = parse_number_or_x_value_lexed(count_tokens)?;
+    let (count, used) = parse_value_prefix_lexed(count_tokens)?;
     let library_tokens = trim_lexed_commas(count_tokens.get(used..)?);
     let (_, remainder) = primitives::parse_prefix(library_tokens, card_of_your_library)?;
     let remainder = trim_lexed_commas(remainder);
@@ -135,11 +134,14 @@ pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<Top
     if count != Value::X {
         return None;
     }
+    let typed_binding =
+        crate::runtime_backend::keyword_static::parse_value_binding_clause(remainder)
+            .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs));
     let (_, value_tokens) =
         primitives::parse_prefix(remainder, primitives::phrase(&["where", "x", "is"]).void())?;
     Some(TopCardsViewShape {
         revealed,
-        count: parse_where_x_value(trim_lexed_commas(value_tokens))?,
+        count: typed_binding.or_else(|| parse_where_x_value(trim_lexed_commas(value_tokens)))?,
     })
 }
 
@@ -168,5 +170,64 @@ mod tests {
         let shape = parse_top_cards_view_shape(&tokens).unwrap();
         assert!(!shape.revealed);
         assert_eq!(shape.count, Value::EventValue(EventValueSpec::Amount));
+
+        let tokens = lex_line("Reveal the top X plus one cards of your library", 0).unwrap();
+        let shape = parse_top_cards_view_shape(&tokens).unwrap();
+        assert!(shape.revealed);
+        assert_eq!(
+            shape.count,
+            Value::Add(Box::new(Value::X), Box::new(Value::Fixed(1)))
+        );
+    }
+
+    #[test]
+    fn looked_card_where_x_uses_typed_fixed_plus_party_value() {
+        let tokens = lex_line(
+            "Look at the top X cards of your library, where X is three plus the number of creatures in your party",
+            0,
+        )
+        .unwrap();
+        let shape = parse_top_cards_view_shape(&tokens).unwrap();
+
+        assert!(shape.count.has_surface_hint(ValueSurfaceHint::WhereXIs));
+        assert_eq!(
+            shape.count.unhinted(),
+            &Value::Add(
+                Box::new(Value::Fixed(3)),
+                Box::new(Value::PartySize(crate::target::PlayerFilter::You)),
+            )
+        );
+    }
+
+    #[test]
+    fn looked_card_where_x_preserves_battlefield_and_graveyard_sum_terms() {
+        let tokens = lex_line(
+            "Look at the top X cards of your library, where X is the number of Caves you control plus the number of Cave cards in your graveyard",
+            0,
+        )
+        .unwrap();
+        let shape = parse_top_cards_view_shape(&tokens).unwrap();
+        let Value::Add(controlled, graveyard) = shape.count.unhinted() else {
+            panic!(
+                "expected two typed Cave-count terms, got {:#?}",
+                shape.count
+            );
+        };
+        let Value::Count(controlled) = controlled.as_ref() else {
+            panic!("expected controlled-Cave count, got {controlled:#?}");
+        };
+        let Value::Count(graveyard) = graveyard.as_ref() else {
+            panic!("expected graveyard-Cave count, got {graveyard:#?}");
+        };
+
+        assert_eq!(controlled.zone, Some(crate::Zone::Battlefield));
+        assert_eq!(
+            controlled.controller,
+            Some(crate::target::PlayerFilter::You)
+        );
+        assert!(controlled.subtypes.contains(&crate::Subtype::Cave));
+        assert_eq!(graveyard.zone, Some(crate::Zone::Graveyard));
+        assert_eq!(graveyard.owner, Some(crate::target::PlayerFilter::You));
+        assert!(graveyard.subtypes.contains(&crate::Subtype::Cave));
     }
 }

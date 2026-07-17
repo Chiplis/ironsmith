@@ -219,7 +219,10 @@ pub(crate) fn parse_combat_simple_damage_target_shape_lexed(
         Some(CombatSimpleDamageTargetShape::DefaultAny)
     } else if exact_phrase(tokens, CREATURE_CONTROLLER_TARGETS) {
         Some(CombatSimpleDamageTargetShape::CreatureController)
-    } else if exact_phrase(tokens, &[&["the", "player"]]) {
+    } else if exact_phrase(
+        tokens,
+        &[&["the", "player"], &["that", "player"], &["them"]],
+    ) {
         Some(CombatSimpleDamageTargetShape::IteratedPlayer)
     } else {
         None
@@ -767,6 +770,18 @@ mod tests {
             assert!(
                 predicate_debug.contains("Player") || predicate_debug.contains("ValueComparison"),
                 "unexpected predicate for {text}: {predicate_debug}"
+            );
+        }
+    }
+
+    #[test]
+    fn parses_damage_pronouns_as_the_bound_event_player() {
+        for text in ["the player", "that player", "them"] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_combat_simple_damage_target_shape_lexed(&tokens),
+                Some(CombatSimpleDamageTargetShape::IteratedPlayer),
+                "damage recipient should use the typed event-player binding: {text}"
             );
         }
     }

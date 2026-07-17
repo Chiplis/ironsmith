@@ -161,7 +161,7 @@ fn chain_actor_matches_enabling_action(
 /// continuation. The executable structure remains ordinary `May`, `WithId`,
 /// `If`, `CopySpell`, and `ChooseNewTargets` effects; this recognizer only
 /// preserves their shared actor and sentence surface.
-pub(super) fn describe_chain_copy_effect_list(effects: &[Effect]) -> Option<String> {
+pub(crate) fn describe_chain_copy_effect_list(effects: &[Effect]) -> Option<String> {
     if effects.len() < 3 {
         return None;
     }

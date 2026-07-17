@@ -7,6 +7,7 @@ export const PUZZLE_ZONE_ORDER = [
   "exile",
   "library",
   "command",
+  "ante",
 ];
 
 const CARD_LINE = /^(\d+)x?\s+(.+)$/;
@@ -154,6 +155,9 @@ export function buildPuzzlePayloadFromGameState(state) {
         library: [],
         command: Array.isArray(player?.command_cards)
           ? player.command_cards.map((card) => card?.name)
+          : [],
+        ante: Array.isArray(player?.ante_cards)
+          ? player.ante_cards.map((card) => card?.name)
           : [],
       },
     })),

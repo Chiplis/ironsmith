@@ -332,7 +332,7 @@ pub(super) fn describe_class_level_activation(
     }
     Some(format!(
         "{}: Level {level}",
-        describe_cost_list(activated.mana_cost.costs())
+        describe_total_cost(&activated.mana_cost)
     ))
 }
 
@@ -356,7 +356,7 @@ pub(super) fn describe_level_up_activation(
     }
     Some(format!(
         "Level up {}",
-        describe_cost_list(activated.mana_cost.costs())
+        describe_total_cost(&activated.mana_cost)
     ))
 }
 
@@ -568,12 +568,12 @@ pub(crate) fn describe_ability(
                     } else if let Some(rest) = only.strip_prefix("if ") {
                         line.push_str(", if ");
                         line.push_str(rest.trim_start());
+                    } else if triggered.trigger.saga_chapters().is_some() {
+                        line.push_str(" — ");
+                        line.push_str(&capitalize_first(only));
                     } else if triggered.presentation_label.is_some() {
                         line.push_str(", ");
                         line.push_str(&lowercase_first(only));
-                    } else if triggered.trigger.saga_chapters().is_some() {
-                        line.push_str(" — ");
-                        line.push_str(only);
                     } else {
                         line.push_str(", ");
                         line.push_str(&lowercase_first(only));
@@ -648,8 +648,9 @@ pub(crate) fn describe_ability(
             } else {
                 format!("Mana ability {index}")
             };
-            let mut cost_text = if !activated.mana_cost.costs().is_empty() {
-                Some(describe_cost_list(activated.mana_cost.costs()))
+            let rendered_cost = describe_total_cost(&activated.mana_cost);
+            let mut cost_text = if !rendered_cost.is_empty() {
+                Some(rendered_cost)
             } else {
                 None
             };
@@ -725,9 +726,9 @@ pub(crate) fn describe_ability(
                     subject,
                     rewrite_it_deals,
                 );
-                effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
-                effects =
-                    rewrite_removed_counter_type_surface(effects, activated.mana_cost.costs());
+                let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
+                effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
+                effects = rewrite_removed_counter_type_surface(effects, flat_costs);
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
@@ -778,7 +779,7 @@ pub(crate) fn describe_ability(
             {
                 return vec![format!(
                     "Unearth {}",
-                    describe_cost_list(activated.mana_cost.costs())
+                    describe_total_cost(&activated.mana_cost)
                 )];
             }
             if let Some(loyalty_prefix) =
@@ -821,9 +822,9 @@ pub(crate) fn describe_ability(
                         subject,
                         rewrite_it_deals,
                     );
-                    effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
-                    effects =
-                        rewrite_removed_counter_type_surface(effects, activated.mana_cost.costs());
+                    let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
+                    effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
+                    effects = rewrite_removed_counter_type_surface(effects, flat_costs);
                     line.push_str(&effects);
                 }
                 if let Some(condition) = activation_condition_without_presentation_label(activated)
@@ -853,14 +854,25 @@ pub(crate) fn describe_ability(
             };
             let mut pre = Vec::new();
             let mut trailing_x_definition = None;
-            if !activated.mana_cost.costs().is_empty() {
-                let (cost_text, x_definition) =
-                    describe_cost_list_with_trailing_x_definition(activated.mana_cost.costs());
-                trailing_x_definition = x_definition;
-                if let Some(cost_text) =
-                    normalize_zone_bound_self_exile_cost(Some(cost_text), ability)
-                {
-                    pre.push(cost_text);
+            let waterbend_label = activated_presentation_label(activated)
+                .filter(|label| label.starts_with("Waterbend {") && label.ends_with('}'));
+            if let Some(label) = waterbend_label {
+                // Waterbend's expanded `OneOf` cost is the executable payment
+                // model. Its authored keyword and mana value are the complete
+                // public cost surface, so do not print every equivalent tap
+                // branch after the presentation label.
+                pre.push(label.to_string());
+            } else {
+                let rendered_cost = describe_total_cost(&activated.mana_cost);
+                if !rendered_cost.is_empty() {
+                    let (cost_text, x_definition) =
+                        describe_total_cost_with_trailing_x_definition(&activated.mana_cost);
+                    trailing_x_definition = x_definition;
+                    if let Some(cost_text) =
+                        normalize_zone_bound_self_exile_cost(Some(cost_text), ability)
+                    {
+                        pre.push(cost_text);
+                    }
                 }
             }
             if !activated.choices.is_empty()
@@ -895,9 +907,9 @@ pub(crate) fn describe_ability(
                     subject,
                     rewrite_it_deals,
                 );
-                effects = rewrite_cost_bound_x_phrases(effects, activated.mana_cost.costs());
-                effects =
-                    rewrite_removed_counter_type_surface(effects, activated.mana_cost.costs());
+                let flat_costs = activated.mana_cost.as_all().unwrap_or(&[]);
+                effects = rewrite_cost_bound_x_phrases(effects, flat_costs);
+                effects = rewrite_removed_counter_type_surface(effects, flat_costs);
                 if subject != "This spell" {
                     effects = replace_this_spell_self_reference(effects, subject);
                 }
@@ -1408,17 +1420,15 @@ pub(crate) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
                 .replace(" cards in your graveyard", " cards from your graveyard")
                 .replace(" card in your graveyard", " card from your graveyard");
         }
+        text = text.replace("a untapped ", "an untapped ");
+        if let Some(rest) = text.strip_prefix("you may Blight ") {
+            text = format!("you may blight {rest}");
+        }
         text
     }
 
     fn describe_blight_cost(amount: &str) -> String {
-        if amount == "1" || amount == "one" {
-            "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
-        } else {
-            format!(
-                "you may blight {amount} by putting {amount} -1/-1 counters on a creature you control"
-            )
-        }
+        format!("you may blight {amount}")
     }
 
     fn blight_amount_from_choose_and_put(

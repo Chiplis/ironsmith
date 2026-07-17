@@ -1,5 +1,6 @@
 export const MATCH_FORMAT_NORMAL = "normal";
 export const MATCH_FORMAT_COMMANDER = "commander";
+export const MATCH_FORMAT_PLANECHASE = "planechase";
 export const LOBBY_DECK_SIZE = 60;
 export const COMMANDER_DECK_SIZE = 99;
 export const PARTNER_DECK_SIZE = 98;
@@ -344,9 +345,9 @@ export function saveSavedDeckPreset(name, texts) {
 }
 
 export function normalizeMatchFormat(raw) {
-  return raw === MATCH_FORMAT_COMMANDER
-    ? MATCH_FORMAT_COMMANDER
-    : MATCH_FORMAT_NORMAL;
+  if (raw === MATCH_FORMAT_COMMANDER) return MATCH_FORMAT_COMMANDER;
+  if (raw === MATCH_FORMAT_PLANECHASE) return MATCH_FORMAT_PLANECHASE;
+  return MATCH_FORMAT_NORMAL;
 }
 
 export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
@@ -364,6 +365,22 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
       deckCount,
       commanderCount,
       requiredDeckCount,
+    };
+  }
+
+  if (normalizedFormat === MATCH_FORMAT_PLANECHASE) {
+    const uniquePlanarCards = new Set(
+      (commanders || []).map((name) => String(name || "").trim().toLowerCase())
+    );
+    const ready =
+      deckCount === LOBBY_DECK_SIZE
+      && commanderCount >= 10
+      && uniquePlanarCards.size === commanderCount;
+    return {
+      ready,
+      deckCount,
+      commanderCount,
+      requiredDeckCount: LOBBY_DECK_SIZE,
     };
   }
 

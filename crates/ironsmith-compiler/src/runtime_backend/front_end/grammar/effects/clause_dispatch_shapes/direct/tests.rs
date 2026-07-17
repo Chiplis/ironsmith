@@ -25,6 +25,51 @@ fn choose_target_shape_keeps_counted_targets() {
 }
 
 #[test]
+fn choose_target_shape_preserves_authored_chooser_roles() {
+    let controller_tokens =
+        lex_line("You choose target creature an opponent controls.", 0).unwrap();
+    let controller = parse_choose_target_shape(&controller_tokens).expect("controller choice");
+    assert_eq!(
+        controller.chooser,
+        ChooseTargetChooserShape::AbilityController
+    );
+
+    let opponent_tokens = lex_line("That opponent chooses target creature.", 0).unwrap();
+    let opponent = parse_choose_target_shape(&opponent_tokens).expect("opponent choice");
+    assert_eq!(opponent.chooser, ChooseTargetChooserShape::ThatOpponent);
+}
+
+#[test]
+fn embedded_choose_target_shape_preserves_chooser_and_relative_controller_exclusion() {
+    let tokens = lex_line(
+        "Its controller chooses target permanent another player controls that shares a card type with it.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_embedded_choose_target_shape(&tokens).expect("embedded target choice");
+
+    assert_eq!(shape.chooser, ChooseTargetChooserShape::ItsController);
+    assert!(shape.excludes_chooser_controller);
+    assert_eq!(
+        TokenWordView::new(shape.target_tokens).to_word_refs(),
+        vec![
+            "target",
+            "permanent",
+            "another",
+            "player",
+            "controls",
+            "that",
+            "shares",
+            "a",
+            "card",
+            "type",
+            "with",
+            "it"
+        ]
+    );
+}
+
+#[test]
 fn parses_direct_and_assign_damage_shapes() {
     let direct = lex_line("The Ring tempts you.", 0).unwrap();
     assert_eq!(

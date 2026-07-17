@@ -12,6 +12,10 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "to each creature that was dealt damage this turn",
             "to each creature dealt damage this turn",
         )
+        .replace(
+            ". Untap those creatures. It gains ",
+            ". Untap those creatures. They gain ",
+        )
         // A spell's own X value does not need a tautological renderer tail.
         .replace(", where X is X", "");
     if normalized.contains("When you next ") {
@@ -77,6 +81,15 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = compact;
     }
     if let Some(compact) = compact_coward_polymorph_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_choose_graveyard_return_with_counter_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = normalize_single_returned_animation_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_linked_base_pt_subtype_animation_surface(&normalized) {
         normalized = compact;
     }
     if let Some(compact) = compact_second_landfall_damage_surface(&normalized) {
@@ -1164,12 +1177,18 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Whenever you cast a spell, add {R}. Until end of turn, you don't lose this mana as steps and phases end."
                 .to_string();
     }
-    if normalized.contains("you may You may repeat this process any number of times") {
+    for duplicated_subject in [
+        "you may You may repeat this process any number of times",
+        "You may You may repeat this process any number of times",
+    ] {
         normalized = normalized.replace(
-            "you may You may repeat this process any number of times",
+            duplicated_subject,
             "You may repeat this process any number of times",
         );
     }
+    normalized = normalized
+        .replace("You may You put ", "You may put ")
+        .replace("you may You put ", "you may put ");
     if normalized.contains(". you lose life equal to its mana value") {
         normalized = normalized.replace(
             ". you lose life equal to its mana value",
@@ -4037,6 +4056,8 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "that object is a creature",
         )
         .replace("If that object is a ", "If it's a ")
+        .replace("If that object isn't a ", "If it's not a ")
+        .replace("if that object isn't a ", "if it's not a ")
         .replace("the tagged object 'triggering'", "that object")
         .replace(" that player controls of their choice", " of their choice")
         .replace(" that player controls unless that player pays ", " unless that player pays ")
@@ -4094,8 +4115,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Scry 2. you draw a card",
             "Scry 2, then draw a card",
         )
-        .replace(". Put a stun counter on it", " and put a stun counter on it")
-        .replace(". put a stun counter on it", " and put a stun counter on it")
         .replace(". you draw a card", ". Draw a card")
         .replace(
             "When this enchantment enters, Tap enchanted creature",

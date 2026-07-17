@@ -229,6 +229,11 @@ fn source_reference_self_card_type_name(card_type: CardType) -> Option<&'static 
         | CardType::Creature
         | CardType::Enchantment
         | CardType::Land
+        | CardType::Plane
+        | CardType::Phenomenon
+        | CardType::Vanguard
+        | CardType::Scheme
+        | CardType::Conspiracy
         | CardType::Planeswalker => Some(card_type.name()),
         CardType::Instant | CardType::Kindred | CardType::Sorcery => None,
     }
@@ -1457,9 +1462,9 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     target_semantics::parse_target_phrase_inner(tokens)
 }
 
-pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, String)> {
+pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, Option<String>, String)> {
     let parsed = header_shapes::parse_saga_chapter_header(line)?;
-    Some((parsed.chapters, parsed.body))
+    Some((parsed.chapters, parsed.presentation_label, parsed.body))
 }
 
 pub(crate) fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
@@ -1976,6 +1981,18 @@ pub(crate) fn parse_transmute_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     parse_transmute_line(tokens)
+}
+
+pub(crate) fn parse_transfigure_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    keyword_cost_lines::parse_transfigure(tokens)
+}
+
+pub(crate) fn parse_transfigure_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    parse_transfigure_line(tokens)
 }
 
 pub(crate) fn parse_reinforce_line(

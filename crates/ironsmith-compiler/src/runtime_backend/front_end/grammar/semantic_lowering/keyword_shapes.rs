@@ -219,6 +219,11 @@ pub(crate) fn parse_partner_variant_label_tokens(
             display: render_token_slice(visible_tokens).trim().to_string(),
         });
     }
+    if phrase_is_exact(&words, &["choose", "a", "background"]) {
+        return Some(PartnerVariantLabel {
+            display: "Choose a Background".to_string(),
+        });
+    }
     if phrase_is_prefix(&words, &["partner"]) && !phrase_is_prefix(&words, &["partner", "with"]) {
         return Some(PartnerVariantLabel {
             display: super::super::keyword_special_lines::parse_partner_visible_label_tokens(
@@ -287,6 +292,13 @@ mod tests {
         assert!(matches!(gift.timing, GiftTimingAst::PermanentEtb));
         let partner = lex_line("Partner — Friends forever (Reminder.)", 0).unwrap();
         assert!(parse_partner_variant_label_tokens(&partner).is_some());
+        let background = lex_line("Choose a Background (Reminder.)", 0).unwrap();
+        assert_eq!(
+            parse_partner_variant_label_tokens(&background)
+                .map(|shape| shape.display)
+                .as_deref(),
+            Some("Choose a Background")
+        );
         let waterbend = lex_line(
             "As an additional cost to cast this spell, you may waterbend {4}.",
             0,

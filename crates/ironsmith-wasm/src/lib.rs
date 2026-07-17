@@ -41,7 +41,7 @@ use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::targeting::{normalize_targets_for_requirements, validate_flat_target_assignment};
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::types::CardType;
+use ironsmith::types::{CardType, Supertype};
 use ironsmith::zone::Zone;
 
 mod stack_snapshots;
@@ -714,16 +714,25 @@ fn merge_hidden_decision_views(
             }
             match view.visibility {
                 DecisionHiddenCardVisibility::PrivateToDecisionPlayer => {
-                    let viewer = game.controlling_player_for(ctx.player());
+                    let rules_player = ctx.player();
                     let view_ctx = ViewCardsContext::new(
-                        viewer,
+                        rules_player,
                         subject,
                         ctx.source(),
                         zone,
                         view.description.clone(),
                     );
-                    merge_active_viewed_cards(game, current, viewer, &cards, &view_ctx);
-                    merge_audit_viewed_cards(game, audit, viewer, &cards, &view_ctx);
+                    merge_active_viewed_cards(game, current, rules_player, &cards, &view_ctx);
+                    for viewer in game.private_information_viewers_for(rules_player, zone) {
+                        let audit_ctx = ViewCardsContext::new(
+                            viewer,
+                            subject,
+                            ctx.source(),
+                            zone,
+                            view.description.clone(),
+                        );
+                        merge_audit_viewed_cards(game, audit, viewer, &cards, &audit_ctx);
+                    }
                 }
                 DecisionHiddenCardVisibility::Public => {
                     for viewer_idx in 0..game.players.len() {
@@ -877,17 +886,19 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
                     description: "Static ability reveals the top card of a library".to_string(),
                 });
             } else if can_view_own_library_top(game, player.id) {
-                views.push(ActiveViewedCards {
-                    viewer: player.id,
-                    subject: player.id,
-                    zone: Zone::Library,
-                    cards: vec![top_card],
-                    card_stable_ids: stable_ids_for_viewed_cards(game, &[top_card]),
-                    public: false,
-                    source: None,
-                    description: "Static ability allows viewing the top card of a library"
-                        .to_string(),
-                });
+                for viewer in game.private_information_viewers_for(player.id, Zone::Library) {
+                    views.push(ActiveViewedCards {
+                        viewer,
+                        subject: player.id,
+                        zone: Zone::Library,
+                        cards: vec![top_card],
+                        card_stable_ids: stable_ids_for_viewed_cards(game, &[top_card]),
+                        public: false,
+                        source: None,
+                        description: "Static ability allows viewing the top card of a library"
+                            .to_string(),
+                    });
+                }
             }
         }
 
@@ -1811,6 +1822,13 @@ enum SpecialActionRef {
     UnlockRoomDoor {
         room_id: u64,
     },
+    RollPlanarDie,
+    TurnConspiracyFaceUp {
+        conspiracy_id: u64,
+    },
+    Companion {
+        card_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1894,6 +1912,7 @@ struct TargetRequirementView {
 enum AttackTargetView {
     Player { player: u8, name: String },
     Planeswalker { object: u64, name: String },
+    Battle { object: u64, name: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2013,6 +2032,7 @@ fn decision_zone_name(zone: Zone) -> String {
         Zone::Exile => "exile",
         Zone::Stack => "stack",
         Zone::Command => "command",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside_game",
     }
     .to_string()
@@ -2038,6 +2058,7 @@ fn object_needs_hidden_reference(game: &GameState, id: ObjectId) -> bool {
     game.hidden_card_info(id).is_some()
         || object.name.eq_ignore_ascii_case("hidden card")
         || game.is_foretold(id)
+        || object.zone == Zone::OutsideGame
         || (object.zone == Zone::Exile && game.is_face_down(id))
 }
 
@@ -2803,6 +2824,8 @@ enum UiCommand {
     },
     DeclareAttackers {
         declarations: Vec<AttackerDeclarationInput>,
+        #[serde(default)]
+        bands: Vec<Vec<u64>>,
     },
     DeclareBlockers {
         declarations: Vec<BlockerDeclarationInput>,
@@ -2821,6 +2844,7 @@ enum TargetInput {
 enum AttackTargetInput {
     Player { player: u8 },
     Planeswalker { object: u64 },
+    Battle { object: u64 },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -3328,6 +3352,14 @@ impl DecisionMaker for WasmReplayDecisionMaker {
 }
 
 /// Browser-exposed game handle.
+#[derive(Debug, Clone)]
+struct GrandMeleeHostLane {
+    runner: Option<ironsmith::turn_runner::TurnRunner>,
+    runner_awaiting_priority: bool,
+    trigger_queue: TriggerQueue,
+    priority_state: PriorityLoopState,
+}
+
 #[wasm_bindgen]
 pub struct WasmGame {
     game: GameState,
@@ -3354,6 +3386,17 @@ pub struct WasmGame {
     perspective: PlayerId,
     /// The unified turn state machine. Created lazily on first advance.
     runner: Option<ironsmith::turn_runner::TurnRunner>,
+    /// Turn-runner, trigger, and priority cursors belonging to nonfocused
+    /// Grand Melee marker lanes.
+    grand_melee_host_lanes: HashMap<u32, GrandMeleeHostLane>,
+    /// Host-side runner/priority state suspended at each runtime subgame boundary.
+    suspended_subgame_hosts: Vec<(
+        Option<ironsmith::turn_runner::TurnRunner>,
+        bool,
+        TriggerQueue,
+        PriorityLoopState,
+        HashMap<u32, GrandMeleeHostLane>,
+    )>,
     /// True when the TurnRunner has yielded RunPriority and we're inside
     /// the priority loop waiting for it to complete.
     runner_awaiting_priority: bool,
@@ -3646,10 +3689,240 @@ struct MatchSetupInput {
     sideboards: Option<Vec<Vec<String>>>,
     #[serde(default)]
     commanders: Option<Vec<Vec<String>>>,
+    /// One planar deck per player, or one deck total for the communal-deck option.
+    #[serde(default)]
+    planar_decks: Option<Vec<Vec<PlanarCardInput>>>,
+    /// Exactly one face-up Vanguard card per player, in player order.
+    #[serde(default)]
+    vanguards: Option<Vec<VanguardCardInput>>,
+    /// One entry per player. Default/Commander Archenemy require exactly one
+    /// nonempty scheme deck; Supervillain Rumble requires every entry nonempty.
+    #[serde(default)]
+    scheme_decks: Option<Vec<Vec<String>>>,
+    /// Selected sideboard conspiracies per player. Agenda names remain private
+    /// to their owner until the corresponding conspiracy is turned face up.
+    #[serde(default)]
+    conspiracies: Option<Vec<Vec<ConspiracyCardInput>>>,
+    /// Explicit completed pools and product metadata for a trusted Commander
+    /// Draft handoff. Drafted cards not selected for a deck stay out of game.
+    #[serde(default)]
+    commander_draft: Option<CommanderDraftSetupInput>,
     #[serde(default)]
     opening_hand_size: Option<usize>,
     #[serde(default)]
     hidden_deck_manifests: Option<Vec<HiddenDeckManifestInput>>,
+    /// CR 806/811 attack and range choices, valid for Free-for-All or
+    /// Alternating Teams. Omitting them for Alternating Teams selects the
+    /// recommended range of influence of 2.
+    #[serde(default)]
+    free_for_all: Option<FreeForAllOptionsInput>,
+    /// CR 808 team blocks, each expressed in that team's chosen seat order.
+    #[serde(default)]
+    teams: Option<Vec<Vec<u8>>>,
+}
+
+/// Optional companion selections are decoded separately from `MatchSetupInput`
+/// so existing native setup fixtures remain source-compatible. The public
+/// start/validation payload still accepts this as the camelCase `companions`
+/// field alongside the ordinary match fields.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CompanionSelectionsInput {
+    #[serde(default)]
+    companions: Option<Vec<Option<String>>>,
+}
+
+impl MatchSetupInput {
+    fn validate_multiplayer_profile(&self) -> Result<(), String> {
+        let player_count = self.player_names.len();
+        match self.format {
+            MatchFormatInput::FreeForAll if player_count < 3 => {
+                return Err("Free-for-All matches require at least three players".to_string());
+            }
+            MatchFormatInput::GrandMelee if player_count < 10 => {
+                return Err("Grand Melee matches normally require at least ten players".to_string());
+            }
+            MatchFormatInput::SupervillainRumble if player_count < 3 => {
+                return Err(
+                    "Supervillain Rumble matches require at least three players".to_string()
+                );
+            }
+            MatchFormatInput::ConspiracyDraft if player_count < 3 => {
+                return Err("Conspiracy Draft games require at least three players".to_string());
+            }
+            MatchFormatInput::CommanderDraft if player_count < 3 => {
+                return Err("Commander Draft games require at least three players".to_string());
+            }
+            _ => {}
+        }
+        if matches!(
+            self.format,
+            MatchFormatInput::TeamVsTeam
+                | MatchFormatInput::Emperor
+                | MatchFormatInput::TwoHeadedGiant
+                | MatchFormatInput::AlternatingTeams
+        ) {
+            let teams = self
+                .teams
+                .as_ref()
+                .ok_or_else(|| "this team format requires team blocks".to_string())?;
+            if self.format == MatchFormatInput::TeamVsTeam
+                && (teams.len() < 2 || teams.iter().any(Vec::is_empty))
+            {
+                return Err("Team vs. Team requires at least two nonempty teams".to_string());
+            }
+            if self.format == MatchFormatInput::Emperor {
+                let team_size = teams.first().map(Vec::len).unwrap_or(0);
+                if teams.len() < 2
+                    || team_size < 3
+                    || teams.iter().any(|team| team.len() != team_size)
+                {
+                    return Err(
+                        "Emperor requires at least two equally sized teams of three or more"
+                            .to_string(),
+                    );
+                }
+            }
+            if self.format == MatchFormatInput::TwoHeadedGiant {
+                let team_size = teams.first().map(Vec::len).unwrap_or(0);
+                if teams.len() != 2
+                    || team_size < 2
+                    || teams.iter().any(|team| team.len() != team_size)
+                {
+                    return Err(
+                        "Two-Headed Giant requires exactly two equally sized teams of two or more"
+                            .to_string(),
+                    );
+                }
+            }
+            if self.format == MatchFormatInput::AlternatingTeams {
+                let team_size = teams.first().map(Vec::len).unwrap_or(0);
+                if teams.len() < 2
+                    || team_size == 0
+                    || teams.iter().any(|team| team.len() != team_size)
+                {
+                    return Err(
+                        "Alternating Teams requires at least two equally sized nonempty teams"
+                            .to_string(),
+                    );
+                }
+            }
+            let configured = teams.iter().flatten().copied().collect::<Vec<_>>();
+            let distinct = configured
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>();
+            if configured.len() != player_count
+                || distinct.len() != player_count
+                || distinct
+                    .iter()
+                    .any(|player| usize::from(*player) >= player_count)
+            {
+                return Err("team blocks must contain every player index exactly once".to_string());
+            }
+        } else if self.teams.is_some() {
+            return Err("teams may be supplied only for an explicit team-format match".to_string());
+        }
+        if !matches!(
+            self.format,
+            MatchFormatInput::FreeForAll | MatchFormatInput::AlternatingTeams
+        ) && self.free_for_all.is_some()
+        {
+            return Err(
+                "freeForAll options may be supplied only for Free-for-All or Alternating Teams"
+                    .to_string(),
+            );
+        }
+        if self.format == MatchFormatInput::FreeForAll
+            && self
+                .free_for_all
+                .is_some_and(|options| options.deploy_creatures)
+        {
+            return Err("Free-for-All does not use the deploy creatures option".to_string());
+        }
+        if self.format == MatchFormatInput::CommanderDraft {
+            if self.commander_draft.is_none() {
+                return Err(
+                    "Commander Draft setup requires completed card pools and product metadata"
+                        .to_string(),
+                );
+            }
+        } else if self.commander_draft.is_some() {
+            return Err(
+                "commanderDraft metadata may be supplied only for Commander Draft".to_string(),
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum FreeForAllAttackInput {
+    Left,
+    Right,
+    #[default]
+    MultiplePlayers,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct FreeForAllOptionsInput {
+    #[serde(default)]
+    attack: FreeForAllAttackInput,
+    #[serde(default)]
+    range_of_influence: Option<u8>,
+    #[serde(default)]
+    deploy_creatures: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum CommanderDraftProductInput {
+    #[default]
+    CommanderLegends,
+    CommanderMasters,
+    BattleForBaldursGate,
+    Other,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CommanderDraftSetupInput {
+    #[serde(default)]
+    products: Vec<CommanderDraftProductInput>,
+    card_pools: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum PlanarCardKindInput {
+    Plane,
+    Phenomenon,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlanarCardInput {
+    name: String,
+    #[serde(default)]
+    kind: Option<PlanarCardKindInput>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VanguardCardInput {
+    name: String,
+    hand_modifier: i32,
+    life_modifier: i32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConspiracyCardInput {
+    name: String,
+    #[serde(default)]
+    agenda_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -3965,12 +4238,88 @@ struct MatchValidationResult {
 enum MatchFormatInput {
     #[default]
     Normal,
+    FreeForAll,
+    GrandMelee,
+    TeamVsTeam,
+    Emperor,
+    TwoHeadedGiant,
+    AlternatingTeams,
+    /// Normal constructed with the optional CR 407 ante variation enabled.
+    Ante,
+    Planechase,
+    Vanguard,
+    Archenemy,
+    SupervillainRumble,
+    ArchenemyCommander,
+    ConspiracyDraft,
+    CommanderDraft,
     Commander,
+    Brawl,
+}
+
+impl MatchFormatInput {
+    fn uses_commander_setup(self) -> bool {
+        matches!(
+            self,
+            Self::Commander | Self::CommanderDraft | Self::Brawl | Self::ArchenemyCommander
+        )
+    }
+
+    fn effective_starting_life(self, player_count: usize, requested: i32) -> i32 {
+        match self {
+            Self::Brawl if player_count == 2 => 25,
+            Self::Brawl => 30,
+            Self::Commander => 40,
+            Self::CommanderDraft => 40,
+            Self::ArchenemyCommander => 40,
+            Self::Archenemy | Self::SupervillainRumble => 20,
+            Self::ConspiracyDraft => 20,
+            Self::Vanguard => 20,
+            Self::Normal
+            | Self::FreeForAll
+            | Self::GrandMelee
+            | Self::TeamVsTeam
+            | Self::Emperor
+            | Self::TwoHeadedGiant
+            | Self::AlternatingTeams
+            | Self::Ante
+            | Self::Planechase => requested,
+        }
+    }
+
+    fn effective_opening_hand_size(self, requested: Option<usize>) -> usize {
+        match self {
+            Self::Commander
+            | Self::CommanderDraft
+            | Self::Vanguard
+            | Self::Archenemy
+            | Self::SupervillainRumble
+            | Self::ArchenemyCommander => 7,
+            Self::ConspiracyDraft => 7,
+            Self::Normal
+            | Self::FreeForAll
+            | Self::GrandMelee
+            | Self::TeamVsTeam
+            | Self::Emperor
+            | Self::TwoHeadedGiant
+            | Self::AlternatingTeams
+            | Self::Ante
+            | Self::Planechase
+            | Self::Brawl => requested.unwrap_or(7),
+        }
+    }
+
+    fn commander_damage_loss_enabled(self) -> bool {
+        self != Self::Brawl
+    }
 }
 
 #[derive(Debug, Clone)]
 struct PregameState {
+    player_order: Vec<PlayerId>,
     opening_hand_size: usize,
+    opening_hand_sizes: HashMap<PlayerId, usize>,
+    player_count: usize,
     format: MatchFormatInput,
     mulligans_taken: HashMap<PlayerId, u32>,
     used_opening_actions: HashSet<(ObjectId, usize)>,
@@ -4002,8 +4351,29 @@ enum PregameStage {
 
 impl PregameState {
     fn new(turn_order: &[PlayerId], opening_hand_size: usize, format: MatchFormatInput) -> Self {
-        Self {
+        Self::new_with_hand_sizes(
+            turn_order,
             opening_hand_size,
+            turn_order
+                .iter()
+                .copied()
+                .map(|player| (player, opening_hand_size))
+                .collect(),
+            format,
+        )
+    }
+
+    fn new_with_hand_sizes(
+        turn_order: &[PlayerId],
+        opening_hand_size: usize,
+        opening_hand_sizes: HashMap<PlayerId, usize>,
+        format: MatchFormatInput,
+    ) -> Self {
+        Self {
+            player_order: turn_order.to_vec(),
+            opening_hand_size,
+            opening_hand_sizes,
+            player_count: turn_order.len(),
             format,
             mulligans_taken: HashMap::new(),
             used_opening_actions: HashSet::new(),
@@ -4015,10 +4385,20 @@ impl PregameState {
     }
 
     fn free_mulligan_count(&self) -> u32 {
-        match self.format {
-            MatchFormatInput::Commander => 1,
-            MatchFormatInput::Normal => 0,
-        }
+        u32::from(
+            self.player_count > 2
+                || matches!(
+                    self.format,
+                    MatchFormatInput::Commander
+                        | MatchFormatInput::GrandMelee
+                        | MatchFormatInput::Archenemy
+                        | MatchFormatInput::SupervillainRumble
+                        | MatchFormatInput::ArchenemyCommander
+                        | MatchFormatInput::Brawl
+                        | MatchFormatInput::Planechase
+                        | MatchFormatInput::ConspiracyDraft
+                ),
+        )
     }
 
     fn cards_to_bottom(&self, player: PlayerId) -> usize {
@@ -4028,6 +4408,17 @@ impl PregameState {
             .unwrap_or(0)
             .saturating_sub(self.free_mulligan_count()) as usize
     }
+
+    fn can_take_mulligan(&self, player: PlayerId) -> bool {
+        self.cards_to_bottom(player) < self.opening_hand_size_for(player)
+    }
+
+    fn opening_hand_size_for(&self, player: PlayerId) -> usize {
+        self.opening_hand_sizes
+            .get(&player)
+            .copied()
+            .unwrap_or(self.opening_hand_size)
+    }
 }
 
 mod wasm_game_impl;
@@ -4036,6 +4427,52 @@ use wasm_game_impl::*;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod native_tests {
     use super::*;
+
+    #[test]
+    fn ordinary_multiplayer_and_brawl_pregames_have_one_free_mulligan() {
+        let two_players = [PlayerId::from_index(0), PlayerId::from_index(1)];
+        let three_players = [
+            PlayerId::from_index(0),
+            PlayerId::from_index(1),
+            PlayerId::from_index(2),
+        ];
+
+        assert_eq!(
+            PregameState::new(&two_players, 7, MatchFormatInput::Normal).free_mulligan_count(),
+            0
+        );
+        assert_eq!(
+            PregameState::new(&three_players, 7, MatchFormatInput::Normal).free_mulligan_count(),
+            1
+        );
+        assert_eq!(
+            PregameState::new(&two_players, 7, MatchFormatInput::Commander).free_mulligan_count(),
+            1
+        );
+        assert_eq!(
+            PregameState::new(&two_players, 7, MatchFormatInput::Brawl).free_mulligan_count(),
+            1
+        );
+    }
+
+    #[test]
+    fn pregame_stops_mulligans_only_after_the_opening_hand_reaches_zero() {
+        let alice = PlayerId::from_index(0);
+        let players = [alice, PlayerId::from_index(1)];
+        let mut pregame = PregameState::new(&players, 7, MatchFormatInput::Normal);
+
+        pregame.mulligans_taken.insert(alice, 6);
+        assert!(
+            pregame.can_take_mulligan(alice),
+            "the mulligan that produces a zero-card opening hand remains legal"
+        );
+
+        pregame.mulligans_taken.insert(alice, 7);
+        assert!(
+            !pregame.can_take_mulligan(alice),
+            "no further mulligan is legal after the opening hand reaches zero"
+        );
+    }
 
     #[test]
     fn phyrexian_tower_action_surface_uses_compiled_cost_text() {
@@ -4510,6 +4947,129 @@ mod native_tests {
                 && requirement.object_id == Some(hidden_exiled.0)
                 && requirement.commitment.as_deref() == Some("alice-exile-decision-commitment")
         }));
+    }
+
+    #[test]
+    fn controlled_player_decision_views_share_only_in_game_information() {
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let hand_card = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Hand,
+            0,
+            "alice-hand-control-probe".to_string(),
+        );
+        let sideboard_card =
+            ironsmith::card::CardBuilder::new(CardId::from_raw(90_203), "Alice's Sideboard Secret")
+                .build();
+        let sideboard_id =
+            wasm.game
+                .create_object_from_card(&sideboard_card, alice, Zone::OutsideGame);
+        wasm.game.add_player_control(
+            bob,
+            alice,
+            ironsmith::game_state::PlayerControlStart::Immediate,
+            ironsmith::game_state::PlayerControlDuration::UntilEndOfTurn,
+            None,
+        );
+
+        let hand_ctx = DecisionContext::Boolean(
+            ironsmith::decisions::context::BooleanContext::new(alice, None, "Use the hand card?")
+                .with_hidden_card_view(
+                    vec![hand_card],
+                    DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                    "Inspect hand card",
+                ),
+        );
+        let mut replay = WasmReplayDecisionMaker::new(&[]);
+        replay.capture_once_for_game(&wasm.game, hand_ctx);
+        let (_, active, audit) = replay.finish();
+        assert_eq!(active.expect("active hand view").viewer, alice);
+        assert!(audit.iter().any(|view| view.viewer == alice));
+        assert!(audit.iter().any(|view| view.viewer == bob));
+
+        let outside_ctx = DecisionContext::Boolean(
+            ironsmith::decisions::context::BooleanContext::new(
+                alice,
+                None,
+                "Use the sideboard card?",
+            )
+            .with_hidden_card_view(
+                vec![sideboard_id],
+                DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
+                "Inspect outside-game card",
+            ),
+        );
+        let mut replay = WasmReplayDecisionMaker::new(&[]);
+        replay.capture_once_for_game(&wasm.game, outside_ctx);
+        let (_, active, audit) = replay.finish();
+        assert_eq!(active.expect("active sideboard view").viewer, alice);
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].viewer, alice);
+
+        let library_card = wasm.game.create_hidden_card_placeholder(
+            alice,
+            Zone::Library,
+            1,
+            "alice-library-control-probe".to_string(),
+        );
+        assert!(!object_visible_to_perspective(
+            &wasm.game,
+            alice,
+            None,
+            library_card
+        ));
+        assert!(!object_visible_to_perspective(
+            &wasm.game,
+            bob,
+            None,
+            library_card
+        ));
+        let library_view = ActiveViewedCards {
+            viewer: alice,
+            subject: alice,
+            zone: Zone::Library,
+            cards: vec![library_card],
+            card_stable_ids: stable_ids_for_viewed_cards(&wasm.game, &[library_card]),
+            public: false,
+            source: None,
+            description: "Inspect library card".to_string(),
+        };
+        assert!(object_visible_to_perspective(
+            &wasm.game,
+            alice,
+            Some(&library_view),
+            library_card
+        ));
+        assert!(object_visible_to_perspective(
+            &wasm.game,
+            bob,
+            Some(&library_view),
+            library_card
+        ));
+
+        let future_sight = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::from_raw(90_204),
+            "Future Sight Variant",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(ironsmith::ability::Ability::static_ability(
+            ironsmith::static_abilities::StaticAbility::look_at_top_card_of_library(),
+        ))
+        .build();
+        wasm.game
+            .create_object_from_definition(&future_sight, alice, Zone::Battlefield);
+        let before = wasm.capture_crypto_audit_state();
+        wasm.update_crypto_requirements_from(before);
+        for viewer in [alice, bob] {
+            assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+                requirement.requirement_type == "private_view_window"
+                    && requirement.owner == alice.index() as u8
+                    && requirement.viewer == Some(viewer.index() as u8)
+                    && requirement.zone == "library"
+            }));
+        }
     }
 
     #[test]

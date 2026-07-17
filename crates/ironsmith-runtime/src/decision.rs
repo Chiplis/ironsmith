@@ -37,6 +37,7 @@ use attack_block::*;
 use io::*;
 #[allow(unused_imports)]
 use legal_actions::*;
+pub(crate) use mana::can_pay_mana_cost_with_available_sources;
 #[allow(unused_imports)]
 use mana::*;
 #[allow(unused_imports)]

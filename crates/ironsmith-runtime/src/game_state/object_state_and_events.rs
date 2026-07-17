@@ -331,16 +331,127 @@ impl GameState {
         self.battlefield_flags_mut().flipped.insert(id);
     }
 
+    /// Flip a flip-card permanent, updating every applicable component of a
+    /// merged permanent as required by CR 730.2h.
+    pub fn flip_permanent(&mut self, id: ObjectId) -> bool {
+        if self.is_flipped(id) {
+            return false;
+        }
+
+        let merged_stable_id = self.object(id).and_then(|object| {
+            self.commander_tracking
+                .merged_permanents
+                .contains_key(&object.stable_id)
+                .then_some(object.stable_id)
+        });
+        if let Some(stable_id) = merged_stable_id {
+            let Some(mut merged) = self
+                .commander_tracking
+                .merged_permanents
+                .get(&stable_id)
+                .cloned()
+            else {
+                return false;
+            };
+            let mut changed = false;
+            for component in &mut merged.components {
+                if component.flipped
+                    || component.object.linked_face_layout != LinkedFaceLayout::None
+                {
+                    continue;
+                }
+                let Some(other_definition) = self.linked_face_definition_by_name_or_id(
+                    component.object.other_face_name.as_deref(),
+                    component.object.other_face,
+                ) else {
+                    continue;
+                };
+                component.object.apply_definition_face(&other_definition);
+                component.flipped = true;
+                changed = true;
+            }
+            if !changed {
+                return false;
+            }
+            self.commander_tracking_mut()
+                .merged_permanents
+                .insert(stable_id, merged);
+            self.refresh_merged_permanent_characteristics(id);
+            self.flip(id);
+            return true;
+        }
+
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        let Some(other_definition) = self.linked_face_definition_by_name_or_id(
+            object.other_face_name.as_deref(),
+            object.other_face,
+        ) else {
+            return false;
+        };
+        if let Some(object) = self.object_mut(id) {
+            object.apply_definition_face(&other_definition);
+        }
+        self.flip(id);
+        true
+    }
+
     /// Check if a permanent is face-down.
     pub fn is_face_down(&self, id: ObjectId) -> bool {
         self.battlefield_flags.face_down.contains(&id)
     }
 
-    /// Set a permanent as face-down.
-    pub fn set_face_down(&mut self, id: ObjectId) {
-        if self.battlefield_flags_mut().face_down.insert(id) {
+    /// Set an object face down.
+    ///
+    /// CR 730.2f turns every face-up component of a merged permanent face
+    /// down. CR 730.2j forbids the action if the face-up merged permanent
+    /// contains a double-faced card.
+    pub fn set_face_down(&mut self, id: ObjectId) -> bool {
+        let merged_stable_id = self.object(id).and_then(|object| {
+            self.commander_tracking
+                .merged_permanents
+                .contains_key(&object.stable_id)
+                .then_some(object.stable_id)
+        });
+        if let Some(stable_id) = merged_stable_id {
+            let contains_double_faced_card = self
+                .commander_tracking
+                .merged_permanents
+                .get(&stable_id)
+                .is_some_and(|merged| {
+                    merged.components.iter().any(|component| {
+                        component.object.kind == crate::object::ObjectKind::Card
+                            && component.object.linked_face_layout
+                                == LinkedFaceLayout::TransformLike
+                    })
+                });
+            if contains_double_faced_card {
+                return false;
+            }
+            if let Some(merged) = self
+                .commander_tracking_mut()
+                .merged_permanents
+                .get_mut(&stable_id)
+            {
+                for component in &mut merged.components {
+                    component.face_down = true;
+                }
+            }
+        }
+
+        // Store the underlying characteristics on the object so layer 1b can
+        // apply after any layer-1a copy effect. This same reversible overlay is
+        // already used by morph-style face-down casting.
+        let overlay_changed = self.object_store.object_mut(id).is_some_and(|object| {
+            matches!(object.zone, Zone::Battlefield | Zone::Stack)
+                && object.apply_face_down_cast_overlay()
+        });
+        let face_status_changed = self.battlefield_flags_mut().face_down.insert(id);
+        if face_status_changed || overlay_changed {
             self.mark_face_down_state_changed(id);
         }
+        face_status_changed || overlay_changed
     }
 
     /// Mark a face-down permanent as manifested.
@@ -355,8 +466,90 @@ impl GameState {
         self.battlefield_flags.manifested.contains(&id)
     }
 
-    /// Turn a permanent face-up.
-    pub fn set_face_up(&mut self, id: ObjectId) {
+    /// Whether an object can currently be turned face up.
+    ///
+    /// CR 730.2g prohibits turning up a face-down merged permanent that
+    /// contains an instant or sorcery card.
+    pub fn can_turn_face_up_permanent(&self, id: ObjectId) -> bool {
+        if !self.is_face_down(id) {
+            return false;
+        }
+        !self.merged_permanent_blocks_turn_face_up(id)
+    }
+
+    fn merged_permanent_blocks_turn_face_up(&self, id: ObjectId) -> bool {
+        let Some(object) = self.object(id) else {
+            return true;
+        };
+        self.commander_tracking
+            .merged_permanents
+            .get(&object.stable_id)
+            .is_some_and(|merged| {
+                merged.components.iter().any(|component| {
+                    component.object.kind == crate::object::ObjectKind::Card
+                        && (component.object.card_types.contains(&CardType::Instant)
+                            || component.object.card_types.contains(&CardType::Sorcery))
+                })
+            })
+    }
+
+    fn reveal_merged_permanent_for_failed_turn_face_up(&mut self, id: ObjectId) {
+        let Some((stable_id, component_names)) = self.object(id).and_then(|object| {
+            self.merged_permanent(object.stable_id).map(|merged| {
+                (
+                    object.stable_id,
+                    merged
+                        .components
+                        .iter()
+                        .map(|component| component.object.name.to_string())
+                        .collect::<Vec<_>>(),
+                )
+            })
+        }) else {
+            return;
+        };
+        let controller = self.current_controller(id);
+        self.record_ui_effect_event(
+            "reveal",
+            controller,
+            None,
+            vec![stable_id],
+            None,
+            Some(component_names.join(" + ")),
+        );
+    }
+
+    /// Turn an object face up, including every face-down merged component.
+    pub fn set_face_up(&mut self, id: ObjectId) -> bool {
+        if !self.is_face_down(id) {
+            return false;
+        }
+        if self.merged_permanent_blocks_turn_face_up(id) {
+            // CR 730.2g requires the failed action to reveal the permanent,
+            // leave it face down, and emit no turned-face-up event.
+            self.reveal_merged_permanent_for_failed_turn_face_up(id);
+            return false;
+        }
+        let merged_stable_id = self.object(id).and_then(|object| {
+            self.commander_tracking
+                .merged_permanents
+                .contains_key(&object.stable_id)
+                .then_some(object.stable_id)
+        });
+        if let Some(stable_id) = merged_stable_id
+            && let Some(merged) = self
+                .commander_tracking_mut()
+                .merged_permanents
+                .get_mut(&stable_id)
+        {
+            for component in &mut merged.components {
+                component.face_down = false;
+            }
+        }
+        let _ = self
+            .object_store
+            .object_mut(id)
+            .is_some_and(|object| object.end_face_down_cast_overlay());
         let (face_down_changed, manifested_changed) = {
             let flags = self.battlefield_flags_mut();
             (flags.face_down.remove(&id), flags.manifested.remove(&id))
@@ -366,6 +559,7 @@ impl GameState {
         } else if manifested_changed {
             self.mark_object_characteristics_dirty(id);
         }
+        face_down_changed
     }
 
     /// Return how many times a permanent has transformed since it entered the battlefield.
@@ -421,6 +615,56 @@ impl GameState {
         if !self.can_transform(id) {
             return false;
         }
+        let merged_stable_id = self.object(id).and_then(|object| {
+            self.commander_tracking
+                .merged_permanents
+                .contains_key(&object.stable_id)
+                .then_some(object.stable_id)
+        });
+        if let Some(stable_id) = merged_stable_id {
+            let Some(mut merged) = self
+                .commander_tracking
+                .merged_permanents
+                .get(&stable_id)
+                .cloned()
+            else {
+                return false;
+            };
+            let mut transformed = false;
+            for component in &mut merged.components {
+                if component.object.linked_face_layout != LinkedFaceLayout::TransformLike {
+                    continue;
+                }
+                let Some(other_definition) = self.linked_face_definition_by_name_or_id(
+                    component.object.other_face_name.as_deref(),
+                    component.object.other_face,
+                ) else {
+                    continue;
+                };
+                if other_definition
+                    .card
+                    .card_types
+                    .contains(&CardType::Instant)
+                    || other_definition
+                        .card
+                        .card_types
+                        .contains(&CardType::Sorcery)
+                {
+                    continue;
+                }
+                component.object.apply_definition_face(&other_definition);
+                transformed = true;
+            }
+            if !transformed {
+                return false;
+            }
+            self.commander_tracking_mut()
+                .merged_permanents
+                .insert(stable_id, merged);
+            self.refresh_merged_permanent_characteristics(id);
+            self.mark_transformed(id);
+            return true;
+        }
         let Some(target) = self.object(id) else {
             return false;
         };
@@ -460,6 +704,21 @@ impl GameState {
         Self::object_has_daybound_keyword(object) || Self::object_has_nightbound_keyword(object)
     }
 
+    fn permanent_has_transforming_component(&self, id: ObjectId) -> bool {
+        let Some(object) = self.object(id) else {
+            return false;
+        };
+        self.commander_tracking
+            .merged_permanents
+            .get(&object.stable_id)
+            .map(|merged| {
+                merged.components.iter().any(|component| {
+                    component.object.linked_face_layout == LinkedFaceLayout::TransformLike
+                })
+            })
+            .unwrap_or(object.linked_face_layout == LinkedFaceLayout::TransformLike)
+    }
+
     fn object_starts_daytime_if_unset_as_enters(object: &Object) -> bool {
         object.has_static_ability_id(
             crate::static_abilities::StaticAbilityId::DayNightStartsDayAsEnters,
@@ -486,7 +745,7 @@ impl GameState {
         for id in ids {
             let should_transform = self.object(id).is_some_and(|object| {
                 object.zone == Zone::Battlefield
-                    && object.linked_face_layout == LinkedFaceLayout::TransformLike
+                    && self.permanent_has_transforming_component(id)
                     && ((self.is_night && Self::object_has_daybound_keyword(object))
                         || (!self.is_night && Self::object_has_nightbound_keyword(object)))
             });
@@ -867,6 +1126,7 @@ impl GameState {
             flags.summoning_sick.remove(&id);
             flags.controller_at_last_refresh.remove(&id);
             flags.damage_marked.remove(&id);
+            flags.battle_protectors.remove(&id);
             flags.monstrous.remove(&id);
             flags.suspected.remove(&id);
             flags.dealt_deathtouch_damage_since_sba.remove(&id);
@@ -911,6 +1171,136 @@ impl GameState {
             .chosen_modes_by_ability_this_turn
             .retain(|(source, _), _| *source != id);
         // Note: commanders persist across zone changes
+    }
+
+    /// Return the player currently designated to protect a battle.
+    pub fn battle_protector(&self, battle: ObjectId) -> Option<PlayerId> {
+        self.battlefield_flags
+            .battle_protectors
+            .get(&battle)
+            .copied()
+    }
+
+    /// Return every player who may legally protect the battle right now.
+    pub fn legal_battle_protectors(&self, battle: ObjectId) -> Vec<PlayerId> {
+        let Some(object) = self.object(battle) else {
+            return Vec::new();
+        };
+        if object.zone != Zone::Battlefield
+            || !self
+                .current_card_types(battle)
+                .is_some_and(|types| types.contains(&crate::types::CardType::Battle))
+        {
+            return Vec::new();
+        }
+        let controller = self.current_controller(battle).unwrap_or(object.owner);
+        let is_siege = self
+            .current_subtypes(battle)
+            .is_some_and(|subtypes| subtypes.contains(&crate::types::Subtype::Siege));
+        self.legal_battle_protectors_for(controller, is_siege)
+    }
+
+    /// Return the players who may protect a battle with the prospective
+    /// controller and battle type. Entry processing uses this before the zone
+    /// change is committed so an asynchronous protector choice cannot leave a
+    /// half-entered permanent behind.
+    pub(crate) fn legal_battle_protectors_for(
+        &self,
+        controller: PlayerId,
+        is_siege: bool,
+    ) -> Vec<PlayerId> {
+        if !is_siege {
+            return self
+                .player(controller)
+                .is_some_and(|player| player.is_in_game())
+                .then_some(controller)
+                .into_iter()
+                .collect();
+        }
+        self.players
+            .iter()
+            .filter(|player| player.id != controller && player.is_in_game())
+            .map(|player| player.id)
+            .collect()
+    }
+
+    /// Designate a legal protector for a battle.
+    pub fn set_battle_protector(&mut self, battle: ObjectId, protector: PlayerId) -> bool {
+        if !self.legal_battle_protectors(battle).contains(&protector) {
+            return false;
+        }
+        self.battlefield_flags_mut()
+            .battle_protectors
+            .insert(battle, protector);
+        true
+    }
+
+    /// Ask the battle's controller to choose its protector from the legal set.
+    pub fn choose_battle_protector(
+        &mut self,
+        battle: ObjectId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> bool {
+        let legal = self.legal_battle_protectors(battle);
+        let Some(object) = self.object(battle) else {
+            return false;
+        };
+        let controller = self.current_controller(battle).unwrap_or(object.owner);
+        let options = legal
+            .iter()
+            .enumerate()
+            .map(|(index, player)| {
+                crate::decisions::context::SelectableOption::new(
+                    index,
+                    self.player(*player)
+                        .map(|player| player.name.clone())
+                        .unwrap_or_else(|| format!("Player {}", player.0)),
+                )
+            })
+            .collect();
+        let context = crate::decisions::context::SelectOptionsContext::new(
+            controller,
+            Some(battle),
+            "Choose a player to protect this battle",
+            options,
+            1,
+            1,
+        );
+        let selected = decision_maker
+            .decide_options(self, &context)
+            .into_iter()
+            .find_map(|index| legal.get(index).copied())
+            .or_else(|| {
+                (!decision_maker.awaiting_choice())
+                    .then(|| legal.first().copied())
+                    .flatten()
+            });
+        selected.is_some_and(|protector| self.set_battle_protector(battle, protector))
+    }
+
+    /// Seed intrinsic defense/protector state for direct battlefield fixtures.
+    pub(crate) fn initialize_intrinsic_battle_state(&mut self, battle: ObjectId) {
+        if !self
+            .current_card_types(battle)
+            .is_some_and(|types| types.contains(&crate::types::CardType::Battle))
+        {
+            return;
+        }
+        let printed_defense = self.object(battle).and_then(|object| object.base_defense);
+        if let Some(defense) = printed_defense
+            && defense > 0
+            && self.counter_count(battle, crate::object::CounterType::Defense) == 0
+            && let Some(object) = self.object_mut(battle)
+        {
+            object.add_counters(crate::object::CounterType::Defense, defense);
+        }
+        if self.battle_protector(battle).is_none()
+            && let Some(protector) = self.legal_battle_protectors(battle).first().copied()
+        {
+            self.battlefield_flags_mut()
+                .battle_protectors
+                .insert(battle, protector);
+        }
     }
 
     fn soulbond_pair_is_valid(&self, left: ObjectId, right: ObjectId) -> bool {
@@ -1035,7 +1425,12 @@ impl GameState {
         self.exile_tracking
             .face_down_exile_viewers
             .get(&id)
-            .is_some_and(|viewers| viewers.contains(&viewer))
+            .is_some_and(|viewers| {
+                viewers.iter().any(|entitled_player| {
+                    *entitled_player == viewer
+                        || self.controlling_player_for(*entitled_player) == viewer
+                })
+            })
     }
 
     // === Chosen color helpers ===
@@ -1355,6 +1750,32 @@ impl GameState {
             .is_some_and(|objects| objects.contains(&object_id))
     }
 
+    /// Record that a token instance was created by an effect of a particular
+    /// source instance. Both sides use stable identity because the source may
+    /// have changed zones before a linked leaves-trigger resolves.
+    pub fn add_token_created_with_source_link(
+        &mut self,
+        source_stable_id: StableId,
+        token_stable_id: StableId,
+    ) {
+        self.object_annotations_mut()
+            .token_creation_sources
+            .insert(token_stable_id, source_stable_id);
+    }
+
+    /// Whether this token instance was created by the specified source
+    /// instance.
+    pub fn was_token_created_with_source(
+        &self,
+        source_stable_id: StableId,
+        token_stable_id: StableId,
+    ) -> bool {
+        self.object_annotations
+            .token_creation_sources
+            .get(&token_stable_id)
+            .is_some_and(|created_by| *created_by == source_stable_id)
+    }
+
     pub fn exiled_with_source_entries(&self) -> impl Iterator<Item = (&ObjectId, &Vec<ObjectId>)> {
         self.exile_tracking.exiled_with_source.iter()
     }
@@ -1452,6 +1873,248 @@ impl GameState {
         self.commander_tracking_mut()
             .melded_permanents
             .remove(&stable_id)
+    }
+
+    /// Get CR 730 merged-permanent metadata by the permanent's stable identity.
+    pub fn merged_permanent(&self, stable_id: StableId) -> Option<&MergedPermanentState> {
+        self.commander_tracking.merged_permanents.get(&stable_id)
+    }
+
+    /// Remove and return CR 730 merged-permanent metadata.
+    pub fn take_merged_permanent(&mut self, stable_id: StableId) -> Option<MergedPermanentState> {
+        self.commander_tracking_mut()
+            .merged_permanents
+            .remove(&stable_id)
+    }
+
+    /// Partition a card-only zone replacement across a token merged
+    /// permanent (CR 730.3e): card components use the replacement destination,
+    /// while token components use the original destination.
+    pub(crate) fn prepare_merged_token_card_component_destinations(
+        &mut self,
+        permanent_id: ObjectId,
+        original_destination: Zone,
+        replacement_destination: Zone,
+    ) {
+        let Some(stable_id) = self.object(permanent_id).and_then(|object| {
+            (object.kind == crate::object::ObjectKind::Token).then_some(object.stable_id)
+        }) else {
+            return;
+        };
+        let Some(merged) = self.merged_permanent(stable_id) else {
+            return;
+        };
+        let destinations = merged
+            .components
+            .iter()
+            .map(|component| {
+                if component.object.kind == crate::object::ObjectKind::Card {
+                    replacement_destination
+                } else {
+                    original_destination
+                }
+            })
+            .collect();
+        self.commander_tracking_mut()
+            .pending_merged_component_destinations
+            .insert(stable_id, destinations);
+    }
+
+    /// Rebuild the visible characteristics of a merged permanent from its
+    /// physical top component plus every component's abilities (CR 730.2a).
+    fn refresh_merged_permanent_characteristics(&mut self, permanent_id: ObjectId) -> bool {
+        let Some(stable_id) = self.object(permanent_id).map(|object| object.stable_id) else {
+            return false;
+        };
+        let Some(state) = self
+            .commander_tracking
+            .merged_permanents
+            .get(&stable_id)
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(top) = state
+            .components
+            .first()
+            .map(|component| component.object.clone())
+        else {
+            return false;
+        };
+
+        let mut all_abilities = Vec::new();
+        let mut all_alternative_casts = Vec::new();
+        let mut all_optional_costs = Vec::new();
+        let mut all_temporary_grants = Vec::new();
+        let mut merged_text = Vec::new();
+        for component in &state.components {
+            all_abilities.extend(component.object.abilities.iter().cloned());
+            all_alternative_casts.extend(component.object.alternative_casts.iter().cloned());
+            all_optional_costs.extend(component.object.optional_costs.iter().cloned());
+            all_temporary_grants.extend(
+                component
+                    .object
+                    .temporary_static_ability_grants
+                    .iter()
+                    .cloned(),
+            );
+            if !component.object.compiled_card_text.trim().is_empty() {
+                merged_text.push(component.object.compiled_card_text.to_string());
+            }
+        }
+
+        let Some(permanent) = self.object_mut(permanent_id) else {
+            return false;
+        };
+        permanent.kind = top.kind;
+        permanent.card = top.card;
+        permanent.name = top.name;
+        permanent.first_printed_set_name = top.first_printed_set_name;
+        permanent.mana_cost = top.mana_cost;
+        permanent.color_override = top.color_override;
+        permanent.supertypes = top.supertypes;
+        permanent.card_types = top.card_types;
+        permanent.subtypes = top.subtypes;
+        permanent.compiled_card_text = std::sync::Arc::from(merged_text.join("\n"));
+        permanent.rules_text_color_identity = top.rules_text_color_identity;
+        permanent.other_face = top.other_face;
+        permanent.other_face_name = top.other_face_name;
+        permanent.linked_face_layout = top.linked_face_layout;
+        permanent.base_power = top.base_power;
+        permanent.base_toughness = top.base_toughness;
+        permanent.base_loyalty = top.base_loyalty;
+        permanent.base_defense = top.base_defense;
+        permanent.abilities = std::sync::Arc::new(all_abilities);
+        permanent.aura_attach_filter = top.aura_attach_filter;
+        permanent.bestow_cast_state = top.bestow_cast_state;
+        permanent.face_down_cast_state = top.face_down_cast_state;
+        permanent.prototype_cast_state = top.prototype_cast_state;
+        permanent.alternative_casts = all_alternative_casts.into();
+        permanent.optional_costs = all_optional_costs.into();
+        permanent.temporary_static_ability_grants = all_temporary_grants;
+        true
+    }
+
+    /// Capture the front/default characteristics a physical card component
+    /// will have after the merged permanent leaves the battlefield (CR 730.3).
+    /// Live flips and transforms subsequently update `component.object`, but
+    /// never this immutable destination snapshot.
+    fn merged_component_destination_object(
+        &self,
+        object: &Object,
+        current_is_secondary_face: bool,
+    ) -> Object {
+        let mut destination = object.clone();
+        if object.kind == crate::object::ObjectKind::Card
+            && current_is_secondary_face
+            && let Some(front_definition) = self.linked_face_definition_by_name_or_id(
+                object.other_face_name.as_deref(),
+                object.other_face,
+            )
+        {
+            destination.apply_definition_face(&front_definition);
+        }
+        destination
+    }
+
+    /// Merge a mutating creature spell with its legal battlefield target.
+    ///
+    /// The target remains the same permanent: it does not leave or enter the
+    /// battlefield, keeps its counters/controller/tapped state/timestamp, and
+    /// gains the abilities of every physical component.  `spell_on_top`
+    /// selects the component that supplies the other copiable characteristics.
+    pub fn merge_mutating_creature_spell(
+        &mut self,
+        spell_id: ObjectId,
+        target_id: ObjectId,
+        spell_on_top: bool,
+    ) -> Option<ObjectId> {
+        let spell = self.object(spell_id)?.clone();
+        let target = self.object(target_id)?.clone();
+        if spell.zone != Zone::Stack
+            || target.zone != Zone::Battlefield
+            || spell.owner != target.owner
+            || !self.current_is_creature(target_id)
+            || self
+                .calculated_subtypes(target_id)
+                .contains(&Subtype::Human)
+        {
+            return None;
+        }
+
+        let target_stable_id = target.stable_id;
+        let target_face_down = self.is_face_down(target_id);
+        let target_flipped = self.is_flipped(target_id);
+        let target_destination_object = self.merged_component_destination_object(
+            &target,
+            target_flipped
+                || (target.linked_face_layout == LinkedFaceLayout::TransformLike
+                    && self.transform_count(target_id) % 2 == 1),
+        );
+        let mut state = self
+            .commander_tracking
+            .merged_permanents
+            .get(&target_stable_id)
+            .cloned()
+            .unwrap_or_else(|| MergedPermanentState {
+                components: vec![MergedPermanentComponentState {
+                    is_commander: self.is_commander(target_id),
+                    object: target.clone(),
+                    destination_object: target_destination_object,
+                    face_down: target_face_down,
+                    flipped: target_flipped,
+                }],
+            });
+        let spell_flipped = self.is_flipped(spell_id);
+        let spell_component = MergedPermanentComponentState {
+            is_commander: self.is_commander(spell_id),
+            object: spell.clone(),
+            destination_object: self.merged_component_destination_object(
+                &spell,
+                spell_flipped
+                    || (spell.linked_face_layout == LinkedFaceLayout::TransformLike
+                        && self.transform_count(spell_id) % 2 == 1),
+            ),
+            face_down: self.is_face_down(spell_id),
+            flipped: spell_flipped,
+        };
+        if spell_on_top {
+            state.components.insert(0, spell_component);
+        } else {
+            state.components.push(spell_component);
+        }
+
+        let top_face_down = state.components.first()?.face_down;
+        self.commander_tracking_mut()
+            .merged_permanents
+            .insert(target_stable_id, state);
+        self.refresh_merged_permanent_characteristics(target_id);
+
+        // Merging adopts the top component's status without turning the
+        // permanent face up or down (CR 730.2e), so no face-change event is
+        // emitted. The merge itself gives the copiable effect a new timestamp.
+        let face_status_changed = {
+            let flags = self.battlefield_flags_mut();
+            if top_face_down {
+                flags.face_down.insert(target_id)
+            } else {
+                let changed = flags.face_down.remove(&target_id);
+                flags.manifested.remove(&target_id);
+                changed
+            }
+        };
+        if face_status_changed {
+            self.mark_object_characteristics_dirty(target_id);
+        }
+        self.effect_store
+            .continuous_effects
+            .record_face_change(target_id);
+        self.effect_store
+            .continuous_effects
+            .retarget_merged_spell(spell_id, target_id);
+        self.remove_object(spell_id);
+        self.mark_continuous_state_dirty();
+        Some(target_id)
     }
 
     /// Record the destination objects created by a zone change.
@@ -1573,6 +2236,22 @@ impl GameState {
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);
+        let Some(record) = self.turn_store.turn_history.event_records.last().cloned() else {
+            return;
+        };
+        let involved_players = self
+            .players
+            .iter()
+            .map(|player| player.id)
+            .filter(|player| record.involves_player(*player))
+            .collect::<Vec<_>>();
+        for player in involved_players {
+            self.turn_store
+                .action_history_by_player
+                .entry(player)
+                .or_default()
+                .push(record.clone());
+        }
     }
 
     pub fn queue_trigger_event(

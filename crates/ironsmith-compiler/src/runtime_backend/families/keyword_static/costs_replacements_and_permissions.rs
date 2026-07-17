@@ -1040,7 +1040,14 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             )));
         }
         DynamicCostValueShape::CountersRemovedThisWay => {
-            Value::X.with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    EffectMetricSource::Outcome,
+                    EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
         }
         DynamicCostValueShape::PlayerCounters(counter_type) => {
             Value::PlayerCounters(PlayerFilter::You, counter_type)
@@ -1139,10 +1146,19 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
                 with_for_each_surface(value)
             } else if let Some(player) = parse_commander_cast_count_player(filter_tokens) {
                 Value::CommanderCastCount(player)
-            } else if let Ok(filter) = parse_object_filter(filter_tokens, false) {
-                Value::Count(filter)
             } else {
-                return Ok(None);
+                let filter_words = parser_token_word_refs(filter_tokens);
+                let mut count_words = vec!["for", "each"];
+                count_words.extend(filter_words.iter().copied());
+                if let Some((value, used)) = parse_for_each_count_value_words(&count_words)
+                    && used == count_words.len()
+                {
+                    value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+                } else if let Ok(filter) = parse_object_filter(filter_tokens, false) {
+                    with_for_each_surface(Value::Count(filter))
+                } else {
+                    return Ok(None);
+                }
             }
         }
     };
@@ -1609,10 +1625,17 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let subject = match parse_anthem_subject(&subject_tokens) {
+    let mut subject = match parse_anthem_subject(&subject_tokens) {
         Ok(subject) => subject,
         Err(_) => return Ok(None),
     };
+    // Animation-subject grammar intentionally consumes leading distributive
+    // quantifiers before it builds the semantic filter. Preserve that authored
+    // surface on this compound animation bundle so both lowered continuous
+    // abilities render with the same subject.
+    if let AnthemSubjectAst::Filter(filter) = &mut subject {
+        filter.set_set_quantifier_surface(leading_set_quantifier_surface(&subject_tokens));
+    }
     let attached_subject = LexedClause::new(&subject_tokens)
         .words()
         .first()
@@ -3043,6 +3066,18 @@ pub(crate) fn parse_draw_replacement_skip_empty_library_line(
 pub(crate) fn parse_conditional_draw_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_draw_replacement_win_empty_library_line_lexed(tokens) {
+        return Ok(Some(StaticAbility::conditional_draw_replacement(
+            Condition::ValueComparison {
+                left: Value::CardsInLibrary(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(0),
+            },
+            vec![Effect::win_the_game()],
+            render_token_slice(tokens),
+        )));
+    }
+
     let Some(fact) = late_static_facts::parse_conditional_draw_replacement_tokens(tokens) else {
         return Ok(None);
     };
@@ -3085,6 +3120,34 @@ pub(crate) fn parse_conditional_draw_replacement_line(
         replacement_effects,
         display,
     )))
+}
+
+pub(crate) fn parse_lose_game_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let words = TokenWordView::new(tokens);
+    if !words.starts_with(&["if", "you", "would", "lose"])
+        || words.find_any_word_from(&["game"], 4).is_none()
+    {
+        return Ok(None);
+    }
+    let Some(instead_word) = words.find_any_word_from(&["instead"], 4) else {
+        return Ok(None);
+    };
+    let Some(effect_start) = words.token_index_after_words(instead_word + 1) else {
+        return Ok(None);
+    };
+    let effect_tokens = trim_lexed_commas(&tokens[effect_start..]);
+    if effect_tokens.is_empty() {
+        return Ok(None);
+    }
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(effect_tokens)?;
+    let optional = (4..instead_word).any(|idx| words.get(idx) == Some("may"));
+    Ok(Some(StaticAbilityAst::LoseGameReplacement {
+        effects,
+        optional,
+        display: render_token_slice(tokens),
+    }))
 }
 
 pub(crate) fn parse_keyword_action_replacement_line(
@@ -3145,6 +3208,19 @@ pub(crate) fn parse_keyword_action_replacement_line(
                 display,
             )
         }
+        keyword_static_lines::KeywordActionReplacementShape::AssembleRiggerTwice => {
+            StaticAbility::keyword_action_replacement(
+                crate::events::KeywordActionKind::AssembleContraption,
+                ObjectFilter::default()
+                    .with_subtype(crate::types::Subtype::Rigger)
+                    .controlled_by(PlayerFilter::You),
+                vec![Effect::emit_keyword_action(
+                    crate::events::KeywordActionKind::AssembleContraption,
+                    2,
+                )],
+                display,
+            )
+        }
     }))
 }
 
@@ -3177,10 +3253,16 @@ pub(crate) fn parse_exile_to_exile_instead_of_graveyard_line(
     };
     let filter = match spec.filter_kind {
         keyword_static_lines::ExileGraveyardFilterKind::Source => ObjectFilter::source(),
-        keyword_static_lines::ExileGraveyardFilterKind::AnyCard => ObjectFilter::default(),
+        keyword_static_lines::ExileGraveyardFilterKind::AnyCard => {
+            let mut filter = ObjectFilter::default();
+            filter.set_explicit_card_noun(true);
+            filter
+        }
         keyword_static_lines::ExileGraveyardFilterKind::CreatureCard => ObjectFilter::creature(),
         keyword_static_lines::ExileGraveyardFilterKind::CyclingCard => {
-            ObjectFilter::default().with_ability_marker("cycling")
+            let mut filter = ObjectFilter::default().with_ability_marker("cycling");
+            filter.set_explicit_card_noun(true);
+            filter
         }
         keyword_static_lines::ExileGraveyardFilterKind::ObjectFilter => {
             parse_object_filter(spec.filter_tokens, false)?
@@ -3652,6 +3734,20 @@ mod tests {
                 )),
             "expected static line parser to preserve keyword-action replacement, got {parsed:?}"
         );
+
+        let tokens = lex_line(
+            "If a Rigger you control would assemble a Contraption, it assembles two Contraptions instead.",
+            0,
+        )
+        .expect("lex");
+        let parsed = parse_keyword_action_replacement_line(&tokens)
+            .expect("assemble replacement parser should not hard-error");
+        assert!(
+            parsed
+                .as_ref()
+                .is_some_and(|ability| ability.id() == StaticAbilityId::KeywordActionReplacement),
+            "expected typed assemble replacement static ability, got {parsed:?}"
+        );
     }
 
     #[test]
@@ -3685,6 +3781,23 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_for_each_commander_cast_count_precedes_generic_object_count() {
+        let tokens = lex_line(
+            "for each time you've cast your commander from the command zone this game.",
+            0,
+        )
+        .expect("commander-count text should lex");
+        let value = parse_dynamic_cost_modifier_value(&tokens)
+            .expect("dynamic count should not hard-error")
+            .expect("dynamic count should produce a value");
+        assert_eq!(
+            value,
+            Value::CommanderCastCount(PlayerFilter::You),
+            "the narrow command-zone history value must win before generic object counting"
+        );
+    }
+
+    #[test]
     fn specialized_card_types_among_cost_value_precedes_history_fallback() {
         let tokens = lex_line(
             "less to cast for each card type among permanents you've sacrificed this turn.",
@@ -3697,6 +3810,71 @@ mod tests {
         assert!(
             matches!(value.unhinted(), Value::CardTypesAmong(_)),
             "expected specialized card-types-among value, got {value:?}"
+        );
+    }
+
+    #[test]
+    fn self_cost_reductions_keep_for_each_player_and_disjoint_zone_counts() {
+        let opponent_tokens = lex_line(
+            "This spell costs {1} less to cast for each opponent you have.",
+            0,
+        )
+        .expect("opponent-count reduction should lex");
+        let opponent_ability = parse_spells_cost_modifier_line(&opponent_tokens)
+            .expect("opponent-count reduction should not hard-error")
+            .expect("opponent-count reduction should parse");
+        let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(opponent_reduction) =
+            &opponent_ability.payload
+        else {
+            panic!("expected this-spell reduction payload: {opponent_ability:#?}");
+        };
+        assert!(
+            opponent_reduction
+                .amount
+                .has_surface_hint(ValueSurfaceHint::ForEach)
+        );
+        assert_eq!(
+            opponent_reduction.amount.unhinted(),
+            &Value::CountPlayers(PlayerFilter::Opponent)
+        );
+
+        let cave_tokens = lex_line(
+            "This spell costs {1} less to cast for each Cave you control and each Cave card in your graveyard.",
+            0,
+        )
+        .expect("multi-zone Cave reduction should lex");
+        let cave_ability = parse_spells_cost_modifier_line(&cave_tokens)
+            .expect("multi-zone Cave reduction should not hard-error")
+            .expect("multi-zone Cave reduction should parse");
+        let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(cave_reduction) =
+            &cave_ability.payload
+        else {
+            panic!("expected this-spell reduction payload: {cave_ability:#?}");
+        };
+        assert!(
+            cave_reduction
+                .amount
+                .has_surface_hint(ValueSurfaceHint::ForEach),
+            "{:#?}",
+            cave_reduction.amount
+        );
+        let Value::Count(cave_filter) = cave_reduction.amount.unhinted() else {
+            panic!("expected a Cave object count: {:#?}", cave_reduction.amount);
+        };
+        assert_eq!(cave_filter.any_of.len(), 2, "{cave_filter:#?}");
+        assert!(
+            cave_filter
+                .any_of
+                .iter()
+                .any(|arm| arm.zone == Some(Zone::Battlefield)),
+            "{cave_filter:#?}"
+        );
+        assert!(
+            cave_filter
+                .any_of
+                .iter()
+                .any(|arm| arm.zone == Some(Zone::Graveyard)),
+            "{cave_filter:#?}"
         );
     }
 

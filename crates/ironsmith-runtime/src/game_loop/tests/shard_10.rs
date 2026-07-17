@@ -328,6 +328,636 @@ pub(super) fn test_illuna_apex_of_wishes_mutate_trigger_condition() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn setup_zero_cost_mutate_cast(
+    game: &mut GameState,
+    controller: PlayerId,
+    host_id: ObjectId,
+    name: &str,
+    as_commander: bool,
+) -> (PriorityLoopState, TriggerQueue, ObjectId, ObjectId) {
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(998_140), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(6)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text("Mutate {0}\nFlying\nWhenever this creature mutates, you gain 1 life.")
+        .expect("mutate test creature should parse");
+    let card_id = game.create_object_from_definition(&definition, controller, Zone::Hand);
+    if as_commander {
+        game.set_as_commander(card_id, controller);
+    }
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = controller;
+    game.turn.priority_player = Some(controller);
+
+    assert!(
+        compute_legal_actions(game, controller)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Alternative(0),
+                } if *spell_id == card_id
+            )),
+        "Mutate should be offered when a legal same-owner non-Human target exists"
+    );
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    let progress = apply_priority_response(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: card_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Alternative(0),
+        }),
+    )
+    .expect("mutate cast should begin");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::DecisionContext::Targets(_))
+    ));
+    apply_priority_response(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(host_id)]),
+    )
+    .expect("legal mutate target should complete the cast");
+
+    let stack_id = game
+        .stack
+        .last()
+        .map(|entry| entry.object_id)
+        .expect("mutating creature spell should be on the stack");
+    (state, trigger_queue, stack_id, card_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn mutate_merges_without_entering_and_splits_into_every_component() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let host_definition = CardDefinitionBuilder::new(CardId::from_raw(998_141), "Vigilant Host")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text("Vigilance\nWhenever this creature mutates, you gain 1 life.")
+        .expect("host should parse");
+    let host_id = game.create_object_from_definition(&host_definition, alice, Zone::Battlefield);
+
+    let human_definition = CardDefinitionBuilder::new(CardId::from_raw(998_142), "Human Host")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&human_definition, alice, Zone::Battlefield);
+    game.create_object_from_definition(&host_definition, bob, Zone::Battlefield);
+
+    let (_state, mut trigger_queue, stack_id, _commander_identity) =
+        setup_zero_cost_mutate_cast(&mut game, alice, host_id, "Winged Mutator", false);
+    resolve_stack_entry_with_dm_and_triggers(
+        &mut game,
+        &mut AutoPassDecisionMaker,
+        &mut trigger_queue,
+    )
+    .expect("mutating creature should resolve");
+
+    let merged = game
+        .object(host_id)
+        .expect("target remains the same permanent");
+    assert_eq!(merged.name.as_ref(), "Winged Mutator");
+    assert!(
+        merged
+            .abilities
+            .iter()
+            .any(|ability| crate::compiled_text::ability_surface_text(ability) == "Flying")
+    );
+    assert!(
+        merged
+            .abilities
+            .iter()
+            .any(|ability| crate::compiled_text::ability_surface_text(ability) == "Vigilance")
+    );
+    assert!(game.object(stack_id).is_none());
+    assert_eq!(game.mutation_count(host_id), 1);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        2,
+        "every component's mutates ability must trigger"
+    );
+    assert_eq!(
+        game.merged_permanent(merged.stable_id)
+            .expect("component metadata")
+            .components
+            .len(),
+        2
+    );
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter(|id| game
+                .object(**id)
+                .is_some_and(|object| object.owner == alice))
+            .count(),
+        2,
+        "merge must not create a second Alice permanent or produce an ETB"
+    );
+
+    game.move_object_by_effect(host_id, Zone::Graveyard)
+        .expect("merged permanent should leave");
+    let mut component_names = game
+        .player(alice)
+        .expect("Alice")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.to_string()))
+        .collect::<Vec<_>>();
+    component_names.sort();
+    assert_eq!(component_names, vec!["Vigilant Host", "Winged Mutator"]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn mutate_illegal_target_resolves_as_an_ordinary_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let host_id = create_creature(&mut game, "Doomed Mutate Host", alice, 2, 2);
+    let (_state, _trigger_queue, stack_id, _commander_identity) =
+        setup_zero_cost_mutate_cast(&mut game, alice, host_id, "Fallback Mutator", false);
+
+    game.move_object_by_effect(host_id, Zone::Graveyard)
+        .expect("target should leave before resolution");
+    resolve_stack_entry(&mut game).expect("illegal-target Mutate must not fizzle");
+
+    let resolved = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Fallback Mutator")
+        })
+        .expect("mutating spell should resolve as an ordinary creature");
+    assert_ne!(
+        resolved, stack_id,
+        "ordinary zone change still creates a new id"
+    );
+    assert_eq!(game.mutation_count(resolved), 0);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn mutate_bottom_component_keeps_host_characteristics_and_commander_identity() {
+    struct PutMutatingSpellOnBottom;
+
+    impl DecisionMaker for PutMutatingSpellOnBottom {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .find(|option| option.legal && option.description.contains("bottom"))
+                .map(|option| vec![option.index])
+                .unwrap_or_else(|| {
+                    ctx.options
+                        .iter()
+                        .filter(|option| option.legal)
+                        .map(|option| option.index)
+                        .take(ctx.min)
+                        .collect()
+                })
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let host_definition = CardDefinitionBuilder::new(CardId::from_raw(998_143), "Top Host")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text("Vigilance")
+        .expect("host should parse");
+    let host_id = game.create_object_from_definition(&host_definition, alice, Zone::Battlefield);
+    let (_state, mut trigger_queue, _stack_id, commander_identity) =
+        setup_zero_cost_mutate_cast(&mut game, alice, host_id, "Commander Mutator", true);
+
+    resolve_stack_entry_with_dm_and_triggers(
+        &mut game,
+        &mut PutMutatingSpellOnBottom,
+        &mut trigger_queue,
+    )
+    .expect("bottom mutation should resolve");
+
+    let merged = game.object(host_id).expect("host remains on battlefield");
+    assert_eq!(merged.name.as_ref(), "Top Host");
+    assert_eq!(game.commander_identity(host_id), Some(commander_identity));
+    assert_eq!(
+        game.current_commander_object(commander_identity),
+        Some(host_id)
+    );
+    assert!(
+        merged
+            .abilities
+            .iter()
+            .any(|ability| crate::compiled_text::ability_surface_text(ability) == "Flying"),
+        "bottom component still contributes its abilities"
+    );
+}
+
+fn u046_linked_creature_face(
+    id: u32,
+    name: &str,
+    other_id: u32,
+    other_name: &str,
+    layout: crate::card::LinkedFaceLayout,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .other_face(CardId::from_raw(other_id))
+        .other_face_name(other_name)
+        .linked_face_layout(layout)
+        .build()
+}
+
+#[test]
+fn merged_face_status_uses_the_top_component_and_obeys_turn_restrictions() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let host = CardDefinitionBuilder::new(CardId::from_raw(998_144), "Hidden Host")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let host_id = game.create_object_from_definition(&host, alice, Zone::Battlefield);
+    assert!(game.set_face_down(host_id));
+
+    let top = CardDefinitionBuilder::new(CardId::from_raw(998_145), "Visible Mutator")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let top_id = game.create_object_from_definition(&top, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(top_id, host_id, true)
+        .expect("legal direct merge");
+
+    assert!(
+        !game.is_face_down(host_id),
+        "putting a face-up component on top makes the merged permanent face up"
+    );
+    let merged = game
+        .merged_permanent(game.object(host_id).expect("merged permanent").stable_id)
+        .expect("component state");
+    assert!(!merged.components[0].face_down);
+    assert!(merged.components[1].face_down);
+
+    assert!(game.set_face_down(host_id));
+    let merged = game
+        .merged_permanent(game.object(host_id).expect("merged permanent").stable_id)
+        .expect("component state");
+    assert!(
+        merged
+            .components
+            .iter()
+            .all(|component| component.face_down)
+    );
+    assert!(game.set_face_up(host_id));
+    let merged = game
+        .merged_permanent(game.object(host_id).expect("merged permanent").stable_id)
+        .expect("component state");
+    assert!(
+        merged
+            .components
+            .iter()
+            .all(|component| !component.face_down)
+    );
+
+    let front = u046_linked_creature_face(
+        998_146,
+        "DFC Host Front",
+        998_147,
+        "DFC Host Back",
+        crate::card::LinkedFaceLayout::TransformLike,
+    );
+    let back = u046_linked_creature_face(
+        998_147,
+        "DFC Host Back",
+        998_146,
+        "DFC Host Front",
+        crate::card::LinkedFaceLayout::TransformLike,
+    );
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&back);
+    let dfc_id = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+    let under_id = game.create_object_from_definition(&top, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(under_id, dfc_id, false)
+        .expect("DFC host can merge");
+    assert!(
+        !game.set_face_down(dfc_id),
+        "a face-up merged permanent containing a double-faced card cannot turn face down"
+    );
+    assert!(!game.is_face_down(dfc_id));
+
+    let hidden_id = game.create_object_from_definition(&host, alice, Zone::Battlefield);
+    assert!(game.set_face_down(hidden_id));
+    let instant = CardDefinitionBuilder::new(CardId::from_raw(998_148), "Buried Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_id = game.create_object_from_definition(&instant, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(instant_id, hidden_id, false)
+        .expect("fixture creates a merged instant component");
+    assert!(
+        !game.set_face_up(hidden_id),
+        "a face-down merged permanent containing an instant card cannot turn face up"
+    );
+    assert!(game.is_face_down(hidden_id));
+    let reveal = game
+        .ui_effect_events()
+        .find(|event| event.kind == "reveal")
+        .expect("the failed turn-up action must reveal the merged permanent");
+    assert!(
+        reveal
+            .text
+            .as_deref()
+            .is_some_and(|text| text.contains("Buried Instant"))
+    );
+}
+
+#[test]
+fn merged_transform_and_flip_actions_update_every_applicable_component() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let host_front = u046_linked_creature_face(
+        998_149,
+        "Transform Host Front",
+        998_150,
+        "Transform Host Back",
+        crate::card::LinkedFaceLayout::TransformLike,
+    );
+    let host_back = u046_linked_creature_face(
+        998_150,
+        "Transform Host Back",
+        998_149,
+        "Transform Host Front",
+        crate::card::LinkedFaceLayout::TransformLike,
+    );
+    let under_front = u046_linked_creature_face(
+        998_151,
+        "Transform Under Front",
+        998_152,
+        "Transform Under Back",
+        crate::card::LinkedFaceLayout::TransformLike,
+    );
+    let under_back = u046_linked_creature_face(
+        998_152,
+        "Transform Under Back",
+        998_151,
+        "Transform Under Front",
+        crate::card::LinkedFaceLayout::TransformLike,
+    );
+    for definition in [&host_front, &host_back, &under_front, &under_back] {
+        game.register_linked_face_definition(definition);
+    }
+    let host_id = game.create_object_from_definition(&host_front, alice, Zone::Battlefield);
+    let under_id = game.create_object_from_definition(&under_front, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(under_id, host_id, false)
+        .expect("transform fixture merges");
+    assert!(game.transform_permanent(host_id));
+    assert_eq!(
+        game.object(host_id)
+            .expect("live merged object")
+            .name
+            .as_ref(),
+        "Transform Host Back"
+    );
+    let transformed_names = game
+        .merged_permanent(game.object(host_id).expect("live merged object").stable_id)
+        .expect("component state")
+        .components
+        .iter()
+        .map(|component| component.object.name.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        transformed_names,
+        vec!["Transform Host Back", "Transform Under Back"]
+    );
+    game.move_object_by_game_rule(host_id, Zone::Graveyard)
+        .expect("transformed merged permanent should split in the graveyard");
+    let destination_names = game
+        .take_zone_change_results(host_id)
+        .into_iter()
+        .map(|object_id| {
+            game.object(object_id)
+                .expect("split component in the graveyard")
+                .name
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        destination_names,
+        vec!["Transform Host Front", "Transform Under Front"],
+        "transformed components use their immutable front-face snapshots after splitting"
+    );
+
+    let flip_host_front = u046_linked_creature_face(
+        998_153,
+        "Flip Host Front",
+        998_154,
+        "Flip Host Back",
+        crate::card::LinkedFaceLayout::None,
+    );
+    let flip_host_back = u046_linked_creature_face(
+        998_154,
+        "Flip Host Back",
+        998_153,
+        "Flip Host Front",
+        crate::card::LinkedFaceLayout::None,
+    );
+    let flip_under_front = u046_linked_creature_face(
+        998_155,
+        "Flip Under Front",
+        998_156,
+        "Flip Under Back",
+        crate::card::LinkedFaceLayout::None,
+    );
+    let flip_under_back = u046_linked_creature_face(
+        998_156,
+        "Flip Under Back",
+        998_155,
+        "Flip Under Front",
+        crate::card::LinkedFaceLayout::None,
+    );
+    for definition in [
+        &flip_host_front,
+        &flip_host_back,
+        &flip_under_front,
+        &flip_under_back,
+    ] {
+        game.register_linked_face_definition(definition);
+    }
+    let flip_id = game.create_object_from_definition(&flip_host_front, alice, Zone::Battlefield);
+    let flip_under_id = game.create_object_from_definition(&flip_under_front, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(flip_under_id, flip_id, false)
+        .expect("flip fixture merges");
+    assert!(game.flip_permanent(flip_id));
+    assert_eq!(
+        game.object(flip_id)
+            .expect("live flipped object")
+            .name
+            .as_ref(),
+        "Flip Host Back"
+    );
+    let flipped_names = game
+        .merged_permanent(game.object(flip_id).expect("live flipped object").stable_id)
+        .expect("component state")
+        .components
+        .iter()
+        .map(|component| component.object.name.to_string())
+        .collect::<Vec<_>>();
+    assert_eq!(flipped_names, vec!["Flip Host Back", "Flip Under Back"]);
+}
+
+#[test]
+fn merged_exile_order_sets_relative_timestamps_in_the_exiling_players_order() {
+    #[derive(Debug, Default)]
+    struct ReverseMergedOrder;
+
+    impl DecisionMaker for ReverseMergedOrder {
+        fn decide_order(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::OrderContext,
+        ) -> Vec<ObjectId> {
+            ctx.items.iter().rev().map(|(id, _)| *id).collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let host = CardDefinitionBuilder::new(CardId::from_raw(998_157), "Timestamp Host")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let middle = CardDefinitionBuilder::new(CardId::from_raw(998_158), "Timestamp Middle")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let top = CardDefinitionBuilder::new(CardId::from_raw(998_159), "Timestamp Top")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let host_id = game.create_object_from_definition(&host, alice, Zone::Battlefield);
+    let middle_id = game.create_object_from_definition(&middle, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(middle_id, host_id, true)
+        .expect("first merge");
+    let top_id = game.create_object_from_definition(&top, alice, Zone::Stack);
+    game.merge_mutating_creature_spell(top_id, host_id, true)
+        .expect("second merge");
+
+    let cause = crate::events::cause::EventCause::from_effect(host_id, alice);
+    let outcome = crate::effects::zones::apply_zone_change(
+        &mut game,
+        host_id,
+        Zone::Battlefield,
+        Zone::Exile,
+        cause,
+        &mut ReverseMergedOrder,
+    );
+    let crate::events::processing::EventOutcome::Proceed(result) = outcome else {
+        panic!("merged exile should proceed");
+    };
+    let timestamps = result
+        .new_object_ids
+        .iter()
+        .map(|object_id| {
+            game.effect_store
+                .continuous_effects
+                .get_entry_timestamp(*object_id)
+                .expect("every exiled component gets a timestamp")
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        timestamps.windows(2).all(|pair| pair[0] < pair[1]),
+        "the chosen exile order must be the relative timestamp order: {timestamps:?}"
+    );
+}
+
+#[test]
+fn token_top_merged_permanent_partitions_card_only_zone_replacement() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let host = CardDefinitionBuilder::new(CardId::from_raw(998_160), "Replacement Host")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let token_top = CardDefinitionBuilder::new(CardId::from_raw(998_161), "Token Mutator")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let replacement_source = create_creature(&mut game, "Replacement Source", alice, 1, 1);
+    let host_id = game.create_object_from_definition(&host, alice, Zone::Battlefield);
+    let token_id = game.create_object_from_definition(&token_top, alice, Zone::Stack);
+    game.object_mut(token_id).expect("token component").kind = crate::object::ObjectKind::Token;
+    game.merge_mutating_creature_spell(token_id, host_id, true)
+        .expect("token-top fixture merges");
+    assert_eq!(
+        game.object(host_id).expect("merged permanent").kind,
+        crate::object::ObjectKind::Token
+    );
+
+    game.effect_store.replacement_effects.add_effect(
+        crate::replacement::ZoneReplacementSpec::new(
+            crate::target::ObjectFilter::default().nontoken(),
+            Zone::Exile,
+        )
+        .from_zone(Zone::Battlefield)
+        .to_zone(Zone::Graveyard)
+        .build(replacement_source, alice),
+    );
+    let cause = crate::events::cause::EventCause::from_effect(replacement_source, alice);
+    let outcome = crate::effects::zones::apply_zone_change(
+        &mut game,
+        host_id,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        cause,
+        &mut SelectFirstDecisionMaker,
+    );
+    let crate::events::processing::EventOutcome::Proceed(result) = outcome else {
+        panic!("partitioned merged zone change should proceed");
+    };
+    let component_zones = result
+        .new_object_ids
+        .iter()
+        .filter_map(|object_id| {
+            game.object(*object_id)
+                .map(|object| (object.name.to_string(), object.zone))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(component_zones.get("Token Mutator"), Some(&Zone::Graveyard));
+    assert_eq!(component_zones.get("Replacement Host"), Some(&Zone::Exile));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn test_anger_grants_haste_from_graveyard_when_you_control_mountain() {
     use crate::card::PowerToughness;

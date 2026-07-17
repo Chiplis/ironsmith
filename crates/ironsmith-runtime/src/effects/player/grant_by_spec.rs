@@ -14,69 +14,7 @@ use crate::zone::Zone;
 pub type GrantBySpecEffect = ironsmith_core::GrantBySpecEffect<GrantSpec, GrantDuration>;
 
 pub(crate) fn next_turn_number_for_player(game: &GameState, player: PlayerId) -> u32 {
-    if game.turn_store.turn_order.is_empty() {
-        return game.turn.turn_number;
-    }
-
-    let mut simulated_active_player = game.turn.active_player;
-    let mut simulated_turn_number = game.turn.turn_number;
-    let mut simulated_extra_turns = game.turn_store.extra_turns.clone();
-    let mut simulated_skip_next_turn = game.turn_store.skip_next_turn.clone();
-    let max_iterations = game
-        .turn_store
-        .turn_order
-        .len()
-        .saturating_mul(16)
-        .saturating_add(simulated_extra_turns.len().saturating_mul(2))
-        .saturating_add(16)
-        .max(1);
-
-    for _ in 0..max_iterations {
-        let next_player = if !simulated_extra_turns.is_empty() {
-            simulated_extra_turns.remove(0)
-        } else {
-            let current_index = game
-                .turn_store
-                .turn_order
-                .iter()
-                .position(|&p| p == simulated_active_player)
-                .unwrap_or(0);
-
-            let mut next_index = (current_index + 1) % game.turn_store.turn_order.len();
-            let start_index = next_index;
-
-            loop {
-                let candidate = game.turn_store.turn_order[next_index];
-                let is_in_game = game.player(candidate).is_some_and(|p| p.is_in_game());
-
-                if is_in_game {
-                    if simulated_skip_next_turn.remove(&candidate) {
-                        next_index = (next_index + 1) % game.turn_store.turn_order.len();
-                        if next_index == start_index {
-                            break;
-                        }
-                        continue;
-                    }
-                    break;
-                }
-
-                next_index = (next_index + 1) % game.turn_store.turn_order.len();
-                if next_index == start_index {
-                    break;
-                }
-            }
-
-            game.turn_store.turn_order[next_index]
-        };
-
-        simulated_turn_number = simulated_turn_number.saturating_add(1);
-        simulated_active_player = next_player;
-        if simulated_active_player == player {
-            return simulated_turn_number;
-        }
-    }
-
-    game.turn.turn_number.saturating_add(1)
+    game.next_turn_number_if_player_stayed(player)
 }
 
 fn grant_duration_source(
@@ -93,10 +31,11 @@ fn grant_duration_source(
             source_id: source,
             expires_end_of_turn: u32::MAX,
         },
-        GrantDuration::UntilYourNextTurnEnd => GrantSource::Effect {
-            source_id: source,
-            expires_end_of_turn: next_turn_number_for_player(game, player),
-        },
+        GrantDuration::UntilYourNextTurnEnd => GrantSource::until_player_next_turn_end(
+            source,
+            player,
+            next_turn_number_for_player(game, player),
+        ),
     }
 }
 
@@ -232,10 +171,7 @@ mod tests {
         assert_eq!(game.effect_store.grant_registry.grants.len(), 1);
         assert_eq!(
             game.effect_store.grant_registry.grants[0].source,
-            GrantSource::Effect {
-                source_id: source,
-                expires_end_of_turn: 3,
-            }
+            GrantSource::until_player_next_turn_end(source, alice, 3)
         );
 
         let flash = StaticAbility::flash();

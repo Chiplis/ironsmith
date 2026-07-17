@@ -2,6 +2,7 @@
 
 use std::any::Any;
 
+use crate::ability::Ability;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
@@ -26,6 +27,8 @@ pub struct AbilityActivatedEvent {
     pub x_value: Option<u32>,
     /// Last-known snapshot of the source at activation time.
     pub snapshot: Option<ObjectSnapshot>,
+    /// The specific ability that was activated, including continuous-effect grants.
+    pub activated_ability: Option<Ability>,
     /// One snapshot per mana unit spent to activate this ability. This is
     /// preserved separately from the ability source so intervening-if clauses
     /// can test mana-source provenance after the source has left play.
@@ -44,6 +47,7 @@ impl AbilityActivatedEvent {
             activation_cost_has_tap: false,
             x_value: None,
             snapshot: None,
+            activated_ability: None,
             mana_sources_spent: Vec::new(),
         }
     }
@@ -72,6 +76,12 @@ impl AbilityActivatedEvent {
     /// Attach a snapshot captured when the ability was activated.
     pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
         self.snapshot = snapshot;
+        self
+    }
+
+    /// Attach the effective activated ability captured at activation time.
+    pub fn with_activated_ability(mut self, ability: Option<Ability>) -> Self {
+        self.activated_ability = ability;
         self
     }
 

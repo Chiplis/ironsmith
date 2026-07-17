@@ -10,6 +10,13 @@ use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenKind, trim_le
 pub(crate) struct SearchRestrictionDurationShape {
     pub(crate) duration: Until,
     pub(crate) remainder: Vec<OwnedLexToken>,
+    pub(crate) placement: SearchRestrictionDurationPlacement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SearchRestrictionDurationPlacement {
+    Prefix,
+    Suffix,
 }
 
 fn as_long_as_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -87,6 +94,7 @@ pub(crate) fn parse_search_restriction_duration_shape_lexed(
         return Ok(Some(SearchRestrictionDurationShape {
             duration: until_from_leaf(parsed.duration),
             remainder: trim_lexed_commas(parsed.rest).to_vec(),
+            placement: SearchRestrictionDurationPlacement::Prefix,
         }));
     }
 
@@ -102,6 +110,7 @@ pub(crate) fn parse_search_restriction_duration_shape_lexed(
         return Ok(Some(SearchRestrictionDurationShape {
             duration: Until::YouStopControllingThis,
             remainder: trim_lexed_commas(after).to_vec(),
+            placement: SearchRestrictionDurationPlacement::Prefix,
         }));
     }
 
@@ -111,6 +120,7 @@ pub(crate) fn parse_search_restriction_duration_shape_lexed(
             return Ok(Some(SearchRestrictionDurationShape {
                 duration: until_from_leaf(parsed.duration),
                 remainder,
+                placement: SearchRestrictionDurationPlacement::Suffix,
             }));
         }
     }
@@ -130,6 +140,7 @@ pub(crate) fn parse_search_restriction_duration_shape_lexed(
             return Ok(Some(SearchRestrictionDurationShape {
                 duration,
                 remainder: trim_lexed_commas(&tokens[..start]).to_vec(),
+                placement: SearchRestrictionDurationPlacement::Suffix,
             }));
         }
     }
@@ -141,6 +152,7 @@ pub(crate) fn parse_search_restriction_duration_shape_lexed(
             return Ok(Some(SearchRestrictionDurationShape {
                 duration: Until::EndOfTurn,
                 remainder,
+                placement: SearchRestrictionDurationPlacement::Suffix,
             }));
         }
     }
@@ -165,6 +177,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(parsed.duration, Until::YouStopControllingThis);
+        assert_eq!(
+            parsed.placement,
+            SearchRestrictionDurationPlacement::Prefix
+        );
         assert!(!parsed.remainder.is_empty());
 
         let tokens = lex_line("you may play it this turn", 0).unwrap();
@@ -172,5 +188,38 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(parsed.duration, Until::EndOfTurn);
+        assert_eq!(
+            parsed.placement,
+            SearchRestrictionDurationPlacement::Suffix
+        );
+    }
+
+    #[test]
+    fn distinguishes_leading_and_trailing_animation_durations() {
+        let leading = lex_line(
+            "Until end of turn, target land becomes a 4/4 creature",
+            0,
+        )
+        .unwrap();
+        let trailing = lex_line(
+            "target artifact becomes an artifact creature for as long as this creature remains on the battlefield",
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parse_search_restriction_duration_shape_lexed(&leading)
+                .unwrap()
+                .unwrap()
+                .placement,
+            SearchRestrictionDurationPlacement::Prefix
+        );
+        assert_eq!(
+            parse_search_restriction_duration_shape_lexed(&trailing)
+                .unwrap()
+                .unwrap()
+                .placement,
+            SearchRestrictionDurationPlacement::Suffix
+        );
     }
 }

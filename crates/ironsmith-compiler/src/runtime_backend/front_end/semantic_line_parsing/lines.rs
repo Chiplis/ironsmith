@@ -12,6 +12,45 @@ use crate::runtime_backend::grammar::structure::{
 };
 use crate::{KeywordAction, Value};
 
+fn restore_copy_static_variant_source_display(
+    abilities: &mut [crate::cards::builders::StaticAbilityAst],
+    raw_line: &str,
+) {
+    let matching_count = abilities
+        .iter()
+        .filter_map(|ability| {
+            let crate::cards::builders::StaticAbilityAst::Static(ability) = ability else {
+                return None;
+            };
+            matches!(
+                &ability.payload,
+                crate::static_abilities::StaticAbilityPayload::CopyStaticAbilityVariants(_)
+            )
+            .then_some(())
+        })
+        .count();
+    if matching_count != 1 {
+        return;
+    }
+
+    let display = raw_line.trim();
+    if display.is_empty() {
+        return;
+    }
+    for ability in abilities {
+        let crate::cards::builders::StaticAbilityAst::Static(ability) = ability else {
+            continue;
+        };
+        let crate::static_abilities::StaticAbilityPayload::CopyStaticAbilityVariants(copy) =
+            &mut ability.payload
+        else {
+            continue;
+        };
+        copy.display = display.to_string();
+        ability.label = display.to_string();
+    }
+}
+
 fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToken]) -> bool {
     let start_idx =
         if super::super::grammar::trigger_surface::parse_trigger_intro_prefix_tokens(tokens)
@@ -143,6 +182,11 @@ fn parse_statement_to_chunks_impl(
         return Ok(vec![LineAst::Statement { effects }]);
     }
     if !parse_groups.is_empty() {
+        if sentences_form_anaphoric_damage_self_replacement(parse_groups) {
+            let group_tokens = join_sentences_with_period(parse_groups);
+            let effects = parse_effect_sentences_preserving_source_boundaries(&group_tokens)?;
+            return Ok(vec![LineAst::Statement { effects }]);
+        }
         if parse_groups.len() > 1
             && sentences_have_token_creation_followup_after_first(parse_groups)
         {
@@ -355,6 +399,34 @@ fn parse_villainous_choice_statement_chunk(
 }
 
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
+    let rendered = render_token_slice(tokens);
+    let normalized = rendered
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase();
+    if normalized.starts_with("once each turn, you may pay ")
+        && normalized.ends_with(" to reroll one or more dice you rolled.")
+    {
+        let pay_idx = tokens.iter().position(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| word.eq_ignore_ascii_case("pay"))
+        })?;
+        let mana_cost = super::super::grammar::leaf::parse_leaf_mana_cost_prefix_tokens(
+            &tokens[pay_idx + 1..],
+        )?
+        .cost;
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(StaticAbility::die_roll_reroll(
+                PlayerFilter::You,
+                mana_cost,
+                true,
+                rendered,
+            )),
+        ]));
+    }
+
     let spec = semantic_grammar::parse_die_roll_adjustment_tokens(tokens)?;
     let life_cost = spec.life_cost;
     let amount = spec.adjustment;
@@ -417,6 +489,20 @@ fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]
                 || facts.has_negation
         })
     })
+}
+
+fn sentences_form_anaphoric_damage_self_replacement(sentences: &[Vec<OwnedLexToken>]) -> bool {
+    let [_, replacement] = sentences else {
+        return false;
+    };
+    if !effect_grammar::followup_shapes::is_anaphoric_damage_self_replacement(replacement.as_ref())
+    {
+        return false;
+    }
+
+    let grouped = join_sentences_with_period(sentences);
+    parse_effect_sentences_preserving_source_boundaries(&grouped)
+        .is_ok_and(|effects| matches!(effects.as_slice(), [EffectAst::SelfReplacement { .. }]))
 }
 
 fn sentences_have_bound_characteristic_followup_after_first<S: AsRef<[OwnedLexToken]>>(
@@ -591,6 +677,12 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
         return true;
     }
 
+    if crate::runtime_backend::front_end::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(tokens)
+        .is_some()
+    {
+        return true;
+    }
+
     semantic_grammar::parse_statement_effect_preference_tokens(tokens).is_some()
 }
 
@@ -628,6 +720,7 @@ fn spell_cast_trigger_filter(trigger: &TriggerSpec) -> Option<(ObjectFilter, Pla
         TriggerSpec::SpellCast {
             filter: Some(filter),
             caster,
+            timing: None,
             during_turn: None,
             min_spells_this_turn: None,
             exact_spells_this_turn: None,
@@ -1281,6 +1374,7 @@ fn lower_spell_or_activated_ability_x_cost_trigger(
             Box::new(TriggerSpec::SpellCast {
                 filter: Some(spell_filter),
                 caster: PlayerFilter::You,
+                timing: None,
                 during_turn: None,
                 min_spells_this_turn: None,
                 exact_spells_this_turn: None,
@@ -1569,16 +1663,22 @@ fn lower_special_rewrite_triggered_oath(
         let creature_tag = TagKey::from("oath_creature");
         let mut creature_card_filter = ObjectFilter::creature();
         creature_card_filter.zone = None;
-        let effects = vec![EffectAst::Conditional {
-            predicate: PredicateAst::AnOpponentControlsMoreThanPlayer {
-                player: PlayerAst::That,
-                filter: ObjectFilter::creature(),
-            },
-            if_true: vec![EffectAst::MayByPlayer {
-                player: PlayerAst::That,
+        let effects = vec![
+            EffectAst::subject_verb_explicit_target_only_for_chooser(
+                TargetAst::Player(
+                    PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                        player: Box::new(PlayerFilter::Active),
+                        filter: Box::new(ObjectFilter::creature()),
+                    },
+                    Some(crate::TextSpan::synthetic()),
+                ),
+                PlayerAst::Active,
+            ),
+            EffectAst::MayByPlayer {
+                player: PlayerAst::Active,
                 effects: vec![
                     EffectAst::subject_verb_consult_top_of_library(
-                        PlayerAst::That,
+                        PlayerAst::Active,
                         crate::cards::builders::LibraryConsultModeAst::Reveal,
                         creature_card_filter,
                         crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
@@ -1611,9 +1711,8 @@ fn lower_special_rewrite_triggered_oath(
                         }],
                     },
                 ],
-            }],
-            if_false: Vec::new(),
-        }];
+            },
+        ];
         return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
             trigger.clone(),
             effects,
@@ -1823,6 +1922,13 @@ fn parse_static_line_impl(
             chosen_option,
         );
     }
+    if let Some(variant) = semantic_grammar::parse_partner_variant_label_tokens(&line.parse_tokens)
+    {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::partner_variant(variant.display).into()),
+            chosen_option,
+        );
+    }
     let special_shape = semantic_grammar::parse_static_special_line_tokens(parse_tokens);
     if matches!(
         special_shape,
@@ -1866,6 +1972,24 @@ fn parse_static_line_impl(
             .to_string();
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::draft_rule_text(display).into()),
+            chosen_option,
+        );
+    }
+    if matches!(
+        special_shape,
+        Some(semantic_grammar::StaticSpecialLineShape::HiddenAgenda)
+    ) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::hidden_agenda().into()),
+            chosen_option,
+        );
+    }
+    if matches!(
+        special_shape,
+        Some(semantic_grammar::StaticSpecialLineShape::DoubleAgenda)
+    ) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::double_agenda().into()),
             chosen_option,
         );
     }
@@ -2005,7 +2129,8 @@ fn parse_static_line_impl(
         return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
     }
     match parse_static_ability_ast_line_lexed(&lexed) {
-        Ok(Some(abilities)) => {
+        Ok(Some(mut abilities)) => {
+            restore_copy_static_variant_source_display(&mut abilities, &line.info.raw_line);
             return wrap_chosen_option_static_chunk(
                 LineAst::StaticAbilities(abilities),
                 chosen_option,
@@ -2408,6 +2533,7 @@ fn standard_gift_create_token_effect(
             count: crate::effect::Value::Fixed(1),
             dynamic_power_toughness: None,
             player: PlayerAst::Chosen,
+            actor_surface_explicit: false,
             attached_to: None,
             tapped,
             attacking: false,
@@ -2700,9 +2826,15 @@ pub(crate) fn try_parse_optional_behold_additional_cost(
         return Ok(None);
     }
 
-    Ok(Some(LineAst::OptionalCost(
-        OptionalCost::custom(line.info.raw_line.trim(), total_cost).into(),
-    )))
+    let mut optional_cost = OptionalCost::custom(line.info.raw_line.trim(), total_cost);
+    if let Some(subtype) = shape.behold_subtype {
+        optional_cost.reference = crate::cost::OptionalCostRef::with_discriminator(
+            crate::cost::OptionalCostKind::Behold,
+            subtype.to_string(),
+        );
+    }
+
+    Ok(Some(LineAst::OptionalCost(optional_cost.into())))
 }
 
 pub(crate) fn rewrite_modal_to_parsed_item(
@@ -2729,6 +2861,7 @@ pub(crate) fn rewrite_modal_to_parsed_item(
             info: mode.info,
             description: mode.text,
             point_cost: mode.point_cost,
+            additional_mana_cost: mode.additional_mana_cost,
             effects_ast,
         });
     }

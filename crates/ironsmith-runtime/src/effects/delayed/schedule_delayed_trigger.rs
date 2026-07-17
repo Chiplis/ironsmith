@@ -22,9 +22,12 @@ pub struct ScheduleDelayedTriggerEffect {
     pub effects: ResolutionProgram,
     pub one_shot: bool,
     pub start_next_turn: bool,
+    pub duration: ironsmith_core::DelayedTriggerDuration,
     pub until_end_of_turn: bool,
     pub until_end_of_combat: bool,
     pub watch_ability_source: bool,
+    pub watch_all_object_targets: bool,
+    pub either_of_watched_objects: bool,
     pub target_objects: Vec<crate::ids::ObjectId>,
     pub target_tag: Option<TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -44,9 +47,12 @@ impl ScheduleDelayedTriggerEffect {
             effects: effects.into(),
             one_shot,
             start_next_turn: false,
+            duration: ironsmith_core::DelayedTriggerDuration::Forever,
             until_end_of_turn: false,
             until_end_of_combat: false,
             watch_ability_source: false,
+            watch_all_object_targets: false,
+            either_of_watched_objects: false,
             target_objects,
             target_tag: None,
             target_filter: None,
@@ -66,9 +72,12 @@ impl ScheduleDelayedTriggerEffect {
             effects: effects.into(),
             one_shot,
             start_next_turn: false,
+            duration: ironsmith_core::DelayedTriggerDuration::Forever,
             until_end_of_turn: false,
             until_end_of_combat: false,
             watch_ability_source: false,
+            watch_all_object_targets: false,
+            either_of_watched_objects: false,
             target_objects: Vec::new(),
             target_tag: Some(target_tag.into()),
             target_filter: None,
@@ -87,18 +96,38 @@ impl ScheduleDelayedTriggerEffect {
     }
 
     pub fn until_end_of_turn(mut self) -> Self {
+        self.duration = ironsmith_core::DelayedTriggerDuration::EndOfTurn;
         self.until_end_of_turn = true;
+        self.until_end_of_combat = false;
         self
     }
 
     pub fn until_end_of_combat(mut self) -> Self {
+        self.duration = ironsmith_core::DelayedTriggerDuration::EndOfCombat;
         self.until_end_of_combat = true;
         self.until_end_of_turn = false;
         self
     }
 
+    pub fn until_controller_next_turn(mut self) -> Self {
+        self.duration = ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn;
+        self.until_end_of_turn = false;
+        self.until_end_of_combat = false;
+        self
+    }
+
+    pub fn with_either_of_watched_objects_surface(mut self) -> Self {
+        self.either_of_watched_objects = true;
+        self
+    }
+
     pub fn watch_ability_source(mut self) -> Self {
         self.watch_ability_source = true;
+        self
+    }
+
+    pub fn watch_all_object_targets(mut self) -> Self {
+        self.watch_all_object_targets = true;
         self
     }
 }
@@ -178,6 +207,11 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 } else {
                     None
                 })
+                .with_expires_before_controller_turn_after(
+                    (self.duration
+                        == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn)
+                        .then_some(game.turn.turn_number),
+                )
                 .with_expires_at_end_of_combat(self.until_end_of_combat)
                 .with_tagged_objects(delayed_tagged_objects);
                 queue_delayed_from_template(
@@ -212,15 +246,46 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         } else {
             None
         })
+        .with_expires_before_controller_turn_after(
+            (self.duration == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn)
+                .then_some(game.turn.turn_number),
+        )
         .with_expires_at_end_of_combat(self.until_end_of_combat)
         .with_tagged_objects(tagged_objects);
+        let mut watched_targets = if self.watch_all_object_targets {
+            ctx.targets
+                .iter()
+                .filter_map(|target| match target {
+                    crate::effects::ResolvedTarget::Object(object_id) => Some(*object_id),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        } else {
+            self.target_objects.clone()
+        };
+        if self.watch_all_object_targets
+            && let Some(filter) = &self.target_filter
+        {
+            let filter_ctx = ctx.filter_context(game);
+            watched_targets.retain(|object_id| {
+                game.object(*object_id)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+            });
+        }
+        watched_targets.sort_unstable();
+        watched_targets.dedup();
+
         queue_delayed_from_template(
             game,
-            DelayedWatcherIdentity::combined(if self.watch_ability_source {
-                vec![ability_source]
+            if self.watch_all_object_targets {
+                DelayedWatcherIdentity::per_object(watched_targets)
             } else {
-                self.target_objects.clone()
-            }),
+                DelayedWatcherIdentity::combined(if self.watch_ability_source {
+                    vec![ability_source]
+                } else {
+                    watched_targets
+                })
+            },
             delayed,
         );
 
@@ -378,6 +443,90 @@ mod tests {
             1,
             "scheduled land-play trigger should fire for its controller"
         );
+    }
+
+    #[test]
+    fn repeating_tagged_trigger_watches_only_the_captured_set_until_controllers_next_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = alice;
+
+        let card = CardBuilder::new(CardId::from_raw(996), "Duration Watcher")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let chosen_a = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let chosen_b = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let decoy = game.create_object_from_card(&card, alice, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_targets(vec![
+            crate::effects::ResolvedTarget::Object(chosen_a),
+            crate::effects::ResolvedTarget::Object(chosen_b),
+        ]);
+
+        let effect = ScheduleDelayedTriggerEffect::new(
+            Trigger::deals_combat_damage(ObjectFilter::source()),
+            vec![Effect::draw(1)],
+            false,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .with_target_filter(ObjectFilter::creature())
+        .watch_all_object_targets()
+        .until_controller_next_turn();
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("duration-scoped trigger should schedule");
+        assert_eq!(
+            game.effect_store.delayed_triggers.len(),
+            2,
+            "one repeating registration should be captured per watched object"
+        );
+
+        let combat_damage = |source| {
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::DamageEvent::with_cause(
+                    source,
+                    crate::events::DamageTarget::Player(bob),
+                    1,
+                    true,
+                    crate::events::cause::EventCause::combat_damage(source),
+                ),
+                crate::provenance::ProvNodeId::default(),
+            )
+        };
+
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &combat_damage(decoy)).is_empty(),
+            "an object outside the captured set must not fire the trigger"
+        );
+        assert_eq!(
+            crate::triggers::check_delayed_triggers(&mut game, &combat_damage(chosen_a)).len(),
+            1
+        );
+        assert_eq!(
+            crate::triggers::check_delayed_triggers(&mut game, &combat_damage(chosen_a)).len(),
+            1,
+            "the registration must repeat"
+        );
+
+        game.turn.turn_number += 1;
+        game.turn.active_player = bob;
+        assert_eq!(
+            crate::triggers::check_delayed_triggers(&mut game, &combat_damage(chosen_b)).len(),
+            1,
+            "the registration remains active through intervening turns"
+        );
+
+        game.turn.turn_number += 1;
+        game.turn.active_player = alice;
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &combat_damage(chosen_a)).is_empty(),
+            "the registration expires before events on its controller's next turn"
+        );
+        assert!(game.effect_store.delayed_triggers.is_empty());
     }
 
     #[test]

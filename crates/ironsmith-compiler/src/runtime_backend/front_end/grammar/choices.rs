@@ -45,10 +45,14 @@ pub(crate) struct ChoiceClauseSeparatorSpan {
     pub(crate) end: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ChoiceObjectCountSource {
     CardsDiscardedThisWay,
     ThatMany,
+    /// A trailing authored count such as `for each card in their graveyard`.
+    /// Keep the words typed at the grammar boundary; semantic lowering turns
+    /// them into the same reusable `Value` used by every other for-each count.
+    ForEach(Vec<String>),
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -56,6 +60,7 @@ pub(crate) struct ChoiceObjectReferenceFacts {
     pub(crate) references_it: bool,
     pub(crate) references_container_it: bool,
     pub(crate) explicit_container_reference: bool,
+    pub(crate) excludes_chosen_this_way: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,8 +161,9 @@ pub(crate) fn parse_choice_object_clause_tokens(
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();
-    let mut count_source = strip_discarded_this_way_count_suffix(&mut words);
+    let mut count_source = strip_choice_count_suffix(&mut words);
     let mut references = ChoiceObjectReferenceFacts::default();
+    references.excludes_chosen_this_way = strip_chosen_this_way_exclusion_suffix(&mut words);
     while let Some(suffix) = parse_container_reference_suffix(&words) {
         let removed = match suffix {
             ContainerReferenceSuffix::FromThereIn => 3,
@@ -195,11 +201,21 @@ pub(crate) fn parse_choice_object_clause_tokens(
     if parse_aura_eligibility_suffix(&words) {
         words.truncate(words.len().saturating_sub(4));
     }
-    if matches!(
-        count_source,
-        Some(ChoiceObjectCountSource::CardsDiscardedThisWay)
-    ) {
-        count = ChoiceCount::dynamic_x();
+    match &count_source {
+        Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => {
+            count = ChoiceCount::dynamic_x();
+        }
+        Some(ChoiceObjectCountSource::ForEach(_)) if count.is_single() => {
+            count = ChoiceCount::dynamic_x();
+        }
+        Some(ChoiceObjectCountSource::ForEach(count_words)) => {
+            // `two objects for each ...` is multiplicative, which is not the
+            // same cardinality as a single dynamic-X choice. Leave that shape
+            // to the repeat-effect family instead of silently weakening it.
+            words.extend(count_words.iter().cloned());
+            count_source = None;
+        }
+        Some(ChoiceObjectCountSource::ThatMany) | None => {}
     }
     if words.is_empty() {
         return Err(ChoiceObjectClauseSyntaxError::MissingFilter);
@@ -404,6 +420,43 @@ fn strip_discarded_this_way_count_suffix(
         .ok()?;
     words.truncate(words.len().saturating_sub(6));
     Some(ChoiceObjectCountSource::CardsDiscardedThisWay)
+}
+
+fn strip_choice_count_suffix(words: &mut Vec<String>) -> Option<ChoiceObjectCountSource> {
+    if let Some(source) = strip_discarded_this_way_count_suffix(words) {
+        return Some(source);
+    }
+
+    let count_start = words
+        .windows(2)
+        .rposition(|pair| pair[0] == "for" && pair[1] == "each")?;
+    if count_start == 0 || count_start + 2 >= words.len() {
+        return None;
+    }
+    let count_words = words[count_start..].to_vec();
+    words.truncate(count_start);
+    Some(ChoiceObjectCountSource::ForEach(count_words))
+}
+
+fn strip_chosen_this_way_exclusion_suffix(words: &mut Vec<String>) -> bool {
+    const SUFFIXES: &[&[&str]] = &[
+        &["that", "hasnt", "been", "chosen", "this", "way"],
+        &["that", "hasn't", "been", "chosen", "this", "way"],
+        &["that", "has", "not", "been", "chosen", "this", "way"],
+        &["that", "wasnt", "chosen", "this", "way"],
+        &["that", "wasn't", "chosen", "this", "way"],
+        &["that", "was", "not", "chosen", "this", "way"],
+        &["not", "chosen", "this", "way"],
+    ];
+    let Some(suffix) = SUFFIXES.iter().find(|suffix| {
+        words
+            .get(words.len().saturating_sub(suffix.len())..)
+            .is_some_and(|tail| tail.iter().map(String::as_str).eq(suffix.iter().copied()))
+    }) else {
+        return false;
+    };
+    words.truncate(words.len().saturating_sub(suffix.len()));
+    true
 }
 
 fn parse_container_reference_suffix(words: &[String]) -> Option<ContainerReferenceSuffix> {
@@ -694,6 +747,52 @@ mod tests {
             parsed.filter_words,
             ["target", "creatures", "you", "control"]
         );
+    }
+
+    #[test]
+    fn choice_object_shape_preserves_for_each_count_basis() {
+        let tokens = lex_line("Choose a permanent for each card in their graveyard.", 0).unwrap();
+        let tokens = &tokens[..tokens.len() - 1];
+
+        let ChoiceObjectClauseKind::Object(parsed) =
+            parse_choice_object_clause_tokens(tokens).unwrap().unwrap()
+        else {
+            panic!("expected object choice");
+        };
+        assert_eq!(parsed.filter_words, ["permanent"]);
+        assert_eq!(parsed.count, ChoiceCount::dynamic_x());
+        assert_eq!(
+            parsed.count_source,
+            Some(ChoiceObjectCountSource::ForEach(vec![
+                "for".to_string(),
+                "each".to_string(),
+                "card".to_string(),
+                "in".to_string(),
+                "their".to_string(),
+                "graveyard".to_string(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn choice_object_shape_preserves_chosen_set_exclusion() {
+        let tokens = lex_line(
+            "Choose a nonland permanent they don't control that hasn't been chosen this way.",
+            0,
+        )
+        .unwrap();
+        let tokens = &tokens[..tokens.len() - 1];
+
+        let ChoiceObjectClauseKind::Object(parsed) =
+            parse_choice_object_clause_tokens(tokens).unwrap().unwrap()
+        else {
+            panic!("expected object choice");
+        };
+        assert_eq!(
+            parsed.filter_words,
+            ["nonland", "permanent", "they", "dont", "control"]
+        );
+        assert!(parsed.references.excludes_chosen_this_way);
     }
 
     #[test]

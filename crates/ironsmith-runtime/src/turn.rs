@@ -7,7 +7,9 @@
 
 use crate::DecisionMaker;
 use crate::filter::ObjectFilterExt as _;
-use crate::game_state::{GameState, Phase, Step};
+use crate::game_state::{
+    AddedStepPlacement, GameState, Phase, ScheduledStep, Step, TurnScheduleDestination,
+};
 use crate::ids::PlayerId;
 
 /// Errors that can occur during turn progression.
@@ -145,21 +147,15 @@ pub fn advance_step(game: &mut GameState) -> Result<(), TurnError> {
         return Err(TurnError::NoPlayersRemaining);
     }
 
-    let current_phase = game.turn.phase;
-    let current_step = game.turn.step;
-
-    // Try to advance to next step in current phase
-    if let Some(next) = next_step(current_phase, current_step) {
-        if next != Step::Upkeep {
-            game.clear_forecast_revealed_hand_cards();
-        }
-        game.turn.step = Some(next);
-        game.turn.priority_player = Some(game.turn.active_player);
-        return Ok(());
+    let phase = game.turn.phase;
+    let Some(step) = game.turn.step else {
+        return advance_phase(game);
+    };
+    if let Some(next) = next_step(phase, Some(step)) {
+        legacy_finish_step(game, step, TurnScheduleDestination::Step(next))
+    } else {
+        legacy_finish_step_and_phase(game, step, phase, destination_after_phase(phase))
     }
-
-    // No more steps in this phase - advance to next phase
-    advance_phase(game)
 }
 
 /// Advances the game to the next phase.
@@ -169,70 +165,258 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
         return Err(TurnError::NoPlayersRemaining);
     }
 
-    let current_phase = game.turn.phase;
-    let leaving_combat = matches!(current_phase, Phase::Combat);
+    let phase = game.turn.phase;
+    legacy_finish_phase(game, phase, destination_after_phase(phase))
+}
 
-    if let Some(mut next) = if !game.turn_store.additional_phases.is_empty() {
-        Some(game.turn_store.additional_phases.remove(0))
-    } else if game.turn_store.additional_phase_continuation.is_some() {
-        game.turn_store.additional_phase_continuation.take()
-    } else {
-        next_phase(current_phase)
-    } {
-        if matches!(next, Phase::FirstMain | Phase::NextMain)
-            && game
+fn destination_after_phase(phase: Phase) -> TurnScheduleDestination {
+    next_phase(phase)
+        .map(TurnScheduleDestination::Phase)
+        .unwrap_or(TurnScheduleDestination::Complete)
+}
+
+fn legacy_prepend_scheduled_steps(game: &mut GameState, mut steps: Vec<ScheduledStep>) {
+    if steps.is_empty() {
+        return;
+    }
+    steps.append(&mut game.turn_store.pending_added_steps);
+    game.turn_store.pending_added_steps = steps;
+}
+
+fn legacy_activate_next_scheduled_step(game: &mut GameState) -> Result<(), TurnError> {
+    loop {
+        let Some(next) = game.turn_store.pending_added_steps.first().copied() else {
+            game.turn_store.active_added_step = None;
+            let continuation = game
                 .turn_store
-                .skip_current_turn_main_phases
-                .contains(&game.turn.active_player)
-        {
-            next = if matches!(next, Phase::FirstMain) {
-                Phase::Combat
-            } else {
-                Phase::Ending
-            };
+                .added_step_continuation
+                .take()
+                .unwrap_or(TurnScheduleDestination::Complete);
+            return legacy_resolve_schedule_destination(game, continuation);
+        };
+        game.turn_store.pending_added_steps.remove(0);
+
+        let before = game.take_added_steps(AddedStepPlacement::BeforeStep(next.step));
+        if !before.is_empty() {
+            let mut sequence = before;
+            sequence.push(next);
+            legacy_prepend_scheduled_steps(game, sequence);
+            continue;
         }
-        if matches!(next, Phase::Combat)
-            && game
-                .turn_store
-                .skip_current_turn_combat_phases
-                .contains(&game.turn.active_player)
-        {
-            next = Phase::NextMain;
+
+        game.turn_store.active_added_step = Some(next);
+        return legacy_enter_step(game, next.step);
+    }
+}
+
+fn legacy_start_scheduled_steps(
+    game: &mut GameState,
+    steps: Vec<ScheduledStep>,
+    continuation: TurnScheduleDestination,
+) -> Result<(), TurnError> {
+    game.turn_store.pending_added_steps = steps;
+    game.turn_store.active_added_step = None;
+    game.turn_store.added_step_continuation = Some(continuation);
+    legacy_activate_next_scheduled_step(game)
+}
+
+fn legacy_resolve_schedule_destination(
+    game: &mut GameState,
+    destination: TurnScheduleDestination,
+) -> Result<(), TurnError> {
+    if matches!(destination, TurnScheduleDestination::ResumePhaseSchedule) {
+        return legacy_resume_phase_schedule(game);
+    }
+    let first_step = match destination {
+        TurnScheduleDestination::Step(step) => Some(step),
+        TurnScheduleDestination::Phase(phase) => first_step_of_phase(phase),
+        TurnScheduleDestination::CombatDamageFirstStrike
+        | TurnScheduleDestination::CombatDamageRegular => Some(Step::CombatDamage),
+        _ => None,
+    };
+    if let Some(step) = first_step {
+        let before = game.take_added_steps(AddedStepPlacement::BeforeStep(step));
+        if !before.is_empty() {
+            return legacy_start_scheduled_steps(game, before, destination);
         }
-        if matches!(next, Phase::Combat)
-            && game
-                .turn_store
-                .skip_next_combat_phases
-                .remove(&game.turn.active_player)
-        {
-            next = Phase::NextMain;
+    }
+
+    match destination {
+        TurnScheduleDestination::Step(step) => legacy_enter_step(game, step),
+        TurnScheduleDestination::CombatDamageFirstStrike
+        | TurnScheduleDestination::CombatDamageRegular => {
+            legacy_enter_step(game, Step::CombatDamage)
         }
-        if leaving_combat {
-            game.cleanup_restrictions_end_of_combat();
-            game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
+        TurnScheduleDestination::Phase(phase) => legacy_enter_phase(game, phase),
+        TurnScheduleDestination::Complete => {
+            game.next_turn();
+            Ok(())
         }
+        TurnScheduleDestination::ResumePhaseSchedule => unreachable!(),
+    }
+}
+
+fn legacy_enter_step(game: &mut GameState, step: Step) -> Result<(), TurnError> {
+    if step != Step::Upkeep {
         game.clear_forecast_revealed_hand_cards();
-        game.turn.phase = next;
-        if matches!(next, Phase::Combat) {
-            game.mark_combat_phase_started();
+    }
+    game.turn.phase = step.containing_phase();
+    game.turn.step = Some(step);
+    if game.consume_step_skip(game.turn.active_player, step) {
+        let phase = game.turn.phase;
+        let ends_phase = game
+            .turn_store
+            .active_added_step
+            .is_some_and(|scheduled| scheduled.isolated_phase)
+            || next_step(phase, Some(step)).is_none();
+        if ends_phase {
+            legacy_finish_step_and_phase(game, step, phase, destination_after_phase(phase))
+        } else {
+            let next = next_step(phase, Some(step)).expect("nonfinal step has a successor");
+            legacy_finish_step(game, step, TurnScheduleDestination::Step(next))
         }
-        game.turn.step = first_step_of_phase(next);
-        game.turn.priority_player = Some(game.turn.active_player);
-        Ok(())
     } else {
-        if leaving_combat {
-            game.cleanup_restrictions_end_of_combat();
-            game.cleanup_combat_damage_assignment_suppressions_end_of_combat();
-        }
-        // End of turn - advance to next player
-        game.next_turn();
+        game.reset_priority_for_new_window();
         Ok(())
     }
 }
 
+fn legacy_enter_phase(game: &mut GameState, phase: Phase) -> Result<(), TurnError> {
+    let active = game.turn.active_player;
+    let skip_main = matches!(phase, Phase::FirstMain | Phase::NextMain)
+        && game
+            .turn_store
+            .skip_current_turn_main_phases
+            .contains(&active);
+    let skip_combat = matches!(phase, Phase::Combat)
+        && (game
+            .turn_store
+            .skip_current_turn_combat_phases
+            .contains(&active)
+            || game.turn_store.skip_next_combat_phases.remove(&active));
+    game.clear_forecast_revealed_hand_cards();
+    game.turn.phase = phase;
+    game.turn.step = first_step_of_phase(phase);
+    if skip_main || skip_combat {
+        return legacy_finish_phase(game, phase, destination_after_phase(phase));
+    }
+    if matches!(phase, Phase::Combat) {
+        game.mark_combat_phase_started();
+    }
+    if let Some(step) = game.turn.step
+        && game.consume_step_skip(active, step)
+    {
+        let ends_phase = next_step(phase, Some(step)).is_none();
+        if ends_phase {
+            return legacy_finish_step_and_phase(game, step, phase, destination_after_phase(phase));
+        }
+        let next = next_step(phase, Some(step)).expect("nonfinal step has a successor");
+        return legacy_finish_step(game, step, TurnScheduleDestination::Step(next));
+    }
+    game.reset_priority_for_new_window();
+    Ok(())
+}
+
+fn legacy_prepare_phase_schedule(game: &mut GameState, normal_next: TurnScheduleDestination) {
+    if game.turn_store.phase_schedule_continuation.is_none() {
+        game.turn_store.phase_schedule_continuation = Some(
+            game.turn_store
+                .additional_phase_continuation
+                .take()
+                .map(TurnScheduleDestination::Phase)
+                .unwrap_or(normal_next),
+        );
+    }
+}
+
+fn legacy_resume_phase_schedule(game: &mut GameState) -> Result<(), TurnError> {
+    if let Some((phase, only_step)) = game.pop_additional_phase() {
+        if let Some(step) = only_step {
+            return legacy_start_scheduled_steps(
+                game,
+                vec![ScheduledStep {
+                    phase,
+                    step,
+                    isolated_phase: true,
+                }],
+                TurnScheduleDestination::ResumePhaseSchedule,
+            );
+        }
+        return legacy_resolve_schedule_destination(game, TurnScheduleDestination::Phase(phase));
+    }
+    let continuation = game
+        .turn_store
+        .phase_schedule_continuation
+        .take()
+        .unwrap_or(TurnScheduleDestination::Complete);
+    legacy_resolve_schedule_destination(game, continuation)
+}
+
+fn legacy_finish_step(
+    game: &mut GameState,
+    step: Step,
+    normal_next: TurnScheduleDestination,
+) -> Result<(), TurnError> {
+    let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
+    let active = game.turn_store.active_added_step.take();
+    if let Some(scheduled) = active {
+        if scheduled.isolated_phase {
+            game.queue_added_step_phases_after(scheduled.phase);
+        }
+        legacy_prepend_scheduled_steps(game, additions);
+        return legacy_activate_next_scheduled_step(game);
+    }
+    if additions.is_empty() {
+        legacy_resolve_schedule_destination(game, normal_next)
+    } else {
+        legacy_start_scheduled_steps(game, additions, normal_next)
+    }
+}
+
+fn legacy_finish_step_and_phase(
+    game: &mut GameState,
+    step: Step,
+    phase: Phase,
+    normal_next: TurnScheduleDestination,
+) -> Result<(), TurnError> {
+    let additions = game.take_added_steps(AddedStepPlacement::AfterStep(step));
+    let active = game.turn_store.active_added_step.take();
+    if active.is_none() || active.is_some_and(|scheduled| scheduled.isolated_phase) {
+        game.queue_added_step_phases_after(phase);
+    }
+    if active.is_some() {
+        legacy_prepend_scheduled_steps(game, additions);
+        return legacy_activate_next_scheduled_step(game);
+    }
+
+    legacy_prepare_phase_schedule(game, normal_next);
+    if additions.is_empty() {
+        legacy_resume_phase_schedule(game)
+    } else {
+        legacy_start_scheduled_steps(
+            game,
+            additions,
+            TurnScheduleDestination::ResumePhaseSchedule,
+        )
+    }
+}
+
+fn legacy_finish_phase(
+    game: &mut GameState,
+    phase: Phase,
+    normal_next: TurnScheduleDestination,
+) -> Result<(), TurnError> {
+    if matches!(phase, Phase::Combat) {
+        game.cleanup_effects_end_of_combat();
+    }
+    game.queue_added_step_phases_after(phase);
+    legacy_prepare_phase_schedule(game, normal_next);
+    legacy_resume_phase_schedule(game)
+}
+
 /// Returns true if the given player currently has priority.
 pub fn has_priority(game: &GameState, player: PlayerId) -> bool {
-    game.turn.priority_player == Some(player)
+    game.team_has_priority(player)
 }
 
 /// Returns the current priority holder, if any.
@@ -243,6 +427,11 @@ pub fn priority_holder(game: &GameState) -> Option<PlayerId> {
 /// Passes priority for the current player.
 /// Returns the result indicating what should happen next.
 pub fn pass_priority(game: &mut GameState, tracker: &mut PriorityTracker) -> PriorityResult {
+    tracker.set_players_in_game(if game.grand_melee().is_some() {
+        game.priority_players_for_current_turn().len()
+    } else {
+        game.teams_in_game()
+    });
     if tracker.record_pass() {
         // All players have passed
         if game.stack_is_empty() {
@@ -260,7 +449,7 @@ pub fn pass_priority(game: &mut GameState, tracker: &mut PriorityTracker) -> Pri
 /// Resets priority to the active player (called after a spell/ability is put on stack).
 pub fn reset_priority(game: &mut GameState, tracker: &mut PriorityTracker) {
     tracker.reset();
-    game.turn.priority_player = Some(game.turn.active_player);
+    game.reset_priority_for_new_window();
 }
 
 /// Resets pass tracking and returns priority to the player who just took an action.
@@ -283,6 +472,16 @@ fn advance_priority_to_next_player(game: &mut GameState) {
         Some(p) => p,
         None => return,
     };
+
+    if game.grand_melee().is_some() {
+        game.turn.priority_player = game.next_grand_melee_priority_player_after(current);
+        return;
+    }
+
+    if let Some(next_team) = game.next_priority_team_representative_after(current) {
+        game.turn.priority_player = Some(next_team);
+        return;
+    }
 
     let current_index = game
         .turn_store
@@ -329,6 +528,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     use crate::static_abilities::StaticAbilityId;
 
     let active_player = game.turn.active_player;
+    let active_players = game.turn_players();
     let had_restriction_effects = !game.effect_store.restriction_effects.is_empty();
     // The untap gate below reads the cached continuous-effect snapshot; on a
     // dirty state that snapshot can predate freshly generated static effects
@@ -348,11 +548,15 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .iter()
         .copied()
         .filter(|id| !game.is_phased_out(*id))
-        .filter(|id| game.current_controller(*id) == Some(active_player))
+        .filter(|id| {
+            game.current_controller(*id)
+                .is_some_and(|controller| active_players.contains(&controller))
+        })
         .filter(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Phasing))
         .collect::<Vec<_>>();
-    let phase_in = game
-        .directly_phased_out_under(active_player)
+    let phase_in = active_players
+        .iter()
+        .flat_map(|player| game.directly_phased_out_under(*player))
         .collect::<Vec<_>>();
     for id in phase_out {
         game.phase_out(id);
@@ -363,16 +567,16 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     // Get all permanents controlled by active player, plus any permanents that
     // other players untap during this untap step (Seedborn Muse-style effects).
-    let mut permanents: std::collections::HashSet<_> = game
-        .permanents_controlled_by(active_player)
-        .into_iter()
+    let mut permanents: std::collections::HashSet<_> = active_players
+        .iter()
+        .flat_map(|player| game.permanents_controlled_by(*player))
         .collect();
     if may_have_untap_static_abilities {
         for source_id in game.battlefield.clone() {
             let Some(source) = game.object(source_id) else {
                 continue;
             };
-            if game.controller_of(source) == active_player {
+            if active_players.contains(&game.controller_of(source)) {
                 continue;
             }
             let source_controller = game.controller_of(source);
@@ -411,21 +615,26 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
                 let obj = game.object(id)?;
                 let chars = game.current_characteristics(id)?;
                 // Check if the permanent has "doesn't untap during your untap step"
-                let has_doesnt_untap = game.controller_of(obj) == active_player
+                let controller = game.controller_of(obj);
+                let controlled_by_active = active_players.contains(&controller);
+                let has_doesnt_untap = controlled_by_active
                     && chars
                         .static_abilities
                         .iter()
                         .any(|static_ability| static_ability.affects_untap());
-                let has_optional_choice = game.controller_of(obj) == active_player
+                let has_optional_choice = controlled_by_active
                     && chars.static_abilities.iter().any(|static_ability| {
                         static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
                     });
-                let blocked_by_restriction = !game.can_untap_during_step(id, active_player);
+                let untap_player = controlled_by_active
+                    .then_some(controller)
+                    .unwrap_or(active_player);
+                let blocked_by_restriction = !game.can_untap_during_step(id, untap_player);
                 if has_doesnt_untap || blocked_by_restriction {
                     None
                 } else if has_optional_choice && game.is_tapped(id) {
                     let choice_ctx = BooleanContext::new(
-                        active_player,
+                        controller,
                         Some(id),
                         format!("untap {} during your untap step", obj.name),
                     );
@@ -448,14 +657,17 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         if should_untap.contains(&id) {
             game.untap(id);
         }
-        if game.current_controller(id) == Some(active_player) {
+        if game
+            .current_controller(id)
+            .is_some_and(|controller| active_players.contains(&controller))
+        {
             game.remove_summoning_sickness(id);
         }
     }
 
     for effect in &mut game.effect_store.restriction_effects {
         if matches!(effect.duration, Until::ControllersNextUntapStep)
-            && effect.controller == active_player
+            && active_players.contains(&effect.controller)
         {
             effect.consumed_next_untap = true;
         }
@@ -550,22 +762,53 @@ pub fn execute_draw_step_with(
     game: &mut GameState,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Vec<crate::triggers::TriggerEvent> {
+    let active_players = game.turn_players();
+    if active_players.is_empty() {
+        game.reset_priority_for_new_window();
+        return Vec::new();
+    }
+    if active_players
+        .iter()
+        .any(|player| game.player_skips_draw_step(*player))
+        || game.consume_step_skip(game.turn.active_player, Step::Draw)
+    {
+        game.reset_priority_for_new_window();
+        return Vec::new();
+    }
+
+    let mut events = Vec::new();
+    for player in active_players {
+        events.extend(execute_draw_step_for_player_with(
+            game,
+            player,
+            decision_maker,
+        ));
+    }
+    game.turn_store.tracked_draw_step_player = None;
+    game.turn_store.cards_drawn_this_draw_step = 0;
+    game.reset_priority_for_new_window();
+    events
+}
+
+fn execute_draw_step_for_player_with(
+    game: &mut GameState,
+    active_player: PlayerId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Vec<crate::triggers::TriggerEvent> {
     use crate::events::other::CardsDrawnEvent;
     use crate::triggers::TriggerEvent;
 
-    let active_player = game.turn.active_player;
+    if !game
+        .player(active_player)
+        .is_some_and(|player| player.is_in_game())
+    {
+        game.reset_priority_for_new_window();
+        return Vec::new();
+    }
     let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
         game.draw_step_context_for_player(active_player);
-    if game.player_skips_draw_step(active_player) {
-        game.turn.priority_player = Some(active_player);
-        return Vec::new();
-    }
-    if game.turn_store.skip_next_draw_step.remove(&active_player) {
-        game.turn.priority_player = Some(active_player);
-        return Vec::new();
-    }
     if game.should_skip_first_turn_draw(active_player) {
-        game.turn.priority_player = Some(active_player);
+        game.reset_priority_for_new_window();
         return Vec::new();
     }
 
@@ -629,9 +872,6 @@ pub fn execute_draw_step_with(
         }
     }
 
-    // Priority is granted during draw step (after draw)
-    game.turn.priority_player = Some(active_player);
-
     draw_events
 }
 
@@ -642,9 +882,10 @@ pub fn get_cleanup_discard_spec(
 ) -> Option<(PlayerId, crate::decisions::specs::DiscardToHandSizeSpec)> {
     use crate::decisions::specs::DiscardToHandSizeSpec;
 
-    let active_player = game.turn.active_player;
-
-    if let Some(player) = game.player(active_player) {
+    for active_player in game.turn_players() {
+        let Some(player) = game.player(active_player) else {
+            continue;
+        };
         let max_hand = player.max_hand_size.max(0) as usize;
         let excess = player.hand.len().saturating_sub(max_hand);
 
@@ -672,7 +913,11 @@ pub fn apply_cleanup_discard(
 
     let mut madness_cards = Vec::new();
     let mut successful_discards = Vec::new();
-    let active_player = game.turn.active_player;
+    let active_player = cards_to_discard
+        .first()
+        .and_then(|card| game.object(*card))
+        .map(|card| card.owner)
+        .unwrap_or(game.turn.active_player);
 
     // All discards go through execute_discard which handles:
     // - Madness (replacement effect that exiles instead)
@@ -752,16 +997,16 @@ pub fn apply_cleanup_discard(
 /// Executes the cleanup step (damage removal, mana emptying).
 /// This should be called after any required discard decision has been resolved.
 pub fn execute_cleanup_step(game: &mut GameState) {
-    let active_player = game.turn.active_player;
-
-    // Avoid globally invalidating continuous state for an already-empty pool.
-    if game
-        .player(active_player)
-        .is_some_and(|player| player.mana_pool.total() > 0)
-        && let Some(player) = game.player_mut(active_player)
-    {
-        player.mana_pool.empty();
-        player.clear_mana_source_provenance();
+    for active_player in game.turn_players() {
+        // Avoid globally invalidating continuous state for an already-empty pool.
+        if game
+            .player(active_player)
+            .is_some_and(|player| player.mana_pool.total() > 0)
+            && let Some(player) = game.player_mut(active_player)
+        {
+            player.mana_pool.empty();
+            player.clear_mana_source_provenance();
+        }
     }
 
     game.cleanup_damage_and_regeneration_end_of_turn();
@@ -898,6 +1143,91 @@ mod tests {
 
         assert_eq!(game.turn.step, Some(Step::Draw));
         assert!(!game.is_hand_card_revealed_until_upkeep_ends(source));
+    }
+
+    #[test]
+    fn legacy_advancement_runs_added_steps_before_and_after_named_steps() {
+        let mut game = setup_game();
+        game.turn.turn_number = 2;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        game.add_step_after(Step::Upkeep, Step::Upkeep);
+        game.add_step_before(Step::Upkeep, Step::Draw);
+
+        advance_step(&mut game).expect("finish the normal upkeep");
+        assert_eq!(game.turn.step, Some(Step::Upkeep));
+        assert!(game.turn_store.active_added_step.is_some());
+
+        advance_step(&mut game).expect("finish the after-upkeep addition");
+        assert_eq!(game.turn.step, Some(Step::Upkeep));
+        assert!(game.turn_store.active_added_step.is_some());
+
+        advance_step(&mut game).expect("finish the before-draw addition");
+        assert_eq!(game.turn.step, Some(Step::Draw));
+        assert!(game.turn_store.active_added_step.is_none());
+    }
+
+    #[test]
+    fn legacy_phase_schedule_orders_full_and_synthetic_phases_by_creation() {
+        let mut newer_full_phase = setup_game();
+        newer_full_phase.turn.turn_number = 2;
+        newer_full_phase.turn.phase = Phase::FirstMain;
+        newer_full_phase.turn.step = None;
+        newer_full_phase.add_step_after_phase(Step::Draw, Phase::FirstMain);
+        newer_full_phase.add_additional_phase_group([Phase::Combat]);
+
+        advance_phase(&mut newer_full_phase).expect("leave first main");
+        assert_eq!(newer_full_phase.turn.phase, Phase::Combat);
+        assert_eq!(newer_full_phase.turn.step, Some(Step::BeginCombat));
+        newer_full_phase.turn.step = None;
+        advance_phase(&mut newer_full_phase).expect("finish inserted combat");
+        assert_eq!(newer_full_phase.turn.phase, Phase::Beginning);
+        assert_eq!(newer_full_phase.turn.step, Some(Step::Draw));
+        assert!(
+            newer_full_phase
+                .turn_store
+                .active_added_step
+                .is_some_and(|scheduled| scheduled.isolated_phase)
+        );
+
+        let mut newer_synthetic_phase = setup_game();
+        newer_synthetic_phase.turn.turn_number = 2;
+        newer_synthetic_phase.turn.phase = Phase::FirstMain;
+        newer_synthetic_phase.turn.step = None;
+        newer_synthetic_phase.add_additional_phase_group([Phase::Combat]);
+        newer_synthetic_phase.add_step_after_phase(Step::Draw, Phase::FirstMain);
+
+        advance_phase(&mut newer_synthetic_phase).expect("leave first main");
+        assert_eq!(newer_synthetic_phase.turn.phase, Phase::Beginning);
+        assert_eq!(newer_synthetic_phase.turn.step, Some(Step::Draw));
+    }
+
+    #[test]
+    fn legacy_counted_step_skips_survive_into_an_extra_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.turn_number = 2;
+        game.skip_next_step(alice, Step::Draw);
+        game.skip_next_step(alice, Step::Draw);
+
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        advance_step(&mut game).expect("consume the first draw skip");
+        assert_eq!(game.turn.phase, Phase::FirstMain);
+        assert_eq!(game.pending_step_skips(alice, Step::Draw), 1);
+
+        game.turn_store.extra_turns.push(alice);
+        game.turn.phase = Phase::Ending;
+        game.turn.step = Some(Step::Cleanup);
+        advance_step(&mut game).expect("start the queued extra turn");
+        assert_eq!(game.turn.active_player, alice);
+
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Upkeep);
+        advance_step(&mut game).expect("consume the second draw skip in the extra turn");
+        assert_eq!(game.turn.phase, Phase::FirstMain);
+        assert_eq!(game.pending_step_skips(alice, Step::Draw), 0);
     }
 
     #[derive(Default)]
@@ -1437,6 +1767,37 @@ mod tests {
             events.len(),
             1,
             "commander games should keep the opening draw"
+        );
+        assert_eq!(
+            game.player(alice).expect("alice should exist").hand.len(),
+            1
+        );
+        assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 1);
+    }
+
+    #[test]
+    fn execute_draw_step_keeps_starting_players_first_draw_in_normal_multiplayer_game() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(9005), "Multiplayer First Turn Draw")
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+
+        let mut dm = AlwaysNoDecisionMaker;
+        let events = execute_draw_step_with(&mut game, &mut dm);
+
+        assert_eq!(
+            events.len(),
+            1,
+            "CR 103.8c preserves the multiplayer opening draw"
         );
         assert_eq!(
             game.player(alice).expect("alice should exist").hand.len(),

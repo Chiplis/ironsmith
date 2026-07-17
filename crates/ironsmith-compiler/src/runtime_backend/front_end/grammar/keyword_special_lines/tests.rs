@@ -53,18 +53,47 @@ fn parses_optional_cost_and_cast_trigger_payloads() {
 
 #[test]
 fn parses_optional_behold_and_blight_costs() {
-    for (text, expected) in [
+    for (text, expected_kind, expected_subtype) in [
         (
             "As an additional cost to cast this spell, you may behold a Goblin.",
             OptionalKeywordCostKind::Behold,
+            Some(crate::types::Subtype::Goblin),
         ),
         (
             "As an additional cost to cast this spell, you may blight 2.",
             OptionalKeywordCostKind::Blight,
+            None,
         ),
     ] {
         let tokens = lex_line(text, 0).unwrap();
         let parsed = parse_optional_keyword_additional_cost_tokens(&tokens).unwrap();
-        assert_eq!(parsed.kind, expected);
+        assert_eq!(parsed.kind, expected_kind);
+        assert_eq!(parsed.behold_subtype, expected_subtype);
+    }
+}
+
+#[test]
+fn parses_mandatory_behold_and_exile_cost_as_a_typed_compound() {
+    for (text, expected_subtype) in [
+        (
+            "As an additional cost to cast this spell, behold an Elemental and exile it.",
+            crate::types::Subtype::Elemental,
+        ),
+        (
+            "As an additional cost to cast this spell, behold an Elf and exile it.",
+            crate::types::Subtype::Elf,
+        ),
+        (
+            "As an additional cost to cast this spell, behold a Merfolk and exile it.",
+            crate::types::Subtype::Merfolk,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert_eq!(
+            parse_behold_and_exile_additional_cost_tokens(&tokens),
+            Some(BeholdAndExileAdditionalCostShape {
+                subtype: expected_subtype,
+            })
+        );
     }
 }

@@ -715,15 +715,170 @@ pub(super) fn capricious_hellraiser_preserves_random_tagged_graveyard_exile() {
                 .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
         })
         .expect("Capricious Hellraiser should tag its graveyard exile");
+    let choose = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .expect("Capricious Hellraiser should choose from its exiled collection");
 
     assert_eq!(
         exile.spec.count(),
         ChoiceCount::exactly(3).at_random(),
         "Capricious Hellraiser should structurally retain its random three-card choice"
     );
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Exile three cards at random from your graveyard"),
+        rendered_lower.contains("exile three cards at random from your graveyard"),
         "compiled text should preserve the tagged random-exile clause, got {rendered}"
+    );
+    assert!(choose.filter.any_of.is_empty(), "{:#?}", choose.filter);
+    assert_eq!(
+        choose.filter.excluded_card_types,
+        vec![CardType::Creature, CardType::Land]
+    );
+    assert!(
+        rendered.contains(
+            "Choose a noncreature, nonland card from among them and copy it. You may cast the copy without paying its mana cost"
+        ),
+        "compiled text should retain the exact conjunctive choice and copy permission, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn choco_seeker_of_paradise_preserves_the_two_stage_looked_partition() {
+    assert_oracle_card_parses_strict("Choco, Seeker of Paradise");
+    let def = parse_oracle_card_definition("Choco, Seeker of Paradise");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "look at that many cards from the top of your library. You may put one of them into your hand. Then put any number of land cards from among them onto the battlefield tapped and the rest into your graveyard"
+        ),
+        "Choco should preserve both selected groups and their exact remainder, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn enshrined_memories_preserves_dynamic_reveal_partition() {
+    assert_oracle_card_parses_strict("Enshrined Memories");
+    let def = parse_oracle_card_definition("Enshrined Memories");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "Reveal the top X cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order"
+        ),
+        "Enshrined Memories should keep the dynamic matching set and exact remainder, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn marchesa_dealer_of_death_keeps_the_conditional_looked_partition() {
+    assert_oracle_card_parses_strict("Marchesa, Dealer of Death");
+    let def = parse_oracle_card_definition("Marchesa, Dealer of Death");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "If you do, look at the top two cards of your library. Put one of them into your hand and the other into your graveyard"
+        ),
+        "Marchesa should retain both halves inside the payment-result branch, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn tchaka_venerable_king_binds_the_inline_milled_collection() {
+    assert_oracle_card_parses_strict("T'Chaka, Venerable King");
+    let def = parse_oracle_card_definition("T'Chaka, Venerable King");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "mill three cards, then you may put an artifact or land card from among the milled cards into your hand"
+        ),
+        "T'Chaka should keep the optional choice bound to the inline mill result, got {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn become_anonymous_uses_one_hidden_pile_and_a_real_cloak_operation() {
+    assert_oracle_card_parses_strict("Become Anonymous");
+    let def = parse_oracle_card_definition("Become Anonymous");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Become Anonymous should be a spell")
+        .flattened_default_effects();
+    let (pile_tag, targeted_exile_effect) = effects
+        .iter()
+        .find_map(|effect| {
+            if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+                return Some((&tag_all.tag, tag_all.effect.as_ref()));
+            }
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map(|tagged| (&tagged.tag, tagged.effect.as_ref()))
+        })
+        .expect("the targeted creature should establish the hidden pile tag");
+    let library_exile = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>())
+        .expect("the top two cards should be exiled without being looked at");
+    let cloak = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ManifestObjectsEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::ManifestObjectsEffect>()
+                        })
+                })
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TagAllEffect>()
+                        .and_then(|tag_all| {
+                            tag_all
+                                .effect
+                                .downcast_ref::<crate::effects::ManifestObjectsEffect>()
+                        })
+                })
+        })
+        .expect("the complete hidden pile should use the cloak runtime primitive");
+
+    assert!(
+        targeted_exile_effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .or_else(|| {
+                targeted_exile_effect
+                    .downcast_ref::<crate::effects::TaggedEffect>()
+                    .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
+            })
+            .is_some_and(|exile| exile.face_down),
+        "targeted pile member should be exiled face down"
+    );
+    assert!(library_exile.face_down, "library cards must stay hidden");
+    assert_eq!(library_exile.count, Value::Fixed(2));
+    assert_eq!(
+        library_exile.accumulated_tags.as_slice(),
+        [pile_tag.clone()],
+        "top cards should append to, rather than replace, the targeted pile"
+    );
+    assert!(cloak.cloak && cloak.shuffle && cloak.tapped);
+    assert_eq!(cloak.controller, PlayerFilter::You);
+    assert!(matches!(
+        cloak.target.base(),
+        ChooseSpec::Tagged(tag) if tag == pile_tag
+    ));
+    assert!(
+        rendered.contains(
+            "Exile target nontoken creature you own and the top two cards of your library in a face-down pile, shuffle that pile, then cloak those cards. They enter tapped"
+        ),
+        "Become Anonymous should preserve the hidden pile, shuffle, cloak, and tapped entry, got {rendered}"
     );
 }
 

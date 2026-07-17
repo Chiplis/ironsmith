@@ -317,6 +317,10 @@ pub(crate) fn parse_sacrifice(
     };
 
     let object_shape = sacrifice_discard_grammar::parse_sacrifice_object_shape(object_tokens);
+    let one_of_referenced_set = matches!(
+        object_shape.tagged_reference,
+        Some(sacrifice_discard_grammar::SacrificeTaggedReferenceKind::OneOfTaggedSet)
+    );
     let filter_tokens = object_shape.filter_tokens;
     if filter_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -365,6 +369,11 @@ pub(crate) fn parse_sacrifice(
     }
 
     let sacrifice = EffectAst::subject_verb_sacrifice(player, filter, count, target);
+    let sacrifice = if one_of_referenced_set {
+        sacrifice.with_sacrifice_one_of_referenced_set()
+    } else {
+        sacrifice
+    };
 
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
     // e.g. "sacrifices a land for each card in your hand".
@@ -548,7 +557,16 @@ pub(crate) fn parse_discard(
     let trailing_shape = sacrifice_discard_grammar::parse_discard_trailing_shape(trailing_tokens);
     let random = trailing_shape == sacrifice_discard_grammar::DiscardTrailingShape::Random;
     if trailing_shape != sacrifice_discard_grammar::DiscardTrailingShape::Empty && !random {
-        let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
+        let additional_cost_colors =
+            sacrifice_discard_grammar::parse_additional_cost_object_colors_surface(trailing_tokens);
+        let trailing_filter = if let Some(surface) = additional_cost_colors {
+            let mut filter = ObjectFilter::default().match_tagged(
+                TagKey::from(ADDITIONAL_COST_OBJECT_TAG),
+                TaggedOpbjectRelation::SharesColorWithTagged,
+            );
+            filter.set_additional_cost_object_surface(Some(surface));
+            Some(filter)
+        } else if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
             Some(filter)
         } else {
             match trailing_shape {
@@ -629,6 +647,7 @@ pub(crate) fn discard_subject_owner_filter(subject: Option<SubjectAst>) -> Optio
 #[cfg(test)]
 mod selected_sacrifice_tests {
     use super::*;
+    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     #[test]
@@ -647,5 +666,33 @@ mod selected_sacrifice_tests {
         assert!(debug.contains("player: ItsController"), "{debug}");
         assert!(debug.contains("player: That"), "{debug}");
         assert!(debug.contains("IsTaggedObject"), "{debug}");
+    }
+
+    #[test]
+    fn one_of_them_is_a_choice_from_the_referenced_set() {
+        let tokens =
+            lex_line("Sacrifice one of them.", 0).expect("tagged-set sacrifice clause should lex");
+        let parsed =
+            parse_sacrifice(&tokens, None, None).expect("tagged-set sacrifice choice should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Sacrifice {
+                    filter,
+                    count,
+                    target,
+                    one_of_referenced_set,
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected subject-verb sacrifice AST");
+        };
+
+        assert_eq!(count, 1);
+        assert!(target.is_none());
+        assert!(one_of_referenced_set);
+        assert_eq!(filter.tagged_constraints.len(), 1);
+        assert_eq!(filter.tagged_constraints[0].tag.as_str(), IT_TAG);
     }
 }

@@ -131,15 +131,20 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisDealsCombatDamageTo(filter) => {
             Trigger::this_deals_combat_damage_to(filter)
         }
-        TriggerSpec::DealsDamage(filter) => Trigger::deals_damage(filter),
+        TriggerSpec::DealsDamage {
+            source,
+            source_surface,
+        } => Trigger::deals_damage_with_source_surface(source, source_surface),
         TriggerSpec::DealsDamageTo {
             source,
             target,
             source_surface,
         } => Trigger::deals_damage_to_with_source_surface(source, target, source_surface),
-        TriggerSpec::DealsDamageToPlayer { source, player } => {
-            Trigger::deals_damage_to_player(source, player)
-        }
+        TriggerSpec::DealsDamageToPlayer {
+            source,
+            player,
+            source_surface,
+        } => Trigger::deals_damage_to_player_with_source_surface(source, player, source_surface),
         TriggerSpec::DealsNoncombatDamageToPlayer {
             source,
             player,
@@ -172,7 +177,13 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerRollsHighestNaturalResult { player } => {
             Trigger::player_rolls_highest_natural_result(player)
         }
-        TriggerSpec::PlayerRollsDie { player } => Trigger::player_rolls_die(player),
+        TriggerSpec::PlayerRollsDie {
+            player,
+            one_or_more,
+        } => Trigger::player_rolls_die_with_surface(player, one_or_more),
+        TriggerSpec::PlayerCoinFlipResult { player, won } => {
+            Trigger::player_coin_flip_result(player, won)
+        }
         TriggerSpec::AbilityActivated {
             activator,
             filter,
@@ -186,6 +197,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             loyalty_only,
             activation_cost_has_tap,
         ),
+        TriggerSpec::AbilityTriggered { another } => Trigger::ability_triggered(another),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
@@ -261,13 +273,20 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             one_or_more,
         } => Trigger::tokens_created(player, filter, one_or_more),
         TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
-        TriggerSpec::Dies(filter) => Trigger::dies(filter),
+        TriggerSpec::Dies(filter) => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies),
+        ),
         TriggerSpec::DiesOneOrMore(filter) => Trigger::new(
             crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .from(crate::zone::Zone::Battlefield)
                 .to(crate::zone::Zone::Graveyard)
                 .filter(filter)
-                .count(crate::triggers::CountMode::OneOrMore),
+                .count(crate::triggers::CountMode::OneOrMore)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies),
         ),
         TriggerSpec::DiesDuringTurn {
             filter,
@@ -278,18 +297,25 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 .from(crate::zone::Zone::Battlefield)
                 .to(crate::zone::Zone::Graveyard)
                 .filter(filter)
-                .during_turn(during_turn);
+                .during_turn(during_turn)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies);
             if one_or_more {
                 trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
             }
             Trigger::new(trigger)
         }
-        TriggerSpec::PutIntoGraveyard(filter) => Trigger::put_into_graveyard(filter),
+        TriggerSpec::PutIntoGraveyard(filter) => Trigger::new(
+            crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                .to(crate::zone::Zone::Graveyard)
+                .filter(filter)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard),
+        ),
         TriggerSpec::PutIntoGraveyardOneOrMore(filter) => Trigger::new(
             crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .to(crate::zone::Zone::Graveyard)
                 .filter(filter)
-                .count(crate::triggers::CountMode::OneOrMore),
+                .count(crate::triggers::CountMode::OneOrMore)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard),
         ),
         TriggerSpec::PutIntoGraveyardFromZone {
             filter,
@@ -299,7 +325,8 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             let trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
                 .from(from)
                 .to(crate::zone::Zone::Graveyard)
-                .filter(filter);
+                .filter(filter)
+                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard);
             if one_or_more {
                 Trigger::new(trigger.count(crate::triggers::CountMode::OneOrMore))
             } else {
@@ -351,6 +378,20 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             }
             Trigger::new(trigger)
         }
+        TriggerSpec::CounterRemovedFrom {
+            filter,
+            one_or_more,
+            caused_by_source,
+        } => {
+            let mut trigger = crate::triggers::CounterRemovedFromTrigger::new(filter);
+            if one_or_more {
+                trigger = trigger.one_or_more();
+            }
+            if caused_by_source {
+                trigger = trigger.caused_by_source();
+            }
+            Trigger::new(trigger)
+        }
         TriggerSpec::PlayerGetsCounters {
             player,
             counter_type,
@@ -379,6 +420,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::SpellCast {
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -386,6 +428,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         } => Trigger::spell_cast_qualified(
             filter,
             caster,
+            timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
@@ -609,6 +652,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerRollsResult { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
         | TriggerSpec::PlayerRollsDie { .. }
+        | TriggerSpec::PlayerCoinFlipResult { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::TokensCreated { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
@@ -705,8 +749,12 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsResult { .. }
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => Some(PlayerFilter::IteratedPlayer),
-        TriggerSpec::PlayerRollsDie { .. } => Some(PlayerFilter::IteratedPlayer),
-        TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerRollsDie { .. } | TriggerSpec::PlayerCoinFlipResult { .. } => {
+            Some(PlayerFilter::IteratedPlayer)
+        }
+        TriggerSpec::AbilityActivated { .. } | TriggerSpec::AbilityTriggered { .. } => {
+            Some(PlayerFilter::IteratedPlayer)
+        }
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::TokensCreated { player, .. } => {
             if *player == PlayerFilter::Any {
@@ -748,13 +796,57 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::BeginningOfCombat(player)
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
-        | TriggerSpec::BeginningOfPostcombatMain(player)
-        | TriggerSpec::KeywordAction { player, .. }
+        | TriggerSpec::BeginningOfPostcombatMain(player) => {
+            if *player == PlayerFilter::Any {
+                // `Any` phase/event triggers bind their participant from the
+                // concrete event that fired the ability. This is usually the
+                // active player for turn-based events, but retaining the typed
+                // event binding keeps "that player" correct even when a test
+                // or future turn structure dispatches the event independently
+                // of the game's current active-player field.
+                Some(PlayerFilter::IteratedPlayer)
+            } else if matches!(
+                player,
+                PlayerFilter::You
+                    | PlayerFilter::Specific(_)
+                    | PlayerFilter::ChosenPlayer
+                    | PlayerFilter::TaggedPlayer(_)
+                    | PlayerFilter::ControllerOf(_)
+                    | PlayerFilter::OwnerOf(_)
+                    | PlayerFilter::AliasedControllerOf(_)
+                    | PlayerFilter::AliasedOwnerOf(_)
+            ) {
+                // These filters identify one stable participant rather than
+                // a set whose current member must come from the phase event.
+                // Preserve that participant as the discourse antecedent for
+                // relative phrases in the triggered effect ("that player",
+                // "another player", and "other than that player").
+                Some(player.clone())
+            } else {
+                Some(PlayerFilter::IteratedPlayer)
+            }
+        }
+        TriggerSpec::KeywordAction { player, .. }
         | TriggerSpec::KeywordActionTaggedObject { player, .. }
         | TriggerSpec::KeywordActionFromSource { player, .. }
         | TriggerSpec::WinsClash { player } => {
             if *player == PlayerFilter::Any {
+                // Unlike each-player phase triggers, these families do not
+                // prove that the resolution program owns a player-iteration
+                // scope merely because their filter is `Any`.
                 Some(PlayerFilter::Active)
+            } else if matches!(
+                player,
+                PlayerFilter::You
+                    | PlayerFilter::Specific(_)
+                    | PlayerFilter::ChosenPlayer
+                    | PlayerFilter::TaggedPlayer(_)
+                    | PlayerFilter::ControllerOf(_)
+                    | PlayerFilter::OwnerOf(_)
+                    | PlayerFilter::AliasedControllerOf(_)
+                    | PlayerFilter::AliasedOwnerOf(_)
+            ) {
+                Some(player.clone())
             } else {
                 Some(PlayerFilter::IteratedPlayer)
             }
@@ -809,7 +901,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsDamageToPlayer { .. }
-            | TriggerSpec::DealsDamage(_)
+            | TriggerSpec::DealsDamage { .. }
             | TriggerSpec::DealsDamageTo { .. }
             | TriggerSpec::DealsDamageToPlayer { .. }
             | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
@@ -828,6 +920,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::KeywordActionTaggedObject { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. }
+            | TriggerSpec::CounterRemovedFrom { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
             TriggerSpec::PutIntoExileFromZones { one_or_more, .. } => *one_or_more,
@@ -881,4 +974,67 @@ pub(crate) fn compile_trigger_effects_with_imports(
         imports.clone(),
     )?;
     super::materialize_prepared_effects_with_trigger_context(&prepared)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn graveyard_surface(trigger: TriggerSpec) -> crate::triggers::GraveyardTriggerSurface {
+        let trigger = compile_trigger_spec(trigger);
+        let crate::triggers::TriggerKind::ZoneChange(zone_change) = trigger.kind else {
+            panic!("authored graveyard trigger did not lower to a zone-change trigger");
+        };
+        zone_change
+            .graveyard_surface
+            .expect("authored graveyard wording should be retained")
+    }
+
+    #[test]
+    fn authored_graveyard_wording_survives_trigger_lowering() {
+        assert_eq!(
+            graveyard_surface(TriggerSpec::Dies(
+                crate::target::ObjectFilter::planeswalker()
+            )),
+            crate::triggers::GraveyardTriggerSurface::Dies
+        );
+        assert_eq!(
+            graveyard_surface(TriggerSpec::PutIntoGraveyardFromZone {
+                filter: crate::target::ObjectFilter::creature(),
+                from: crate::zone::Zone::Battlefield,
+                one_or_more: false,
+            }),
+            crate::triggers::GraveyardTriggerSurface::PutIntoGraveyard
+        );
+    }
+
+    #[test]
+    fn each_player_phase_triggers_bind_relative_players_from_the_event() {
+        for trigger in [
+            TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any),
+            TriggerSpec::BeginningOfDrawStep(PlayerFilter::Any),
+            TriggerSpec::BeginningOfCombat(PlayerFilter::Any),
+            TriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
+            TriggerSpec::BeginningOfPrecombatMain(PlayerFilter::Any),
+            TriggerSpec::BeginningOfPostcombatMain(PlayerFilter::Any),
+        ] {
+            assert_eq!(
+                inferred_trigger_player_filter(&trigger),
+                Some(PlayerFilter::IteratedPlayer),
+                "phase trigger must preserve its concrete event participant: {trigger:?}"
+            );
+            assert!(trigger_binds_player_reference_context(&trigger));
+        }
+    }
+
+    #[test]
+    fn non_phase_any_filter_does_not_claim_a_player_iteration_scope() {
+        let trigger = TriggerSpec::WinsClash {
+            player: PlayerFilter::Any,
+        };
+        assert_eq!(
+            inferred_trigger_player_filter(&trigger),
+            Some(PlayerFilter::Active)
+        );
+    }
 }

@@ -1,9 +1,9 @@
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, LineAst, ParseAnnotations,
-    ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst, ParsedLevelAbilityItemAst,
-    ParsedModalAst, ParsedRestrictions, PlayerAst, PredicateAst, ReferenceImports,
-    SubjectVerbActionAst, TagKey, TriggerSpec,
+    ADDITIONAL_COST_OBJECT_TAG, CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, LineAst,
+    ParseAnnotations, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst,
+    ParsedLevelAbilityItemAst, ParsedModalAst, ParsedRestrictions, PlayerAst, PredicateAst,
+    ReferenceImports, SubjectVerbActionAst, TagKey, TriggerSpec,
 };
 use crate::resolution::ResolutionProgram;
 use crate::static_abilities::StaticAbility;
@@ -40,18 +40,19 @@ pub(crate) use rewrite_text_helpers::*;
 
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context, compile_condition_from_predicate_ast_with_env,
-    materialize_prepared_effects_with_trigger_context,
+    effect_references_tag, materialize_prepared_effects_with_trigger_context,
     trigger_binds_player_reference_context as rewrite_trigger_binds_player_reference_context,
 };
 use super::effect_pipeline::{
     LoweredCardDocument, NormalizedAdditionalCostChoiceOptionAst, NormalizedCardAst,
-    NormalizedCardItem, NormalizedLineAst, NormalizedLineChunk, NormalizedModalAst,
-    NormalizedModalModeAst, NormalizedOverloadBranch, NormalizedParsedAbility,
+    NormalizedCardItem, NormalizedCleaveBranch, NormalizedLineAst, NormalizedLineChunk,
+    NormalizedModalAst, NormalizedModalModeAst, NormalizedOverloadBranch, NormalizedParsedAbility,
     NormalizedPreparedAbility, ParsedCardAst,
 };
 use super::lowering_support::{
     rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
-    rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,
+    rewrite_apply_instead_followup_statement_to_last_ability,
+    rewrite_lower_keyword_action_to_object_abilities, rewrite_lower_prepared_ability,
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
     rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability,

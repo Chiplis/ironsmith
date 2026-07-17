@@ -1,5 +1,6 @@
 use super::shard_16::{assert_oracle_card_parses_strict, parse_oracle_card_definition};
 use super::*;
+use crate::GameState;
 
 #[test]
 pub(super) fn next61_strict_parse_regressions_keep_structured_references() {
@@ -171,5 +172,71 @@ pub(super) fn living_inferno_reuses_every_distributed_damage_target_as_a_source(
         rendered
             .contains("Each of those creatures deals damage equal to its power to this creature"),
         "{rendered}"
+    );
+}
+
+#[test]
+pub(super) fn lichs_mirror_parses_as_generic_loss_replacement() {
+    let def = parse_oracle_card_definition("Lich's Mirror");
+    let debug = format!("{def:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+
+    assert!(debug.contains("LoseGameReplacement"), "{debug}");
+    assert!(
+        debug.contains("include_owned_permanents: true"),
+        "the replacement must move owned permanents as well as hand and graveyard: {debug}"
+    );
+    assert!(
+        debug.contains("DrawCardsEffect") && debug.contains("SetLifeTotalEffect"),
+        "{debug}"
+    );
+    assert!(
+        rendered.contains("If you would lose the game")
+            && rendered.contains("all permanents you own")
+            && rendered.contains("draw seven cards")
+            && rendered.contains("life total becomes 20"),
+        "{rendered}"
+    );
+}
+
+#[test]
+pub(super) fn lichs_mirror_replaces_an_sba_loss_with_its_full_effect_sequence() {
+    let mirror = parse_oracle_card_definition("Lich's Mirror");
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let mirror_id = game.create_object_from_definition(&mirror, alice, Zone::Battlefield);
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Mirror Filler")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    for _ in 0..7 {
+        game.create_object_from_definition(&filler, alice, Zone::Hand);
+    }
+    game.create_object_from_definition(&filler, alice, Zone::Graveyard);
+    game.player_mut(alice).expect("alice").life = 0;
+
+    assert!(crate::rules::apply_state_based_actions(&mut game));
+
+    let player = game.player(alice).expect("alice");
+    assert!(player.is_in_game());
+    assert_eq!(player.life, 20);
+    assert_eq!(player.hand.len(), 7);
+    assert_eq!(player.library.len(), 2);
+    assert!(
+        game.object(mirror_id).is_none(),
+        "the battlefield incarnation of Lich's Mirror must have changed zones"
+    );
+    assert!(
+        player
+            .library
+            .iter()
+            .chain(player.hand.iter())
+            .any(|object_id| game
+                .object(*object_id)
+                .is_some_and(|object| object.name == "Lich's Mirror")),
+        "Lich's Mirror itself must be shuffled before drawing seven"
+    );
+    assert!(
+        !crate::rules::apply_state_based_actions(&mut game),
+        "the post-replacement SBA recheck must find no remaining loss condition"
     );
 }

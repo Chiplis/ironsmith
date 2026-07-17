@@ -2,12 +2,42 @@
 
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
-use crate::effects::{CostExecutableEffect, EffectExecutor};
+use crate::effects::{CostExecutableEffect, EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::TriggerEvent;
+
+#[derive(Debug)]
+struct LoseLifeProposal {
+    player: crate::ids::PlayerId,
+    amount: u32,
+    can_change_life_total: bool,
+    provenance: crate::provenance::ProvNodeId,
+}
+
+impl SimultaneousEffectProposal for LoseLifeProposal {
+    fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+        if !self.can_change_life_total {
+            return Ok(EffectOutcome::prevented());
+        }
+
+        if game.player(self.player).is_none() {
+            return Err(ExecutionError::PlayerNotFound(self.player));
+        }
+        game.lose_life(self.player, self.amount);
+
+        let outcome = EffectOutcome::count(self.amount as i32);
+        if self.amount == 0 {
+            return Ok(outcome);
+        }
+        Ok(outcome.with_event(TriggerEvent::new_with_provenance(
+            LifeLossEvent::from_effect(self.player, self.amount),
+            self.provenance,
+        )))
+    }
+}
 
 /// Effect that causes a player to lose life.
 ///
@@ -78,6 +108,21 @@ impl LoseLifeEffect {
             _ => None,
         }
     }
+
+    fn prepare_proposal(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+    ) -> Result<LoseLifeProposal, ExecutionError> {
+        let player = resolve_player_from_spec(game, &self.player, ctx)?;
+        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        Ok(LoseLifeProposal {
+            player,
+            amount,
+            can_change_life_total: game.can_change_life_total(player),
+            provenance: ctx.provenance,
+        })
+    }
 }
 
 impl EffectExecutor for LoseLifeEffect {
@@ -90,29 +135,19 @@ impl EffectExecutor for LoseLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        Box::new(self.prepare_proposal(game, ctx)?).commit(game)
+    }
 
-        // Check if player's life total can change (Platinum Emperion, etc.)
-        if !game.can_change_life_total(player_id) {
-            return Ok(EffectOutcome::prevented());
-        }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
 
-        if let Some(p) = game.player_mut(player_id) {
-            p.lose_life(amount);
-        }
-
-        // Create the trigger event only if life was actually lost
-        let outcome = EffectOutcome::count(amount as i32);
-        if amount > 0 {
-            let event = TriggerEvent::new_with_provenance(
-                LifeLossEvent::from_effect(player_id, amount),
-                ctx.provenance,
-            );
-            Ok(outcome.with_event(event))
-        } else {
-            Ok(outcome)
-        }
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(self.prepare_proposal(game, ctx)?))
     }
 
     fn pay_life_amount(&self) -> Option<u32> {

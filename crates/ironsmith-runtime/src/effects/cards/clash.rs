@@ -109,18 +109,9 @@ fn clashing_players_in_apnap_order(
         return vec![controller, opponent];
     }
 
-    let start = game
-        .turn_store
-        .turn_order
-        .iter()
-        .position(|&player_id| player_id == game.turn.active_player)
-        .unwrap_or(0);
-
     let participants = [controller, opponent];
     let mut ordered = Vec::new();
-    for offset in 0..game.turn_store.turn_order.len() {
-        let player_id =
-            game.turn_store.turn_order[(start + offset) % game.turn_store.turn_order.len()];
+    for player_id in game.team_apnap_player_order() {
         if participants.contains(&player_id) && !ordered.contains(&player_id) {
             ordered.push(player_id);
         }

@@ -1,4 +1,11 @@
 {
+    if let Some(compact) = describe_face_down_pile_then_manifest(effects) {
+        return compact;
+    }
+
+    if let Some(compact) = describe_player_chosen_attachment(effects) {
+        return compact;
+    }
 
     if let Some(compact) = describe_may_choose_graveyard_then_return(effects) {
         return compact;
@@ -473,6 +480,9 @@
         return compact;
     }
     if let Some(compact) = describe_group_pump_then_conditional_untap(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_roll_result_damage_then_random_source_attachment(effects) {
         return compact;
     }
     if let Some(compact) = describe_roll_die_then_scry_result(effects) {

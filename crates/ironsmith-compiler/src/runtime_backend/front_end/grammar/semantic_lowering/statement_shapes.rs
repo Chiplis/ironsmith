@@ -161,11 +161,21 @@ pub(crate) fn parse_temporary_static_followup_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<TemporaryStaticFollowup> {
     let words = parser_token_word_refs(tokens);
-    phrase_is_present(&words, &["this", "turn"]).then(|| TemporaryStaticFollowup {
-        has_negation: any_word_is_present(
-            &words,
-            &["cant", "can't", "dont", "don't", "doesnt", "doesn't"],
-        ),
+    let source_conditional_duration = matches!(
+        leaf::parse_leaf_conditional_duration_kind_tokens(tokens),
+        Some(
+            leaf::LeafConditionalDurationKind::YouControlSource
+                | leaf::LeafConditionalDurationKind::SourceRemainsTapped
+                | leaf::LeafConditionalDurationKind::SourceRemainsOnBattlefield
+        )
+    );
+    (phrase_is_present(&words, &["this", "turn"]) || source_conditional_duration).then(|| {
+        TemporaryStaticFollowup {
+            has_negation: any_word_is_present(
+                &words,
+                &["cant", "can't", "dont", "don't", "doesnt", "doesn't"],
+            ),
+        }
     })
 }
 

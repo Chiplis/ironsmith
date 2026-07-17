@@ -1,4 +1,85 @@
 impl WasmGame {
+    fn prune_grand_melee_host_lanes(&mut self) {
+        let live_markers = self
+            .game
+            .grand_melee_marker_views()
+            .into_iter()
+            .map(|marker| marker.number)
+            .collect::<HashSet<_>>();
+        self.grand_melee_host_lanes
+            .retain(|marker, _| live_markers.contains(marker));
+    }
+
+    fn activate_grand_melee_host_lane(&mut self, marker: u32) {
+        if let Some(lane) = self.grand_melee_host_lanes.remove(&marker) {
+            self.runner = lane.runner;
+            self.runner_awaiting_priority = lane.runner_awaiting_priority;
+            self.trigger_queue = lane.trigger_queue;
+            self.priority_state = lane.priority_state;
+        } else {
+            self.runner = Some(ironsmith::turn_runner::TurnRunner::new());
+            self.runner_awaiting_priority = false;
+            self.trigger_queue = TriggerQueue::new();
+            self.priority_state =
+                PriorityLoopState::new(self.game.priority_players_for_current_turn().len());
+            self.priority_state
+                .set_auto_choose_single_pip_payment(false);
+        }
+        self.runner_pending_decision = false;
+        self.priority_epoch_checkpoint = None;
+        self.priority_epoch_has_undoable_action = false;
+        self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_land_stable_id = None;
+    }
+
+    /// Choose the Grand Melee turn/stack lane for a player who is eligible to
+    /// receive priority there (CR 807.5a-b).
+    pub(super) fn select_grand_melee_stack_lane(
+        &mut self,
+        player_index: u8,
+        marker: u32,
+    ) -> Result<(), JsValue> {
+        if self.pending_decision.is_some()
+            || self.pending_replay_action.is_some()
+            || self.pending_live_continuation.is_some()
+        {
+            return Err(JsValue::from_str(
+                "finish the pending decision before selecting another Grand Melee stack",
+            ));
+        }
+        let current = self
+            .game
+            .grand_melee()
+            .map(|state| state.focused_marker())
+            .ok_or_else(|| JsValue::from_str("Grand Melee is not enabled"))?;
+        if current == marker {
+            return Ok(());
+        }
+        self.grand_melee_host_lanes.insert(
+            current,
+            GrandMeleeHostLane {
+                runner: self.runner.clone(),
+                runner_awaiting_priority: self.runner_awaiting_priority,
+                trigger_queue: self.trigger_queue.clone(),
+                priority_state: self.priority_state.clone(),
+            },
+        );
+        self.game
+            .select_grand_melee_stack_for_player(PlayerId::from_index(player_index), marker)
+            .map_err(|error| JsValue::from_str(&error))?;
+        self.activate_grand_melee_host_lane(marker);
+        Ok(())
+    }
+
+    /// Record a terminal result and apply the one-time rules consequences that
+    /// belong to that result, including CR 407.2 ante ownership transfer.
+    pub(super) fn record_game_result(&mut self, result: GameResult) {
+        if let GameResult::Winner(winner) = result {
+            self.game.finalize_ante_ownership(winner);
+        }
+        self.game_over = Some(result);
+    }
+
     fn recompute_ui_decision(&mut self) -> Result<(), JsValue> {
         self.pending_decision = None;
         self.pending_replay_action = None;
@@ -73,6 +154,10 @@ impl WasmGame {
         let total_started_at = PerfTimer::start();
         let mut perf = AdvanceUntilDecisionPerfMetrics::default();
         self.last_advance_until_decision_perf = None;
+
+        self.restore_subgame_host_if_resumed();
+        self.initialize_subgame_pregame_if_pending();
+        self.prune_grand_melee_host_lanes();
 
         if self.pregame.is_some() {
             for _ in 0..64 {
@@ -167,19 +252,30 @@ impl WasmGame {
                             } else {
                                 GameResult::Draw
                             };
-                            self.game_over = Some(result);
+                            self.record_game_result(result);
                             return Ok(());
                         }
 
-                        // Advance to next turn
+                        let completed_grand_melee_marker =
+                            self.game.grand_melee().map(|state| state.focused_marker());
+                        // Advance to the next turn/selected Grand Melee lane.
                         self.game.next_turn();
-                        self.runner = Some(ironsmith::turn_runner::TurnRunner::new());
-                        self.runner_awaiting_priority = false;
+                        if let Some(completed) = completed_grand_melee_marker {
+                            self.grand_melee_host_lanes.remove(&completed);
+                            if let Some(next) =
+                                self.game.grand_melee().map(|state| state.focused_marker())
+                            {
+                                self.activate_grand_melee_host_lane(next);
+                            }
+                        } else {
+                            self.runner = Some(ironsmith::turn_runner::TurnRunner::new());
+                            self.runner_awaiting_priority = false;
+                        }
                         continue;
                     }
 
                     TurnAction::GameOver(result) => {
-                        self.game_over = Some(result);
+                        self.record_game_result(result);
                         perf.total_ms = total_started_at.elapsed_ms();
                         perf.final_outcome = "runner_game_over".to_string();
                         self.last_advance_until_decision_perf = Some(perf);
@@ -239,6 +335,9 @@ impl WasmGame {
                         continue;
                     }
                     GameProgress::StackResolved => {
+                        let resumed_parent = self.restore_subgame_host_if_resumed();
+                        let started_child =
+                            !resumed_parent && self.initialize_subgame_pregame_if_pending();
                         // New priority round after resolution — fresh epoch.
                         self.pending_action_checkpoint = None;
                         self.priority_epoch_checkpoint = None;
@@ -246,13 +345,16 @@ impl WasmGame {
                         self.priority_epoch_undo_locked_by_mana = false;
                         self.priority_epoch_undo_land_stable_id = None;
                         self.clear_active_resolving_stack_object();
+                        if started_child {
+                            return self.advance_until_decision();
+                        }
                         continue;
                     }
                     GameProgress::GameOver(result) => {
                         self.pending_action_checkpoint = None;
                         self.pending_decision = None;
                         self.clear_active_resolving_stack_object();
-                        self.game_over = Some(result);
+                        self.record_game_result(result);
                         perf.total_ms = total_started_at.elapsed_ms();
                         perf.final_outcome = "progress_game_over".to_string();
                         self.last_advance_until_decision_perf = Some(perf);
@@ -296,10 +398,12 @@ impl WasmGame {
                 self.pending_action_checkpoint = None;
                 self.pending_decision = None;
                 self.clear_active_resolving_stack_object();
-                self.game_over = Some(result);
+                self.record_game_result(result);
                 Ok(())
             }
             GameProgress::StackResolved => {
+                self.restore_subgame_host_if_resumed();
+                self.initialize_subgame_pregame_if_pending();
                 self.pending_action_checkpoint = None;
                 self.priority_epoch_checkpoint = None;
                 self.priority_epoch_has_undoable_action = false;
@@ -332,10 +436,23 @@ impl WasmGame {
         };
 
         match (&pending_ctx, command) {
-            (DecisionContext::Attackers(actx), UiCommand::DeclareAttackers { declarations }) => {
+            (
+                DecisionContext::Attackers(actx),
+                UiCommand::DeclareAttackers {
+                    declarations,
+                    bands,
+                },
+            ) => {
                 let converted = validate_attacker_declarations(actx, &declarations)
                     .map_err(|e| restore_on_err(self, pending_ctx.clone(), e))?;
-                self.runner.as_mut().unwrap().respond_attackers(converted);
+                let bands = bands
+                    .into_iter()
+                    .map(|band| band.into_iter().map(ObjectId::from_raw).collect())
+                    .collect();
+                self.runner
+                    .as_mut()
+                    .unwrap()
+                    .respond_attackers_with_bands(converted, bands);
             }
             (DecisionContext::Blockers(bctx), UiCommand::DeclareBlockers { declarations }) => {
                 let player = bctx.player;
@@ -1380,7 +1497,7 @@ impl WasmGame {
             }
             (
                 DecisionContext::Attackers(attackers),
-                UiCommand::DeclareAttackers { declarations },
+                UiCommand::DeclareAttackers { declarations, .. },
             ) => {
                 let converted = validate_attacker_declarations(attackers, &declarations)?
                     .into_iter()
@@ -1607,7 +1724,7 @@ impl WasmGame {
             }
             (
                 DecisionContext::Attackers(attackers),
-                UiCommand::DeclareAttackers { declarations },
+                UiCommand::DeclareAttackers { declarations, .. },
             ) => {
                 let converted = validate_attacker_declarations(attackers, &declarations)?;
                 Ok(PriorityResponse::Attackers(converted))
@@ -1732,6 +1849,26 @@ impl WasmGame {
                 .collect();
             return Ok(PriorityResponse::OptionalCosts(choices));
         }
+        if self
+            .priority_state
+            .pending_cast
+            .as_ref()
+            .is_some_and(|pending| {
+                matches!(
+                    pending.stage,
+                    CastStage::ChoosingAssistPlayer
+                        | CastStage::ActivatingAssistManaAbilities
+                        | CastStage::ChoosingAssistContribution
+                        | CastStage::ActivatingManaAbilities
+                )
+            })
+        {
+            let choice = option_indices
+                .first()
+                .copied()
+                .ok_or_else(|| JsValue::from_str("mana or Assist choice requires one option"))?;
+            return Ok(PriorityResponse::ManaPayment(choice));
+        }
         if self.priority_state.pending_mana_ability.is_some() {
             let choice = option_indices
                 .first()
@@ -1743,7 +1880,12 @@ impl WasmGame {
             .priority_state
             .pending_activation
             .as_ref()
-            .is_some_and(|pending| matches!(pending.stage, ActivationStage::ChoosingNextCost))
+            .is_some_and(|pending| {
+                matches!(
+                    pending.stage,
+                    ActivationStage::ChoosingAlternativeCost | ActivationStage::ChoosingNextCost
+                )
+            })
             || self
                 .priority_state
                 .pending_cast
@@ -1765,7 +1907,12 @@ impl WasmGame {
                 .priority_state
                 .pending_cast
                 .as_ref()
-                .is_some_and(|pending| matches!(pending.stage, CastStage::PayingMana))
+                .is_some_and(|pending| {
+                    matches!(
+                        pending.stage,
+                        CastStage::PayingMana | CastStage::PayingAssistMana
+                    )
+                })
         {
             let choice = option_indices
                 .first()

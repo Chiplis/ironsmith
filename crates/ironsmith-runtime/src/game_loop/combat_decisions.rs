@@ -207,6 +207,7 @@ fn required_attack_cost_message_for_unpreviewed_attack(
         AttackTarget::Planeswalker(object_id) => {
             game.object(*object_id).map(|obj| game.controller_of(obj))
         }
+        AttackTarget::Battle(object_id) => game.battle_protector(*object_id),
     }?;
     let view = DerivedGameView::new(game);
     if !crate::rules::combat::can_attack_defending_player_with_view(
@@ -256,7 +257,7 @@ struct PreparedAttackerDeclaration {
     declaration: AttackerDeclaration,
     controller: PlayerId,
     abilities: Vec<crate::static_abilities::StaticAbility>,
-    optional_attack_cost_prompts: Vec<(usize, crate::decisions::context::BooleanContext)>,
+    optional_attack_cost_prompts: Vec<(usize, crate::decisions::context::DecisionContext)>,
     has_vigilance: bool,
     had_to_attack_this_combat: bool,
 }
@@ -265,6 +266,7 @@ struct PreparedAttackerDeclaration {
 struct PreparedAttackDeclarations {
     declarations: Vec<PreparedAttackerDeclaration>,
     total_generic_attack_mana_cost: u32,
+    generic_attack_mana_costs: std::collections::HashMap<PlayerId, u32>,
     has_post_tap_attack_costs: bool,
 }
 
@@ -312,7 +314,9 @@ fn prepare_attacker_declarations_internal(
     }
 
     let mut attackers_per_defending_player: HashMap<PlayerId, u32> = HashMap::new();
-    let mut additional_attack_mana_cost = 0u32;
+    let mut attackers_per_controller_and_defender: HashMap<(PlayerId, PlayerId), u32> =
+        HashMap::new();
+    let mut generic_attack_mana_costs: HashMap<PlayerId, u32> = HashMap::new();
     let mut has_post_tap_attack_costs = false;
     let mut requirements_obeyed = 0usize;
     let mut prepared = Vec::with_capacity(declarations.len());
@@ -345,7 +349,7 @@ fn prepare_attacker_declarations_internal(
             ))
             .into());
         };
-        if game.controller_of(creature) != game.turn.active_player {
+        if !game.is_active_player(game.controller_of(creature)) {
             return Err(ResponseError::InvalidAttackers(
                 "Can only attack with creatures you control".to_string(),
             )
@@ -392,11 +396,18 @@ fn prepare_attacker_declarations_internal(
             if let Some(cost) =
                 ability.generic_attack_mana_cost_for_source(game, creature.id, creature_controller)
             {
-                additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
+                let entry = generic_attack_mana_costs
+                    .entry(creature_controller)
+                    .or_default();
+                *entry = entry.saturating_add(cost);
             }
 
-            let optional_prompt =
-                ability.optional_attack_cost_prompt(game, creature.id, creature_controller);
+            let optional_prompt = ability.optional_attack_cost_prompt(
+                game,
+                creature.id,
+                creature_controller,
+                &attacking_creatures,
+            );
             has_post_tap_attack_costs |= can_pay_attack_cost.is_some() || optional_prompt.is_some();
             if let Some(prompt) = optional_prompt {
                 optional_attack_cost_prompts.push((ability_index, prompt));
@@ -421,6 +432,9 @@ fn prepare_attacker_declarations_internal(
         {
             *attackers_per_defending_player
                 .entry(defending_player)
+                .or_default() += 1;
+            *attackers_per_controller_and_defender
+                .entry((creature_controller, defending_player))
                 .or_default() += 1;
         }
     }
@@ -474,21 +488,22 @@ fn prepare_attacker_declarations_internal(
         }
     }
 
-    let total_attack_tax = attackers_per_defending_player.into_iter().fold(
-        0u32,
-        |acc, (defending_player, attackers)| {
-            let per_attacker_tax =
-                generic_attack_tax_per_attacker_against_player(game, defending_player, all_effects);
-            acc.saturating_add(per_attacker_tax.saturating_mul(attackers))
-        },
-    );
+    for ((controller, defending_player), attackers) in attackers_per_controller_and_defender {
+        let per_attacker_tax =
+            generic_attack_tax_per_attacker_against_player(game, defending_player, all_effects);
+        let entry = generic_attack_mana_costs.entry(controller).or_default();
+        *entry = entry.saturating_add(per_attacker_tax.saturating_mul(attackers));
+    }
 
-    let total_generic_attack_mana_cost =
-        total_attack_tax.saturating_add(additional_attack_mana_cost);
+    let total_generic_attack_mana_cost = generic_attack_mana_costs
+        .values()
+        .copied()
+        .fold(0u32, u32::saturating_add);
 
     Ok(PreparedAttackDeclarations {
         declarations: prepared,
         total_generic_attack_mana_cost,
+        generic_attack_mana_costs,
         has_post_tap_attack_costs: has_post_tap_attack_costs || total_generic_attack_mana_cost > 0,
     })
 }
@@ -696,7 +711,7 @@ fn attack_declaration_obeying_more_requirements_exists(
 fn collect_optional_attack_cost_prompts(
     _game: &GameState,
     prepared: &PreparedAttackDeclarations,
-) -> Vec<crate::decisions::context::BooleanContext> {
+) -> Vec<crate::decisions::context::DecisionContext> {
     let mut prompts = Vec::new();
     for prepared_decl in &prepared.declarations {
         prompts.extend(
@@ -713,7 +728,7 @@ pub fn preview_optional_attack_cost_prompts(
     game: &GameState,
     combat: &CombatState,
     declarations: &[AttackerDeclaration],
-) -> Result<Vec<crate::decisions::context::BooleanContext>, GameLoopError> {
+) -> Result<Vec<crate::decisions::context::DecisionContext>, GameLoopError> {
     let prepared = prepare_attacker_declarations(game, combat, declarations)?;
     Ok(collect_optional_attack_cost_prompts(game, &prepared))
 }
@@ -811,6 +826,12 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     use crate::combat_state::AttackerInfo;
     use crate::triggers::AttackEventTarget;
 
+    let attacking_creatures = prepared
+        .declarations
+        .iter()
+        .map(|prepared_decl| prepared_decl.declaration.creature)
+        .collect::<Vec<_>>();
+
     for prepared_decl in &prepared.declarations {
         let creature_source = prepared_decl.declaration.creature;
         let creature_controller = prepared_decl.controller;
@@ -824,16 +845,15 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 }
             }
         }
-        for (ability_index, prompt) in &prepared_decl.optional_attack_cost_prompts {
-            if !decision_maker.decide_boolean(game, prompt) {
-                continue;
-            }
+        for (ability_index, _) in &prepared_decl.optional_attack_cost_prompts {
             let ability = &prepared_decl.abilities[*ability_index];
             if let Some(result) = ability.pay_optional_attack_cost(
                 game,
                 creature_source,
                 creature_controller,
+                &attacking_creatures,
                 trigger_queue,
+                decision_maker,
             ) && let Err(msg) = result
             {
                 return Err(ResponseError::InvalidAttackers(msg).into());
@@ -841,19 +861,27 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         }
     }
 
-    if prepared.total_generic_attack_mana_cost > 0 {
-        let tax_cost = generic_mana_cost(prepared.total_generic_attack_mana_cost);
-        if !game.can_pay_mana_cost(game.turn.active_player, None, &tax_cost, 0) {
+    for payer in game.turn_players() {
+        let amount = prepared
+            .generic_attack_mana_costs
+            .get(&payer)
+            .copied()
+            .unwrap_or(0);
+        if amount == 0 {
+            continue;
+        }
+        let tax_cost = generic_mana_cost(amount);
+        if !game.can_pay_mana_cost(payer, None, &tax_cost, 0) {
             return Err(ResponseError::InvalidAttackers(format!(
                 "Cannot pay required attack cost of {{{}}}",
-                prepared.total_generic_attack_mana_cost
+                amount
             ))
             .into());
         }
-        if !game.try_pay_mana_cost(game.turn.active_player, None, &tax_cost, 0) {
+        if !game.try_pay_mana_cost(payer, None, &tax_cost, 0) {
             return Err(ResponseError::InvalidAttackers(format!(
                 "Failed to pay required attack cost of {{{}}}",
-                prepared.total_generic_attack_mana_cost
+                amount
             ))
             .into());
         }
@@ -864,6 +892,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     // trigger observes the complete declaration.
     let mut next_combat = combat.clone();
     next_combat.attackers.clear();
+    next_combat.attacking_bands.clear();
     next_combat.had_to_attack_this_combat.clear();
     let post_cost_view = DerivedGameView::new(game);
     let post_cost_candidates = prepared
@@ -897,9 +926,12 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     game.combat = Some(combat.clone());
 
     if !surviving_declarations.is_empty() {
-        let active_player = game.turn.active_player;
+        let attacking_players = surviving_declarations
+            .iter()
+            .map(|declaration| declaration.controller)
+            .collect::<std::collections::HashSet<_>>();
         let history = &mut game.turn_store.turn_history;
-        history.players_attacked_this_turn.insert(active_player);
+        history.players_attacked_this_turn.extend(attacking_players);
         for prepared_decl in &surviving_declarations {
             let creature = prepared_decl.declaration.creature;
             history.creatures_attacked_this_turn.insert(creature);
@@ -927,6 +959,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         let event_target = match &decl.target {
             AttackTarget::Player(pid) => AttackEventTarget::Player(*pid),
             AttackTarget::Planeswalker(oid) => AttackEventTarget::Planeswalker(*oid),
+            AttackTarget::Battle(oid) => AttackEventTarget::Battle(*oid),
         };
 
         let event_provenance = game
@@ -1123,12 +1156,14 @@ pub fn apply_blocker_declarations(
     declarations: &[BlockerDeclaration],
     defending_player: PlayerId,
 ) -> Result<(), GameLoopError> {
-    apply_blocker_declarations_internal(
+    let mut decision_maker = crate::decision::AutoPassDecisionMaker;
+    apply_blocker_declarations_with_dm(
         game,
         combat,
         trigger_queue,
         declarations,
         Some(defending_player),
+        &mut decision_maker,
     )
 }
 
@@ -1140,7 +1175,364 @@ pub fn apply_multiplayer_blocker_declarations(
     trigger_queue: &mut TriggerQueue,
     declarations: &[BlockerDeclaration],
 ) -> Result<(), GameLoopError> {
-    apply_blocker_declarations_internal(game, combat, trigger_queue, declarations, None)
+    let mut decision_maker = crate::decision::AutoPassDecisionMaker;
+    apply_blocker_declarations_with_dm(
+        game,
+        combat,
+        trigger_queue,
+        declarations,
+        None,
+        &mut decision_maker,
+    )
+}
+
+#[derive(Debug, Clone)]
+struct LockedBlockCost {
+    payer: PlayerId,
+    source: ObjectId,
+    cost: crate::cost::TotalCost,
+    display: String,
+}
+
+fn lock_block_cost(
+    game: &GameState,
+    source: ObjectId,
+    ability_controller: PlayerId,
+    cost: crate::cost::TotalCost,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<crate::cost::TotalCost, crate::cost::CostPaymentError> {
+    let mut execution_ctx =
+        crate::effects::ExecutionContext::new(source, ability_controller, decision_maker);
+    cost.try_map(|component| {
+        let Some(dynamic_mana) = component.dynamic_mana_cost_ref() else {
+            return Ok(component);
+        };
+        let resolved = crate::special_actions::resolve_dynamic_mana_cost(
+            game,
+            dynamic_mana,
+            &mut execution_ctx,
+        )?;
+        Ok(crate::costs::Cost::mana(resolved))
+    })
+}
+
+fn locked_block_costs_for_declarations(
+    game: &GameState,
+    pairs: &[(ObjectId, ObjectId)],
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Vec<LockedBlockCost>, GameLoopError> {
+    use std::collections::HashSet;
+
+    let view = DerivedGameView::new(game);
+    let mut blockers = Vec::new();
+    let mut seen_blockers = HashSet::new();
+    for &(blocker, _) in pairs {
+        if seen_blockers.insert(blocker) {
+            blockers.push(blocker);
+        }
+    }
+
+    let mut locked = Vec::new();
+    for &source in &game.battlefield {
+        let Some(source_object) = game.object(source) else {
+            continue;
+        };
+        let ability_controller = game.controller_of(source_object);
+        let abilities = static_abilities_for_object_with_effects(game, source, view.effects());
+        for ability in abilities {
+            for &blocker in &blockers {
+                let imposed = pairs
+                    .iter()
+                    .filter(|(candidate, _)| *candidate == blocker)
+                    .find_map(|(_, attacker)| {
+                        ability.block_cost_for_declaration(
+                            game,
+                            source,
+                            ability_controller,
+                            blocker,
+                            *attacker,
+                        )
+                    });
+                let Some(cost) = imposed else {
+                    continue;
+                };
+                let payer = game
+                    .object(blocker)
+                    .map(|object| game.controller_of(object))
+                    .ok_or_else(|| {
+                        GameLoopError::InvalidState(format!(
+                            "Blocker #{} disappeared while locking blocking costs",
+                            blocker.0
+                        ))
+                    })?;
+                let display = ability.display();
+                let cost = lock_block_cost(game, source, ability_controller, cost, decision_maker)
+                    .map_err(|error| {
+                        ResponseError::InvalidBlockers(format!(
+                            "Could not determine required blocking cost ({display}): {error}"
+                        ))
+                    })?;
+                locked.push(LockedBlockCost {
+                    payer,
+                    source,
+                    cost,
+                    display,
+                });
+            }
+        }
+    }
+    Ok(locked)
+}
+
+fn ordered_locked_block_cost(
+    game: &GameState,
+    locked: &LockedBlockCost,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<crate::cost::TotalCost, GameLoopError> {
+    let ironsmith_core::TotalCostKind::All(components) = locked.cost.kind() else {
+        return Ok(locked.cost.clone());
+    };
+    if components.len() < 2 {
+        return Ok(locked.cost.clone());
+    }
+
+    let options = components
+        .iter()
+        .enumerate()
+        .map(|(index, component)| {
+            crate::decisions::context::SelectableOption::new(index, component.display())
+        })
+        .collect();
+    let context = crate::decisions::context::SelectOptionsContext::new(
+        locked.payer,
+        Some(locked.source),
+        "Choose the order to pay blocking-cost components",
+        options,
+        components.len(),
+        components.len(),
+    );
+    let order = decision_maker.decide_options(game, &context);
+    let unique = order
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    if order.len() != components.len()
+        || unique.len() != components.len()
+        || order.iter().any(|index| *index >= components.len())
+    {
+        return Err(ResponseError::InvalidBlockers(
+            "Invalid blocking-cost payment order".to_string(),
+        )
+        .into());
+    }
+    Ok(crate::cost::TotalCost::from_costs(
+        order
+            .into_iter()
+            .map(|index| components[index].clone())
+            .collect(),
+    ))
+}
+
+fn order_locked_block_costs(
+    game: &GameState,
+    locked_costs: Vec<LockedBlockCost>,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<Vec<LockedBlockCost>, GameLoopError> {
+    let mut payer_order = Vec::new();
+    for locked in &locked_costs {
+        if !payer_order.contains(&locked.payer) {
+            payer_order.push(locked.payer);
+        }
+    }
+
+    let mut ordered = Vec::with_capacity(locked_costs.len());
+    for payer in payer_order {
+        let payer_costs = locked_costs
+            .iter()
+            .enumerate()
+            .filter(|(_, locked)| locked.payer == payer)
+            .collect::<Vec<_>>();
+        if payer_costs.len() < 2 {
+            ordered.extend(payer_costs.into_iter().map(|(_, locked)| locked.clone()));
+            continue;
+        }
+        let options = payer_costs
+            .iter()
+            .enumerate()
+            .map(|(option_index, (_, locked))| {
+                crate::decisions::context::SelectableOption::new(
+                    option_index,
+                    format!("{}: {}", locked.display, locked.cost.display()),
+                )
+            })
+            .collect();
+        let context = crate::decisions::context::SelectOptionsContext::new(
+            payer,
+            None,
+            "Choose the order to pay blocking costs",
+            options,
+            payer_costs.len(),
+            payer_costs.len(),
+        );
+        let choice = decision_maker.decide_options(game, &context);
+        let unique = choice
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        if choice.len() != payer_costs.len()
+            || unique.len() != payer_costs.len()
+            || choice.iter().any(|index| *index >= payer_costs.len())
+        {
+            return Err(ResponseError::InvalidBlockers(
+                "Invalid blocking-cost payment order".to_string(),
+            )
+            .into());
+        }
+        ordered.extend(choice.into_iter().map(|index| payer_costs[index].1.clone()));
+    }
+    Ok(ordered)
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockDeclarationTransaction {
+    game_checkpoint: GameState,
+    combat_checkpoint: CombatState,
+    trigger_queue_checkpoint: TriggerQueue,
+    prepared: PreparedBlockerDeclarations,
+}
+
+impl BlockDeclarationTransaction {
+    pub fn mana_cost_payers(&self) -> Vec<PlayerId> {
+        fn requires_mana(cost: &crate::cost::TotalCost) -> bool {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(components) => {
+                    components.iter().any(crate::costs::Cost::is_mana_cost)
+                }
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    branches.iter().any(requires_mana)
+                }
+            }
+        }
+
+        let mut payers = Vec::new();
+        for locked in &self.prepared.locked_costs {
+            if requires_mana(&locked.cost) && !payers.contains(&locked.payer) {
+                payers.push(locked.payer);
+            }
+        }
+        payers
+    }
+
+    pub fn declaration_source(&self) -> Option<ObjectId> {
+        self.prepared
+            .locked_costs
+            .first()
+            .map(|locked| locked.source)
+            .or_else(|| self.prepared.pairs.first().map(|(blocker, _)| *blocker))
+    }
+
+    pub fn defending_player(&self) -> Option<PlayerId> {
+        self.prepared.defending_player
+    }
+
+    /// Make the complete proposed declaration visible to filters and mana
+    /// abilities used during CR 509.1e-f without publishing triggers or
+    /// mutating the caller's authoritative `CombatState`. The transaction's
+    /// checkpoint restores this view if payment fails.
+    pub fn stage_proposed_combat_for_payment(&self, game: &mut GameState) {
+        game.combat = Some(self.prepared.next_combat.clone());
+        game.mark_continuous_state_dirty();
+        game.refresh_continuous_state();
+    }
+}
+
+pub fn begin_blocker_declaration_transaction(
+    game: &GameState,
+    combat: &CombatState,
+    trigger_queue: &TriggerQueue,
+    declarations: &[BlockerDeclaration],
+    defending_player: PlayerId,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<BlockDeclarationTransaction, GameLoopError> {
+    let prepared = prepare_blocker_declarations(
+        game,
+        combat,
+        declarations,
+        Some(defending_player),
+        decision_maker,
+    )?;
+    Ok(BlockDeclarationTransaction {
+        game_checkpoint: game.clone(),
+        combat_checkpoint: combat.clone(),
+        trigger_queue_checkpoint: trigger_queue.clone(),
+        prepared,
+    })
+}
+
+pub fn begin_multiplayer_blocker_declaration_transaction(
+    game: &GameState,
+    combat: &CombatState,
+    trigger_queue: &TriggerQueue,
+    declarations: &[BlockerDeclaration],
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<BlockDeclarationTransaction, GameLoopError> {
+    let prepared = prepare_blocker_declarations(game, combat, declarations, None, decision_maker)?;
+    Ok(BlockDeclarationTransaction {
+        game_checkpoint: game.clone(),
+        combat_checkpoint: combat.clone(),
+        trigger_queue_checkpoint: trigger_queue.clone(),
+        prepared,
+    })
+}
+
+pub fn finish_blocker_declaration_transaction(
+    transaction: BlockDeclarationTransaction,
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), GameLoopError> {
+    let BlockDeclarationTransaction {
+        game_checkpoint,
+        combat_checkpoint,
+        trigger_queue_checkpoint,
+        prepared,
+    } = transaction;
+    let result =
+        apply_prepared_blocker_declarations(game, combat, trigger_queue, prepared, decision_maker);
+    if result.is_err() {
+        *game = game_checkpoint;
+        *combat = combat_checkpoint;
+        *trigger_queue = trigger_queue_checkpoint;
+    }
+    result
+}
+
+fn apply_blocker_declarations_with_dm(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    declarations: &[BlockerDeclaration],
+    expected_defending_player: Option<PlayerId>,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), GameLoopError> {
+    let game_checkpoint = game.clone();
+    let combat_checkpoint = combat.clone();
+    let trigger_queue_checkpoint = trigger_queue.clone();
+    let result = apply_blocker_declarations_internal(
+        game,
+        combat,
+        trigger_queue,
+        declarations,
+        expected_defending_player,
+        decision_maker,
+    );
+    if result.is_err() {
+        *game = game_checkpoint;
+        *combat = combat_checkpoint;
+        *trigger_queue = trigger_queue_checkpoint;
+    }
+    result
 }
 
 fn apply_blocker_declarations_internal(
@@ -1149,7 +1541,33 @@ fn apply_blocker_declarations_internal(
     trigger_queue: &mut TriggerQueue,
     declarations: &[BlockerDeclaration],
     expected_defending_player: Option<PlayerId>,
+    decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    let prepared = prepare_blocker_declarations(
+        game,
+        combat,
+        declarations,
+        expected_defending_player,
+        decision_maker,
+    )?;
+    apply_prepared_blocker_declarations(game, combat, trigger_queue, prepared, decision_maker)
+}
+
+#[derive(Debug, Clone)]
+struct PreparedBlockerDeclarations {
+    pairs: Vec<(ObjectId, ObjectId)>,
+    next_combat: CombatState,
+    locked_costs: Vec<LockedBlockCost>,
+    defending_player: Option<PlayerId>,
+}
+
+fn prepare_blocker_declarations(
+    game: &GameState,
+    combat: &CombatState,
+    declarations: &[BlockerDeclaration],
+    expected_defending_player: Option<PlayerId>,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<PreparedBlockerDeclarations, GameLoopError> {
     // Pre-validate constraints not covered by combat_state::declare_blockers.
     // Do all validation against an unpublished combat clone so an invalid
     // response cannot partially clear or replace the current declarations.
@@ -1163,7 +1581,11 @@ fn apply_blocker_declarations_internal(
             .into());
         };
         let blocker_controller = game.controller_of(blocker);
-        if expected_defending_player.is_some_and(|player| player != blocker_controller) {
+        if expected_defending_player.is_some_and(|player| {
+            player != blocker_controller
+                && !(game.shared_team_turns_enabled()
+                    && game.are_teammates(player, blocker_controller))
+        }) {
             return Err(ResponseError::InvalidBlockers(
                 "Can only block with creatures you control".to_string(),
             )
@@ -1177,7 +1599,11 @@ fn apply_blocker_declarations_internal(
             .into());
         }
         if crate::combat_state::defending_player_for_attacker(game, combat, decl.blocking)
-            != Some(blocker_controller)
+            .is_none_or(|defender| {
+                defender != blocker_controller
+                    && !(game.shared_team_turns_enabled()
+                        && game.are_teammates(defender, blocker_controller))
+            })
         {
             return Err(ResponseError::InvalidBlockers(
                 "A defending player can block only creatures attacking that player or a planeswalker they control"
@@ -1196,10 +1622,93 @@ fn apply_blocker_declarations_internal(
 
     // Validate and apply using the combat rules engine (handles menace, max blockers,
     // and "can block additional attackers").
+    let validation_pairs = if let Some(defending_player) = expected_defending_player {
+        let mut combined = combat
+            .blockers
+            .iter()
+            .flat_map(|(&attacker, blockers)| {
+                blockers
+                    .iter()
+                    .copied()
+                    .map(move |blocker| (blocker, attacker))
+            })
+            .filter(|(blocker, _)| {
+                game.object(*blocker)
+                    .is_some_and(|object| game.controller_of(object) != defending_player)
+            })
+            .collect::<Vec<_>>();
+        combined.extend(pairs.iter().copied());
+        combined
+    } else {
+        pairs.clone()
+    };
     let mut next_combat = combat.clone();
     next_combat.blockers.clear();
-    if let Err(err) = crate::combat_state::declare_blockers(game, &mut next_combat, pairs.clone()) {
+    let validation = if game.shared_team_turns_enabled() {
+        crate::combat_state::declare_blockers(game, &mut next_combat, validation_pairs)
+    } else if let Some(defending_player) = expected_defending_player {
+        crate::combat_state::declare_blockers_for_defending_player(
+            game,
+            &mut next_combat,
+            validation_pairs,
+            defending_player,
+        )
+    } else {
+        crate::combat_state::declare_blockers(game, &mut next_combat, validation_pairs)
+    };
+    if let Err(err) = validation {
         return Err(ResponseError::InvalidBlockers(err.to_string()).into());
+    }
+
+    // CR 509.1d: determine and lock every cost only after the complete proposed
+    // declaration is legal. A single ability charges a blocking creature once,
+    // even if that creature is blocking more than one attacker.
+    let mut declaration_view = game.clone();
+    declaration_view.combat = Some(next_combat.clone());
+    declaration_view.mark_continuous_state_dirty();
+    declaration_view.refresh_continuous_state();
+    let locked_costs =
+        locked_block_costs_for_declarations(&declaration_view, &pairs, decision_maker)?;
+    Ok(PreparedBlockerDeclarations {
+        pairs,
+        next_combat,
+        locked_costs,
+        defending_player: expected_defending_player,
+    })
+}
+
+fn apply_prepared_blocker_declarations(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    prepared: PreparedBlockerDeclarations,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<(), GameLoopError> {
+    let PreparedBlockerDeclarations {
+        pairs,
+        next_combat,
+        locked_costs,
+        defending_player,
+    } = prepared;
+    game.combat = Some(next_combat.clone());
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+    for locked in order_locked_block_costs(game, locked_costs, decision_maker)? {
+        let ordered = ordered_locked_block_cost(game, &locked, decision_maker)?;
+        crate::special_actions::pay_total_cost_with_choice(
+            game,
+            locked.payer,
+            locked.source,
+            &ordered,
+            crate::costs::PaymentReason::Other,
+            decision_maker,
+        )
+        .map_err(|error| {
+            ResponseError::InvalidBlockers(format!(
+                "Cannot pay required blocking cost ({}): {error}",
+                locked.display
+            ))
+        })?;
     }
 
     // Block triggers can depend on the complete set of blockers declared together.
@@ -1224,6 +1733,12 @@ fn apply_blocker_declarations_internal(
     }
     for attacker_info in &combat.attackers {
         let attacker = attacker_info.creature;
+        if defending_player.is_some_and(|player| {
+            crate::combat_state::defending_player_for_attacker(game, combat, attacker)
+                != Some(player)
+        }) {
+            continue;
+        }
         let Some(blockers) = combat.blockers.get(&attacker) else {
             continue;
         };
@@ -1282,6 +1797,12 @@ fn apply_blocker_declarations_internal(
     // Generate "becomes blocked" triggers for blocked attackers
     for attacker_info in &combat.attackers {
         let attacker_id = attacker_info.creature;
+        if defending_player.is_some_and(|player| {
+            crate::combat_state::defending_player_for_attacker(game, combat, attacker_id)
+                != Some(player)
+        }) {
+            continue;
+        }
         let Some(blockers) = combat.blockers.get(&attacker_id) else {
             continue;
         };
@@ -1292,6 +1813,9 @@ fn apply_blocker_declarations_internal(
                 }
                 AttackTarget::Planeswalker(planeswalker_id) => {
                     crate::triggers::AttackEventTarget::Planeswalker(*planeswalker_id)
+                }
+                AttackTarget::Battle(battle_id) => {
+                    crate::triggers::AttackEventTarget::Battle(*battle_id)
                 }
             });
             let event_provenance = game
@@ -1318,6 +1842,12 @@ fn apply_blocker_declarations_internal(
 
     // Generate "attacks and isn't blocked" triggers for unblocked attackers
     for info in &combat.attackers {
+        if defending_player.is_some_and(|player| {
+            crate::combat_state::defending_player_for_attacker(game, combat, info.creature)
+                != Some(player)
+        }) {
+            continue;
+        }
         // The loop already proves this object is attacking; only the O(1)
         // blocker lookup is needed here.
         if is_blocked(combat, info.creature) {
@@ -1330,6 +1860,9 @@ fn apply_blocker_declarations_internal(
             }
             AttackTarget::Planeswalker(planeswalker_id) => {
                 crate::triggers::AttackEventTarget::Planeswalker(planeswalker_id)
+            }
+            AttackTarget::Battle(battle_id) => {
+                crate::triggers::AttackEventTarget::Battle(battle_id)
             }
         };
 
@@ -1393,12 +1926,15 @@ mod declaration_batch_tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::CardDefinitionBuilder;
     use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+    use crate::decisions::context::DecisionContext;
     use crate::filter::ObjectFilterExt as _;
     use crate::ids::CardId;
     use crate::static_abilities::{
         AttackCostCondition, CantAttackUnlessConditionSpec, StaticAbility,
     };
+    use crate::target::PlayerFilter;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -1423,6 +1959,269 @@ mod declaration_batch_tests {
         }
         game.remove_summoning_sickness(id);
         id
+    }
+
+    fn create_enlist_attacker(
+        game: &mut GameState,
+        controller: PlayerId,
+        name: &str,
+        instances: usize,
+    ) -> ObjectId {
+        let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2));
+        for _ in 0..instances {
+            builder = builder.enlist();
+        }
+        let definition = builder.build();
+        let id = game.create_object_from_definition(&definition, controller, Zone::Battlefield);
+        game.remove_summoning_sickness(id);
+        id
+    }
+
+    struct EnlistChoices {
+        choices: Vec<Vec<ObjectId>>,
+        next: usize,
+    }
+
+    impl DecisionMaker for EnlistChoices {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let choice = self.choices.get(self.next).cloned().unwrap_or_default();
+            self.next += 1;
+            choice
+        }
+    }
+
+    #[test]
+    fn enlist_pays_during_declaration_and_each_instance_triggers_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_enlist_attacker(&mut game, alice, "Double Enlister", 2);
+        let first_support = create_attacker(&mut game, alice, "First Support", false);
+        let second_support = create_attacker(&mut game, alice, "Second Support", false);
+        game.refresh_continuous_state();
+
+        let declarations = [AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }];
+        let mut combat = CombatState::default();
+        let mut trigger_queue = TriggerQueue::new();
+        let mut decisions = EnlistChoices {
+            choices: vec![vec![first_support], vec![second_support]],
+            next: 0,
+        };
+        apply_attacker_declarations_with_dm(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &declarations,
+            &mut decisions,
+        )
+        .expect("both independent enlist costs should be payable");
+
+        assert!(game.is_tapped(attacker), "508.1f taps the attacker first");
+        assert!(game.is_tapped(first_support));
+        assert!(game.is_tapped(second_support));
+        assert_eq!(
+            game.calculated_power(attacker),
+            Some(2),
+            "the linked boosts do not resolve during attack-cost payment"
+        );
+        assert_eq!(trigger_queue.entries.len(), 2);
+
+        let enlist_events = game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<crate::events::KeywordActionEvent>())
+            .filter(|event| event.action == crate::events::KeywordActionKind::Enlist)
+            .collect::<Vec<_>>();
+        assert_eq!(enlist_events.len(), 2, "each paid instance enlists once");
+        assert!(enlist_events.iter().all(|event| {
+            event.source == attacker
+                && event.combat_phase == Some(0)
+                && event
+                    .object_tags
+                    .get(&crate::tag::TagKey::from("enlisted_creature"))
+                    .is_some_and(|objects| objects.len() == 1)
+        }));
+
+        let enlisted_this_combat = crate::effect::Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::TriggeringObjectEnlistedThisCombat,
+        );
+        let attack_event = TriggerEvent::new(
+            crate::events::CreatureAttackedEvent::new(
+                attacker,
+                crate::triggers::AttackEventTarget::Player(bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let attack_ctx = crate::effects::ExecutionContext::new_default(attacker, alice)
+            .with_triggering_event(attack_event);
+        assert!(
+            crate::condition_eval::evaluate_condition_resolution(
+                &game,
+                &enlisted_this_combat,
+                &attack_ctx,
+            )
+            .expect("enlist history predicate should evaluate")
+        );
+
+        let other_attack_event = TriggerEvent::new(
+            crate::events::CreatureAttackedEvent::new(
+                first_support,
+                crate::triggers::AttackEventTarget::Player(bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let other_attack_ctx = crate::effects::ExecutionContext::new_default(first_support, alice)
+            .with_triggering_event(other_attack_event);
+        assert!(
+            !crate::condition_eval::evaluate_condition_resolution(
+                &game,
+                &enlisted_this_combat,
+                &other_attack_ctx,
+            )
+            .expect("another attacker should not inherit enlist history")
+        );
+        game.turn_store.combat_phases_started_this_turn = 1;
+        assert!(
+            !crate::condition_eval::evaluate_condition_resolution(
+                &game,
+                &enlisted_this_combat,
+                &attack_ctx,
+            )
+            .expect("enlist history should be scoped to one combat")
+        );
+        game.turn_store.combat_phases_started_this_turn = 0;
+
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("linked enlist triggers should go on the stack");
+        crate::game_loop::resolve_stack_entry(&mut game)
+            .expect("first enlist trigger should resolve");
+        crate::game_loop::resolve_stack_entry(&mut game)
+            .expect("second enlist trigger should resolve");
+        assert_eq!(game.calculated_power(attacker), Some(6));
+    }
+
+    #[test]
+    fn enlist_prompt_excludes_attackers_self_and_summoning_sick_creatures() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_enlist_attacker(&mut game, alice, "Enlister", 1);
+        let other_attacker = create_attacker(&mut game, alice, "Other Attacker", false);
+        let ready_support = create_attacker(&mut game, alice, "Ready Support", false);
+        let sick_card = CardBuilder::new(CardId::new(), "New Support")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let sick_support = game.create_object_from_card(&sick_card, alice, Zone::Battlefield);
+        game.set_summoning_sick(sick_support);
+        let haste_card = CardBuilder::new(CardId::new(), "Hasty New Support")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let haste_support = game.create_object_from_card(&haste_card, alice, Zone::Battlefield);
+        game.object_mut(haste_support)
+            .expect("hasty support exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::haste()));
+        game.set_summoning_sick(haste_support);
+        game.refresh_continuous_state();
+
+        let declarations = [
+            AttackerDeclaration {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            },
+            AttackerDeclaration {
+                creature: other_attacker,
+                target: AttackTarget::Player(bob),
+            },
+        ];
+        let prompts =
+            preview_optional_attack_cost_prompts(&game, &CombatState::default(), &declarations)
+                .expect("declaration should be legal");
+        let DecisionContext::SelectObjects(prompt) = &prompts[0] else {
+            panic!("enlist should request an object selection")
+        };
+        let candidates = prompt
+            .candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        assert_eq!(candidates, vec![ready_support, haste_support]);
+        assert!(!candidates.contains(&attacker));
+        assert!(!candidates.contains(&other_attacker));
+        assert!(!candidates.contains(&sick_support));
+        assert_eq!(prompt.min, 0, "declining enlist remains legal");
+        assert_eq!(prompt.max, Some(1));
+    }
+
+    #[test]
+    fn enlist_keyword_action_fires_source_enlists_trigger() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Enlist Trigger Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .enlist()
+            .with_ability(Ability::triggered(
+                crate::triggers::Trigger::keyword_action_from_source(
+                    crate::events::KeywordActionKind::Enlist,
+                    crate::target::PlayerFilter::You,
+                ),
+                vec![crate::effect::Effect::scry(2)],
+            ))
+            .build();
+        let attacker = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker);
+        let support = create_attacker(&mut game, alice, "Support", false);
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        let mut trigger_queue = TriggerQueue::new();
+        let mut decisions = EnlistChoices {
+            choices: vec![vec![support]],
+            next: 0,
+        };
+        apply_attacker_declarations_with_dm(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &[AttackerDeclaration {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            &mut decisions,
+        )
+        .expect("enlist declaration should succeed");
+        assert_eq!(
+            trigger_queue.entries.len(),
+            1,
+            "linked boost is queued directly"
+        );
+
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        assert_eq!(
+            trigger_queue.entries.len(),
+            2,
+            "the ordinary source-enlists trigger should also fire"
+        );
+        assert!(
+            trigger_queue
+                .entries
+                .iter()
+                .any(|entry| { format!("{:?}", entry.ability.effects).contains("ScryEffect") })
+        );
     }
 
     #[test]
@@ -1864,6 +2663,412 @@ mod declaration_batch_tests {
             assert_eq!(actual.target, expected.target);
         }
         assert!(trigger_queue.entries.is_empty());
+    }
+
+    #[test]
+    fn blocker_declaration_batches_flanking_per_attacker_blocker_relationship() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_attacker(&mut game, alice, "Double Flanker", false);
+        let first_blocker = create_attacker(&mut game, bob, "First Blocker", false);
+        let second_blocker = create_attacker(&mut game, bob, "Second Blocker", false);
+        for _ in 0..2 {
+            game.object_mut(attacker)
+                .expect("attacker exists")
+                .abilities_mut()
+                .push(Ability::static_ability(StaticAbility::flanking()));
+        }
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        let declarations = [
+            BlockerDeclaration {
+                blocker: first_blocker,
+                blocking: attacker,
+            },
+            BlockerDeclaration {
+                blocker: second_blocker,
+                blocking: attacker,
+            },
+        ];
+        let mut trigger_queue = TriggerQueue::new();
+
+        apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &declarations,
+            bob,
+        )
+        .expect("both blockers should be declared in one turn-based action");
+
+        assert_eq!(
+            trigger_queue.entries.len(),
+            4,
+            "two Flanking instances trigger for each of two blocking relationships"
+        );
+        for blocker in [first_blocker, second_blocker] {
+            assert_eq!(
+                trigger_queue
+                    .entries
+                    .iter()
+                    .filter(|entry| {
+                        entry
+                            .triggering_event
+                            .downcast::<CreatureBlockedEvent>()
+                            .is_some_and(|event| {
+                                event.attacker == attacker && event.blocker == blocker
+                            })
+                    })
+                    .count(),
+                2,
+                "each relationship receives both independent triggers"
+            );
+        }
+    }
+
+    #[test]
+    fn blocker_declaration_requires_and_transactionally_pays_locked_cost() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_attacker(&mut game, alice, "Taxed Attacker", false);
+        let blocker = create_attacker(&mut game, bob, "Paying Blocker", false);
+        let tax_source = CardBuilder::new(CardId::new(), "Blocking Tax")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let tax_source = game.create_object_from_card(&tax_source, alice, Zone::Battlefield);
+        game.object_mut(tax_source)
+            .expect("tax source exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::block_cost(
+                ObjectFilter::default(),
+                ObjectFilter::default(),
+                crate::cost::TotalCost::mana(generic_mana_cost(1)),
+                "Creatures can't block unless their controller pays {1} for each blocking creature they control.",
+            )));
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        let declarations = [BlockerDeclaration {
+            blocker,
+            blocking: attacker,
+        }];
+        let mut trigger_queue = TriggerQueue::new();
+
+        let unpaid = apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &declarations,
+            bob,
+        );
+        assert!(
+            unpaid.is_err(),
+            "an unpaid blocking cost must reject the declaration"
+        );
+        assert!(
+            combat.blockers.is_empty(),
+            "failed payment must not publish blockers"
+        );
+        assert!(
+            game.combat.is_none(),
+            "failed payment must roll back the proposed declaration view"
+        );
+        assert!(trigger_queue.entries.is_empty());
+
+        game.player_mut(bob)
+            .expect("defending player exists")
+            .mana_pool
+            .add(crate::mana::ManaSymbol::Colorless, 1);
+        apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &declarations,
+            bob,
+        )
+        .expect("the declaration should succeed after its locked cost is paid");
+        assert_eq!(combat.blockers.get(&attacker), Some(&vec![blocker]));
+        assert_eq!(
+            game.player(bob)
+                .expect("defending player exists")
+                .mana_pool
+                .total(),
+            0,
+            "the blocking cost must be paid before blockers are published"
+        );
+    }
+
+    #[test]
+    fn tap_block_cost_cannot_choose_a_creature_in_the_proposed_declaration() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_attacker(&mut game, alice, "Attacker", false);
+        let blocker = create_attacker(&mut game, bob, "Hollow Warrior", false);
+        let payment_helper = create_attacker(&mut game, bob, "Payment Helper", false);
+
+        let mut eligible = ObjectFilter::creature().you_control();
+        eligible.untapped = true;
+        eligible.nonattacking = true;
+        eligible.nonblocking = true;
+        let tag = crate::tag::TagKey::from("hollow_warrior_tap_cost");
+        let cost = crate::cost::TotalCost::from_costs(vec![
+            crate::costs::Cost::validated_effect(crate::effect::Effect::choose_objects(
+                eligible,
+                crate::effect::ChoiceCount::exactly(1),
+                PlayerFilter::You,
+                tag.clone(),
+            )),
+            crate::costs::Cost::validated_effect(crate::effect::Effect::tap(
+                crate::target::ChooseSpec::tagged(tag),
+            )),
+        ]);
+        game.object_mut(blocker)
+            .expect("blocker exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::block_cost(
+                ObjectFilter::source(),
+                ObjectFilter::creature(),
+                cost,
+                "This creature can't block unless you tap an eligible creature",
+            )));
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut TriggerQueue::new(),
+            &[BlockerDeclaration {
+                blocker,
+                blocking: attacker,
+            }],
+            bob,
+        )
+        .expect("helper creature should pay the blocking cost");
+
+        assert!(game.is_tapped(payment_helper));
+        assert!(
+            !game.is_tapped(blocker),
+            "the creature being declared as a blocker is not an eligible tap payment"
+        );
+        assert_eq!(combat.blockers.get(&attacker), Some(&vec![blocker]));
+    }
+
+    #[test]
+    fn one_block_cost_ability_charges_a_multi_blocker_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first_attacker = create_attacker(&mut game, alice, "First Attacker", false);
+        let second_attacker = create_attacker(&mut game, alice, "Second Attacker", false);
+        let blocker = create_attacker(&mut game, bob, "Wide Blocker", false);
+        game.object_mut(blocker)
+            .expect("blocker exists")
+            .abilities_mut()
+            .push(Ability::static_ability(
+                StaticAbility::can_block_additional_creature_each_combat(1),
+            ));
+        let tax_source = CardBuilder::new(CardId::new(), "Blocking Tax")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let tax_source = game.create_object_from_card(&tax_source, alice, Zone::Battlefield);
+        game.object_mut(tax_source)
+            .expect("tax source exists")
+            .abilities_mut()
+            .push(Ability::static_ability(StaticAbility::block_cost(
+                ObjectFilter::default(),
+                ObjectFilter::default(),
+                crate::cost::TotalCost::mana(generic_mana_cost(1)),
+                "Creatures can't block unless their controller pays {1} for each blocking creature they control.",
+            )));
+        game.player_mut(bob)
+            .expect("defending player exists")
+            .mana_pool
+            .add(crate::mana::ManaSymbol::Colorless, 1);
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        for attacker in [first_attacker, second_attacker] {
+            combat.attackers.push(crate::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            });
+        }
+        let declarations = [
+            BlockerDeclaration {
+                blocker,
+                blocking: first_attacker,
+            },
+            BlockerDeclaration {
+                blocker,
+                blocking: second_attacker,
+            },
+        ];
+        let mut trigger_queue = TriggerQueue::new();
+
+        apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &declarations,
+            bob,
+        )
+        .expect("one mana pays once for the one blocking creature");
+        assert_eq!(
+            game.player(bob)
+                .expect("defending player exists")
+                .mana_pool
+                .total(),
+            0
+        );
+        assert_eq!(combat.blockers.get(&first_attacker), Some(&vec![blocker]));
+        assert_eq!(combat.blockers.get(&second_attacker), Some(&vec![blocker]));
+    }
+
+    #[test]
+    fn dynamic_block_cost_is_locked_before_payment_state_changes() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_attacker(&mut game, alice, "Dynamic Tax Source", false);
+        for name in ["First Hand Card", "Second Hand Card"] {
+            let card = CardBuilder::new(CardId::new(), name).build();
+            game.create_object_from_card(&card, alice, Zone::Hand);
+        }
+        let dynamic = ironsmith_core::DynamicManaCost::generic_equal_to(
+            crate::effect::Value::CardsInHand(PlayerFilter::You),
+        );
+        let cost = crate::cost::TotalCost::from_cost(crate::costs::Cost::dynamic_mana(dynamic));
+        let mut decision_maker = crate::decision::AutoPassDecisionMaker;
+
+        let locked = lock_block_cost(&game, source, alice, cost, &mut decision_maker)
+            .expect("the declaration-time value should resolve");
+        assert_eq!(
+            locked
+                .mana_cost()
+                .expect("locked fixed mana cost")
+                .generic_mana_total(),
+            2
+        );
+        assert!(locked.dynamic_mana_cost().is_none());
+    }
+
+    #[test]
+    fn attached_block_cost_matches_attachment_but_keeps_aura_as_cost_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_attacker(&mut game, alice, "Attacker", false);
+        let blocker = create_attacker(&mut game, bob, "Enchanted Blocker", false);
+        let aura = CardBuilder::new(CardId::new(), "Blocking Aura")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let aura = game.create_object_from_card(&aura, alice, Zone::Battlefield);
+        let aura_object = game.object_mut(aura).expect("aura exists");
+        aura_object.attached_to = Some(crate::object::AttachmentTarget::Object(blocker));
+        aura_object.abilities_mut().push(Ability::static_ability(
+            StaticAbility::attached_block_cost(
+                ObjectFilter::creature(),
+                ObjectFilter::creature(),
+                crate::cost::TotalCost::mana(generic_mana_cost(1)),
+                "Enchanted creature can't block unless its controller pays {1}.",
+            ),
+        ));
+        game.player_mut(bob)
+            .expect("defending player exists")
+            .mana_pool
+            .add(crate::mana::ManaSymbol::Colorless, 1);
+        game.refresh_continuous_state();
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        let mut trigger_queue = TriggerQueue::new();
+        let mut decision_maker = crate::decision::AutoPassDecisionMaker;
+        let transaction = begin_blocker_declaration_transaction(
+            &game,
+            &combat,
+            &trigger_queue,
+            &[BlockerDeclaration {
+                blocker,
+                blocking: attacker,
+            }],
+            bob,
+            &mut decision_maker,
+        )
+        .expect("the attached blocking cost should lock");
+        assert_eq!(transaction.mana_cost_payers(), vec![bob]);
+        assert_eq!(transaction.declaration_source(), Some(aura));
+        finish_blocker_declaration_transaction(
+            transaction,
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &mut decision_maker,
+        )
+        .expect("the attached creature's controller should pay the Aura's locked cost");
+        assert_eq!(
+            game.player(bob)
+                .expect("defending player exists")
+                .mana_pool
+                .total(),
+            0
+        );
+    }
+
+    #[test]
+    fn blocking_cost_components_follow_the_payers_selected_order() {
+        struct ReverseOrder;
+
+        impl DecisionMaker for ReverseOrder {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                context: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                (0..context.options.len()).rev().collect()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_attacker(&mut game, alice, "Ordered Cost Source", false);
+        let locked = LockedBlockCost {
+            payer: bob,
+            source,
+            cost: crate::cost::TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(generic_mana_cost(1)),
+                crate::costs::Cost::life(1),
+            ]),
+            display: "Pay {1} and 1 life to block".to_string(),
+        };
+        let mut decision_maker = ReverseOrder;
+
+        let ordered = ordered_locked_block_cost(&game, &locked, &mut decision_maker)
+            .expect("a complete permutation should be accepted");
+        let components = ordered
+            .as_all()
+            .expect("the conjunction remains a conjunction");
+        assert_eq!(components[0].life_amount(), Some(1));
+        assert!(components[1].is_mana_cost());
     }
 
     #[test]

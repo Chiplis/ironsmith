@@ -129,7 +129,7 @@ const COMMANDER_ITERATED_PLAYER_OWNS_BATTLEFIELD_OR_COMMAND_ZONE_PHRASES: &[&[&s
 ];
 pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    let word_view = TokenWordView::new(tokens);
+    let word_view = TokenWordView::new(&tokens);
     let words = word_view.to_word_refs();
     let surface = value_shapes::parse_aggregate_value_surface(&words)?;
     let scope_start = words.len().checked_sub(surface.scope_words.len())?;
@@ -141,6 +141,7 @@ pub(crate) fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Opt
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
         AggregateValueMetric::CreatureTypes => Some(Value::CreatureTypesAmong(filter)),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
+        AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
         AggregateValueMetric::DistinctPowers => Some(Value::DistinctPowers(filter)),
         AggregateValueMetric::Counters => Some(
             Value::CountersOn(Box::new(crate::target::ChooseSpec::All(filter)), None)
@@ -368,13 +369,13 @@ pub(crate) fn parse_triggering_spell_history_count_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let tokens = trim_edge_punctuation(tokens);
-    let word_view = TokenWordView::new(tokens);
+    let word_view = TokenWordView::new(&tokens);
     let words = word_view.to_word_refs();
     if words.is_empty() {
         return None;
     }
 
-    let mut filter = history_filter_from_word_prefix(tokens, &word_view, words.len())?;
+    let mut filter = history_filter_from_word_prefix(&tokens, &word_view, words.len())?;
     let exclude_source = filter.other || words.contains(&"other");
     filter.other = false;
     Some(Value::TurnHistoryCount(TurnHistoryCount::SpellsCast {
@@ -1367,6 +1368,15 @@ mod tests {
         };
         assert_eq!(power_filter.card_types, vec![CardType::Creature]);
         assert_eq!(power_filter.controller, Some(PlayerFilter::You));
+
+        let name_tokens = lex_words("differently named lands you control");
+        let name_value = parse_aggregate_scope_value_lexed(&name_tokens)
+            .expect("distinct-name aggregate should parse");
+        let Value::DistinctNames(name_filter) = name_value else {
+            panic!("expected distinct-name value, got {name_value:?}");
+        };
+        assert_eq!(name_filter.card_types, vec![CardType::Land]);
+        assert_eq!(name_filter.controller, Some(PlayerFilter::You));
     }
 
     #[test]

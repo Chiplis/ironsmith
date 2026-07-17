@@ -1,5 +1,50 @@
 use super::*;
 
+/// Preserve a single independently targeted animation for each quantified
+/// player. The loop is executable structure, while Oracle keeps the action
+/// lowercase after the quantifier and uses singular-they for the iterated
+/// player's control relationship.
+pub(super) fn describe_for_players_single_iterated_animation(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let quantified = match for_players.filter {
+        PlayerFilter::Opponent => "opponent",
+        PlayerFilter::Any => "player",
+        _ => return None,
+    };
+    let [effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let apply = unwrap_basic_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let filter = match apply.target_spec.as_ref()?.base() {
+        ChooseSpec::Object(filter) => filter,
+        _ => return None,
+    };
+    if filter.controller != Some(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    match apply.modification.as_ref() {
+        Some(
+            crate::continuous::Modification::AddCardTypes(card_types)
+            | crate::continuous::Modification::SetCardTypes(card_types),
+        ) if card_types.contains(&CardType::Creature) => {}
+        _ => return None,
+    }
+
+    let action = describe_effect(effect)
+        .trim()
+        .trim_end_matches('.')
+        .replace("that player controls", "they control");
+    Some(format!(
+        "For each {quantified}, {}",
+        lowercase_first(&action)
+    ))
+}
+
 pub(super) fn describe_each_player_shuffle_hand_then_draw(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -289,6 +334,30 @@ mod tests {
     }
 
     #[test]
+    fn coordinates_shared_opponent_actions_inside_one_authored_sequence() {
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+                vec![
+                    Effect::new(crate::effects::DrawCardsEffect::new(
+                        1,
+                        PlayerFilter::IteratedPlayer,
+                    )),
+                    Effect::new(crate::effects::GainLifeEffect::with_filter(
+                        2,
+                        PlayerFilter::IteratedPlayer,
+                    )),
+                ],
+            ))],
+        );
+
+        assert_eq!(
+            describe_for_players_coordinated_actions(&for_players).as_deref(),
+            Some("Each opponent draws a card and gains 2 life")
+        );
+    }
+
+    #[test]
     fn coordinates_controller_draw_with_opponent_life_loss() {
         let draw = Effect::new(crate::effects::DrawCardsEffect::you(1));
         let opponents = Effect::new(crate::effects::ForPlayersEffect::new(
@@ -360,6 +429,55 @@ mod tests {
         assert_eq!(
             describe_for_players_simple_iterated_action(&for_players).as_deref(),
             Some("Each opponent loses 1 life for each creature card in their graveyard")
+        );
+    }
+
+    #[test]
+    fn welcome_animation_keeps_lowercase_per_opponent_singular_they_surface() {
+        let mut target_filter = ObjectFilter::artifact()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .in_zone(Zone::Battlefield);
+        target_filter.excluded_card_types.push(CardType::Creature);
+        let target =
+            ChooseSpec::target(ChooseSpec::Object(target_filter)).with_count(ChoiceCount {
+                min: 0,
+                max: Some(1),
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+            });
+        let mut animation = crate::effects::ApplyContinuousEffect::with_spec(
+            target,
+            crate::continuous::Modification::AddCardTypes(vec![
+                CardType::Artifact,
+                CardType::Creature,
+            ]),
+            Until::Forever,
+        )
+        .with_animation_pt_surface(Some(
+            ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
+        ));
+        animation.additional_modifications.extend([
+            crate::continuous::Modification::SetPowerToughness {
+                power: Value::Fixed(0),
+                toughness: Value::Fixed(4),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            },
+            crate::continuous::Modification::AddSubtypes(vec![Subtype::Wall]),
+            crate::continuous::Modification::AddAbility(
+                crate::static_abilities::StaticAbility::defender(),
+            ),
+        ]);
+        let for_players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![Effect::new(animation)],
+        );
+
+        assert_eq!(
+            describe_for_players_single_iterated_animation(&for_players).as_deref(),
+            Some(
+                "For each opponent, up to one target noncreature artifact they control becomes a 0/4 wall artifact creature with defender"
+            )
         );
     }
 }

@@ -153,6 +153,7 @@ impl CostProcessingMode {
                     Zone::Library => "your library",
                     Zone::Stack => "the stack",
                     Zone::Command => "the command zone",
+                    Zone::Ante => "ante",
                     Zone::OutsideGame => "outside the game",
                 };
                 let object_desc = filter.description();

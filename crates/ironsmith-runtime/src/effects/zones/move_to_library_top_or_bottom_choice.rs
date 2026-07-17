@@ -3,9 +3,7 @@
 use crate::decision::DecisionMaker;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{
-    resolve_objects_for_effect, resolve_player_filter, resolve_tagged_object_id,
-};
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
@@ -110,7 +108,9 @@ impl EffectExecutor for MoveToLibraryTopOrBottomChoiceEffect {
             let stable_id = obj.stable_id;
             let from_zone = obj.zone;
             let chooser = match &self.chooser {
-                Some(chooser) => resolve_player_filter(game, chooser, ctx)?,
+                Some(chooser) => {
+                    crate::effects::helpers::resolve_player_filter_as_chooser(game, chooser, ctx)?
+                }
                 None => obj.owner,
             };
             let object_name = obj.name.to_string();

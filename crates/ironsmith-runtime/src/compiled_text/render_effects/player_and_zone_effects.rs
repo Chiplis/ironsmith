@@ -494,6 +494,9 @@ pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
 pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> Option<String> {
     let player = describe_player_filter(&draw.player);
     let verb = player_verb(&player, "draw", "draws");
+    if let Some(equal_to) = describe_equal_to_card_action_count(&draw.count) {
+        return Some(format!("{player} {verb} {equal_to}"));
+    }
     if let Some(dynamic_for_each) = describe_draw_count_for_each_phrase(&draw.count) {
         return Some(format!("{player} {verb} {dynamic_for_each}"));
     }
@@ -603,6 +606,34 @@ pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
     }
 }
 
+/// Render an authored `cards equal to ...` count for actions such as draw and
+/// mill. Other card-count effects use an object noun phrase (for example,
+/// "discard a number of cards equal to ..."), but draw and mill take the
+/// shorter oracle action surface without the indefinite quantifier.
+pub(crate) fn describe_equal_to_card_action_count(value: &Value) -> Option<String> {
+    if !value.has_surface_hint(ValueSurfaceHint::EqualTo)
+        || describe_effect_count_backref(value).is_some()
+    {
+        return None;
+    }
+
+    let amount = value
+        .clone()
+        .without_surface_hint(ValueSurfaceHint::EqualTo);
+    let basis = match amount.unhinted() {
+        Value::PowerOf(spec) => describe_power_card_count_basis(spec),
+        _ => describe_value(&amount),
+    };
+    let count = format!("cards equal to {basis}");
+    Some(
+        if value.has_surface_hint(ValueSurfaceHint::AdditionalCards) {
+            additionalize_card_count_phrase(&count)
+        } else {
+            count
+        },
+    )
+}
+
 pub(super) fn singularize_for_each_basis(basis: &str) -> String {
     if let Some((head, tail)) = basis.split_once(" counters on ") {
         return format!("{head} counter on {tail}");
@@ -626,7 +657,9 @@ pub(super) fn describe_tagged_creature_power_count_basis(
 pub(super) fn describe_power_card_count_basis(spec: &ChooseSpec) -> String {
     match spec.base() {
         ChooseSpec::Tagged(tag)
-            if tag.as_str() == "__it__" || tag.as_str().starts_with("sacrifice_cost_") =>
+            if tag.as_str() == "__it__"
+                || tag.as_str().starts_with("sacrifice_cost_")
+                || tag_action_from_name(tag.as_str()) == Some("sacrificed") =>
         {
             "that creature's power".to_string()
         }
@@ -722,8 +755,11 @@ pub(super) fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str)
 }
 
 pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
-    if value_prefers_where_x(value) {
+    if value.has_surface_hint(ValueSurfaceHint::EqualTo) || value_prefers_where_x(value) {
         return None;
+    }
+    if let Some(history) = describe_turn_history_for_each_basis(value) {
+        return Some(history);
     }
     if let Some((1, party)) = describe_party_size_for_each_basis(value) {
         return Some(party);
@@ -746,10 +782,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }) => {
                 Some("creature blocking it beyond the first".to_string())
             }
-            Value::EventValueOffset(
-                EventValueSpec::BlockersBeyondFirst { multiplier: 1 },
-                1,
-            ) => Some("creature blocking it".to_string()),
+            Value::EventValueOffset(EventValueSpec::BlockersBeyondFirst { multiplier: 1 }, 1) => {
+                Some("creature blocking it".to_string())
+            }
             _ => None,
         };
     }
@@ -761,6 +796,16 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             describe_prior_effect_source_count_basis(filter, false)
                 .unwrap_or_else(|| describe_for_each_filter(filter)),
         ),
+        Value::ManaSymbolsInManaCostOf { spec, color } => {
+            let ChooseSpec::All(filter) = spec.unhinted() else {
+                return None;
+            };
+            Some(format!(
+                "{} mana symbol in the mana costs of {}",
+                color.name(),
+                describe_count_filter_value_subject(filter)
+            ))
+        }
         Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
             if query.metric == crate::effect::EffectMetric::Count =>
         {
@@ -982,7 +1027,14 @@ pub(super) fn describe_token_creator_subject(controller: &PlayerFilter) -> Optio
     }
 }
 
-pub(super) fn describe_create_token_action(object_text: &str, controller: &PlayerFilter) -> String {
+pub(super) fn describe_create_token_action(
+    object_text: &str,
+    controller: &PlayerFilter,
+    actor_surface_explicit: bool,
+) -> String {
+    if actor_surface_explicit && matches!(controller, PlayerFilter::You) {
+        return format!("You create {object_text}");
+    }
     if let Some(subject) = describe_token_creator_subject(controller) {
         format!("{} creates {object_text}", capitalize_first(&subject))
     } else {
@@ -1149,7 +1201,11 @@ pub(crate) fn describe_compact_create_token(
         if let Some(state) = state {
             amount = amount.replacen(token_name, &format!("{state} {token_name}"), 1);
         }
-        let mut text = describe_create_token_action(&amount, &create_token.controller);
+        let mut text = describe_create_token_action(
+            &amount,
+            &create_token.controller,
+            create_token.actor_surface_explicit,
+        );
         text.push_str(&format!(
             ", where X is {}",
             describe_value(&create_token.count)
@@ -1177,12 +1233,14 @@ pub(crate) fn describe_compact_create_token(
         return Some(describe_create_token_action(
             &text,
             &create_token.controller,
+            create_token.actor_surface_explicit,
         ));
     }
 
     Some(describe_create_token_action(
         &amount,
         &create_token.controller,
+        create_token.actor_surface_explicit,
     ))
 }
 
@@ -1249,6 +1307,16 @@ pub(super) fn describe_runtime_choice_where_clause(
     Some(format!(", where X is {}", describe_value(count_value)))
 }
 
+fn contextualize_choice_count_basis(basis: String, chooser: &PlayerFilter) -> String {
+    if matches!(chooser, PlayerFilter::IteratedPlayer | PlayerFilter::Active) {
+        basis
+            .replace("that player's", "their")
+            .replace("that player", "they")
+    } else {
+        basis
+    }
+}
+
 pub(super) fn revealed_keyword_choice_label(
     choose: &crate::effects::ChooseObjectsEffect,
 ) -> Option<&'static str> {
@@ -1292,14 +1360,14 @@ pub(super) fn describe_revealed_keyword_choice_selection(
 }
 
 pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEffect) -> String {
-    if choose.count_value.as_ref().is_some_and(|value| {
-        value.has_surface_hint(ValueSurfaceHint::ChooseAllInOrder)
-    }) {
+    if choose
+        .count_value
+        .as_ref()
+        .is_some_and(|value| value.has_surface_hint(ValueSurfaceHint::ChooseAllInOrder))
+    {
         let singular = describe_for_each_count_filter(&choose.filter);
         let plural = pluralize_noun_phrase(&singular);
-        return format!(
-            "{plural} one at a time until each {singular} has been chosen"
-        );
+        return format!("{plural} one at a time until each {singular} has been chosen");
     }
     if choose.top_only {
         if let Some(exact) = choose_exact_count(choose) {
@@ -1308,7 +1376,14 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
                 return format!("the top {count_text} cards");
             }
         }
-        return "the top card".to_string();
+        let mut ordinary_choice = choose.clone();
+        ordinary_choice.top_only = false;
+        let ordinary_selection = describe_choose_selection(&ordinary_choice);
+        let noun = ordinary_selection
+            .strip_prefix("a ")
+            .or_else(|| ordinary_selection.strip_prefix("an "))
+            .unwrap_or(ordinary_selection.as_str());
+        return format!("the top {noun}");
     }
 
     // Source-object choices are an implementation detail used to make costs
@@ -1316,6 +1391,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     // as an ordinary filtered selection such as "a this you control".
     if choose.count.is_single() && choose.filter.source {
         return "this".to_string();
+    }
+    if choose.count.is_single() && choose.filter.has_one_of_tagged_set_surface() {
+        return "one of them".to_string();
     }
 
     if let Some(selection) = describe_source_exiled_choose_selection(choose) {
@@ -1431,6 +1509,25 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         selection
     };
 
+    if choose.count.is_dynamic_x()
+        && !choose.count.is_up_to_dynamic_x()
+        && !choose.count.is_random()
+        && let Some(count_value) = choose.count_value.as_ref()
+        && count_value.has_surface_hint(ValueSurfaceHint::ForEach)
+        && let Some(basis) = describe_create_for_each_count(count_value)
+    {
+        let basis = contextualize_choice_count_basis(basis, &choose.chooser);
+        let mut selection = with_indefinite_article(&card_desc);
+        if distinct_names_suffix {
+            selection.push_str(" with a different name");
+        }
+        if distinct_powers_suffix {
+            selection.push_str(" with a different power");
+        }
+        selection.push_str(&format!(" for each {basis}"));
+        selection.push_str(&where_x_suffix);
+        return selection;
+    }
     if choose.count.is_single() {
         let mut selection = with_indefinite_article(&card_desc);
         if choose.count.random {
@@ -1469,6 +1566,94 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     }
     selection.push_str(&where_x_suffix);
     selection
+}
+
+pub(crate) fn describe_for_players_choose_then_untap_chosen(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let [choose_effect, untap_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || !untap_target_exactly_matches_choice(untap, choose)
+    {
+        return None;
+    }
+
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let chosen = describe_choose_selection(choose);
+    let chosen_noun = pluralize_noun_phrase(choose_reference_noun(choose));
+    let (choose_verb, untap_verb) = if subject == "You" {
+        ("choose", "untap")
+    } else {
+        ("chooses", "untaps")
+    };
+    Some(format!(
+        "{subject} {choose_verb} {chosen}, then {untap_verb} those {chosen_noun}"
+    ))
+}
+
+pub(crate) fn untap_target_exactly_matches_choice(
+    untap: &crate::effects::UntapEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> bool {
+    match &untap.target {
+        ChooseSpec::Tagged(tag) => tag == &choose.tag,
+        ChooseSpec::All(filter) => {
+            let [constraint] = filter.tagged_constraints.as_slice() else {
+                return false;
+            };
+            if constraint.tag != choose.tag
+                || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            {
+                return false;
+            }
+            let mut untap_kind = filter.clone();
+            untap_kind.tagged_constraints.clear();
+            let mut chosen_kind = choose.filter.clone();
+            if choose_primary_zone(choose) == Some(Zone::Battlefield) {
+                untap_kind.zone = None;
+                chosen_kind.zone = None;
+            }
+            untap_kind == chosen_kind
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn choose_reference_noun(choose: &crate::effects::ChooseObjectsEffect) -> &'static str {
+    let permanent_types = [
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    if (choose.filter.card_types.is_empty()
+        || (choose.filter.card_types.len() == permanent_types.len()
+            && permanent_types
+                .iter()
+                .all(|card_type| choose.filter.card_types.contains(card_type))))
+        && choose_primary_zone(choose) == Some(Zone::Battlefield)
+    {
+        "permanent"
+    } else if choose.filter.card_types.contains(&CardType::Creature) {
+        "creature"
+    } else if choose.filter.card_types.contains(&CardType::Artifact) {
+        "artifact"
+    } else if choose.filter.card_types.contains(&CardType::Enchantment) {
+        "enchantment"
+    } else if choose.filter.card_types.contains(&CardType::Land) {
+        "land"
+    } else {
+        "object"
+    }
 }
 
 pub(super) fn source_exiled_with_phrase(filter: &ObjectFilter) -> String {
@@ -1615,7 +1800,7 @@ pub(crate) fn describe_choose_then_exile(
         };
     let primary_zone = choose_primary_zone(choose)?;
     let origin_prefix = match primary_zone {
-        Zone::Library if choose.top_only => "of",
+        Zone::Library | Zone::Graveyard if choose.top_only => "of",
         Zone::Hand | Zone::Graveyard | Zone::Library => "from",
         _ => return None,
     };
@@ -1759,15 +1944,20 @@ pub(super) fn describe_put_counters_then_gain_suspend(effects: &[Effect]) -> Opt
     };
 
     let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
-    if !conditional.if_false.is_empty()
-        || conditional.if_true.len() != 1
-        || !condition_is_tagged_object_without_suspend(&conditional.condition, target_tag)
-    {
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
         return None;
     }
     let apply = unwrap_basic_tag_wrappers(&conditional.if_true[0])
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    if !apply_grants_suspend_to_tag(apply, target_tag) {
+    // Source-sentence lowering may bind a following "it" to the result tag of
+    // this tagged counter effect rather than to the tag used by its target.
+    // `TaggedEffect` captures that exact target, so the two references are
+    // semantically equivalent for this single-target, nondistributed effect.
+    let suspend_target_is_proven = [target_tag, &tagged_put.tag].into_iter().any(|candidate| {
+        condition_is_tagged_object_without_suspend(&conditional.condition, candidate)
+            && apply_grants_suspend_to_tag(apply, candidate)
+    });
+    if !suspend_target_is_proven {
         return None;
     }
 
@@ -1928,6 +2118,8 @@ pub(super) fn describe_exiled_with_source_move(
     surface: &ironsmith_core::ExiledWithSourceMoveSurface,
     zone: Zone,
     contextual_player: Option<&PlayerFilter>,
+    battlefield_controller: Option<&crate::effects::BattlefieldController>,
+    enters_tapped: bool,
 ) -> String {
     use ironsmith_core::{
         ExiledWithSourceDestinationSurface as DestinationSurface,
@@ -1935,21 +2127,22 @@ pub(super) fn describe_exiled_with_source_move(
         ExiledWithSourceSubjectSurface as SubjectSurface,
     };
 
-    let subject = match surface.subject {
-        SubjectSurface::AllCards => "all cards",
-        SubjectSurface::EachCard => "each card",
-        SubjectSurface::OwnerOfEachCard => "each card",
-        SubjectSurface::OneCard => "a card",
-        SubjectSurface::TheExiledCard => "the exiled card",
-        SubjectSurface::TheExiledCards => "the exiled cards",
-        SubjectSurface::TheCards => "the cards",
+    let subject = match &surface.subject {
+        SubjectSurface::AllCards => "all cards".to_string(),
+        SubjectSurface::EachCard => "each card".to_string(),
+        SubjectSurface::OwnerOfEachCard => "each card".to_string(),
+        SubjectSurface::OneCard => "a card".to_string(),
+        SubjectSurface::TheExiledCard => "the exiled card".to_string(),
+        SubjectSurface::TheExiledCards => "the exiled cards".to_string(),
+        SubjectSurface::TheCards => "the cards".to_string(),
+        SubjectSurface::Custom(text) => text.clone(),
     };
     let source = match &surface.source {
         ReferenceSurface::Source(source) => format!(" exiled with {}", source.display_text()),
         ReferenceSurface::It => " exiled with it".to_string(),
         ReferenceSurface::Omitted => String::new(),
     };
-    if surface.subject == SubjectSurface::OwnerOfEachCard && zone == Zone::Library {
+    if matches!(&surface.subject, SubjectSurface::OwnerOfEachCard) && zone == Zone::Library {
         return format!(
             "The owner of each card{source} puts that card on the bottom of their library"
         );
@@ -1962,6 +2155,7 @@ pub(super) fn describe_exiled_with_source_move(
         Zone::Battlefield => "battlefield",
         Zone::Stack => "stack",
         Zone::Command => "command zone",
+        Zone::Ante => "ante",
         Zone::OutsideGame => "outside the game",
     };
     let plural_zone_noun = match zone {
@@ -1970,16 +2164,51 @@ pub(super) fn describe_exiled_with_source_move(
         Zone::Library => "libraries",
         _ => zone_noun,
     };
-    let destination = match surface.destination {
-        DestinationSurface::ContextualPlayer => contextual_player
-            .map(|player| format!("{} {zone_noun}", describe_possessive_player_filter(player)))
-            .unwrap_or_else(|| format!("its owner's {zone_noun}")),
-        DestinationSurface::ItsOwner => format!("its owner's {zone_noun}"),
-        DestinationSurface::TheirOwner => format!("their owner's {zone_noun}"),
-        DestinationSurface::TheirOwners => format!("their owners' {plural_zone_noun}"),
+    let destination = if zone == Zone::Battlefield {
+        let controller = match battlefield_controller
+            .copied()
+            .unwrap_or(crate::effects::BattlefieldController::Preserve)
+        {
+            crate::effects::BattlefieldController::Preserve => String::new(),
+            crate::effects::BattlefieldController::You => " under your control".to_string(),
+            crate::effects::BattlefieldController::Owner => match surface.destination {
+                DestinationSurface::TheirOwners => " under their owners' control".to_string(),
+                DestinationSurface::TheirOwner => " under their owner's control".to_string(),
+                DestinationSurface::ContextualPlayer | DestinationSurface::ItsOwner => {
+                    " under its owner's control".to_string()
+                }
+            },
+        };
+        format!(
+            "the battlefield{}{controller}",
+            if enters_tapped { " tapped" } else { "" }
+        )
+    } else {
+        match surface.destination {
+            DestinationSurface::ContextualPlayer => contextual_player
+                .map(|player| format!("{} {zone_noun}", describe_possessive_player_filter(player)))
+                .unwrap_or_else(|| format!("its owner's {zone_noun}")),
+            DestinationSurface::ItsOwner => format!("its owner's {zone_noun}"),
+            DestinationSurface::TheirOwner => format!("their owner's {zone_noun}"),
+            DestinationSurface::TheirOwners => format!("their owners' {plural_zone_noun}"),
+        }
     };
 
-    format!("Put {subject}{source} into {destination}")
+    let preposition = if matches!(
+        surface.verb,
+        ironsmith_core::ExiledWithSourceMoveVerbSurface::Return
+    ) {
+        "to"
+    } else if zone == Zone::Battlefield {
+        "onto"
+    } else {
+        "into"
+    };
+    let verb = match surface.verb {
+        ironsmith_core::ExiledWithSourceMoveVerbSurface::Put => "Put",
+        ironsmith_core::ExiledWithSourceMoveVerbSurface::Return => "Return",
+    };
+    format!("{verb} {subject}{source} {preposition} {destination}")
 }
 
 pub(super) fn describe_return_to_hand_excluded_subtypes(
@@ -2309,9 +2538,7 @@ pub(super) fn append_battlefield_entry_counter_surface(
                     .as_ref()
                     .map(describe_condition)
                     .unwrap_or_else(|| "the condition is met".to_string());
-                format!(
-                    "If {condition}, that {noun} enters with {counter_phrase} on it"
-                )
+                format!("If {condition}, that {noun} enters with {counter_phrase} on it")
             }
         };
         rendered.push_str(". ");
@@ -2549,7 +2776,8 @@ pub(crate) fn describe_choose_then_move_to_library(
         return None;
     }
 
-    let origin = match choose_primary_zone(choose)? {
+    let primary_zone = choose_primary_zone(choose)?;
+    let origin = match primary_zone {
         Zone::Hand => describe_choose_zone_origin(choose, "hand"),
         Zone::Graveyard => describe_choose_zone_origin(choose, "graveyard"),
         Zone::Library => {
@@ -2603,6 +2831,15 @@ pub(crate) fn describe_choose_then_move_to_library(
     } else {
         ", then "
     };
+
+    if choose.top_only && primary_zone == Zone::Graveyard {
+        let origin = origin
+            .strip_prefix("from ")
+            .map_or(origin.clone(), |rest| format!("of {rest}"));
+        return Some(format!(
+            "{chooser} {put_verb} {chosen} {origin} {placement} {destination}{order_suffix}"
+        ));
+    }
 
     Some(format!(
         "{chooser} {choose_verb} {chosen} {origin}{connector}{put_verb} {moved_ref} {placement} {destination}{order_suffix}"
@@ -2824,7 +3061,10 @@ pub(crate) fn describe_exile_top_then_play_without_paying_mana(
         || grant_play.tag != *first_tag
         || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
         || !grant_play.allow_land
-        || !matches!(exile_top.player, PlayerFilter::DamagedPlayer)
+        || !matches!(
+            exile_top.player,
+            PlayerFilter::DamagedPlayer | PlayerFilter::You
+        )
         || !matches!(grant_play.player, PlayerFilter::You)
     {
         return None;
@@ -2841,8 +3081,15 @@ pub(crate) fn describe_exile_top_then_play_without_paying_mana(
     } else {
         "their mana costs"
     };
+    let exile_clause = if exile_top.player == PlayerFilter::DamagedPlayer {
+        // Preserve the established combat-damage antecedent surface while the
+        // same structural helper also accepts a controller-owned exile.
+        format!("That player exiles the top {count_text} {noun} of their library")
+    } else {
+        describe_exile_top_clause(exile_top, false)?.0
+    };
     Some(format!(
-        "That player exiles the top {count_text} {noun} of their library. Until end of turn, you may play {cards_text} without paying {mana_cost_text}"
+        "{exile_clause}. Until end of turn, you may play {cards_text} without paying {mana_cost_text}"
     ))
 }
 
@@ -2908,7 +3155,7 @@ pub(super) fn filter_is_exactly_tagged_in_zone(
     filter == &expected
 }
 
-pub(super) fn describe_exile_top_choose_one_then_play(
+pub(in crate::compiled_text) fn describe_exile_top_choose_one_then_play(
     exile_top: &crate::effects::ExileTopOfLibraryEffect,
     choose: &crate::effects::ChooseObjectsEffect,
     grant_play: &crate::effects::GrantPlayTaggedEffect,
@@ -3606,7 +3853,7 @@ pub(crate) fn for_each_moves_unselected_to_zone(
     condition_matches_tagged_object_membership(&conditional.condition, chosen_tag)
 }
 
-pub(super) fn condition_matches_tagged_object_membership(
+pub(in crate::compiled_text) fn condition_matches_tagged_object_membership(
     condition: &crate::effect::Condition,
     tag: &str,
 ) -> bool {

@@ -19,6 +19,7 @@ pub enum KeywordAction {
     Convoke,
     AffinityForArtifacts,
     Delve,
+    Dredge(u32),
     FirstStrike,
     DoubleStrike,
     Deathtouch,
@@ -44,7 +45,9 @@ pub enum KeywordAction {
     Exalted,
     Cascade,
     Storm,
+    Gravestorm,
     Toxic(u32),
+    Poisonous(u32),
     BattleCry,
     Dethrone,
     Evolve,
@@ -85,6 +88,7 @@ pub enum KeywordAction {
     },
     Disturb(ManaCost),
     Overload(ManaCost),
+    Cleave(ManaCost),
     Awaken {
         amount: u32,
         cost: ManaCost,
@@ -123,6 +127,10 @@ pub enum KeywordAction {
     Sunburst,
     ReadAhead,
     Firebending(u32),
+    FirebendingValue {
+        amount: Value,
+        surface: String,
+    },
     Fading(u32),
     Vanishing(u32),
     Fear,
@@ -136,6 +144,7 @@ pub enum KeywordAction {
     Tribute(u32),
     Rampage(u32),
     Bushido(u32),
+    Frenzy(u32),
     Changeling,
     HexproofFrom(ObjectFilter),
     ProtectionFrom(ColorSet),
@@ -199,6 +208,7 @@ impl KeywordAction {
                 | Self::Convoke
                 | Self::AffinityForArtifacts
                 | Self::Delve
+                | Self::Dredge(_)
                 | Self::FirstStrike
                 | Self::DoubleStrike
                 | Self::Deathtouch
@@ -223,7 +233,9 @@ impl KeywordAction {
                 | Self::Exalted
                 | Self::Cascade
                 | Self::Storm
+                | Self::Gravestorm
                 | Self::Toxic(_)
+                | Self::Poisonous(_)
                 | Self::BattleCry
                 | Self::Dethrone
                 | Self::Evolve
@@ -252,6 +264,7 @@ impl KeywordAction {
                 | Self::Sunburst
                 | Self::ReadAhead
                 | Self::Firebending(_)
+                | Self::FirebendingValue { .. }
                 | Self::Fading(_)
                 | Self::Vanishing(_)
                 | Self::Fear
@@ -265,6 +278,7 @@ impl KeywordAction {
                 | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
+                | Self::Frenzy(_)
                 | Self::Changeling
                 | Self::HexproofFrom(_)
                 | Self::ProtectionFrom(_)
@@ -317,6 +331,7 @@ impl KeywordAction {
             Self::Convoke => "Convoke".to_string(),
             Self::AffinityForArtifacts => "Affinity for artifacts".to_string(),
             Self::Delve => "Delve".to_string(),
+            Self::Dredge(amount) => format!("Dredge {amount}"),
             Self::FirstStrike => "First strike".to_string(),
             Self::DoubleStrike => "Double strike".to_string(),
             Self::Deathtouch => "Deathtouch".to_string(),
@@ -342,7 +357,9 @@ impl KeywordAction {
             Self::Exalted => "Exalted".to_string(),
             Self::Cascade => "Cascade".to_string(),
             Self::Storm => "Storm".to_string(),
+            Self::Gravestorm => "Gravestorm".to_string(),
             Self::Toxic(amount) => format!("Toxic {amount}"),
+            Self::Poisonous(amount) => format!("Poisonous {amount}"),
             Self::BattleCry => "Battle cry".to_string(),
             Self::Dethrone => "Dethrone".to_string(),
             Self::Evolve => "Evolve".to_string(),
@@ -385,6 +402,7 @@ impl KeywordAction {
             Self::Suspend { time, cost } => format!("Suspend {time}—{}", cost.to_oracle()),
             Self::Disturb(cost) => format!("Disturb {}", cost.to_oracle()),
             Self::Overload(cost) => format!("Overload {}", cost.to_oracle()),
+            Self::Cleave(cost) => format!("Cleave {}", cost.to_oracle()),
             Self::Awaken { amount, cost } => format!("Awaken {amount}—{}", cost.to_oracle()),
             Self::Spectacle(cost) => format!("Spectacle {}", cost.to_oracle()),
             Self::Foretell(cost) => format!("Foretell {}", cost.to_oracle()),
@@ -416,6 +434,7 @@ impl KeywordAction {
             Self::Sunburst => "Sunburst".to_string(),
             Self::ReadAhead => "Read ahead".to_string(),
             Self::Firebending(amount) => format!("Firebending {amount}"),
+            Self::FirebendingValue { surface, .. } => format!("Firebending {surface}"),
             Self::Fading(amount) => format!("Fading {amount}"),
             Self::Vanishing(amount) => format!("Vanishing {amount}"),
             Self::Fear => "Fear".to_string(),
@@ -429,6 +448,7 @@ impl KeywordAction {
             Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
+            Self::Frenzy(amount) => format!("Frenzy {amount}"),
             Self::Changeling => "Changeling".to_string(),
             Self::HexproofFrom(filter) => {
                 let description = filter.description();

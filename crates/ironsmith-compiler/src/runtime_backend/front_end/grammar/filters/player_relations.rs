@@ -37,6 +37,13 @@ const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     &["put", "onto", "battlefield", "with", "this", "permanent"],
     &["put", "onto", "battlefield", "with", "this", "source"],
 ];
+const CREATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
+    &["created", "with", "this", "artifact"],
+    &["created", "with", "this", "creature"],
+    &["created", "with", "this", "enchantment"],
+    &["created", "with", "this", "permanent"],
+    &["created", "with", "this", "source"],
+];
 
 fn relation_phrase<'a>(
     expected: &'static [&'static str],
@@ -469,7 +476,20 @@ pub(super) fn try_apply_passive_player_relation_clause(
 pub(super) fn try_apply_negated_you_relation_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
 ) -> Option<usize> {
+    if words.first() == Some(&"they") {
+        let (verb, consumed) = parse_negated_you_relation_shape(&words[1..])?;
+        let excluding_pronoun =
+            PlayerFilter::excluding(PlayerFilter::Any, pronoun_player_filter.clone());
+        match verb {
+            PlayerRelationVerb::Control => filter.controller = Some(excluding_pronoun),
+            PlayerRelationVerb::Own => filter.owner = Some(excluding_pronoun),
+            PlayerRelationVerb::Cast => return None,
+        }
+        return Some(consumed + 1);
+    }
+
     let (verb, consumed) = parse_negated_you_relation_shape(words)?;
     match verb {
         PlayerRelationVerb::Control => filter.controller = Some(PlayerFilter::NotYou),
@@ -952,6 +972,55 @@ pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
     true
 }
 
+pub(super) fn try_apply_created_with_source_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, phrase)) = CREATED_WITH_SOURCE_PHRASES.iter().find_map(|phrase| {
+        relation_phrase_word_span(all_words, phrase).map(|(start, _)| (start, *phrase))
+    }) else {
+        return false;
+    };
+
+    let source_words = &phrase[2..];
+    let source_surface = this_source_surface_for_words(source_words)
+        .or_else(|| source_reference_surface_for_words(source_words));
+    let Some(source_surface) = source_surface else {
+        return false;
+    };
+
+    filter.created_with_source = true;
+    filter.created_with_source_surface = Some(source_surface);
+    all_words.drain(word_start..word_start + phrase.len());
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["created", "with", "this", "artifact"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["created", "with", "this", "creature"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["created", "with", "this", "enchantment"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["created", "with", "this", "permanent"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["created", "with", "this", "source"],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
 pub(super) fn parse_drawn_this_turn_words(words: &[&str]) -> Option<usize> {
     parse_drawn_this_turn_shape(words)
 }
@@ -1066,6 +1135,37 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
     }
 
     false
+}
+
+/// Bind authored chooser-relative object references to stable target-choice
+/// aliases. A bare last-object tag is insufficient when two players choose
+/// different targets before either one is referenced.
+pub(super) fn try_apply_target_choice_attribution_reference(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    let (suffix, tag) = if all_words.ends_with(&["you", "chose"]) {
+        (&["you", "chose"][..], ABILITY_CONTROLLER_TARGET_CHOICE_TAG)
+    } else if all_words.ends_with(&["your", "opponent", "chose"]) {
+        (
+            &["your", "opponent", "chose"][..],
+            OPPONENT_TARGET_CHOICE_TAG,
+        )
+    } else {
+        return false;
+    };
+    let Some(noun) = all_words.get(all_words.len().saturating_sub(suffix.len() + 1)) else {
+        return false;
+    };
+    if !is_demonstrative_object_head(noun) {
+        return false;
+    }
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(tag),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    all_words.truncate(all_words.len() - suffix.len());
+    true
 }
 
 pub(super) fn is_name_clause_boundary(word: &str) -> bool {
@@ -1224,7 +1324,8 @@ mod tests {
         assert_eq!(
             try_apply_negated_you_relation_clause(
                 &mut control_filter,
-                &["you", "do", "not", "control", "creatures"]
+                &["you", "do", "not", "control", "creatures"],
+                &PlayerFilter::IteratedPlayer,
             ),
             Some(4)
         );
@@ -1232,10 +1333,31 @@ mod tests {
 
         let mut owner_filter = ObjectFilter::default();
         assert_eq!(
-            try_apply_negated_you_relation_clause(&mut owner_filter, &["don't", "owns", "cards"]),
+            try_apply_negated_you_relation_clause(
+                &mut owner_filter,
+                &["don't", "owns", "cards"],
+                &PlayerFilter::IteratedPlayer,
+            ),
             Some(2)
         );
         assert_eq!(owner_filter.owner, Some(PlayerFilter::NotYou));
+
+        let mut participant_filter = ObjectFilter::default();
+        assert_eq!(
+            try_apply_negated_you_relation_clause(
+                &mut participant_filter,
+                &["they", "don't", "control", "permanents"],
+                &PlayerFilter::IteratedPlayer,
+            ),
+            Some(3)
+        );
+        assert_eq!(
+            participant_filter.controller,
+            Some(PlayerFilter::excluding(
+                PlayerFilter::Any,
+                PlayerFilter::IteratedPlayer,
+            ))
+        );
     }
 
     #[test]
@@ -1404,5 +1526,30 @@ mod tests {
             &mut tokens,
         ));
         assert!(!active_filter.was_dealt_damage_this_turn);
+    }
+
+    #[test]
+    fn target_choice_references_retain_the_authored_chooser() {
+        for (mut words, expected_tag) in [
+            (
+                vec!["creature", "you", "chose"],
+                ABILITY_CONTROLLER_TARGET_CHOICE_TAG,
+            ),
+            (
+                vec!["creature", "your", "opponent", "chose"],
+                OPPONENT_TARGET_CHOICE_TAG,
+            ),
+        ] {
+            let mut filter = ObjectFilter::default();
+            assert!(try_apply_target_choice_attribution_reference(
+                &mut filter,
+                &mut words,
+            ));
+            assert_eq!(words, ["creature"]);
+            assert!(filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == expected_tag
+            }));
+        }
     }
 }

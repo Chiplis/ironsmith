@@ -56,7 +56,9 @@ pub(crate) enum DirectClauseShape {
     TurnSourceExiledFaceUp,
     TurnTaggedFaceUp,
     Planeswalk,
+    AssembleContraption,
     ChaosEnsues,
+    AbandonScheme,
     DoubleX,
     OnlyChosenCanAttack,
     OnlyChosenCanBlock,
@@ -140,7 +142,11 @@ fn exact_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
         )),
         alt((
             primitives::kw("planeswalk").value(DirectClauseShape::Planeswalk),
+            primitives::phrase(&["assemble", "a", "contraption"])
+                .value(DirectClauseShape::AssembleContraption),
             primitives::phrase(&["chaos", "ensues"]).value(DirectClauseShape::ChaosEnsues),
+            primitives::phrase(&["abandon", "this", "scheme"])
+                .value(DirectClauseShape::AbandonScheme),
             primitives::phrase(&["double", "the", "value", "of", "x"])
                 .value(DirectClauseShape::DoubleX),
             primitives::any_phrase(&[
@@ -380,23 +386,77 @@ pub(crate) fn strip_optional_you_choice_tokens(tokens: &[OwnedLexToken]) -> &[Ow
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChooseTargetChooserShape {
+    AbilityController,
+    ItsController,
+    /// "That opponent" is the controller of the immediately preceding
+    /// target, while also preserving the authored opponent attribution for a
+    /// later "your opponent chose" reference.
+    ThatOpponent,
+    Unresolved,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChooseTargetShape<'a> {
     pub(crate) target_tokens: &'a [OwnedLexToken],
+    pub(crate) chooser: ChooseTargetChooserShape,
+    /// `another player controls` is relative to the player making this
+    /// authored target choice, not necessarily the ability's controller.
+    pub(crate) excludes_chooser_controller: bool,
+}
+
+fn target_phrase_excludes_chooser_controller(tokens: &[OwnedLexToken]) -> bool {
+    primitives::find_prefix(tokens, || {
+        primitives::phrase(&["another", "player", "controls"])
+    })
+    .is_some()
 }
 
 pub(crate) fn parse_choose_target_shape(tokens: &[OwnedLexToken]) -> Option<ChooseTargetShape<'_>> {
-    let (_, tail) = primitives::parse_prefix(
+    let (chooser, tail) = if let Some((_, tail)) = primitives::parse_prefix(
         tokens,
-        alt((primitives::kw("choose"), primitives::kw("chooses"))),
-    )?;
+        (
+            primitives::kw("you"),
+            alt((primitives::kw("choose"), primitives::kw("chooses"))),
+        ),
+    ) {
+        (ChooseTargetChooserShape::AbilityController, tail)
+    } else if let Some((_, tail)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::kw("that"),
+            alt((primitives::kw("opponent"), primitives::kw("opponents"))),
+            alt((primitives::kw("choose"), primitives::kw("chooses"))),
+        ),
+    ) {
+        (ChooseTargetChooserShape::ThatOpponent, tail)
+    } else if let Some((_, tail)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::kw("its"),
+            primitives::kw("controller"),
+            alt((primitives::kw("choose"), primitives::kw("chooses"))),
+        ),
+    ) {
+        (ChooseTargetChooserShape::ItsController, tail)
+    } else {
+        let (_, tail) = primitives::parse_prefix(
+            tokens,
+            alt((primitives::kw("choose"), primitives::kw("chooses"))),
+        )?;
+        (ChooseTargetChooserShape::AbilityController, tail)
+    };
     // A target count is part of the target phrase, so `target` is not always
     // immediately adjacent to `choose` ("choose up to one target ...",
     // "choose any number of target ...").  Reuse the shared target-indicator
     // grammar instead of letting those forms fall through to resolution-time
     // object choice.
     super::super::super::activation_restrictions::parse_target_indicator_tokens(tail)?;
+    let target_tokens = trim_lexed_commas(tail);
     Some(ChooseTargetShape {
-        target_tokens: trim_lexed_commas(tail),
+        target_tokens,
+        chooser,
+        excludes_chooser_controller: target_phrase_excludes_chooser_controller(target_tokens),
     })
 }
 
@@ -425,15 +485,34 @@ pub(crate) fn parse_target_only_shape(tokens: &[OwnedLexToken]) -> Option<Target
 pub(crate) fn parse_embedded_choose_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ChooseTargetShape<'_>> {
-    let (_, _, target_tokens) = primitives::find_prefix(tokens, || {
+    let (choose_idx, _, target_tokens) = primitives::find_prefix(tokens, || {
         (
             alt((primitives::kw("choose"), primitives::kw("chooses"))),
             peek(primitives::kw("target")),
         )
             .void()
     })?;
+    let chooser_tokens = trim_lexed_commas(&tokens[..choose_idx]);
+    let chooser = if exact(chooser_tokens, primitives::kw("you").void()) {
+        ChooseTargetChooserShape::AbilityController
+    } else if exact(
+        chooser_tokens,
+        primitives::phrase(&["that", "opponent"]).void(),
+    ) {
+        ChooseTargetChooserShape::ThatOpponent
+    } else if exact(
+        chooser_tokens,
+        primitives::phrase(&["its", "controller"]).void(),
+    ) {
+        ChooseTargetChooserShape::ItsController
+    } else {
+        ChooseTargetChooserShape::Unresolved
+    };
+    let target_tokens = trim_lexed_commas(target_tokens);
     Some(ChooseTargetShape {
-        target_tokens: trim_lexed_commas(target_tokens),
+        target_tokens,
+        chooser,
+        excludes_chooser_controller: target_phrase_excludes_chooser_controller(target_tokens),
     })
 }
 

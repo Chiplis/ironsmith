@@ -1,6 +1,15 @@
 {
     if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
-        return format!("Choose {}", describe_choose_spec(&target_only.target));
+        let target = describe_choose_spec(&target_only.target);
+        return target_only.chooser.as_ref().map_or_else(
+            || format!("Choose {target}"),
+            |chooser| {
+                format!(
+                    "{} chooses {target}",
+                    capitalize_first(&describe_player_filter(chooser))
+                )
+            },
+        );
     }
     if let Some(villainous) = effect.downcast_ref::<crate::effects::VillainousChoiceEffect>() {
         return describe_villainous_choice(villainous);
@@ -18,6 +27,9 @@
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        if let Some(compact) = describe_inline_pt_modifier_choice(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_endure_mode(choose_mode) {
             return compact;
         }
@@ -35,6 +47,9 @@
             Some(&choose_mode.min_choose_count),
             Some(choose_mode.modes.len()),
         );
+        if choose_mode.spree {
+            header = "Spree (Choose one or more additional costs.)".to_string();
+        }
         if choose_mode.random {
             if let Some(prefix) = header.strip_suffix(" —") {
                 header = format!("{prefix} at random —");
@@ -83,7 +98,12 @@
                 } else {
                     mode_effects.trim()
                 };
-                let point_label = if has_weighted_modes {
+                let mode_label = if choose_mode.spree {
+                    choose_mode
+                        .mode_additional_mana_costs
+                        .get(mode_idx)
+                        .map(|cost| format!("+ {} — ", cost.to_oracle()))
+                } else if has_weighted_modes {
                     let cost = choose_mode
                         .mode_point_costs
                         .get(mode_idx)
@@ -98,7 +118,7 @@
                 if !description.trim().is_empty() {
                     let mode_effects_trimmed = description_raw;
                     if mode_effects_trimmed.is_empty() {
-                        return format!("{}{}", point_label.as_deref().unwrap_or(""), description);
+                        return format!("{}{}", mode_label.as_deref().unwrap_or(""), description);
                     }
 
                     let effects_lower = mode_effects_trimmed.to_ascii_lowercase();
@@ -112,7 +132,7 @@
                         && !description_lower.contains("choose one");
 
                     if !has_followup {
-                        return format!("{}{}", point_label.as_deref().unwrap_or(""), description);
+                        return format!("{}{}", mode_label.as_deref().unwrap_or(""), description);
                     }
 
                     let mut followup = mode_effects_trimmed.to_string();
@@ -131,11 +151,11 @@
                         }
                     }
                     if followup.is_empty() {
-                        format!("{}{}", point_label.as_deref().unwrap_or(""), description)
+                        format!("{}{}", mode_label.as_deref().unwrap_or(""), description)
                     } else {
                         format!(
                             "{}{} {}",
-                            point_label.as_deref().unwrap_or(""),
+                            mode_label.as_deref().unwrap_or(""),
                             description_head,
                             ensure_trailing_period(followup.trim())
                         )
@@ -143,14 +163,18 @@
                 } else {
                     format!(
                         "{}{}",
-                        point_label.as_deref().unwrap_or(""),
+                        mode_label.as_deref().unwrap_or(""),
                         ensure_trailing_period(mode_effects.trim())
                     )
                 }
             })
             .collect::<Vec<_>>()
             .join(" • ");
-        let bullet_modes = format!("{header}\n• {}", modes.replace(" • ", "\n• "));
+        let bullet_modes = if choose_mode.spree {
+            format!("{header}\n{}", modes.replace(" • ", "\n"))
+        } else {
+            format!("{header}\n• {}", modes.replace(" • ", "\n• "))
+        };
         if choose_mode.disallow_previously_chosen_modes {
             return bullet_modes;
         }
@@ -223,8 +247,11 @@
         if value_is_iterated_object_count(&create_token.count) {
             let token_blueprint = describe_created_token_blueprint();
             let (token_main, token_ability) = split_token_ability_sentence(&token_blueprint);
-            let mut text =
-                describe_create_token_action(&format!("a {token_main}"), &create_token.controller);
+            let mut text = describe_create_token_action(
+                &format!("a {token_main}"),
+                &create_token.controller,
+                create_token.actor_surface_explicit,
+            );
             text = append_token_entry_flags(text, true);
             text = append_token_ability_sentence(text, token_ability);
             return append_token_cleanup_sentences(text, true);
@@ -232,13 +259,19 @@
         if let Some(for_each_count) = describe_create_for_each_count(&create_token.count) {
             let token_blueprint = describe_created_token_blueprint();
             let (token_main, token_ability) = split_token_ability_sentence(&token_blueprint);
+            let token_ability = token_ability.map(|sentence| {
+                sentence
+                    .replacen(". It has ", ". Those tokens have ", 1)
+                    .replacen(". They have ", ". Those tokens have ", 1)
+            });
             let mut text = describe_create_token_action(
                 &format!("a {token_main} for each {for_each_count}"),
                 &create_token.controller,
+                create_token.actor_surface_explicit,
             );
             text = append_token_entry_flags(text, true);
             text = append_token_ability_sentence(text, token_ability);
-            text = append_token_cleanup_sentences(text, true);
+            text = append_token_cleanup_sentences(text, false);
             if matches!(
                 create_token.count.unhinted(),
                 Value::SourceRegeneratedThisTurnCount
@@ -291,9 +324,13 @@
             &create_token.count,
             ValueSurfaceHint::EqualTo,
         ) {
+            let equal_to_value = create_token
+                .count
+                .clone()
+                .without_surface_hint(ValueSurfaceHint::EqualTo);
             format!(
                 "a number of {token_main} equal to {}",
-                describe_value(create_token.count.unhinted())
+                describe_value(&equal_to_value)
             )
         } else if singular_count && token_main.contains(", a ") {
             token_main
@@ -313,7 +350,11 @@
         } else {
             format!("{} {}", count_text, token_main)
         };
-        let mut text = describe_create_token_action(&object_text, &create_token.controller);
+        let mut text = describe_create_token_action(
+            &object_text,
+            &create_token.controller,
+            create_token.actor_surface_explicit,
+        );
         text = append_token_entry_flags(text, singular_count);
         if use_where_x {
             text.push_str(&format!(
@@ -639,7 +680,7 @@
         return format!("{subject} explores");
     }
     if let Some(behold) = effect.downcast_ref::<crate::effects::BeholdEffect>() {
-        let subtype_name = behold.subtype.to_string().to_ascii_lowercase();
+        let subtype_name = behold.subtype.to_string();
         if behold.count == 1 {
             return format!("Behold {}", with_indefinite_article(&subtype_name));
         }
@@ -1038,6 +1079,12 @@
             &consult.stop_rule,
             consult.max_exposed.as_ref(),
         );
+        if player == "you" {
+            return format!(
+                "{} cards from the top of your library until you {followup_verb} {stop_text}",
+                capitalize_first(&subject_verb)
+            );
+        }
         return format!(
             "{player} {subject_verb} cards from the top of {library_owner} library until {pronoun} {followup_verb} {stop_text}"
         );
@@ -1423,6 +1470,12 @@
             player_verb(&player, "win", "wins")
         );
     }
+    if effect
+        .downcast_ref::<crate::effects::DrawTheGameEffect>()
+        .is_some()
+    {
+        return "The game is a draw".to_string();
+    }
     if let Some(lose_game) = effect.downcast_ref::<crate::effects::LoseTheGameEffect>() {
         let player = describe_player_filter(&lose_game.player);
         return format!(
@@ -1433,6 +1486,9 @@
     }
     if let Some(restart_game) = effect.downcast_ref::<crate::effects::RestartGameEffect>() {
         return describe_restart_game(restart_game);
+    }
+    if let Some(subgame) = effect.downcast_ref::<crate::effects::PlaySubgameEffect>() {
+        return describe_play_subgame(subgame);
     }
     if let Some(skip_draw) = effect.downcast_ref::<crate::effects::SkipDrawStepEffect>() {
         let player = describe_player_filter(&skip_draw.player);
@@ -1451,6 +1507,12 @@
             return "end the turn".to_string();
         }
         return format!("{} ends the turn", describe_player_filter(&end_turn.player));
+    }
+    if effect
+        .downcast_ref::<crate::effects::EndCombatPhaseEffect>()
+        .is_some()
+    {
+        return "end the combat phase".to_string();
     }
     if let Some(skip_turn) = effect.downcast_ref::<crate::effects::SkipTurnEffect>() {
         if skip_turn.player == PlayerFilter::IteratedPlayer {
@@ -2670,6 +2732,42 @@
         if delayed_text.starts_with("draw ") {
             delayed_text = format!("you {delayed_text}");
         }
+        if schedule.duration
+            == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn
+        {
+            let scoped_trigger = if schedule.either_of_watched_objects
+                && (schedule.target_tag.is_some() || schedule.watch_all_object_targets)
+                && schedule
+                    .trigger
+                    .downcast_ref::<crate::triggers::DealsDamageTrigger>()
+                    .is_some_and(|damage| damage.combat_only)
+            {
+                let noun = schedule
+                    .target_filter
+                    .as_ref()
+                    .map(|filter| {
+                        if filter.card_types.contains(&CardType::Creature) {
+                            "creatures"
+                        } else if filter.card_types.contains(&CardType::Artifact) {
+                            "artifacts"
+                        } else if filter.card_types.contains(&CardType::Enchantment) {
+                            "enchantments"
+                        } else if filter.card_types.contains(&CardType::Land) {
+                            "lands"
+                        } else {
+                            "permanents"
+                        }
+                    })
+                    .unwrap_or("permanents");
+                format!("Whenever either of those {noun} deals combat damage")
+            } else {
+                trigger_text.clone()
+            };
+            return format!(
+                "Until your next turn, {}, {delayed_text}",
+                lowercase_first(&scoped_trigger)
+            );
+        }
         if schedule.one_shot
             && !schedule.start_next_turn
             && !schedule.until_end_of_turn
@@ -3331,6 +3429,16 @@
             describe_choose_spec(&clear_damage.target)
         );
     }
+    if let Some(heal) = effect.downcast_ref::<crate::effects::HealDamageEffect>() {
+        let target = describe_choose_spec(&heal.target);
+        return match &heal.amount {
+            Some(amount) => format!(
+                "Heal {} damage already dealt to {target}",
+                describe_value(amount)
+            ),
+            None => format!("All damage already dealt to {target} is healed"),
+        };
+    }
     if let Some(create_emblem) = effect.downcast_ref::<crate::effects::CreateEmblemEffect>() {
         let emblem_text = create_emblem.emblem.text.trim();
         if !emblem_text.is_empty() {
@@ -3531,6 +3639,22 @@
         {
             return "That card's owner may play it for as long as it remains exiled".to_string();
         }
+        if grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && grant.spec.zone == Zone::Hand
+            && matches!(
+                &grant.spec.grantable,
+                crate::grant::Grantable::Ability(ability) if ability.has_flash()
+            )
+        {
+            let permission = grant
+                .spec
+                .clone()
+                .with_beneficiary(grant.player.clone())
+                .display();
+            if let Some((subject, timing)) = permission.split_once(" as though") {
+                return format!("{subject} this turn as though{timing}");
+            }
+        }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",
@@ -3548,6 +3672,14 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(counter_type) = grant_play_tagged.during_turns_counter_put_on_source {
+            let verb = if grant_play_tagged.allow_land { "play" } else { "cast" };
+            return format!(
+                "During any turn you put {} on this permanent, {} may {verb} that card",
+                with_indefinite_article(&format!("{} counter", counter_type.description())),
+                describe_player_filter(&grant_play_tagged.player),
+            );
+        }
         let timing = match grant_play_tagged.duration {
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn",
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
@@ -3759,6 +3891,7 @@
             Some(crate::zone::Zone::Battlefield) => " from the battlefield",
             Some(crate::zone::Zone::Stack) => " from the stack",
             Some(crate::zone::Zone::Command) => " from the command zone",
+            Some(crate::zone::Zone::Ante) => " from ante",
             Some(crate::zone::Zone::OutsideGame) => " from outside the game",
             None => "",
         };
@@ -3855,6 +3988,7 @@
             Zone::Battlefield => "from the battlefield".to_string(),
             Zone::Stack => "from the stack".to_string(),
             Zone::Command => "from the command zone".to_string(),
+            Zone::Ante => "from ante".to_string(),
             Zone::OutsideGame => "from outside the game".to_string(),
         };
         match may_cast_matching.payment {
@@ -4013,11 +4147,7 @@
         let spell_text = spell_text
             .strip_suffix(player_suffix.as_str())
             .unwrap_or(spell_text.as_str());
-        let granted_text = grant_next_spell_ability
-            .ability
-            .granted_inline_ability()
-            .map(describe_inline_ability)
-            .unwrap_or_else(|| grant_next_spell_ability.ability.display());
+        let granted_text = describe_inline_ability(&grant_next_spell_ability.ability);
         if spell_text.contains("from your hand") && player_text == "you" {
             return format!(
                 "When you next cast {} this turn, it gains {}",
@@ -4149,6 +4279,7 @@
             crate::zone::Zone::Library => "into its owner's library",
             crate::zone::Zone::Battlefield => "onto the battlefield",
             crate::zone::Zone::Command => "into the command zone",
+            crate::zone::Zone::Ante => "into ante",
             crate::zone::Zone::Stack => "onto the stack",
             crate::zone::Zone::OutsideGame => "outside the game",
         };
@@ -4278,11 +4409,11 @@
         if let Some(basis) = describe_turn_history_for_each_basis(&repeat.count) {
             return format!("For each {basis}, {repeated}");
         }
-        return format!(
-            "Repeat {} {} times",
-            repeated,
-            describe_value(&repeat.count)
-        );
+        return match repeat.count.unhinted() {
+            Value::Fixed(1) => repeated,
+            Value::Fixed(2) => format!("{repeated} twice"),
+            _ => format!("{repeated} {} times", describe_value(&repeat.count)),
+        };
     }
     if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
         if keyword.action == crate::events::KeywordActionKind::Forage && keyword.amount == 1 {
@@ -4290,6 +4421,11 @@
         }
         if keyword.action == crate::events::KeywordActionKind::Planeswalk && keyword.amount == 1 {
             return "planeswalk".to_string();
+        }
+        if keyword.action == crate::events::KeywordActionKind::AssembleContraption
+            && keyword.amount == 1
+        {
+            return "assemble a Contraption".to_string();
         }
         if keyword.action == crate::events::KeywordActionKind::ChaosEnsues && keyword.amount == 1 {
             return "chaos ensues".to_string();

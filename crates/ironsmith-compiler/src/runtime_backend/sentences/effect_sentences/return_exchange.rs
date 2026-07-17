@@ -13,10 +13,7 @@ fn parse_return_back_reference_target(
                 crate::target::SourceReferenceSurface::ThisPermanentType(words.join(" ")),
             );
         }
-        Ok(TargetAst::Tagged(
-            TagKey::from(IT_TAG),
-            span,
-        ))
+        Ok(TargetAst::Tagged(TagKey::from(IT_TAG), span))
     } else {
         parse_target_phrase(tokens)
     }
@@ -521,7 +518,9 @@ pub(crate) fn parse_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::types::CardType;
 
     #[test]
     fn parses_top_graveyard_card_as_a_top_only_return_choice() {

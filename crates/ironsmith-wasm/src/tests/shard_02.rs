@@ -1350,6 +1350,54 @@ pub(super) fn pregame_mulligan_prompt_offers_keep_and_mulligan() {
 }
 
 #[test]
+pub(super) fn normal_multiplayer_first_mulligan_is_free() {
+    let turn_order = vec![
+        PlayerId::from_index(0),
+        PlayerId::from_index(1),
+        PlayerId::from_index(2),
+    ];
+    let pregame = PregameState::new(&turn_order, 7, MatchFormatInput::Normal);
+
+    assert_eq!(
+        pregame.free_mulligan_count(),
+        1,
+        "CR 103.5c gives every player in an ordinary multiplayer game a free first mulligan"
+    );
+}
+
+#[test]
+pub(super) fn mulligan_is_not_offered_after_the_opening_hand_reaches_zero() {
+    let mut wasm = setup_pregame_match(MatchFormatInput::Normal);
+    let alice = PlayerId::from_index(0);
+    let mut pregame = PregameState::new(
+        &wasm.game.turn_store.turn_order,
+        7,
+        MatchFormatInput::Normal,
+    );
+    pregame.mulligans_taken.insert(alice, 7);
+    wasm.pregame = Some(pregame);
+
+    wasm.advance_until_decision()
+        .expect("the forced final mulligan state should still produce a keep decision");
+
+    let actions = match wasm.pending_decision.as_ref() {
+        Some(DecisionContext::Priority(ctx)) => &ctx.actions,
+        other => panic!("expected final mulligan priority decision, got {other:?}"),
+    };
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, LegalAction::KeepOpeningHand))
+    );
+    assert!(
+        !actions
+            .iter()
+            .any(|action| matches!(action, LegalAction::TakeMulligan)),
+        "CR 103.5 stops offering mulligans once the opening hand would already be zero cards"
+    );
+}
+
+#[test]
 pub(super) fn pregame_priority_labels_progress_from_keep_hand_to_pregame() {
     let mut wasm = setup_pregame_match(MatchFormatInput::Normal);
     start_pregame(&mut wasm, 7, MatchFormatInput::Normal);
