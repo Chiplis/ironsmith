@@ -1414,7 +1414,7 @@ fn activation_cost_component_precheck_with_view(
     source: ObjectId,
     cost: &crate::costs::Cost,
     reason: crate::costs::PaymentReason,
-    view: &DerivedGameView<'_>,
+    _view: &DerivedGameView<'_>,
 ) -> bool {
     if let Some(amount) = cost.life_amount() {
         return game.can_pay_life_with_reason(controller, amount, reason);
@@ -1446,14 +1446,11 @@ fn activation_cost_component_precheck_with_view(
         return false;
     }
 
-    if let Some(mana_cost) = cost.mana_cost_ref() {
-        return view.can_potentially_pay_with_reason(
-            controller,
-            Some(source),
-            mana_cost,
-            0,
-            reason,
-        );
+    if cost.mana_cost_ref().is_some() {
+        // Mana is paid only after the activation has opened its mana-ability
+        // window. Keep the action visible here; the locked payment flow
+        // performs the exact affordability and restricted-mana checks.
+        return true;
     }
     if cost.is_remove_counters() {
         return true;
@@ -1833,7 +1830,7 @@ fn activation_cost_is_payable_with_view(
     controller: PlayerId,
     source: ObjectId,
     cost: &crate::costs::Cost,
-    view: &DerivedGameView<'_>,
+    _view: &DerivedGameView<'_>,
 ) -> bool {
     let reason = crate::costs::PaymentReason::ActivateAbility;
     if game
@@ -1843,14 +1840,11 @@ fn activation_cost_is_payable_with_view(
         return false;
     }
 
-    if let Some(mana_cost) = cost.mana_cost_ref() {
-        return view.can_potentially_pay_with_reason(
-            controller,
-            Some(source),
-            mana_cost,
-            0,
-            reason,
-        );
+    if cost.mana_cost_ref().is_some() {
+        // Effective costs are likewise paid after activation begins. This
+        // stage must reject impossible nonmana components, but not preempt
+        // the mana-ability window used to produce the required mana.
+        return true;
     }
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
         return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);

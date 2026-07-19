@@ -297,6 +297,15 @@ impl EffectExecutor for ChooseObjectsEffect {
         super::choose_objects_runtime::run_choose_objects(self, game, ctx)
     }
 
+    /// Choosing tags objects into the execution context without changing any
+    /// game state another player's simultaneous choice could observe (its rare
+    /// &mut uses — RNG advancement for random selections and hidden-card id
+    /// allocation — are not visible to other players' decisions), so
+    /// each-player compositions may run it choice-by-choice in APNAP order.
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
     fn cost_description(&self) -> Option<String> {
         use crate::color::Color;
 

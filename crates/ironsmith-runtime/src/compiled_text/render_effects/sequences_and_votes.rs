@@ -881,8 +881,14 @@ pub(super) fn describe_for_players_may_happened_sequence(
     }
 
     let subject = describe_for_players_subject(&for_players.filter)?.to_string();
-    let each_player =
+    let mut each_player =
         strip_leading_article(&describe_for_each_player_filter(&for_players.filter)).to_string();
+    // The subject clause already scoped the group ("Each player on your team
+    // may ..."); a wordy filter repeated here reads badly, and the "who
+    // {did_action} this way" restriction keeps the reference unambiguous.
+    if each_player.contains(' ') {
+        each_player = "player".to_string();
+    }
     let action = describe_for_players_may_action(&for_players.filter, action_effects)?;
     let did_action = may_action_this_way_phrase(&action)?;
     let followup = describe_for_players_happened_followup(&if_effect.then)?;
@@ -1922,6 +1928,60 @@ pub(super) fn describe_named_vote_per_vote_effects(
 }
 
 fn council_conditional_body(effects: &[Effect]) -> Option<String> {
+    // Each-player graveyard return followed by exiling the source
+    // ("If return gets more votes, each player returns ..., then you exile ~").
+    if let [for_players_effect] = effects
+        && let Some(for_players) =
+            for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let [return_effect, exile_effect] = for_players.effects.as_slice()
+        && let Some(move_to_zone) = unwrap_basic_tag_wrappers(exile_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && move_to_zone.zone == Zone::Exile
+        && matches!(move_to_zone.target.base(), ChooseSpec::Source)
+        && let Some(return_text) = {
+            let mut return_only = for_players.clone();
+            return_only.effects = vec![return_effect.clone()];
+            super::search_reveal_and_sacrifice::describe_each_player_return_from_graveyard_to_hand(
+                &return_only,
+            )
+        }
+    {
+        let exile_text = describe_effect(exile_effect)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        // "then exile this" is rewritten to "then you exile {card name}" by
+        // rewrite_inline_spell_self_exile in the spell-resolution pass.
+        return Some(format!(
+            "{return_text}, then {}",
+            lowercase_first(&exile_text)
+        ));
+    }
+    // A single optional per-player wheel keeps its one-action surface
+    // ("each player may discard their hand and draw seven cards").
+    if let [for_players_effect] = effects
+        && let Some(for_players) =
+            for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let [may_effect] = for_players.effects.as_slice()
+        && let Some(may) = may_effect.downcast_ref::<crate::effects::MayEffect>()
+        && may
+            .decider
+            .as_ref()
+            .is_none_or(|decider| *decider == PlayerFilter::IteratedPlayer)
+        && let [discard_effect, draw_effect] = may.effects.as_slice()
+        && discard_effect
+            .downcast_ref::<crate::effects::DiscardHandEffect>()
+            .is_some_and(|discard| discard.player == PlayerFilter::IteratedPlayer)
+        && let Some(draw) = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+        && draw.player == PlayerFilter::IteratedPlayer
+    {
+        let subject = describe_for_players_subject(&for_players.filter)?;
+        return Some(format!(
+            "{} may discard their hand and draw {}",
+            lowercase_first(subject),
+            describe_card_count(&draw.count)
+        ));
+    }
     let [sacrifice_effect, destroy_effect] = effects else {
         return None;
     };
@@ -2250,7 +2310,7 @@ pub(super) fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Op
     )
 }
 
-pub(super) fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<String> {
+pub(in crate::compiled_text) fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<String> {
     let [vote_effect, followups @ ..] = effects else {
         return None;
     };

@@ -1292,6 +1292,13 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
         return Ok(None);
     }
 
+    // Prefer the functional damage-multiplier replacement; only surfaces the
+    // rule can't lower (e.g. "to a target, double that damage instead") keep
+    // the marker fallback.
+    if let Ok(Some(ability)) = parse_double_damage_amount_replacement_line(tokens) {
+        return Ok(Some(ability));
+    }
+
     Ok(Some(keyword_static_marker(tokens)))
 }
 
@@ -2938,10 +2945,38 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
 fn damage_source_filter_from_shape(
     shape: keyword_static_lines::DamageSourceShape<'_>,
 ) -> Result<ObjectFilter, CardTextError> {
-    let mut filter = if shape.filter_tokens.is_empty() {
+    let mut filter = if shape.filter_tokens.is_empty() && shape.trailing_filter_tokens.is_empty() {
         ObjectFilter::default()
-    } else {
+    } else if shape.trailing_filter_tokens.is_empty() {
         parse_object_filter_lexed(shape.filter_tokens, false)?
+    } else {
+        // Post-controller qualifiers belong to the same noun phrase ("a
+        // source you control with an odd mana value"). A bare qualifier has
+        // no head noun for the filter grammar, so recognize the parity shape
+        // directly and fold anything else into a combined parse.
+        let trailing_words =
+            crate::runtime_backend::token_word_refs(shape.trailing_filter_tokens);
+        let parity = match trailing_words.as_slice() {
+            ["with", "an", "odd", "mana", "value"] => {
+                Some(ironsmith_core::ParityRequirement::Odd)
+            }
+            ["with", "an", "even", "mana", "value"] => {
+                Some(ironsmith_core::ParityRequirement::Even)
+            }
+            _ => None,
+        };
+        if let Some(parity) = parity {
+            let base = if shape.filter_tokens.is_empty() {
+                ObjectFilter::default()
+            } else {
+                parse_object_filter_lexed(shape.filter_tokens, false)?
+            };
+            base.with_mana_value_parity(parity)
+        } else {
+            let mut combined = shape.filter_tokens.to_vec();
+            combined.extend(shape.trailing_filter_tokens.iter().cloned());
+            parse_object_filter_lexed(&combined, false)?
+        }
     };
     match shape.controller {
         keyword_static_lines::DamageSourceControllerKind::None => {}

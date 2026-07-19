@@ -2772,8 +2772,11 @@ pub(crate) fn describe_exile_then_return(
         crate::effects::BattlefieldController::Owner => owner_control_suffix,
         crate::effects::BattlefieldController::You => " under your control",
     };
+    // A fused entry counter ("with a +1/+1 counter on it") lowers onto the
+    // return move; keep its authored surface.
+    let counters_suffix = describe_entry_counters_suffix(&move_back.enters_with_counters);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}"
+        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}{counters_suffix}"
     ))
 }
 
@@ -2814,8 +2817,11 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
         crate::effects::BattlefieldController::Owner => owner_control_suffix,
         crate::effects::BattlefieldController::You => " under your control",
     };
+    // A fused entry counter ("with a +1/+1 counter on it") lowers onto the
+    // return move; keep its authored surface.
+    let counters_suffix = describe_entry_counters_suffix(&move_back.enters_with_counters);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}"
+        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}{counters_suffix}"
     ))
 }
 
@@ -6540,4 +6546,36 @@ pub(super) fn normalize_modal_named_source_etb_surface(
         }
     }
     line
+}
+
+/// Suffix for entry counters fused onto a return-to-battlefield move
+/// ("with a +1/+1 counter on it").
+fn describe_entry_counters_suffix(
+    counters: &[ironsmith_core::BattlefieldEntryCounterSpec],
+) -> String {
+    if counters.is_empty() {
+        return String::new();
+    }
+    if counters
+        .iter()
+        .any(|spec| spec.condition.is_some() || spec.object_filter.is_some())
+    {
+        return String::new();
+    }
+    let parts = counters
+        .iter()
+        .map(|spec| {
+            let type_text = describe_counter_type(spec.counter_type);
+            match &spec.amount {
+                Value::Fixed(1) => format!("a {type_text} counter"),
+                Value::Fixed(n) => {
+                    let count_word = crate::compiled_text::normalize_common::number_word(*n)
+                        .unwrap_or_else(|| n.to_string());
+                    format!("{count_word} {type_text} counters")
+                }
+                amount => format!("{} {type_text} counters", describe_value(amount)),
+            }
+        })
+        .collect::<Vec<_>>();
+    format!(" with {} on it", join_with_and(&parts))
 }

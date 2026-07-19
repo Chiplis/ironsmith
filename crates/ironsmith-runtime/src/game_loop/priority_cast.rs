@@ -2582,7 +2582,20 @@ pub(super) fn prompt_spell_mana_ability_window(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let mana_abilities = get_available_mana_abilities(game, pending.caster, decision_maker);
-    if mana_abilities.is_empty() {
+    // CR 601.2g grants a pre-payment mana-ability window, but when the caster's
+    // floating mana already covers the whole mana cost the initial window only
+    // adds a redundant prompt (the player held priority moments before and
+    // could have floated more then). Re-prompts inside an opened window still
+    // show, so a player who chose to float mid-window keeps the flow.
+    let pool_covers_cost = pending.stage != CastStage::ActivatingManaAbilities
+        && pending.mana_cost_to_pay.as_ref().is_some_and(|cost| {
+            game.player(pending.caster).is_some_and(|player| {
+                player
+                    .mana_pool
+                    .can_pay(cost, pending.x_value.unwrap_or(0))
+            })
+        });
+    if mana_abilities.is_empty() || pool_covers_cost {
         pending.mana_ability_window_closed = true;
         return continue_spell_next_cost_or_finalize(
             game,
@@ -2638,7 +2651,18 @@ pub(super) fn prompt_activation_mana_ability_window(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     let mana_abilities = get_available_mana_abilities(game, pending.activator, decision_maker);
-    if mana_abilities.is_empty() {
+    // Mirror of the casting window: skip the initial CR 601.2g window when the
+    // activator's floating mana already covers the whole mana cost. Re-prompts
+    // inside an opened window still show.
+    let pool_covers_cost = pending.stage != ActivationStage::ActivatingManaAbilities
+        && pending.mana_cost_to_pay.as_ref().is_some_and(|cost| {
+            game.player(pending.activator).is_some_and(|player| {
+                player
+                    .mana_pool
+                    .can_pay(cost, pending.x_value.unwrap_or(0) as u32)
+            })
+        });
+    if mana_abilities.is_empty() || pool_covers_cost {
         pending.mana_ability_window_closed = true;
         pending.stage = activation_stage_after_targets(&pending);
         return continue_activation(game, trigger_queue, state, pending, decision_maker);

@@ -338,6 +338,15 @@ pub(crate) fn parse_filtered_object_animation_tokens(
     if subject_word_end == 0 && !dependent_subject {
         return None;
     }
+    // A targeted subject or a leading one-shot duration ("Until end of turn,
+    // target creature becomes ...") is an effect sentence, never a static
+    // characteristic statement; the tolerant anthem-subject fallback would
+    // otherwise swallow the prefix and mis-scope the animation to every
+    // matching object on the battlefield.
+    let subject_words = &words[..subject_word_end];
+    if subject_words.contains(&"target") || subject_words.first() == Some(&"until") {
+        return None;
+    }
     let subject_token_end = word_view.token_index_after_words(subject_word_end)?;
 
     Some(FilteredObjectAnimationShape {

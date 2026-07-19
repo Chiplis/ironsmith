@@ -228,6 +228,20 @@ impl EffectExecutor for SacrificePlayerEffect {
         Some(self)
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let effect =
+            SacrificeEffect::player(self.filter.clone(), self.count.clone(), self.player.clone());
+        Ok(Box::new(effect.prepare_proposal(game, ctx)?))
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }
@@ -285,6 +299,18 @@ impl EffectExecutor for SacrificeEffect {
         Some(self)
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(self.prepare_proposal(game, ctx)?))
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }
@@ -335,7 +361,133 @@ impl EffectExecutor for SacrificeEffect {
         } else {
             choose_objects_to_sacrifice(game, ctx, player_id, &self.filter, count)?
         };
-        let chosen_to_sacrifice = to_sacrifice.clone();
+        sacrifice_selected_objects(
+            game,
+            ctx,
+            &self.event_object_tags,
+            &self.event_source_tags,
+            to_sacrifice,
+        )
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        let count = match self.count {
+            crate::effect::Value::Fixed(count) if count > 0 => count,
+            _ => return None,
+        };
+        if self.player != PlayerFilter::You {
+            return None;
+        }
+        let description = self.filter.description();
+        Some(if count == 1 {
+            if description.starts_with("a ")
+                || description.starts_with("an ")
+                || description.starts_with("another ")
+                || description.starts_with("target ")
+                || description.starts_with("this ")
+            {
+                format!("Sacrifice {description}")
+            } else {
+                format!("Sacrifice a {description}")
+            }
+        } else {
+            format!("Sacrifice {} {}", count, description)
+        })
+    }
+}
+
+/// One player's fully determined part of a simultaneous "each player
+/// sacrifices ..." action (CR 101.4, 608.2f): the objects were chosen against
+/// the pre-action game state; committing performs the zone changes.
+#[derive(Debug)]
+struct SacrificeProposal {
+    chosen: Vec<ObjectId>,
+    event_object_tags: Vec<TagKey>,
+    event_source_tags: Vec<TagKey>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for SacrificeProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        sacrifice_selected_objects(
+            game,
+            ctx,
+            &self.event_object_tags,
+            &self.event_source_tags,
+            self.chosen.clone(),
+        )
+    }
+}
+
+impl SacrificeEffect {
+    /// Choose this player's sacrifices against immutable pre-action state.
+    fn prepare_proposal(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SacrificeProposal, ExecutionError> {
+        let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        let filter_ctx = ctx.filter_context(game);
+        let matching: Vec<ObjectId> = game
+            .battlefield
+            .iter()
+            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
+            .filter(|(id, obj)| {
+                game.controller_of(obj) == player_id
+                    && self.filter.matches(obj, &filter_ctx, game)
+                    && game.can_be_sacrificed(*id)
+            })
+            .map(|(id, _)| id)
+            .collect();
+        let required = count.min(matching.len());
+        let chosen = if required == 0 {
+            Vec::new()
+        } else if required == matching.len() {
+            matching.clone()
+        } else {
+            let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+                ctx.source,
+                format!(
+                    "Choose {} {} to sacrifice",
+                    required,
+                    self.filter.description()
+                ),
+                matching.clone(),
+                required,
+                Some(required),
+            );
+            let selected = crate::decisions::make_decision(
+                game,
+                ctx.decision_maker,
+                player_id,
+                Some(ctx.source),
+                spec,
+            );
+            normalize_object_selection(selected, &matching, required)
+        };
+        Ok(SacrificeProposal {
+            chosen,
+            event_object_tags: self.event_object_tags.clone(),
+            event_source_tags: self.event_source_tags.clone(),
+        })
+    }
+}
+
+/// Move the already-chosen objects to the graveyard as sacrifices, emitting
+/// the same events and outcome facts regardless of whether the selection came
+/// from a live execution or a simultaneous each-player proposal.
+fn sacrifice_selected_objects(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event_object_tags: &[TagKey],
+    event_source_tags: &[TagKey],
+    to_sacrifice: Vec<ObjectId>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let chosen_to_sacrifice = to_sacrifice.clone();
         let chosen_memory: Vec<_> = chosen_to_sacrifice
             .iter()
             .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
@@ -349,7 +501,7 @@ impl EffectExecutor for SacrificeEffect {
             let pre_snapshot = game
                 .object(id)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-            let source_snapshot_for_event = if self.event_source_tags.is_empty() {
+            let source_snapshot_for_event = if event_source_tags.is_empty() {
                 None
             } else if pre_snapshot
                 .as_ref()
@@ -386,8 +538,8 @@ impl EffectExecutor for SacrificeEffect {
                     tag_sacrifice_zone_change_event(
                         game,
                         id,
-                        &self.event_object_tags,
-                        &self.event_source_tags,
+                        event_object_tags,
+                        event_source_tags,
                         pre_snapshot.as_ref(),
                         source_snapshot_for_event.as_ref(),
                     );
@@ -416,8 +568,8 @@ impl EffectExecutor for SacrificeEffect {
                     tag_sacrifice_zone_change_event(
                         game,
                         id,
-                        &self.event_object_tags,
-                        &self.event_source_tags,
+                        event_object_tags,
+                        event_source_tags,
                         pre_snapshot.as_ref(),
                         source_snapshot_for_event.as_ref(),
                     );
@@ -450,32 +602,6 @@ impl EffectExecutor for SacrificeEffect {
         }
         Ok(outcome)
     }
-
-    fn cost_description(&self) -> Option<String> {
-        let count = match self.count {
-            crate::effect::Value::Fixed(count) if count > 0 => count,
-            _ => return None,
-        };
-        if self.player != PlayerFilter::You {
-            return None;
-        }
-        let description = self.filter.description();
-        Some(if count == 1 {
-            if description.starts_with("a ")
-                || description.starts_with("an ")
-                || description.starts_with("another ")
-                || description.starts_with("target ")
-                || description.starts_with("this ")
-            {
-                format!("Sacrifice {description}")
-            } else {
-                format!("Sacrifice a {description}")
-            }
-        } else {
-            format!("Sacrifice {} {}", count, description)
-        })
-    }
-}
 
 impl CostExecutableEffect for SacrificeEffect {
     fn can_execute_as_cost_with_reason(

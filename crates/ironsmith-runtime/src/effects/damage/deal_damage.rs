@@ -308,6 +308,23 @@ fn object_can_be_dealt_damage(object: &crate::object::Object) -> bool {
 }
 
 impl EffectExecutor for DealDamageEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Dealing damage involves no player choices (targets were fixed
+        // earlier); defer to commit so the batch lands simultaneously.
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

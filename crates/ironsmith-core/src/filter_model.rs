@@ -1100,10 +1100,7 @@ impl ObjectFilter {
 
     /// Preserve the authored noun of a same-name antecedent without changing
     /// the tagged runtime relationship.
-    pub fn set_same_name_antecedent_surface(
-        &mut self,
-        surface: Option<SameNameAntecedentSurface>,
-    ) {
+    pub fn set_same_name_antecedent_surface(&mut self, surface: Option<SameNameAntecedentSurface>) {
         self.union_surface = self.union_surface.with_same_name_antecedent(surface);
     }
 
@@ -2816,6 +2813,9 @@ impl ObjectFilter {
             || self.power_toughness_relation.is_some()
             || self.power_relative_to_source.is_some()
             || self.total_power_toughness.is_some();
+        let has_counter_qualifier = self.with_counter.is_some()
+            || self.without_counter.is_some()
+            || self.total_counters_parity.is_some();
         if let Some(scope) = explicit_extremum_scope(self) {
             if self.controller.is_some() && self.controller == scope.controller {
                 controller_suffix = None;
@@ -2824,7 +2824,7 @@ impl ObjectFilter {
                 owner_suffix = None;
             }
         }
-        if has_power_or_toughness_qualifier
+        if (has_power_or_toughness_qualifier || has_counter_qualifier)
             && owner_suffix.is_none()
             && let Some(controller) = controller_suffix.take()
         {
@@ -4292,11 +4292,11 @@ mod tests {
         assert_eq!(semantic_filter, surfaced_filter);
         assert_eq!(
             semantic_filter.description(),
-            "creature you control with a +1/+1 counter on it"
+            "a creature you control with a +1/+1 counter on it"
         );
         assert_eq!(
             surfaced_filter.description(),
-            "creature you control with +1/+1 counters on them"
+            "a creature you control with +1/+1 counters on them"
         );
 
         let mut any_counter = ObjectFilter::permanent().with_any_counter();
@@ -4379,7 +4379,7 @@ mod tests {
 
         assert_eq!(
             filter.description(),
-            "artifact or non-aura enchantment or land"
+            "artifact, non-aura enchantment, or land"
         );
     }
 
@@ -4410,7 +4410,7 @@ mod tests {
         assert!(filter.uses_non_pt_battlefield_characteristics());
         assert_eq!(
             filter.description(),
-            "a nontoken artifact with a name originally printed in the Antiquities expansion"
+            "nontoken artifact with a name originally printed in the Antiquities expansion"
         );
     }
 }

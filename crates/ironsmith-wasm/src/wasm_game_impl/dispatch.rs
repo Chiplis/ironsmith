@@ -746,8 +746,10 @@ impl WasmGame {
             7,
         );
         self.initialize_empty_match(names, starting_life, seed);
-        self.populate_demo_libraries()?;
+        self.populate_demo_libraries()
+            .map_err(|error| JsValue::from_str(&error))?;
         self.finish_match_setup(7)
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     /// Start a fully specified match from a synchronized lobby payload.
@@ -763,6 +765,7 @@ impl WasmGame {
         self.snapshot()
     }
 
+    #[cfg(test)]
     fn apply_match_setup(&mut self, config: MatchSetupInput) -> Result<(), JsValue> {
         self.apply_match_setup_with_companions(config, None)
     }
@@ -772,8 +775,17 @@ impl WasmGame {
         config: MatchSetupInput,
         companions: Option<Vec<Option<String>>>,
     ) -> Result<(), JsValue> {
+        self.apply_match_setup_with_companions_native(config, companions)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
+    fn apply_match_setup_with_companions_native(
+        &mut self,
+        config: MatchSetupInput,
+        companions: Option<Vec<Option<String>>>,
+    ) -> Result<(), String> {
         if config.player_names.is_empty() {
-            return Err(JsValue::from_str("player_names cannot be empty"));
+            return Err("player_names cannot be empty".to_string());
         }
 
         let player_count = config.player_names.len();
@@ -786,10 +798,10 @@ impl WasmGame {
         let hidden_manifests = config.hidden_deck_manifests.as_deref().unwrap_or(&[]);
         config
             .validate_multiplayer_profile()
-            .map_err(|error| JsValue::from_str(&error))?;
+            ?;
         let prepared_companions = self
             .validate_companion_setup(&config, companions.as_deref())
-            .map_err(|error| JsValue::from_str(&error))?;
+            ?;
 
         if matches!(
             config.format,
@@ -811,25 +823,23 @@ impl WasmGame {
                 .as_ref()
                 .is_some_and(|commanders| commanders.iter().any(|list| !list.is_empty()))
             {
-                return Err(JsValue::from_str(
-                    "normal constructed matches cannot designate commanders",
-                ));
+                return Err("normal constructed matches cannot designate commanders".to_string());
             }
             Self::validate_ante_manifest_visibility(config.format, hidden_manifests)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
             self.validate_normal_constructed_setup(
                 player_count,
                 config.decks.as_deref(),
                 config.sideboards.as_deref(),
                 hidden_manifests,
             )
-            .map_err(|error| JsValue::from_str(&error))?;
+            ?;
             self.validate_ante_card_legality_for_setup(
                 config.decks.as_deref(),
                 config.sideboards.as_deref(),
                 config.format == MatchFormatInput::Ante,
             )
-            .map_err(|error| JsValue::from_str(&error))?;
+            ?;
         }
 
         if config.format == MatchFormatInput::ConspiracyDraft {
@@ -838,9 +848,7 @@ impl WasmGame {
                 .as_ref()
                 .is_some_and(|commanders| commanders.iter().any(|list| !list.is_empty()))
             {
-                return Err(JsValue::from_str(
-                    "Conspiracy Draft games cannot designate commanders",
-                ));
+                return Err("Conspiracy Draft games cannot designate commanders".to_string());
             }
             self.validate_conspiracy_limited_setup(
                 player_count,
@@ -848,24 +856,24 @@ impl WasmGame {
                 config.sideboards.as_deref(),
                 hidden_manifests,
             )
-            .map_err(|error| JsValue::from_str(&error))?;
+            ?;
             self.validate_ante_card_legality_for_setup(
                 config.decks.as_deref(),
                 config.sideboards.as_deref(),
                 false,
             )
-            .map_err(|error| JsValue::from_str(&error))?;
+            ?;
         }
 
         let prepared_planar_decks = match config.format {
             MatchFormatInput::Planechase => Some(
                 self.load_planar_decks_for_setup(
                     config.planar_decks.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Planechase matches require planar decks")
+                        "Planechase matches require planar decks".to_string()
                     })?,
                     player_count,
                 )
-                .map_err(|error| JsValue::from_str(&error))?,
+                ?,
             ),
             MatchFormatInput::GrandMelee
                 if config
@@ -878,7 +886,7 @@ impl WasmGame {
                         config.planar_decks.as_deref().expect("checked nonempty"),
                         player_count,
                     )
-                    .map_err(|error| JsValue::from_str(&error))?,
+                    ?,
                 )
             }
             _ => {
@@ -887,9 +895,7 @@ impl WasmGame {
                     .as_ref()
                     .is_some_and(|decks| !decks.is_empty())
                 {
-                    return Err(JsValue::from_str(
-                        "planar decks may be supplied only for a Planechase match",
-                    ));
+                    return Err("planar decks may be supplied only for a Planechase match".to_string());
                 }
                 None
             }
@@ -899,11 +905,11 @@ impl WasmGame {
             MatchFormatInput::Vanguard => Some(
                 self.load_vanguards_for_setup(
                     config.vanguards.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Vanguard matches require vanguard cards")
+                        "Vanguard matches require vanguard cards".to_string()
                     })?,
                     player_count,
                 )
-                .map_err(|error| JsValue::from_str(&error))?,
+                ?,
             ),
             _ => {
                 if config
@@ -911,9 +917,7 @@ impl WasmGame {
                     .as_ref()
                     .is_some_and(|cards| !cards.is_empty())
                 {
-                    return Err(JsValue::from_str(
-                        "vanguard cards may be supplied only for a Vanguard match",
-                    ));
+                    return Err("vanguard cards may be supplied only for a Vanguard match".to_string());
                 }
                 None
             }
@@ -923,32 +927,32 @@ impl WasmGame {
             MatchFormatInput::Archenemy => Some(
                 self.load_scheme_decks_for_setup(
                     config.scheme_decks.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Archenemy matches require scheme decks")
+                        "Archenemy matches require scheme decks".to_string()
                     })?,
                     player_count,
                     ironsmith::game_state::ArchenemyVariant::Default,
                 )
-                .map_err(|error| JsValue::from_str(&error))?,
+                ?,
             ),
             MatchFormatInput::SupervillainRumble => Some(
                 self.load_scheme_decks_for_setup(
                     config.scheme_decks.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Supervillain Rumble matches require scheme decks")
+                        "Supervillain Rumble matches require scheme decks".to_string()
                     })?,
                     player_count,
                     ironsmith::game_state::ArchenemyVariant::SupervillainRumble,
                 )
-                .map_err(|error| JsValue::from_str(&error))?,
+                ?,
             ),
             MatchFormatInput::ArchenemyCommander => Some(
                 self.load_scheme_decks_for_setup(
                     config.scheme_decks.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Archenemy Commander matches require scheme decks")
+                        "Archenemy Commander matches require scheme decks".to_string()
                     })?,
                     player_count,
                     ironsmith::game_state::ArchenemyVariant::Commander,
                 )
-                .map_err(|error| JsValue::from_str(&error))?,
+                ?,
             ),
             _ => {
                 if config
@@ -956,9 +960,7 @@ impl WasmGame {
                     .as_ref()
                     .is_some_and(|decks| decks.iter().any(|deck| !deck.is_empty()))
                 {
-                    return Err(JsValue::from_str(
-                        "scheme decks may be supplied only for an Archenemy match",
-                    ));
+                    return Err("scheme decks may be supplied only for an Archenemy match".to_string());
                 }
                 None
             }
@@ -968,14 +970,14 @@ impl WasmGame {
             MatchFormatInput::ConspiracyDraft => Some(
                 self.load_conspiracies_for_setup(
                     config.conspiracies.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Conspiracy Draft games require conspiracy selections")
+                        "Conspiracy Draft games require conspiracy selections".to_string()
                     })?,
                     config.sideboards.as_deref().ok_or_else(|| {
-                        JsValue::from_str("Conspiracy Draft games require drafted sideboards")
+                        "Conspiracy Draft games require drafted sideboards".to_string()
                     })?,
                     player_count,
                 )
-                .map_err(|error| JsValue::from_str(&error))?,
+                ?,
             ),
             _ => {
                 if config
@@ -983,9 +985,7 @@ impl WasmGame {
                     .as_ref()
                     .is_some_and(|lists| lists.iter().any(|list| !list.is_empty()))
                 {
-                    return Err(JsValue::from_str(
-                        "conspiracies may be supplied only for a Conspiracy Draft game",
-                    ));
+                    return Err("conspiracies may be supplied only for a Conspiracy Draft game".to_string());
                 }
                 None
             }
@@ -993,14 +993,10 @@ impl WasmGame {
 
         if config.format.uses_commander_setup() {
             let Some(decks) = config.decks.as_ref() else {
-                return Err(JsValue::from_str(
-                    "commander-variant matches require explicit decklists",
-                ));
+                return Err("commander-variant matches require explicit decklists".to_string());
             };
             let Some(commanders) = config.commanders.as_ref() else {
-                return Err(JsValue::from_str(
-                    "commander-variant matches require commander lists",
-                ));
+                return Err("commander-variant matches require commander lists".to_string());
             };
             match config.format {
                 MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => self
@@ -1011,7 +1007,7 @@ impl WasmGame {
                         config.sideboards.as_deref(),
                         hidden_manifests,
                     )
-                    .map_err(|error| JsValue::from_str(&error))?,
+                    ?,
                 MatchFormatInput::CommanderDraft => self
                     .validate_commander_draft_setup(
                         player_count,
@@ -1024,29 +1020,23 @@ impl WasmGame {
                             .as_ref()
                             .expect("validated Commander Draft metadata"),
                     )
-                    .map_err(|error| JsValue::from_str(&error))?,
+                    ?,
                 MatchFormatInput::Brawl if hidden_manifests.is_empty() => self
                     .validate_brawl_setup(decks, commanders)
-                    .map_err(|error| JsValue::from_str(&error))?,
+                    ?,
                 MatchFormatInput::Brawl => {
                     for (player_index, commander_list) in commanders.iter().enumerate() {
                         if commander_list.len() != 1 {
-                            return Err(JsValue::from_str(
-                                "Brawl matches require exactly one commander per player",
-                            ));
+                            return Err("Brawl matches require exactly one commander per player".to_string());
                         }
                         let Some(manifest) = hidden_manifests
                             .iter()
                             .find(|manifest| usize::from(manifest.owner) == player_index)
                         else {
-                            return Err(JsValue::from_str(
-                                "Brawl committed setup requires one hidden manifest per player",
-                            ));
+                            return Err("Brawl committed setup requires one hidden manifest per player".to_string());
                         };
                         if manifest.deck_count != 59 || manifest.commander_count != 1 {
-                            return Err(JsValue::from_str(
-                                "Brawl committed setup requires 59 main-deck cards and one commander per player",
-                            ));
+                            return Err("Brawl committed setup requires 59 main-deck cards and one commander per player".to_string());
                         }
                     }
                 }
@@ -1085,7 +1075,7 @@ impl WasmGame {
         if config.format == MatchFormatInput::GrandMelee {
             self.game
                 .enable_grand_melee()
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
         if config.format == MatchFormatInput::TeamVsTeam {
             let teams = config
@@ -1102,7 +1092,7 @@ impl WasmGame {
                 .collect();
             self.game
                 .enable_team_vs_team(teams)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
         if config.format == MatchFormatInput::Emperor {
             let teams = config
@@ -1119,7 +1109,7 @@ impl WasmGame {
                 .collect();
             self.game
                 .enable_emperor(teams)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
         if config.format == MatchFormatInput::TwoHeadedGiant {
             let teams = config
@@ -1136,7 +1126,7 @@ impl WasmGame {
                 .collect();
             self.game
                 .enable_two_headed_giant(teams)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
         if config.format == MatchFormatInput::AlternatingTeams {
             let teams = config
@@ -1170,7 +1160,7 @@ impl WasmGame {
                     options.range_of_influence,
                     options.deploy_creatures,
                 )
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
         if let Some(options) = free_for_all_profile {
             let attack = match options.attack {
@@ -1182,15 +1172,13 @@ impl WasmGame {
             };
             self.game
                 .enable_free_for_all(attack, options.range_of_influence)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
         let hidden_manifests = config.hidden_deck_manifests.unwrap_or_default();
 
         if let Some(decks) = config.decks {
             if decks.len() != self.game.players.len() {
-                return Err(JsValue::from_str(
-                    "deck count must match number of players in game",
-                ));
+                return Err("deck count must match number of players in game".to_string());
             }
             if hidden_manifests.is_empty() {
                 self.populate_explicit_libraries(&decks)?;
@@ -1208,15 +1196,13 @@ impl WasmGame {
             for (owner, cards) in selections {
                 let sideboard = sideboards
                     .get_mut(usize::from(owner.0))
-                    .ok_or_else(|| JsValue::from_str("invalid conspiracy owner"))?;
+                    .ok_or_else(|| "invalid conspiracy owner".to_string())?;
                 for setup in cards {
                     let Some(position) = sideboard
                         .iter()
                         .position(|name| name.trim().eq_ignore_ascii_case(setup.definition.name()))
                     else {
-                        return Err(JsValue::from_str(
-                            "selected conspiracy disappeared from its drafted sideboard",
-                        ));
+                        return Err("selected conspiracy disappeared from its drafted sideboard".to_string());
                     };
                     sideboard.remove(position);
                 }
@@ -1224,9 +1210,7 @@ impl WasmGame {
         }
         if !sideboards.is_empty() {
             if sideboards.len() != self.game.players.len() {
-                return Err(JsValue::from_str(
-                    "sideboard count must match number of players in game",
-                ));
+                return Err("sideboard count must match number of players in game".to_string());
             }
             self.populate_explicit_sideboards(&sideboards)?;
         }
@@ -1236,9 +1220,7 @@ impl WasmGame {
 
         if let Some(commanders) = config.commanders {
             if commanders.len() != self.game.players.len() {
-                return Err(JsValue::from_str(
-                    "commander count must match number of players in game",
-                ));
+                return Err("commander count must match number of players in game".to_string());
             }
             self.populate_explicit_commanders(&commanders)?;
         }
@@ -1255,7 +1237,7 @@ impl WasmGame {
             for player in players {
                 self.game
                     .ante_random_library_card(player)
-                    .map_err(|error| JsValue::from_str(&error))?;
+                    ?;
             }
         }
 
@@ -1263,7 +1245,7 @@ impl WasmGame {
             if planar_decks.len() == 1 {
                 self.game
                     .enable_planechase_communal(planar_decks.pop().expect("one planar deck"))
-                    .map_err(|error| JsValue::from_str(&error))?;
+                    ?;
             } else {
                 let players = self
                     .game
@@ -1273,7 +1255,7 @@ impl WasmGame {
                     .collect::<Vec<_>>();
                 self.game
                     .enable_planechase(players.into_iter().zip(planar_decks).collect())
-                    .map_err(|error| JsValue::from_str(&error))?;
+                    ?;
             }
         }
 
@@ -1286,7 +1268,7 @@ impl WasmGame {
                 .collect::<Vec<_>>();
             self.game
                 .enable_vanguard(players.into_iter().zip(vanguards).collect())
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
 
         if let Some(scheme_decks) = prepared_scheme_decks {
@@ -1302,13 +1284,13 @@ impl WasmGame {
             };
             self.game
                 .enable_archenemy(variant, scheme_decks)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
 
         if let Some(conspiracies) = prepared_conspiracies {
             self.game
                 .enable_conspiracy(conspiracies)
-                .map_err(|error| JsValue::from_str(&error))?;
+                ?;
         }
 
         self.finish_match_setup(opening_hand_size)
@@ -2847,8 +2829,10 @@ impl WasmGame {
             7,
         );
         self.initialize_empty_match(names, starting_life, seed);
-        self.populate_demo_libraries()?;
+        self.populate_demo_libraries()
+            .map_err(|error| JsValue::from_str(&error))?;
         self.finish_match_setup(7)
+            .map_err(|error| JsValue::from_str(&error))
     }
 
     /// Load explicit decks by card name. JS format: `string[][]` or

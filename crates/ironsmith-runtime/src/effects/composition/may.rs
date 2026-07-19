@@ -159,6 +159,52 @@ impl EffectExecutor for MayEffect {
         }
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // The yes/no choice is made against the pre-action state in APNAP
+        // order; the accepted effects execute during the batched commit.
+        if self.should_auto_decline_without_prompt(game, ctx)? {
+            return Ok(Box::new(MayProposal {
+                effects: Vec::new(),
+                iterated_player: ctx.iteration.iterated_player,
+            }));
+        }
+        let description = crate::compiled_text::compile_effect_list(&self.effects);
+        let description = if description.trim().is_empty() {
+            "perform the effect".to_string()
+        } else {
+            description
+        };
+        let deciding_player = if let Some(decider) = &self.decider {
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
+        } else {
+            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+        };
+        let should_do = ask_may_choice(
+            game,
+            &mut ctx.decision_maker,
+            deciding_player,
+            ctx.source,
+            description,
+            self.fallback,
+        );
+        Ok(Box::new(MayProposal {
+            effects: if should_do {
+                self.effects.clone()
+            } else {
+                Vec::new()
+            },
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
         super::target_metadata::first_target_spec(&[&self.effects])
     }
@@ -173,6 +219,35 @@ impl EffectExecutor for MayEffect {
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         super::target_metadata::first_target_count(&[&self.effects])
+    }
+}
+
+/// A player's accepted (or declined) "may" action for a simultaneous
+/// each-player instruction: the choice was made at prepare time, the accepted
+/// effects run in the batched commit.
+#[derive(Debug)]
+struct MayProposal {
+    effects: Vec<crate::effect::Effect>,
+    iterated_player: Option<PlayerId>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for MayProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if self.effects.is_empty() {
+            return Ok(EffectOutcome::declined());
+        }
+        let effects = self.effects;
+        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+            let mut outcomes = Vec::new();
+            for effect in &effects {
+                outcomes.push(execute_effect(game, effect, ctx)?);
+            }
+            Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))
+        })
     }
 }
 

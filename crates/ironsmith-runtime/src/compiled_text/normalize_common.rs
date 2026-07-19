@@ -1543,7 +1543,7 @@ pub(super) fn player_verb(
     you_form: &'static str,
     other_form: &'static str,
 ) -> &'static str {
-    if subject == "you" {
+    if matches!(subject, "you" | "they" | "They") {
         you_form
     } else {
         other_form

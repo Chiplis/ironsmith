@@ -907,7 +907,10 @@ fn pre_rule_token_followups(
             LexedClause::new(sentence_tokens).text()
         )));
     }
-    if is_generic_token_reminder_sentence(reminder_tokens) {
+    let parses_under_token_source_identity =
+        crate::runtime_backend::util::source_reference_surface_for_words(&["this", "token"])
+            .is_some();
+    if is_generic_token_reminder_sentence(reminder_tokens) && !parses_under_token_source_identity {
         if !reminder_facts.delayed_pronoun_lifecycle && !reminder_facts.pronoun_trigger_prefix {
             return Err(CardTextError::ParseError(format!(
                 "unsupported standalone token reminder clause (clause: '{}')",

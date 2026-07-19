@@ -1105,6 +1105,141 @@ mod tests {
     }
 
     #[test]
+    fn inline_artifact_token_rules_parse_each_quoted_ability() {
+        let tokens = lex_line(
+            "Create Tamiyo's Notebook, a legendary colorless Book artifact token with \"Spells you cast cost {2} less to cast\" and \"{T}: Draw a card.\"",
+            0,
+        )
+        .expect("Notebook creation should lex");
+        let definition = token_definition_grammar::parse_token_definition_shape_text(
+            "Tamiyo's Notebook, a legendary colorless Book artifact token",
+        )
+        .expect("Notebook token definition");
+        let parsed = double_quoted_rule_bodies(&tokens)
+            .into_iter()
+            .map(|body| {
+                super::super::parse_granted_abilities_for_token_definition(&definition, body)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(parsed.len(), 2, "{parsed:#?}");
+        assert!(parsed.iter().all(Result::is_ok), "{parsed:#?}");
+        assert_eq!(
+            parsed
+                .iter()
+                .filter_map(|result| result.as_ref().ok())
+                .map(Vec::len)
+                .sum::<usize>(),
+            1,
+            "{parsed:#?}"
+        );
+
+        let ast = parse_create(&tokens, None).expect("create AST");
+        let EffectAst::SubjectVerb(effect) = &ast else {
+            panic!("expected subject-verb create AST");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods {
+            granted_abilities, ..
+        } = &effect.action
+        else {
+            panic!("expected create-token AST");
+        };
+        assert!(
+            matches!(
+                granted_abilities.as_slice(),
+                [GrantedAbilityAst::ParsedObjectAbility { .. }]
+            ),
+            "{granted_abilities:#?}"
+        );
+
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effect(
+            &ast,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("create AST should lower");
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("lowered create-token effect");
+        assert!(
+            create
+                .token
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_))),
+            "{:#?}",
+            create.token.abilities
+        );
+
+        let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
+            .expect("Notebook sentence should parse through production dispatch");
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+            &sentence_effects,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("production Notebook AST should lower");
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("production create-token effect");
+        assert!(
+            create
+                .token
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_))),
+            "sentence AST: {sentence_effects:#?}\nlowered: {:#?}",
+            create.token.abilities
+        );
+    }
+
+    #[test]
+    fn separate_token_pronoun_sentence_attaches_quoted_activation() {
+        let tokens = lex_line(
+            "Create a 1/1 colorless Triskelavite artifact creature token with flying. It has \"Sacrifice this token: This token deals 1 damage to any target.\"",
+            0,
+        )
+        .expect("Triskelavite creation should lex");
+        let quoted = double_quoted_rule_bodies(&tokens);
+        assert_eq!(quoted.len(), 1, "{tokens:#?}");
+        let definition = token_definition_grammar::parse_token_definition_shape_text(
+            "1/1 colorless Triskelavite artifact creature token with flying",
+        )
+        .expect("Triskelavite token definition");
+        let parsed =
+            super::super::parse_granted_abilities_for_token_definition(&definition, quoted[0])
+                .expect("quoted sacrifice activation should parse");
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [GrantedAbilityAst::ParsedObjectAbility { .. }]
+            ),
+            "{parsed:#?}"
+        );
+
+        let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
+            .expect("Triskelavite sentence should parse through production dispatch");
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+            &sentence_effects,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("production Triskelavite AST should lower");
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("production create-token effect");
+        assert!(
+            create
+                .token
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_))),
+            "sentence AST: {sentence_effects:#?}\nlowered: {:#?}",
+            create.token.abilities
+        );
+    }
+
+    #[test]
     fn dynamic_construct_pt_uses_a_zero_definition_without_artifact_scaling() {
         let tokens = lex_line(
             "Create an X/X colorless Construct artifact creature token, where X is the number of creatures you control.",

@@ -111,8 +111,7 @@ pub(crate) use effect_handlers::compile_delayed_trigger_spec;
 pub(crate) use iterated_player_validation::{
     choose_spec_mentions_iterated_player, condition_mentions_iterated_player,
     effect_mentions_iterated_player, effects_contain_pending_effect_metric,
-    effects_mention_iterated_player, object_filter_mentions_iterated_player,
-    value_mentions_iterated_player,
+    object_filter_mentions_iterated_player, value_mentions_iterated_player,
 };
 pub(crate) use player_effect_helpers::{
     LoweredSubject, SubjectRole, compile_player_effect_from_resolved_filter,
@@ -393,15 +392,6 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let mut resolved = resolve_it_tag(filter, &refs)?;
             resolved.zone = None;
             Condition::PlayerControlsMoreThanYou {
-                player,
-                filter: resolved,
-            }
-        }
-        PredicateAst::AnOpponentControlsMoreThanPlayer { player, filter } => {
-            let player = resolve_non_target_player_filter(*player, &refs)?;
-            let mut resolved = resolve_it_tag(filter, &refs)?;
-            resolved.zone = None;
-            Condition::AnOpponentControlsMoreThanPlayer {
                 player,
                 filter: resolved,
             }

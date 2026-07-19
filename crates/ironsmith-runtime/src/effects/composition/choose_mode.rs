@@ -8,6 +8,24 @@ use crate::game_state::GameState;
 pub type ChooseModeEffect = ironsmith_core::ChooseModeEffect<crate::effect::Effect>;
 
 impl EffectExecutor for ChooseModeEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // The mode choice happens at commit; earlier read-only choosers in the
+        // same action unit (e.g. pile splitting) already ran for every player.
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

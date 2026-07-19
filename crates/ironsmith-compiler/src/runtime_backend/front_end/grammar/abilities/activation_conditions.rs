@@ -181,6 +181,20 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     if let Some(condition) = parse_source_entered_this_turn_condition(tokens) {
         return Some(condition);
     }
+    if let Some(condition) =
+        super::super::restriction_normalization::parse_text_only_activation_restriction_tokens(
+            tokens,
+        )
+    {
+        return Some(match condition {
+            super::super::restriction_normalization::TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => {
+                ConditionExpr::Not(Box::new(ConditionExpr::SourceAttackedThisTurn))
+            }
+            super::super::restriction_normalization::TextOnlyActivationRestriction::SourceAttackedThisTurn => {
+                ConditionExpr::SourceAttackedThisTurn
+            }
+        });
+    }
     let control_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
     if let Some(control_condition) =
         parse_control_condition(control_tokens, ControlConditionOptions::default())

@@ -87,7 +87,6 @@ pub(crate) use choice_object_clauses::{
     parse_choose_land_type_phrase_words, parse_choose_player_phrase_words,
     parse_sentence_target_player_chooses_then_puts_on_top_of_library,
     parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
-    parse_target_player_choose_objects_clause,
     parse_target_player_choose_objects_clause_with_count_value,
     parse_target_player_chooses_then_other_cant_block,
     parse_you_choose_objects_clause_with_count_value, parse_you_choose_player_clause,

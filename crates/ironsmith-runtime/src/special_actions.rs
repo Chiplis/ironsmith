@@ -1571,6 +1571,40 @@ fn can_activate_mana_ability_check(
     )
 }
 
+thread_local! {
+    /// Mana abilities whose activation-cost payability is currently being
+    /// checked. Checking whether a mana cost is payable enumerates available
+    /// mana sources, which re-checks each source's own activation cost — a
+    /// mana ability with a mana cost (Blood Celebrant's "{B}, Pay 1 life:
+    /// Add one mana of any color") would recurse through itself forever.
+    /// Re-entry for an ability already on the check stack is treated as
+    /// unpayable: a source can't fund its own activation.
+    static IN_PROGRESS_MANA_ABILITY_COST_CHECKS: std::cell::RefCell<
+        std::collections::HashSet<(ObjectId, usize)>,
+    > = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+struct ManaAbilityCostCheckGuard(ObjectId, usize);
+
+impl ManaAbilityCostCheckGuard {
+    fn enter(permanent_id: ObjectId, ability_index: usize) -> Option<Self> {
+        // Release the RefCell borrow before constructing the guard: an eager
+        // `then_some(Self(..))` would build and immediately drop a guard on
+        // the re-entry path, and its Drop re-borrows the same RefCell.
+        let inserted = IN_PROGRESS_MANA_ABILITY_COST_CHECKS
+            .with(|checks| checks.borrow_mut().insert((permanent_id, ability_index)));
+        inserted.then(|| Self(permanent_id, ability_index))
+    }
+}
+
+impl Drop for ManaAbilityCostCheckGuard {
+    fn drop(&mut self) {
+        IN_PROGRESS_MANA_ABILITY_COST_CHECKS.with(|checks| {
+            checks.borrow_mut().remove(&(self.0, self.1));
+        });
+    }
+}
+
 pub(crate) fn can_activate_mana_ability_check_with_view(
     game: &GameState,
     player: PlayerId,
@@ -1690,6 +1724,11 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     if let Some(perf_ctx) = perf_ctx {
         perf_ctx.add_precheck_ms(precheck_started_at.elapsed_ms());
     }
+
+    let Some(_cost_check_guard) = ManaAbilityCostCheckGuard::enter(permanent_id, ability_index)
+    else {
+        return Err(ActionError::CantPayCost);
+    };
 
     let ctx = CostCheckContext::new(permanent_id, player)
         .with_reason(crate::costs::PaymentReason::ActivateManaAbility);

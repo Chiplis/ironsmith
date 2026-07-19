@@ -1568,6 +1568,119 @@ fn attached_conditional_animation_is_scoped_to_each_aura() {
 }
 
 #[test]
+#[ignore = "manual perf probe for the classic anthem-pile board"]
+fn probe_big_board_dependency_hotspots() {
+    let piles: &[(&str, &str)] = &[
+        (
+            "Mycosynth Lattice",
+            "All permanents are artifacts in addition to their other types.\nAll cards that aren't on the battlefield, spells, and permanents are colorless.\nPlayers may spend mana as though it were mana of any color.",
+        ),
+        (
+            "Akroma's Memorial",
+            "Creatures you control have flying, first strike, vigilance, trample, haste, and protection from black and from red.",
+        ),
+        (
+            "Always Watching",
+            "Nontoken creatures you control get +1/+1 and have vigilance.",
+        ),
+        ("Fervor", "Creatures you control have haste."),
+        ("Glorious Anthem", "Creatures you control get +1/+1."),
+        ("Honor of the Pure", "White creatures you control get +1/+1."),
+        ("Bad Moon", "Black creatures get +1/+1."),
+        (
+            "Favorable Winds",
+            "Creatures you control with flying get +1/+1.",
+        ),
+        ("Gaea's Anthem", "Creatures you control get +1/+1."),
+        (
+            "Intangible Virtue",
+            "Creature tokens you control get +1/+1 and have vigilance.",
+        ),
+        (
+            "Spidersilk Armor",
+            "Creatures you control get +0/+1 and have reach.",
+        ),
+        ("Dictate of Heliod", "Flash\nCreatures you control get +2/+2."),
+    ];
+
+    let creature_count = 200usize;
+    let run = |label: &str, pile: &[(&str, &str)]| {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = CardBuilder::new(CardId::new(), "Grizzly Bears")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        for _ in 0..creature_count {
+            game.create_object_from_card(&creature, alice, Zone::Battlefield);
+        }
+        for &(name, text) in pile {
+            let definition = CardDefinitionBuilder::new(CardId::new(), name)
+                .card_types(vec![CardType::Enchantment])
+                .parse_text(text)
+                .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+            for _ in 0..6 {
+                game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            }
+        }
+        let started = std::time::Instant::now();
+        let battlefield = game.battlefield.clone();
+        for id in &battlefield {
+            let _ = game.calculated_characteristics(*id);
+        }
+        let counters = game.work_counters();
+        eprintln!(
+            "{label}: {}ms sorts={} pairs={} recomputes={}",
+            started.elapsed().as_millis(),
+            counters.dependency_sorts,
+            counters.dependency_pairs_probed,
+            counters.characteristics_full_recomputes,
+        );
+        if counters.dependency_sorts > 0 && std::env::var_os("PROBE_DUMP_GROUPS").is_some() {
+            let effects = game.all_continuous_effects();
+            let mut by_layer: std::collections::BTreeMap<u8, Vec<&crate::ContinuousEffect>> =
+                std::collections::BTreeMap::new();
+            for effect in effects.iter() {
+                by_layer
+                    .entry(effect.modification.layer() as u8)
+                    .or_default()
+                    .push(effect);
+            }
+            for (layer, group) in &by_layer {
+                if group.len() <= 1 {
+                    continue;
+                }
+                let needs =
+                    crate::dependency::needs_baseline_dependency_sort(group.as_slice(), &game);
+                eprintln!(
+                    "  layer {layer}: {} effects, needs_baseline_sort={needs}",
+                    group.len()
+                );
+                if needs {
+                    let sample = group[0];
+                    eprintln!(
+                        "    sample condition={:?}",
+                        sample.condition.as_ref().map(|_| "some")
+                    );
+                    eprintln!(
+                        "    sample originating_static={:?}",
+                        sample.originating_static_ability.as_ref().map(|_| "some")
+                    );
+                    eprintln!("    sample applies_to={:.300?}", sample.applies_to);
+                    eprintln!("    sample modification={:.300?}", sample.modification);
+                }
+            }
+        }
+    };
+
+    for &(name, text) in piles {
+        run(name, &[(name, text)]);
+    }
+    run("ALL PILES", piles);
+}
+
+#[test]
 fn second_animation_aura_priority_loop_resolves_without_hanging() {
     use crate::decision::{AutoPassDecisionMaker, GameProgress, LegalAction};
     use crate::game_loop::{

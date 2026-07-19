@@ -244,6 +244,7 @@ mod tests {
     #[derive(Default)]
     struct ReverseOrderDecisionMaker {
         prompts: Vec<String>,
+        returned_order: Vec<ObjectId>,
     }
 
     impl DecisionMaker for ReverseOrderDecisionMaker {
@@ -255,6 +256,7 @@ mod tests {
             self.prompts.push(ctx.description.clone());
             let mut ids = ctx.items.iter().map(|(id, _)| *id).collect::<Vec<_>>();
             ids.reverse();
+            self.returned_order = ids.clone();
             ids
         }
     }
@@ -525,12 +527,16 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("destroy should resolve");
 
-        let graveyard_names =
-            names_for_ids(&game, &game.player(alice).expect("alice exists").graveyard);
+        let graveyard = &game.player(alice).expect("alice exists").graveyard;
+        assert_eq!(
+            graveyard, &dm.returned_order,
+            "graveyard order should follow the chooser's ordering prompt",
+        );
+        let mut graveyard_names = names_for_ids(&game, graveyard);
+        graveyard_names.sort();
         assert_eq!(
             graveyard_names,
-            vec!["Midnight Scavengers".to_string(), "Graf Rats".to_string()],
-            "graveyard order should follow the chooser's ordering prompt",
+            vec!["Graf Rats".to_string(), "Midnight Scavengers".to_string()]
         );
         assert!(
             dm.prompts

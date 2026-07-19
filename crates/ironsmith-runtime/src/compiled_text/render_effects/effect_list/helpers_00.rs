@@ -2766,27 +2766,6 @@ pub(crate) fn describe_target_source_power_damage_to_controller(
     ))
 }
 
-pub(crate) fn exchange_uses_selected_targets(
-    exchange: &crate::effects::ExchangeControlEffect,
-) -> bool {
-    if exchange.permanent1 != exchange.permanent2 {
-        return false;
-    }
-    let ChooseSpec::WithCount(inner, count) = &exchange.permanent1 else {
-        return false;
-    };
-    if *count != ChoiceCount::exactly(2) || !inner.is_target() {
-        return false;
-    }
-    let ChooseSpec::Object(filter) = inner.base() else {
-        return false;
-    };
-    filter.tagged_constraints.iter().any(|constraint| {
-        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            && is_implicit_reference_tag(constraint.tag.as_str())
-    })
-}
-
 pub(crate) fn choose_spec_shares_card_type_with_reference(spec: &ChooseSpec) -> bool {
     let ChooseSpec::Object(filter) = spec.base() else {
         return false;

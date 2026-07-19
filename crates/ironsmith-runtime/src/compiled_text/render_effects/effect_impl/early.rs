@@ -244,7 +244,14 @@
             && put.target_count.is_none()
             && !put.distributed
         {
-            let filter_text = describe_for_each_filter(&for_each.filter);
+            // A set defined only by a "<verbed> this way" tag back-references
+            // the objects the previous sentence just acted on; oracle uses the
+            // partitive pronoun ("Put a stun counter on each of them").
+            let filter_text = if this_way_back_reference_filter(&for_each.filter) {
+                "of them".to_string()
+            } else {
+                describe_for_each_filter(&for_each.filter)
+            };
             if let Some((counter_text, where_x)) =
                 describe_counter_count_with_where_x(&put.amount, put.counter_type)
             {
@@ -320,12 +327,18 @@
                     .find(|suffix| effect_text.ends_with(**suffix))
                 {
                     let subject_text = effect_text.trim_end_matches(*suffix);
-                    let filter_text = describe_for_each_filter(&for_each.filter);
+                    let filter_text = strip_battlefield_zone_suffix(describe_for_each_filter(
+                        &for_each.filter,
+                    ));
                     return format!("{subject_text} to each {filter_text}");
                 }
             }
         }
-        let filter_text = describe_for_each_filter(&for_each.filter);
+        // Battlefield is the implicit zone for an iterated permanent noun
+        // ("For each land, ..."); the explicit suffix belongs to count
+        // surfaces ("for each creature on the battlefield").
+        let filter_text =
+            strip_battlefield_zone_suffix(describe_for_each_filter(&for_each.filter));
         // Inside an explicit per-object loop, the generic object reference is
         // unambiguously the current iterand. Keep this scoped to ForEachObject:
         // outside a loop, "that object" can be the only clear antecedent.
@@ -477,6 +490,13 @@
         // independent choose and move sentences.
         if let Some(compact) =
             describe_for_players_optional_search_battlefield_partition(for_players)
+        {
+            return compact;
+        }
+        // The reveal/lose-life/put-in-hand bundle has a dedicated surface;
+        // check it before the generic correlated-loop renderer flattens it.
+        if let Some(compact) =
+            describe_for_players_reveal_top_mana_value_life_then_put_into_hand(for_players)
         {
             return compact;
         }

@@ -17,6 +17,9 @@ pub(crate) enum DamageSourceControllerKind {
 pub(crate) struct DamageSourceShape<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
     pub(crate) controller: DamageSourceControllerKind,
+    /// Qualifiers that follow the controller ("a source you control with an
+    /// odd mana value would ...").
+    pub(crate) trailing_filter_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,11 +237,17 @@ fn parse_explicit_damage_source_shape_lexed<'a>(
     )))
     .map(|controller| controller.unwrap_or(DamageSourceControllerKind::None))
     .parse_next(input)?;
-    peek(alt((
-        primitives::phrase(&["would", "deal", "combat", "damage", "to"]),
-        primitives::phrase(&["would", "deal", "noncombat", "damage", "to"]),
-        primitives::phrase(&["would", "deal", "damage", "to"]),
-    )))
+    let trailing_filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        0..,
+        any.void(),
+        peek(alt((
+            primitives::phrase(&["would", "deal", "combat", "damage", "to"]),
+            primitives::phrase(&["would", "deal", "noncombat", "damage", "to"]),
+            primitives::phrase(&["would", "deal", "damage", "to"]),
+        ))),
+    )
+    .map(|((), _)| ())
+    .take()
     .parse_next(input)?;
     let filter_tokens = trim_lexed_commas(filter_tokens);
     let filter_tokens = if primitives::parse_all(
@@ -255,6 +264,7 @@ fn parse_explicit_damage_source_shape_lexed<'a>(
     Ok(DamageSourceShape {
         filter_tokens,
         controller,
+        trailing_filter_tokens: trim_lexed_commas(trailing_filter_tokens),
     })
 }
 
@@ -276,6 +286,7 @@ fn parse_object_damage_source_shape_lexed<'a>(
     Ok(DamageSourceShape {
         filter_tokens: trim_lexed_commas(filter_tokens),
         controller: DamageSourceControllerKind::None,
+        trailing_filter_tokens: &[],
     })
 }
 

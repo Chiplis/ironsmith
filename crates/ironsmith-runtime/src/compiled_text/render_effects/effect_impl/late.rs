@@ -1601,6 +1601,13 @@
                 },
             ) = copy_spell.count.unhinted()
             {
+                let for_each_count = copy_spell
+                    .count
+                    .clone()
+                    .with_surface_hint(ValueSurfaceHint::ForEach);
+                if let Some(basis) = describe_turn_history_for_each_basis(&for_each_count) {
+                    return format!("Copy it for each {basis}");
+                }
                 let count = describe_value(&copy_spell.count);
                 let basis = count.strip_prefix("the number of ").unwrap_or(&count);
                 return format!("Copy it for each {basis}");
@@ -2988,7 +2995,17 @@
             || trigger_lower.starts_with("whenever ")
             || trigger_lower.starts_with("if ")
         {
-            return format!("{trigger_text}, {delayed_text}");
+            // A this-turn delayed watch prints its window on the trigger
+            // ("Whenever a nontoken creature ... enters this turn, ...").
+            let duration = if schedule.until_end_of_turn
+                && !schedule.start_next_turn
+                && !trigger_lower.contains("this turn")
+            {
+                " this turn"
+            } else {
+                ""
+            };
+            return format!("{trigger_text}{duration}, {delayed_text}");
         }
         if trigger_lower.starts_with("at ") {
             return format!("{trigger_text}, {delayed_text}");
@@ -3084,10 +3101,14 @@
         if register.from_zone == Some(Zone::Stack)
             && register.to_zone == Some(Zone::Graveyard)
             && register.replacement_zone == Zone::Exile
-            && matches!(register.mode, crate::effects::ReplacementApplyMode::OneShot)
+            && matches!(
+                register.mode,
+                crate::effects::ReplacementApplyMode::OneShot
+                    | crate::effects::ReplacementApplyMode::UntilEndOfTurn
+            )
             && !register.optional
             && register.counters.is_empty()
-            && matches!(register.target.base(), ChooseSpec::Tagged(tag) if crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
+            && matches!(register.target.base(), ChooseSpec::Tagged(_))
         {
             return "If that spell would be put into a graveyard, exile it instead".to_string();
         }

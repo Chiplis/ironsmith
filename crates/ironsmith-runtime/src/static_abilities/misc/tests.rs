@@ -1152,7 +1152,7 @@ fn test_prevent_all_damage_dealt_by_this_permanent_generates_replacement() {
     let replacement = ability
         .generate_replacement_effect(src, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1191,7 +1191,7 @@ fn test_prevent_all_combat_damage_dealt_by_this_permanent_generates_replacement(
     let replacement = ability
         .generate_replacement_effect(src, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1241,7 +1241,7 @@ fn test_prevent_all_damage_dealt_to_creatures_generates_replacement() {
     let replacement = ability
         .generate_replacement_effect(src, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1294,7 +1294,7 @@ fn test_prevent_all_damage_to_self_by_creatures_generates_replacement() {
     let replacement = ability
         .generate_replacement_effect(protected, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1353,7 +1353,7 @@ fn test_prevent_all_noncombat_damage_to_permanents_matching_generates_replacemen
     let replacement = ability
         .generate_replacement_effect(source_id, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1409,7 +1409,7 @@ fn test_prevent_all_combat_damage_to_self_generates_replacement() {
     let replacement = ability
         .generate_replacement_effect(protected, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1456,7 +1456,7 @@ fn test_prevent_all_damage_to_self_generates_replacement() {
     let replacement = ability
         .generate_replacement_effect(protected, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher
@@ -1517,7 +1517,7 @@ fn test_prevent_all_noncombat_damage_to_other_creatures_you_control() {
     let replacement = ability
         .generate_replacement_effect(source_id, alice)
         .expect("should generate replacement effect");
-    assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+    assert_eq!(replacement.replacement, ReplacementAction::PreventDamage);
 
     let matcher = replacement
         .matcher

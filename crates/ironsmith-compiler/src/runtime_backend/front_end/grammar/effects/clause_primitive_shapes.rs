@@ -172,6 +172,19 @@ pub(crate) fn parse_choose_card_name_shape(
 ) -> Option<ChooseCardNameShape<'_>> {
     let tokens = trim_shape_edges(tokens);
     let (player, tail) = primitives::parse_prefix(tokens, choose_name_prefix)?;
+    // "choose the name of a nonland card revealed this way"
+    if let Some(((), filter_tokens)) =
+        primitives::parse_prefix(tail, primitives::phrase(&["the", "name", "of"]))
+    {
+        let filter_tokens = trim_shape_edges(filter_tokens);
+        if filter_tokens.is_empty() {
+            return None;
+        }
+        return Some(ChooseCardNameShape {
+            player,
+            filter_tokens: Some(filter_tokens),
+        });
+    }
     let (filter_tokens, ()) = primitives::split_lexed_once_before_suffix(tail, 0, || {
         (primitives::phrase(&["card", "name"]), eof).void()
     })?;

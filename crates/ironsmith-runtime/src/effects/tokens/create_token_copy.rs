@@ -223,8 +223,35 @@ impl EffectExecutor for CreateTokenCopyEffect {
         let target_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
             snapshot.object_id
         } else {
-            let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-            *target_ids.first().ok_or(ExecutionError::InvalidTarget)?
+            let resolved = resolve_objects_for_effect(game, ctx, &self.target);
+            match resolved.as_ref().ok().and_then(|ids| ids.first()) {
+                Some(id) => *id,
+                None => {
+                    // A tagged copy source may already have left its zone
+                    // ("if that creature dies this way" runs after the
+                    // destroy) — fall back to the tag's LKI snapshot. The tag
+                    // may sit on the spec itself or in filter constraints.
+                    let constraint_tag = match self.target.base() {
+                        ChooseSpec::Tagged(tag) => Some(tag.clone()),
+                        ChooseSpec::Object(filter) => filter
+                            .tagged_constraints
+                            .iter()
+                            .find(|constraint| {
+                                constraint.relation
+                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            })
+                            .map(|constraint| constraint.tag.clone()),
+                        _ => None,
+                    };
+                    if let Some(tag) = constraint_tag
+                        && let Some(snapshot) = ctx.get_tagged(tag.as_str())
+                    {
+                        snapshot.object_id
+                    } else {
+                        return Err(ExecutionError::InvalidTarget);
+                    }
+                }
+            }
         };
 
         // Resolve target object, falling back to stored LKI snapshots when needed.

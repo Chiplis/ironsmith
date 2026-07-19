@@ -464,6 +464,10 @@ fn simple_pluralize(word: &str) -> String {
         )
     {
         format!("{}ies", &word[..word.len() - 1])
+    } else if matches!(lower.as_str(), "hero" | "potato" | "tomato") {
+        // English -o plurals are irregular (Heroes, but Rhinos); enumerate
+        // the -es cases that appear as game nouns.
+        format!("{word}es")
     } else {
         format!("{word}s")
     }
@@ -1251,9 +1255,28 @@ fn describe_attached_subject_static_condition(
         },
         _ => return None,
     };
+    let verb = if negative { "isn't" } else { "is" };
+    // A bare color (or supertype) is an adjective predicate in oracle ("as
+    // long as enchanted creature is white"), not a classified noun.
+    if let Some(colors) = filter.colors {
+        let mut bare = filter.clone();
+        bare.colors = None;
+        if bare == ObjectFilter::default() {
+            let color_words = crate::color::Color::ALL
+                .into_iter()
+                .filter(|color| colors.contains(*color))
+                .map(|color| color.name().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            if !color_words.is_empty() {
+                return Some(format!(
+                    "as long as {subject} {verb} {}",
+                    color_words.join(" and ")
+                ));
+            }
+        }
+    }
     let descriptor = strip_article(filter.description());
     let article = indefinite_article_for(&descriptor);
-    let verb = if negative { "isn't" } else { "is" };
     Some(format!(
         "as long as {subject} {verb} {article} {descriptor}"
     ))
@@ -3502,16 +3525,28 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
             || subject.starts_with("this ")
             || subject.starts_with("that ");
         let verb = if singular_subject { "loses" } else { "lose" };
+        // Keyword names render lowercase mid-sentence ("lose trample", not
+        // "lose Trample"); non-keyword displays (quoted ability text) keep
+        // their original casing.
+        let ability_text = if self
+            .abilities
+            .iter()
+            .all(object_ability_is_static_keyword)
+        {
+            self.display.to_ascii_lowercase()
+        } else {
+            self.display.clone()
+        };
         let suffix = match self.mode {
             ironsmith_core::AbilityLossMode::Lose => String::new(),
             ironsmith_core::AbilityLossMode::LoseAndCantGain => {
-                format!(" and can't gain {}", self.display)
+                format!(" and can't gain {ability_text}")
             }
             ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain => {
-                format!(" and can't have or gain {}", self.display)
+                format!(" and can't have or gain {ability_text}")
             }
         };
-        format!("{subject} {verb} {}{suffix}", self.display)
+        format!("{subject} {verb} {ability_text}{suffix}")
     }
 
     fn generate_effects(

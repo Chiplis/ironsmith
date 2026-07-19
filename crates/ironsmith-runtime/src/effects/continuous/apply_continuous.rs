@@ -423,10 +423,11 @@ fn materialize_duration_object(
             }
             affected[0]
         }
-        ObjectRef::Tagged(tag) => ctx
-            .get_tagged_all(tag.as_str())
-            .and_then(|snapshots| snapshots.first())?
-            .object_id,
+        ObjectRef::Tagged(tag) => {
+            ctx.get_tagged_all(tag.as_str())
+                .and_then(|snapshots| snapshots.first())?
+                .object_id
+        }
         ObjectRef::Specific(id) => *id,
     };
     Some(ObjectRef::Specific(id))
@@ -477,9 +478,12 @@ fn materialize_duration_predicate(
         Predicate::ObjectOnBattlefield(object) => Predicate::ObjectOnBattlefield(
             materialize_duration_object(object, target, source_type, ctx)?,
         ),
-        Predicate::ObjectTapped(object) => Predicate::ObjectTapped(
-            materialize_duration_object(object, target, source_type, ctx)?,
-        ),
+        Predicate::ObjectTapped(object) => Predicate::ObjectTapped(materialize_duration_object(
+            object,
+            target,
+            source_type,
+            ctx,
+        )?),
         Predicate::ObjectHasCounter {
             object,
             counter_type,
@@ -558,13 +562,9 @@ impl EffectExecutor for ApplyContinuousEffect {
 
         let materialized_until = match &self.until {
             Until::ForAsLongAs(predicate) => {
-                let Some(predicate) = materialize_duration_predicate(
-                    predicate,
-                    &target,
-                    &source_type,
-                    game,
-                    ctx,
-                ) else {
+                let Some(predicate) =
+                    materialize_duration_predicate(predicate, &target, &source_type, game, ctx)
+                else {
                     return Ok(EffectOutcome::resolved());
                 };
                 if !crate::continuous::continuous_duration_predicate_matches(&predicate, game) {
@@ -841,7 +841,10 @@ mod tests {
         assert_eq!(game.current_power(land), Some(3));
         assert_eq!(game.current_toughness(land), Some(3));
 
-        game.next_turn();
+        // The game loop performs end-of-turn cleanup before advancing the
+        // turn. This focused test bypasses that loop, so invoke the same
+        // continuous-effect cleanup explicitly.
+        game.effect_store.continuous_effects.cleanup_end_of_turn();
         assert!(game.current_card_types(land).is_some_and(|types| {
             types.contains(&CardType::Land) && !types.contains(&CardType::Creature)
         }));
@@ -1349,10 +1352,9 @@ mod tests {
             .subtypes(vec![Subtype::Aura])
             .build();
         let aura = game.create_object_from_card(&aura_card, alice, Zone::Battlefield);
-        assert!(game.attach_object_to_target(
-            aura,
-            crate::object::AttachmentTarget::Object(target)
-        ));
+        assert!(
+            game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(target))
+        );
         let aura_snapshot = ObjectSnapshot::from_object(game.object(aura).unwrap(), &game);
 
         let effect = Effect::new(ApplyContinuousEffect::with_spec(
@@ -1371,10 +1373,9 @@ mod tests {
 
         assert!(game.detach_object_from_current_target(aura));
         assert_eq!(game.current_controller(target), Some(bob));
-        assert!(game.attach_object_to_target(
-            aura,
-            crate::object::AttachmentTarget::Object(target)
-        ));
+        assert!(
+            game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(target))
+        );
         assert_eq!(game.current_controller(target), Some(bob));
     }
 

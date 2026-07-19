@@ -3391,7 +3391,9 @@ pub(crate) fn parse_trigger_clause_lexed(
 
         let object_word_start = counter_word_idx + 2;
         let object_tokens = trigger_counter_recipient_tokens(tokens, object_word_start, &words)?;
-        let filter = parse_object_filter_lexed(&object_tokens, false).map_err(|_| {
+        let (object_tokens, include_players) =
+            split_counter_recipient_or_player(&object_tokens);
+        let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported counter recipient filter in trigger clause (clause: '{}')",
                 words.join(" ")
@@ -3403,6 +3405,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             counter_type,
             source_controller: Some(source_controller),
             one_or_more,
+            include_players,
         });
     }
 
@@ -3830,6 +3833,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             counter_type: Some(CounterType::Level),
             source_controller: None,
             one_or_more: false,
+            include_players: false,
         });
     }
     if trigger_pattern_accepts(&words, BECOMES_MONSTROUS_TRIGGER_SUFFIX)
@@ -4592,7 +4596,9 @@ pub(crate) fn parse_trigger_clause_lexed(
 
         let object_word_start = counter_word_idx + 4;
         let object_tokens = trigger_counter_recipient_tokens(tokens, object_word_start, &words)?;
-        let filter = parse_object_filter_lexed(&object_tokens, false).map_err(|_| {
+        let (object_tokens, include_players) =
+            split_counter_recipient_or_player(&object_tokens);
+        let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported counter recipient filter in trigger clause (clause: '{}')",
                 words.join(" ")
@@ -4604,6 +4610,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             counter_type,
             source_controller: None,
             one_or_more,
+            include_players,
         });
     }
 
@@ -5122,4 +5129,26 @@ fn parse_ability_of_object_trigger_tail_lexed(
         ))
     })?;
     Ok(Some((filter, tail.non_mana_only)))
+}
+
+
+/// Split a trailing "or (a) player(s)" from a counter-recipient phrase
+/// ("Whenever you put one or more counters on a permanent or player").
+fn split_counter_recipient_or_player(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], bool) {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.len() != tokens.len() {
+        return (tokens, false);
+    }
+    for suffix in [
+        &["or", "a", "player"][..],
+        &["or", "player"][..],
+        &["or", "players"][..],
+    ] {
+        if words.len() > suffix.len() && &words[words.len() - suffix.len()..] == suffix {
+            return (&tokens[..tokens.len() - suffix.len()], true);
+        }
+    }
+    (tokens, false)
 }

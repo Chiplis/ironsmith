@@ -905,14 +905,6 @@ pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextEr
     shared_tokens::parse_scryfall_mana_cost(raw)
 }
 
-pub(crate) fn parse_number_or_x_value(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    leaf::parse_leaf_number_or_x_prefix_tokens(tokens)?.into_value()
-}
-
-pub(crate) fn parse_number_or_x_value_lexed(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
-    parse_number_or_x_value(tokens)
-}
-
 pub(crate) fn parse_number_word_i32(word: &str) -> Option<i32> {
     leaf::parse_number_i32_complete(word).ok()
 }

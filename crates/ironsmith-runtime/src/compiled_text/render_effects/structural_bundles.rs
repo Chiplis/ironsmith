@@ -2308,12 +2308,6 @@ fn describe_search_exile_shuffle_tail_view<'a>(
     Some((search_owner, describe_effect_list(&tail)))
 }
 
-pub(in crate::compiled_text) fn describe_search_exile_shuffle_tail(
-    effects: &[&Effect],
-) -> Option<String> {
-    describe_search_exile_shuffle_tail_view(effects).map(|(_, rendered)| rendered)
-}
-
 /// Fold an internal target declaration into a library-search instruction when
 /// the target, search owner, tagged exile consumer, and final shuffle all name
 /// the same player/object set.
@@ -6536,6 +6530,20 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
         && let Some(for_players) =
             for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
         && let Some(compact) = describe_quantified_player_effect(for_players)
+    {
+        return Some(compact);
+    }
+    // The pile split and the pile-choice sacrifice are one printed procedure
+    // even when lowering emits them as two sibling per-opponent loops.
+    if let [split_effect, choice_effect] = effects
+        && let Some(split_for_players) =
+            split_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(choice_for_players) =
+            choice_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(compact) = super::costs_and_triggers::describe_for_players_split_piles_then_choose_sacrifice_pair(
+            split_for_players,
+            choice_for_players,
+        )
     {
         return Some(compact);
     }

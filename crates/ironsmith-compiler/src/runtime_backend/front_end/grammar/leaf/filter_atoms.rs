@@ -226,6 +226,43 @@ fn classify_subtype_word(raw: &str) -> Option<Subtype> {
         _ => {}
     }
 
+    // Ordinary English words that are also (obscure) subtypes. In rules text
+    // these are essentially always the English noun ("the number of times
+    // this ability has resolved", "your plan", "seal it"), never the subtype;
+    // printed type lines don't parse through this path, so the subtypes still
+    // work where they actually appear. Cover plural surfaces too — the family
+    // matcher below accepts base+"s"/"es" forms.
+    for stem in [
+        Some(candidate.as_str()),
+        candidate.strip_suffix('s'),
+        candidate.strip_suffix("es"),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if matches!(
+            stem,
+            "time"
+                | "blood"
+                | "carrier"
+                | "child"
+                | "chorus"
+                | "eternal"
+                | "lord"
+                | "mine"
+                | "omen"
+                | "plan"
+                | "sand"
+                | "seal"
+                | "sphere"
+                | "spy"
+                | "stone"
+                | "tower"
+        ) {
+            return None;
+        }
+    }
+
     for family in [
         SubtypeFamily::Land,
         SubtypeFamily::Creature,

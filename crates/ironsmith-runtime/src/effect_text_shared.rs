@@ -62,6 +62,7 @@ pub fn is_generated_internal_tag(tag: &str) -> bool {
 }
 
 pub fn is_implicit_reference_tag(tag: &str) -> bool {
+    let action_root = tag.split('_').next().unwrap_or(tag);
     matches!(
         tag,
         "triggering"
@@ -72,8 +73,34 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
             | crate::tag::SOURCE_EXILED_TAG
             | "other_attacker"
             | "blocking"
-            | "searched_face_down"
-    ) || is_generated_internal_tag(tag)
+            | "searched_face_down" // "<verbed>_this_way" helper tags back-reference an object the same
+                                   // sentence just described; oracle refers to it with a plain pronoun.
+    ) || tag.starts_with("__sentence_helper_")
+        || tag.ends_with("_this_way")
+        // These tags are execution identities produced by selection and
+        // result effects. Their labels are never oracle text, even in small
+        // hand-built fixtures that omit the usual numeric suffix.
+        || matches!(
+            action_root,
+            "chosen"
+                | "selected"
+                | "targeted"
+                | "created"
+                | "returned"
+                | "exiled"
+                | "looked"
+                | "searched"
+                | "revealed"
+                | "matched"
+                | "moved"
+                | "sacrificed"
+                | "destroyed"
+                | "countered"
+                | "discarded"
+                | "milled"
+                | "damaged"
+        )
+        || is_generated_internal_tag(tag)
 }
 
 pub fn choose_spec_is_plural(spec: &ChooseSpec) -> bool {

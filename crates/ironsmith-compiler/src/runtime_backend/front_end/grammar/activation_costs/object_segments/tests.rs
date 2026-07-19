@@ -8,6 +8,11 @@ fn sacrifice_segments_preserve_source_and_choice_shapes() {
         parse_sacrifice_segment_tokens(&source, |_| None).unwrap(),
         ActivationCostSegmentCst::SacrificeSelf { surface: None }
     );
+    let token_source = lex_line("sacrifice this token", 0).unwrap();
+    assert_eq!(
+        parse_sacrifice_segment_tokens(&token_source, |_| None).unwrap(),
+        ActivationCostSegmentCst::SacrificeSelf { surface: None }
+    );
     let chosen = lex_line("sacrifice up to two other artifacts", 0).unwrap();
     assert_eq!(
         parse_sacrifice_segment_tokens(&chosen, |_| None).unwrap(),

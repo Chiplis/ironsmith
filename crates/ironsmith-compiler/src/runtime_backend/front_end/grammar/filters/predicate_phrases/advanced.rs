@@ -142,6 +142,13 @@ fn parse_turn_history_intervening_predicate(
             )),
         ))));
     }
+    if surface::exact_words(&words, &["it", "has", "madness"]) {
+        return Ok(Some(PredicateAst::TaggedMatches(
+            TagKey::from(IT_TAG),
+            ObjectFilter::default()
+                .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness),
+        )));
+    }
     if surface::exact_words(&words, &["it", "wasnt", "cast"])
         || surface::exact_words(&words, &["it", "was", "not", "cast"])
     {

@@ -1696,6 +1696,8 @@ pub struct CounterPutOnTrigger {
     pub counter_type: Option<CounterType>,
     pub source_controller: Option<PlayerFilter>,
     pub count: CountMode,
+    /// "on a permanent or player" — counters placed on players match too.
+    pub include_players: bool,
 }
 
 impl CounterPutOnTrigger {
@@ -1705,7 +1707,13 @@ impl CounterPutOnTrigger {
             counter_type: None,
             source_controller: None,
             count: CountMode::One,
+            include_players: false,
         }
+    }
+
+    pub fn include_players(mut self) -> Self {
+        self.include_players = true;
+        self
     }
 
     pub fn counter_type(mut self, counter_type: CounterType) -> Self {

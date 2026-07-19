@@ -43,35 +43,12 @@ pub(super) fn describe_remove_counter_phrase(
     }
 }
 
-pub(super) fn prevent_next_time_tagged_source_text_filter(
-    source: &crate::effects::PreventNextTimeDamageSource,
-) -> bool {
-    match source {
-        crate::effects::PreventNextTimeDamageSource::Target(spec) => {
-            prevent_next_time_target_source_is_tagged(spec)
-        }
-        crate::effects::PreventNextTimeDamageSource::Filter(filter) => {
-            prevent_next_time_tagged_source_text(filter).is_some()
-        }
-        crate::effects::PreventNextTimeDamageSource::Choice
-        | crate::effects::PreventNextTimeDamageSource::ChoiceMatching(_) => false,
-    }
-}
-
 pub(super) fn prevent_next_time_target_source_text(spec: &ChooseSpec) -> String {
     match spec.base() {
         ChooseSpec::Object(filter) => prevent_next_time_tagged_source_text(filter)
             .unwrap_or_else(|| describe_choose_spec(spec)),
         ChooseSpec::Tagged(_) => "that source".to_string(),
         _ => describe_choose_spec(spec),
-    }
-}
-
-pub(super) fn prevent_next_time_target_source_is_tagged(spec: &ChooseSpec) -> bool {
-    match spec.base() {
-        ChooseSpec::Object(filter) => prevent_next_time_tagged_source_text(filter).is_some(),
-        ChooseSpec::Tagged(_) => true,
-        _ => false,
     }
 }
 

@@ -1553,11 +1553,20 @@ pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan()
         "fn rewrite_activated_display_text",
         "fn infer_rewrite_activated_functional_zones",
     );
+    let presentation_helper = function_source(
+        &content,
+        "fn activated_presentation_display",
+        "fn infer_rewrite_activated_functional_zones",
+    );
 
     assert!(
-        helper.contains("line.presentation_kind?.display()")
+        helper.contains("activated_presentation_display(line)?")
             && helper.contains("render_token_slice(&line.cost_parse_tokens)")
-            && helper.contains("render_token_slice(&line.effect_parse_tokens)"),
+            && helper.contains("render_token_slice(&line.effect_parse_tokens)")
+            && presentation_helper.contains("line.presentation")
+            && presentation_helper.contains("PresentationLabel::display_prefix")
+            && presentation_helper.contains("line.presentation_kind")
+            && presentation_helper.contains("kind.display()"),
         "{relative} should build activated presentation text from the typed presentation kind and parsed cost/effect tokens"
     );
     for forbidden in [

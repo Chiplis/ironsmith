@@ -1130,6 +1130,54 @@ fn describe_cross_segment_look_optional_payment_disposition_window(
     ))
 }
 
+
+/// Rejoin a will-of-the-council vote with its option conditionals when
+/// sentence lowering placed each result sentence in its own resolution
+/// segment. The named-vote helper still proves every option/condition edge.
+fn describe_cross_segment_named_vote_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let first = segments.get(start)?;
+    if !first.self_replacements.is_empty() {
+        return None;
+    }
+    let [vote_effect] = first.default_effects.as_slice() else {
+        return None;
+    };
+    vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+
+    let mut effects: Vec<&Effect> = vec![vote_effect];
+    let mut end = start + 1;
+    while let Some(segment) = segments.get(end) {
+        if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
+            break;
+        }
+        let all_vote_conditionals = segment.default_effects.iter().all(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .is_some_and(|conditional| {
+                    matches!(
+                        &conditional.condition,
+                        Condition::VoteOptionGetsMoreVotes(_)
+                            | Condition::VoteOptionGetsMoreVotesOrTied(_)
+                    )
+                })
+        });
+        if !all_vote_conditionals {
+            break;
+        }
+        effects.extend(segment.default_effects.iter());
+        end += 1;
+    }
+    if end == start + 1 {
+        return None;
+    }
+    let rendered =
+        crate::compiled_text::render_effects::describe_named_vote_conditional_sequence(&effects)?;
+    Some((rendered, end - start))
+}
+
 fn describe_cross_segment_result_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
@@ -2252,6 +2300,18 @@ fn describe_cross_segment_quantified_choice_collection_window(
     }
 
     let effects = collect_default_effects(2)?;
+    if let Some(for_players) = structural_unwrap_render_wrappers(&effects[0])
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(destroy) =
+            crate::compiled_text::render_effects::destroy_effect_for_choose_compaction(&effects[1])
+        && let Some(rendered) =
+            crate::compiled_text::render_effects::describe_for_players_may_choose_then_destroy_chosen(
+                for_players,
+                destroy,
+            )
+    {
+        return Some((rendered, 2));
+    }
     if let Some(rendered) = describe_direct_then_players_choose_destroy_complement(&effects) {
         return Some((rendered, 2));
     }
@@ -2528,6 +2588,13 @@ pub(super) fn describe_resolution_program(
     for (segment_index, segment) in program.segments.iter().enumerate() {
         if skipped_segments > 0 {
             skipped_segments -= 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_named_vote_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
             continue;
         }
         if let Some((rendered, consumed)) =

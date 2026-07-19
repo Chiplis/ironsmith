@@ -16,6 +16,8 @@ pub struct CounterPutOnTrigger {
     pub counter_type: Option<CounterType>,
     pub source_controller: Option<PlayerFilter>,
     pub count_mode: CountMode,
+    /// "on a permanent or player" — counters placed on players match too.
+    pub include_players: bool,
 }
 
 impl CounterPutOnTrigger {
@@ -25,7 +27,13 @@ impl CounterPutOnTrigger {
             counter_type: None,
             source_controller: None,
             count_mode: CountMode::Each,
+            include_players: false,
         }
+    }
+
+    pub fn include_players(mut self) -> Self {
+        self.include_players = true;
+        self
     }
 
     pub fn counter_type(mut self, counter_type: CounterType) -> Self {
@@ -63,10 +71,30 @@ impl TriggerMatcher for CounterPutOnTrigger {
                 let Some(counter_type) = e.marker.as_counter() else {
                     return false;
                 };
-                let Some(permanent) = e.object() else {
+                if let Some(permanent) = e.object() {
+                    (permanent, counter_type, e.source_controller)
+                } else if self.include_players && e.player().is_some() {
+                    // Player recipient of an "on a permanent or player"
+                    // trigger: the object filter does not apply.
+                    if let Some(required_source_controller) = &self.source_controller {
+                        let Some(source_controller) = e.source_controller else {
+                            return false;
+                        };
+                        if !required_source_controller
+                            .matches_player(source_controller, &ctx.filter_ctx)
+                        {
+                            return false;
+                        }
+                    }
+                    if let Some(required_counter_type) = self.counter_type
+                        && counter_type != required_counter_type
+                    {
+                        return false;
+                    }
+                    return true;
+                } else {
                     return false;
-                };
-                (permanent, counter_type, e.source_controller)
+                }
             }
             _ => return false,
         };
@@ -159,6 +187,7 @@ impl TriggerMatcher for CounterPutOnTrigger {
             format!("{article} {description}")
         }
 
+        let player_suffix = if self.include_players { " or player" } else { "" };
         if let Some(source_controller) = &self.source_controller {
             let (subject, verb) = if source_controller == &PlayerFilter::You {
                 ("you".to_string(), "put")
@@ -166,19 +195,19 @@ impl TriggerMatcher for CounterPutOnTrigger {
                 (source_controller.description(), "puts")
             };
             return format!(
-                "Whenever {subject} {verb} {counter_phrase} on {}",
+                "Whenever {subject} {verb} {counter_phrase} on {}{player_suffix}",
                 recipient_with_article(self.filter.description())
             );
         }
 
         match self.count_mode {
             CountMode::OneOrMore => format!(
-                "Whenever one or more {}s are put on {}",
+                "Whenever one or more {}s are put on {}{player_suffix}",
                 counters,
                 recipient_with_article(self.filter.description())
             ),
             CountMode::Each => format!(
-                "Whenever a {} is put on {}",
+                "Whenever a {} is put on {}{player_suffix}",
                 counters,
                 recipient_with_article(self.filter.description())
             ),

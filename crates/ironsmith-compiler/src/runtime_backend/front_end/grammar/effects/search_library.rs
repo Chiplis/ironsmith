@@ -1057,46 +1057,43 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     let mut forced_library_owner: Option<PlayerFilter> = None;
     let mut search_zones_override: Option<Vec<Zone>> = None;
 
+    let their_library_owner = |chooser| match chooser {
+        // In a coordinated fragment such as "Target player gains life, then
+        // searches their library", the search subject is deliberately
+        // implicit until chain carry binds it to the preceding target.  Do
+        // not freeze the possessive to `You` before that binding can happen.
+        PlayerAst::Implicit => None,
+        PlayerAst::Target => Some(PlayerFilter::target_player()),
+        PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
+        PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::NotYou => Some(PlayerFilter::NotYou),
+        PlayerAst::That | PlayerAst::Any => Some(PlayerFilter::IteratedPlayer),
+        PlayerAst::ThatPlayerOrTargetController => {
+            Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        }
+        PlayerAst::ItsController => {
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        }
+        PlayerAst::ItsOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target)),
+        _ => Some(PlayerFilter::You),
+    };
+
     if search_word_stream_starts_with_any(
         search_body_words,
         YOUR_OR_THEIR_LIBRARY_GRAVEYARD_FOR_PREFIX_PATTERN,
     ) {
-        forced_library_owner = Some(match chooser {
-            PlayerAst::Target => PlayerFilter::target_player(),
-            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-            PlayerAst::Opponent => PlayerFilter::Opponent,
-            PlayerAst::NotYou => PlayerFilter::NotYou,
-            PlayerAst::That | PlayerAst::Any => PlayerFilter::IteratedPlayer,
-            PlayerAst::ThatPlayerOrTargetController => {
-                PlayerFilter::TargetPlayerOrControllerOfTarget
-            }
-            PlayerAst::ItsController => {
-                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
-            }
-            PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
-            _ => PlayerFilter::You,
-        });
+        forced_library_owner = if search_body_words.first() == Some(&"their") {
+            their_library_owner(chooser)
+        } else {
+            Some(PlayerFilter::You)
+        };
         search_zones_override = Some(vec![Zone::Library, Zone::Graveyard]);
     } else if search_word_stream_starts_with_any(
         search_body_words,
         YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         if search_body_words.first() == Some(&"their") {
-            forced_library_owner = Some(match chooser {
-                PlayerAst::Target => PlayerFilter::target_player(),
-                PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-                PlayerAst::Opponent => PlayerFilter::Opponent,
-                PlayerAst::NotYou => PlayerFilter::NotYou,
-                PlayerAst::That | PlayerAst::Any => PlayerFilter::IteratedPlayer,
-                PlayerAst::ThatPlayerOrTargetController => {
-                    PlayerFilter::TargetPlayerOrControllerOfTarget
-                }
-                PlayerAst::ItsController => {
-                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
-                }
-                PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
-                _ => PlayerFilter::You,
-            });
+            forced_library_owner = their_library_owner(chooser);
         }
     } else if search_word_stream_starts_with_any(
         search_body_words,

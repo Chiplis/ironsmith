@@ -1246,6 +1246,9 @@ mod tests {
             ),
         );
 
+        // The defender gate resolves the attacker through the game state.
+        game.add_object(attacker.clone());
+
         // Bob controls no Island yet.
         assert!(!can_attack_defending_player(&attacker, bob, &game));
 
@@ -1276,6 +1279,7 @@ mod tests {
             ),
         );
 
+        game.add_object(attacker.clone());
         assert!(!can_attack_defending_player(&attacker, bob, &game));
         game.player_mut(bob)
             .expect("defending player should exist")
@@ -1300,6 +1304,7 @@ mod tests {
             ),
         );
 
+        game.add_object(attacker.clone());
         game.set_monarch(None);
         assert!(!can_attack_defending_player(&attacker, bob, &game));
 

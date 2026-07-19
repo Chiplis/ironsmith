@@ -48,7 +48,11 @@ struct SetLifeTotalProposal {
 }
 
 impl SimultaneousEffectProposal for SetLifeTotalProposal {
-    fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         apply_set_life_total(
             game,
             self.player,

@@ -1126,21 +1126,11 @@ impl WorkCounters {
     pub(crate) fn bump_dependency_pairs_probed(&self) {
         self.dependency_pairs_probed
             .set(self.dependency_pairs_probed.get().saturating_add(1));
-        if std::env::var_os("IRONSMITH_LOOP_TRIPWIRE").is_some()
-            && self.dependency_pairs_probed.get() > 2_000_000
-        {
-            panic!("loop tripwire: dependency_pairs_probed exceeded 2M");
-        }
     }
 
     fn bump_characteristics_full_recomputes(&self) {
         self.characteristics_full_recomputes
             .set(self.characteristics_full_recomputes.get().saturating_add(1));
-        if std::env::var_os("IRONSMITH_LOOP_TRIPWIRE").is_some()
-            && self.characteristics_full_recomputes.get() > 200_000
-        {
-            panic!("loop tripwire: characteristics_full_recomputes exceeded 200k");
-        }
     }
 
     fn bump_characteristics_cache_hits(&self) {

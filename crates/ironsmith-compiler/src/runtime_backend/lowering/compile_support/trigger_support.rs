@@ -365,8 +365,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             counter_type,
             source_controller,
             one_or_more,
+            include_players,
         } => {
             let mut trigger = crate::triggers::CounterPutOnTrigger::new(filter);
+            if include_players {
+                trigger = trigger.include_players();
+            }
             if let Some(counter_type) = counter_type {
                 trigger = trigger.counter_type(counter_type);
             }

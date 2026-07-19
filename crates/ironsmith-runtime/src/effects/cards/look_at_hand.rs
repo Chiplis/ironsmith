@@ -10,6 +10,23 @@ use crate::target::ChooseSpec;
 pub type LookAtHandEffect = ironsmith_core::LookAtHandEffect;
 
 impl EffectExecutor for LookAtHandEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Revealing/looking at a hand involves no player choices; defer to
+        // commit so each opponent's reveal lands in one batch.
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -34,6 +51,25 @@ impl EffectExecutor for LookAtHandEffect {
             total_cards += cards.len() as i32;
 
             if self.reveal {
+                // Record the revealed cards so a later "... revealed this
+                // way" reference (e.g. a card-name choice) can validate
+                // against exactly this set.
+                let mut revealed = ctx
+                    .get_tagged_all(crate::effects::REVEALED_THIS_WAY_TAG)
+                    .cloned()
+                    .unwrap_or_default();
+                for card_id in cards.iter().copied() {
+                    if let Some(object) = game.object(card_id)
+                        && revealed.iter().all(|snapshot| snapshot.object_id != card_id)
+                    {
+                        revealed
+                            .push(crate::snapshot::ObjectSnapshot::from_object(object, game));
+                    }
+                }
+                ctx.set_tagged_objects(
+                    crate::tag::TagKey::from(crate::effects::REVEALED_THIS_WAY_TAG),
+                    revealed,
+                );
                 for viewer_idx in 0..game.players.len() {
                     let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
                     let mut view_ctx =

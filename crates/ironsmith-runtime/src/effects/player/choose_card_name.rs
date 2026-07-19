@@ -101,6 +101,35 @@ impl EffectExecutor for ChooseCardNameEffect {
             .map(|definition| definition.name().to_string())
             .unwrap_or_else(|| chosen_name.to_string());
 
+        // A filter restricts which names are legal (e.g. "the name of a
+        // nonland card revealed this way"). Reject names with no matching
+        // candidate rather than storing an illegal choice.
+        if let Some(filter) = &self.filter
+            && filter.prior_effect_action_surface()
+                == Some(ironsmith_core::PriorEffectAction::Revealed)
+        {
+            let candidates = ctx
+                .get_tagged_all(crate::effects::REVEALED_THIS_WAY_TAG)
+                .cloned()
+                .unwrap_or_default();
+            let filter_ctx = ctx.filter_context(game);
+            // The revealed snapshots were captured in their original zone;
+            // the name restriction cares about characteristics, not location.
+            let mut functional = filter.clone();
+            functional.zone = None;
+            // Membership in the revealed set is enforced by the candidate
+            // list itself; the compiled tag constraint has no binding here.
+            functional.tagged_constraints.clear();
+            use crate::filter::ObjectFilterExt as _;
+            let name_is_legal = candidates.iter().any(|snapshot| {
+                snapshot.name.eq_ignore_ascii_case(&canonical_name)
+                    && functional.matches_snapshot(snapshot, &filter_ctx, game)
+            });
+            if !name_is_legal {
+                return Ok(EffectOutcome::count(0));
+            }
+        }
+
         let mut chosen_names = game
             .chosen_named_option(ctx.source)
             .map(split_chosen_card_names)

@@ -1289,6 +1289,7 @@ fn spend_pool_symbol_common(
     })
 }
 
+#[cfg(test)]
 pub(super) fn apply_spent_mana_bonuses(
     game: &mut GameState,
     payment_source: Option<ObjectId>,

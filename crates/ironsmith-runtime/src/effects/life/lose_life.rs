@@ -18,7 +18,11 @@ struct LoseLifeProposal {
 }
 
 impl SimultaneousEffectProposal for LoseLifeProposal {
-    fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         if !self.can_change_life_total {
             return Ok(EffectOutcome::prevented());
         }
@@ -135,7 +139,7 @@ impl EffectExecutor for LoseLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        Box::new(self.prepare_proposal(game, ctx)?).commit(game)
+        Box::new(self.prepare_proposal(game, ctx)?).commit(game, ctx)
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {

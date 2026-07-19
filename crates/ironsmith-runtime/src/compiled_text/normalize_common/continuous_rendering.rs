@@ -1422,19 +1422,50 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 crate::types::SubtypeFamily::Creature,
             )),
             [crate::continuous::Modification::AddSubtypes(subtypes)],
-        ) => Some(subtypes),
+        ) => Some((subtypes, None)),
+        // The full CR 205.1b replacement bundle for a creature that becomes
+        // a new creature type with base stats ("it becomes a Spirit Warrior
+        // Angel with base power and toughness 4/4") — the creature card type
+        // is implicit for a creature subject, so no type noun.
+        (
+            Some(crate::continuous::Modification::SetCardTypes(card_types)),
+            [
+                crate::continuous::Modification::SetPowerToughness {
+                    power,
+                    toughness,
+                    sublayer: _,
+                },
+                crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                    crate::types::SubtypeFamily::Creature,
+                ),
+                crate::continuous::Modification::AddSubtypes(subtypes),
+            ],
+        ) if card_types.as_slice() == [CardType::Creature]
+            && effect.type_retention_surface.is_none() =>
+        {
+            Some((subtypes, Some((power, toughness))))
+        }
         _ => None,
     };
-    if let Some(subtypes) = set_creature_subtypes {
+    if let Some((subtypes, base_pt)) = set_creature_subtypes {
         let mut words: Vec<String> = subtypes.iter().map(ToString::to_string).collect();
+        let pt_suffix = base_pt
+            .map(|(power, toughness)| {
+                format!(
+                    " with base power and toughness {}/{}",
+                    describe_value(power),
+                    describe_value(toughness)
+                )
+            })
+            .unwrap_or_default();
         if plural_target {
             if let Some(last) = words.last_mut() {
                 *last = pluralize_word(last);
             }
-            clauses.push(format!("become {}", words.join(" ")));
+            clauses.push(format!("become {}{pt_suffix}", words.join(" ")));
         } else {
             clauses.push(format!(
-                "becomes {}",
+                "becomes {}{pt_suffix}",
                 with_indefinite_article(&words.join(" "))
             ));
         }
@@ -2041,7 +2072,29 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         descriptor.push(extra_card_types.join(" "));
     }
     let adds_named_types = adds_named_types || !extra_card_types.is_empty();
-    if !omit_creature_type_noun {
+    // A creature that becomes a named creature type keeps its card type
+    // implicitly in oracle ("this creature becomes a Spirit Warrior"); the
+    // explicit noun only survives when the type actually changes ("this land
+    // becomes a 3/3 Elemental creature") or no subtype names the new form.
+    // A mixed-type subject ("target creature or land you control") can be a
+    // noncreature, so the noun stays. A bare pronoun keeps the noun when the
+    // effect carries a type-retention surface (land animation: "Untap target
+    // land. It becomes a 5/5 Elemental creature. It's still a land"); without
+    // one it back-refers to a creature named in the same sentence ("put a
+    // flying counter on it and it becomes a Spirit Warrior Angel ...").
+    // "this source" is NOT safe here: enchantment self-animations (the
+    // Hidden/Opal cycles) pass it too, and those keep the creature noun.
+    let target_lower = target_text.to_ascii_lowercase();
+    let pronoun_creature_backref = matches!(target_lower.as_str(), "it" | "this")
+        && effect.type_retention_surface.is_none()
+        && !preserves_land_types;
+    let redundant_creature_noun = !subtypes.is_empty()
+        && extra_card_types.is_empty()
+        && (target_lower.contains("creature") || pronoun_creature_backref)
+        && !["land", "artifact", "enchantment", "planeswalker", "permanent"]
+            .iter()
+            .any(|noun| target_lower.contains(noun));
+    if !omit_creature_type_noun && !redundant_creature_noun {
         descriptor.push(if plural_target {
             "creatures".to_string()
         } else {
@@ -3110,6 +3163,11 @@ pub(crate) fn describe_attached_object_color_condition(
     let colors = filter.colors?;
     let mut bare = filter.clone();
     bare.colors = None;
+    // Battlefield-zone scaffolding doesn't change the adjective predicate
+    // ("enchanted creature is white", not "is a white permanent").
+    if matches!(bare.zone, Some(Zone::Battlefield)) {
+        bare.zone = None;
+    }
     if bare != ObjectFilter::default() {
         return None;
     }
@@ -4033,6 +4091,7 @@ pub(crate) fn describe_sacrifice_cost_object_condition(
                 true,
             )
         };
+        let mut needs_article = needs_article;
         for suffix in [" permanent", " card", " object"] {
             if let Some(stripped) = description.strip_suffix(suffix) {
                 description = stripped.to_string();
@@ -4041,6 +4100,14 @@ pub(crate) fn describe_sacrifice_cost_object_condition(
         }
         if description.is_empty() || description == "object" {
             return None;
+        }
+        // A bare state left over after the noun is stripped is an adjective
+        // predicate in Oracle ("was tapped", not "was a tapped").
+        if matches!(
+            description.as_str(),
+            "tapped" | "untapped" | "attacking" | "blocking" | "attacking or blocking"
+        ) {
+            needs_article = false;
         }
         let description = if needs_article {
             with_indefinite_article(&description)

@@ -38,6 +38,22 @@ mod tests {
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
+    /// The trigger compiles to one coordinated SequenceEffect wrapping
+    /// TargetOnlyEffect + LoseLifeEffect + GainLifeEffect; unwrap it so the
+    /// per-effect tests can address the parts.
+    fn trigger_sequence_effects(def: &CardDefinition) -> Vec<crate::effect::Effect> {
+        let ability = &def.abilities[0];
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("Expected triggered ability");
+        };
+        let effects = triggered.effects.flattened_default_effects();
+        assert_eq!(effects.len(), 1, "expected one coordinated sequence");
+        let sequence = effects[0]
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .expect("expected a SequenceEffect wrapper");
+        sequence.effects.clone()
+    }
+
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
     }
@@ -158,13 +174,9 @@ mod tests {
     #[test]
     fn test_trigger_has_three_effects() {
         let def = blood_artist();
-        let ability = &def.abilities[0];
-        if let AbilityKind::Triggered(triggered) = &ability.kind {
-            // TargetOnlyEffect + LoseLifeEffect + GainLifeEffect
-            assert_eq!(triggered.effects.len(), 3);
-        } else {
-            panic!("Expected triggered ability");
-        }
+        // TargetOnlyEffect + LoseLifeEffect + GainLifeEffect inside one
+        // coordinated sequence.
+        assert_eq!(trigger_sequence_effects(&def).len(), 3);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -365,13 +377,8 @@ mod tests {
         let def = blood_artist();
         let blood_artist_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-        // Get the effects from the ability
-        let ability = &def.abilities[0];
-        let effects = if let AbilityKind::Triggered(triggered) = &ability.kind {
-            triggered.effects.clone()
-        } else {
-            panic!("Expected triggered ability");
-        };
+        // Get the coordinated sequence parts from the ability
+        let effects = trigger_sequence_effects(&def);
 
         // Execute the second effect (target player loses 1 life)
         // effects[0] = TargetOnlyEffect, effects[1] = LoseLifeEffect
@@ -401,13 +408,8 @@ mod tests {
         let def = blood_artist();
         let blood_artist_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-        // Get the effects from the ability
-        let ability = &def.abilities[0];
-        let effects = if let AbilityKind::Triggered(triggered) = &ability.kind {
-            triggered.effects.clone()
-        } else {
-            panic!("Expected triggered ability");
-        };
+        // Get the coordinated sequence parts from the ability
+        let effects = trigger_sequence_effects(&def);
 
         // Execute the third effect (you gain 1 life)
         // effects[0] = TargetOnlyEffect, effects[1] = LoseLifeEffect, effects[2] = GainLifeEffect
@@ -437,13 +439,8 @@ mod tests {
         let def = blood_artist();
         let blood_artist_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-        // Get the effects from the ability
-        let ability = &def.abilities[0];
-        let effects = if let AbilityKind::Triggered(triggered) = &ability.kind {
-            triggered.effects.clone()
-        } else {
-            panic!("Expected triggered ability");
-        };
+        // Get the coordinated sequence parts from the ability
+        let effects = trigger_sequence_effects(&def);
 
         // Set up execution context
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
@@ -480,13 +477,8 @@ mod tests {
         let def = blood_artist();
         let blood_artist_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-        // Get the effects from the ability
-        let ability = &def.abilities[0];
-        let effects = if let AbilityKind::Triggered(triggered) = &ability.kind {
-            triggered.effects.clone()
-        } else {
-            panic!("Expected triggered ability");
-        };
+        // Get the coordinated sequence parts from the ability
+        let effects = trigger_sequence_effects(&def);
 
         // Set up execution context with Alice targeting herself
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
@@ -695,23 +687,18 @@ mod tests {
         let def = blood_artist();
         let blood_artist_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-        let ability = &def.abilities[0];
-        let effects = if let AbilityKind::Triggered(triggered) = &ability.kind {
-            triggered.effects.clone()
-        } else {
-            panic!("Expected triggered ability");
-        };
+        let effects = trigger_sequence_effects(&def);
 
         let mut ctx = ExecutionContext::new_default(blood_artist_id, alice);
         ctx.targets
             .push(crate::effects::ResolvedTarget::Player(bob));
 
-        // First effect should return Count(1) for 1 life lost
-        let result1 = effects[0].0.execute(&mut game, &mut ctx).unwrap();
+        // The LoseLifeEffect should return Count(1) for 1 life lost
+        let result1 = effects[1].0.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result1.value, crate::effect::OutcomeValue::Count(1));
 
-        // Second effect should return Count(1) for 1 life gained
-        let result2 = effects[1].0.execute(&mut game, &mut ctx).unwrap();
+        // The GainLifeEffect should return Count(1) for 1 life gained
+        let result2 = effects[2].0.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result2.value, crate::effect::OutcomeValue::Count(1));
     }
 

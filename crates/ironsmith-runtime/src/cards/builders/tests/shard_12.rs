@@ -3374,11 +3374,23 @@ pub(super) fn parse_each_player_who_controls_condition_wraps_conditional() {
         )
         .expect("each-player conditional clause should parse");
 
+    // The per-player condition must be a real ConditionalEffect inside the
+    // player loop — a surface like "each player who controls ..." could also
+    // come from a (wrong) filter-based lowering.
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ForPlayersEffect")
+            && debug.contains("ConditionalEffect")
+            && debug.contains("PlayerControls"),
+        "expected the control condition to wrap a per-player conditional, got {debug}"
+    );
+
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("for each player, if that player controls")
+        (rendered.contains("for each player, if that player controls")
+            || rendered.contains("each player who controls"))
             && rendered.contains("power 4 or greater"),
         "expected per-player control condition, got {rendered}"
     );

@@ -72,10 +72,13 @@ pub mod zones;
 
 /// Reserved tag used to carry public reveal visibility across stack lifetime.
 pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
+/// Cards revealed by an earlier effect in the same execution ("revealed this way").
+pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
 
 // Re-export the traits, modal spec, and cost validation error
 pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
 pub use executor_trait::{
+    DeferredPlayerActionProposal,
     CostExecutableEffect, CostValidationError, EffectExecutionCategory, EffectExecutor,
     ModalEffectSpec, ModalSpec, SimultaneousEffectProposal, TargetReusePolicy,
     TargetSelectionProfile,

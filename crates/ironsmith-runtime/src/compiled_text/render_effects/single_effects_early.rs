@@ -4254,9 +4254,22 @@ pub(super) fn choose_spec_references_created_object(
     }
 }
 
+/// Battlefield is the implicit zone for an iterated permanent noun in oracle
+/// text ("For each land, ..."); count surfaces keep the explicit suffix.
+pub(super) fn strip_battlefield_zone_suffix(filter_text: String) -> String {
+    filter_text
+        .strip_suffix(" on the battlefield")
+        .map(str::to_string)
+        .unwrap_or(filter_text)
+}
+
 pub(super) fn describe_for_each_object_filter_subject(filter: &ObjectFilter) -> String {
     let description = filter.description();
     let subject = strip_indefinite_article(&description).trim();
+    // Battlefield is the implicit zone for an iterated permanent noun in
+    // oracle text ("For each land, ..."), so the explicit zone suffix only
+    // survives for other zones.
+    let subject = subject.strip_suffix(" on the battlefield").unwrap_or(subject);
     if let Some(rest) = subject.strip_prefix("opponent's ") {
         return format!("{rest} your opponents control");
     }

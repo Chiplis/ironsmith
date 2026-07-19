@@ -607,9 +607,18 @@ fn choose_player_sewer_nemesis_only_triggers_for_the_chosen_players_spells() {
         0,
         "As this creature enters, choose a player.\nSewer Nemesis's power and toughness are each equal to the number of cards in the chosen player's graveyard.\nWhenever the chosen player casts a spell, that player mills a card.",
     );
+    let bob_graveyard_card = crate::card::CardBuilder::new(CardId::new(), "Bob Graveyard Anchor")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&bob_graveyard_card, bob, Zone::Graveyard);
     let mut dm = ScriptedDecisionMaker::new(&["Bob"], &[]);
     let sewer_id =
         move_definition_to_battlefield_with_dm(&mut game, &sewer_nemesis, alice, &mut dm);
+    assert_eq!(
+        game.chosen_player(sewer_id),
+        Some(bob),
+        "the entry replacement should persist the chosen player"
+    );
 
     let bob_library_card = crate::card::CardBuilder::new(CardId::new(), "Bob Mill Card")
         .card_types(vec![CardType::Artifact])
@@ -635,11 +644,16 @@ fn choose_player_sewer_nemesis_only_triggers_for_the_chosen_players_spells() {
 
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Sewer Nemesis trigger should go on the stack");
+    assert_eq!(
+        game.chosen_player(sewer_id),
+        Some(bob),
+        "putting the trigger on the stack must not clear the source's chosen player"
+    );
     resolve_stack_entry(&mut game).expect("Sewer Nemesis trigger should resolve");
 
     assert_eq!(
         game.player(bob).expect("bob exists").graveyard.len(),
-        1,
+        2,
         "the chosen player should mill one card"
     );
 

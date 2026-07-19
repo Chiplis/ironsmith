@@ -815,52 +815,6 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
     }
 }
 
-fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
-    fn source_leaves_subject(sentence: &str) -> Option<String> {
-        preprocess_grammar::parse_return_source_leaves_surface(sentence)
-            .map(|surface| surface.subject)
-    }
-
-    fn previous_sentence_has_exile_without_until_this(previous: &str) -> bool {
-        preprocess_grammar::parse_previous_exile_surface(previous).is_some()
-    }
-
-    let Some(document) = preprocess_grammar::parse_preprocess_sentence_list(text) else {
-        return text.to_string();
-    };
-    if document.sentences.len() < 2 {
-        return text.to_string();
-    }
-
-    let mut rewritten: Vec<String> = Vec::with_capacity(document.sentences.len());
-    let mut changed = false;
-    for sentence in document.sentences {
-        if let Some(subject) = source_leaves_subject(sentence.as_str())
-            && let Some(previous) = rewritten.last_mut()
-            && previous_sentence_has_exile_without_until_this(previous)
-        {
-            *previous = format!(
-                "{} until this {} leaves the battlefield",
-                previous.trim_end(),
-                subject
-            );
-            changed = true;
-            continue;
-        }
-
-        rewritten.push(sentence);
-    }
-
-    if !changed {
-        return text.to_string();
-    }
-
-    let mut joined = rewritten.join(". ");
-    if document.terminal_period {
-        joined.push('.');
-    }
-    joined
-}
 
 fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
     let target_len = normalized.chars().count();
@@ -1266,12 +1220,6 @@ mod tests {
         assert_eq!(
             rewrite_vote_count_followups_line("You draw cards equal to the number of truth votes."),
             "For each truth vote, draw a card."
-        );
-        assert_eq!(
-            rewrite_exile_return_when_source_leaves_line(
-                "Exile target creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield."
-            ),
-            "Exile target creature until this artifact leaves the battlefield."
         );
     }
 

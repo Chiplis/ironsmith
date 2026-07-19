@@ -719,13 +719,13 @@ impl WasmGame {
         &mut self,
         player_id: PlayerId,
         deck_names: &[String],
-    ) -> Result<(), JsValue> {
+    ) -> Result<(), String> {
         self.registry
             .ensure_cards_loaded(deck_names.iter().map(|name| name.as_str()));
 
         for name in deck_names {
             let Some(definition) = self.find_card_definition(name).cloned() else {
-                return Err(JsValue::from_str(&format!("unknown card name: {name}")));
+                return Err(format!("unknown card name: {name}"));
             };
             self.game.create_object_from_catalog_definition(
                 &definition,

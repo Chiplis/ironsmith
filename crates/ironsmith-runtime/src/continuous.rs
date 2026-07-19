@@ -258,9 +258,12 @@ struct DurationPredicateEvaluationGuard(ContinuousEffectId);
 
 impl DurationPredicateEvaluationGuard {
     fn enter(id: ContinuousEffectId) -> Option<Self> {
-        IN_PROGRESS_DURATION_PREDICATES.with(|in_progress| {
-            in_progress.borrow_mut().insert(id).then_some(Self(id))
-        })
+        // Release the RefCell borrow before constructing the guard: an eager
+        // `then_some(Self(..))` builds and immediately drops a guard on the
+        // re-entry path, and its Drop re-borrows the same RefCell.
+        let inserted =
+            IN_PROGRESS_DURATION_PREDICATES.with(|in_progress| in_progress.borrow_mut().insert(id));
+        inserted.then(|| Self(id))
     }
 }
 
@@ -2321,8 +2324,8 @@ pub(crate) fn copiable_values_with_effects(
     if !layer_effects.is_empty() {
         let needs_source_tracking =
             layer_needs_source_activity_tracking(&layer_effects, effects.iter(), Layer::Copy);
-        let baseline =
-            crate::dependency::needs_baseline_dependency_sort(&layer_effects, game).then(|| {
+        let baseline = crate::dependency::needs_baseline_dependency_sort(&layer_effects, game)
+            .then(|| {
                 build_layer_baseline(
                     objects,
                     effects,
@@ -3370,9 +3373,11 @@ pub(crate) fn continuous_duration_predicate_matches(
             .all(|predicate| continuous_duration_predicate_matches(predicate, game)),
         Predicate::ObjectOnBattlefield(object) => continuous_duration_object_id(object)
             .is_some_and(|id| continuous_duration_object_is_visible(game, id)),
-        Predicate::ObjectTapped(object) => continuous_duration_object_id(object).is_some_and(|id| {
-            continuous_duration_object_is_visible(game, id) && game.is_tapped(id)
-        }),
+        Predicate::ObjectTapped(object) => {
+            continuous_duration_object_id(object).is_some_and(|id| {
+                continuous_duration_object_is_visible(game, id) && game.is_tapped(id)
+            })
+        }
         Predicate::ObjectHasCounter {
             object,
             counter_type,
@@ -3398,8 +3403,8 @@ pub(crate) fn continuous_duration_predicate_matches(
                             == Some(crate::object::AttachmentTarget::Object(attached_to))
                     })
             }),
-        Predicate::ObjectIsEnchanted(object) => continuous_duration_object_id(object).is_some_and(
-            |enchanted| {
+        Predicate::ObjectIsEnchanted(object) => {
+            continuous_duration_object_id(object).is_some_and(|enchanted| {
                 continuous_duration_object_is_visible(game, enchanted)
                     && game.battlefield.iter().copied().any(|attachment| {
                         continuous_duration_object_is_visible(game, attachment)
@@ -3409,10 +3414,11 @@ pub(crate) fn continuous_duration_predicate_matches(
                             })
                             && game.current_has_subtype(attachment, Subtype::Aura)
                     })
-            },
-        ),
-        Predicate::PlayerIsMonarch(player) => continuous_duration_player_id(player)
-            .is_some_and(|player| game.is_monarch(player)),
+            })
+        }
+        Predicate::PlayerIsMonarch(player) => {
+            continuous_duration_player_id(player).is_some_and(|player| game.is_monarch(player))
+        }
         Predicate::ObjectPowerAtMostObject { lesser, greater } => {
             continuous_duration_object_id(lesser)
                 .zip(continuous_duration_object_id(greater))
@@ -4033,6 +4039,20 @@ fn object_abilities_match(candidate: &Ability, template: &Ability) -> bool {
     }
 }
 
+/// CR 702.22h makes losing banding also remove every "bands with other"
+/// ability. Treat that rule as part of layer-six ability-loss matching so it
+/// applies equally to ordinary loss and "can't have or gain" prohibitions.
+fn object_ability_matches_loss(candidate: &Ability, template: &Ability) -> bool {
+    object_abilities_match(candidate, template)
+        || matches!(
+            (&candidate.kind, &template.kind),
+            (AbilityKind::Static(candidate), AbilityKind::Static(template))
+                if template.id() == crate::static_abilities::StaticAbilityId::Banding
+                    && candidate.id()
+                        == crate::static_abilities::StaticAbilityId::BandsWithOther
+        )
+}
+
 /// Record and enforce characteristic-level ability prohibitions.
 ///
 /// Unlike ordinary layer-6 removals, a "can't have or gain" prohibition wins
@@ -4048,7 +4068,7 @@ pub(crate) fn enforce_ability_gain_prohibitions(
         && !chars
             .ability_gain_prohibitions
             .iter()
-            .any(|existing| object_abilities_match(existing, ability))
+            .any(|existing| object_ability_matches_loss(existing, ability))
     {
         chars.ability_gain_prohibitions.push(ability.clone());
     }
@@ -4065,7 +4085,7 @@ pub(crate) fn prune_ability_gain_prohibitions(chars: &mut CalculatedCharacterist
     chars.abilities.retain(|candidate| {
         !prohibited
             .iter()
-            .any(|template| object_abilities_match(candidate, template))
+            .any(|template| object_ability_matches_loss(candidate, template))
     });
     chars.static_abilities.retain(|candidate| {
         !prohibited.iter().any(|template| {
@@ -4388,9 +4408,15 @@ fn apply_modification_to_chars(
         Modification::RemoveAbilityGeneric { ability, .. } => {
             chars
                 .abilities
-                .retain(|candidate| !object_abilities_match(candidate, ability));
+                .retain(|candidate| !object_ability_matches_loss(candidate, ability));
             if let AbilityKind::Static(static_ability) = &ability.kind {
-                chars.static_abilities.retain(|sa| sa != static_ability);
+                chars.static_abilities.retain(|candidate| {
+                    candidate != static_ability
+                        && !(static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::Banding
+                            && candidate.id()
+                                == crate::static_abilities::StaticAbilityId::BandsWithOther)
+                });
             }
         }
         Modification::RemoveAllAbilities => {

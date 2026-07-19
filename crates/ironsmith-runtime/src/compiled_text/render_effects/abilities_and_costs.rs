@@ -540,6 +540,15 @@ pub(crate) fn describe_ability(
                     &condition, triggered, None,
                 ));
             }
+            // A parameterized keyword label ("Firebending 2") IS the whole
+            // printed line; its resolution effects are the keyword's rules
+            // meaning and never appear alongside it in oracle text.
+            let keyword_label_replaces_resolution = matches!(
+                triggered.presentation_label,
+                Some(PresentationLabel::Keyword(
+                    PresentationKeyword::Firebending(_)
+                ))
+            );
             let mut clauses = Vec::new();
             if !triggered.choices.is_empty()
                 && !(!triggered.effects.is_empty()
@@ -553,8 +562,9 @@ pub(crate) fn describe_ability(
                     .join(", ");
                 clauses.push(format!("choose {choices}"));
             }
-            if let Some(effects) =
-                describe_triggered_resolution_text(triggered, subject, rewrite_it_deals)
+            if !keyword_label_replaces_resolution
+                && let Some(effects) =
+                    describe_triggered_resolution_text(triggered, subject, rewrite_it_deals)
             {
                 clauses.push(effects);
             }
@@ -1627,6 +1637,7 @@ pub(crate) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String
         } else if let Some(rest) = clause.strip_prefix("You ") {
             clause = normalize_you_verb_phrase(rest);
         }
+        clause = normalize_cost_phrase(&clause);
         if clause.is_empty() {
             continue;
         }

@@ -1662,6 +1662,42 @@ fn lower_statement_chunk(
 
     let statement_facts = &semantic_facts.statement;
     if let Some(as_enters) = statement_facts.as_enters_effect_program.as_ref() {
+        // The reveal-opponents-hands + choose-a-revealed-nonland-name bundle
+        // has a dedicated typed static with the complete ETB semantics
+        // (Alhammarret, High Arbiter); prefer it over the generic program.
+        if compiled.len() == 2
+            && compiled[0]
+                .downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+                .is_some_and(|for_players| {
+                    for_players.filter == PlayerFilter::Opponent
+                        && matches!(
+                            for_players.effects.as_slice(),
+                            [reveal] if reveal
+                                .downcast_ref::<crate::effects::LookAtHandEffect>()
+                                .is_some_and(|look| look.reveal)
+                        )
+                })
+            && compiled[1]
+                .downcast_ref::<crate::effects::ChooseCardNameEffect>()
+                .is_some_and(|choose| {
+                    choose.filter.as_ref().is_some_and(|filter| {
+                        filter.excluded_card_types == vec![crate::types::CardType::Land]
+                            && filter.prior_effect_action_surface()
+                                == Some(ironsmith_core::PriorEffectAction::Revealed)
+                    })
+                })
+        {
+            let static_ability =
+                crate::static_abilities::StaticAbility::choose_revealed_hand_nonland_card_name_as_enters(
+                    format!(
+                        "As {} enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way.",
+                        as_enters.subject
+                    ),
+                );
+            builder =
+                builder.with_ability(crate::ability::Ability::static_ability(static_ability));
+            return Ok(builder);
+        }
         let static_ability = crate::static_abilities::StaticAbility::as_enters_effect_program(
             compiled,
             as_enters.subject.clone(),

@@ -1867,6 +1867,19 @@ pub(super) fn put_counters_each_filter_view(
         let ChooseSpec::All(filter) = put.target.base() else {
             return None;
         };
+        // A set defined only by a "<verbed> this way" tag is a back-reference
+        // to the objects the previous sentence just acted on; oracle uses the
+        // partitive pronoun ("Put a stun counter on each of them").
+        if this_way_back_reference_filter(filter) {
+            return Some((
+                format!(
+                    "Put {} on each of them",
+                    describe_put_counter_phrase(&put.amount, put.counter_type)
+                ),
+                filter,
+                None,
+            ));
+        }
         let description = filter.description();
         let filter_text = strip_indefinite_article(&description);
         return Some((
@@ -1889,6 +1902,16 @@ pub(super) fn put_counters_each_filter_view(
         return None;
     }
 
+    if this_way_back_reference_filter(&for_each.filter) {
+        return Some((
+            format!(
+                "Put {} on each of them",
+                describe_put_counter_phrase(&put.amount, put.counter_type)
+            ),
+            &for_each.filter,
+            None,
+        ));
+    }
     let description = for_each.filter.description();
     let filter_text = strip_indefinite_article(&description);
     Some((
@@ -1899,6 +1922,23 @@ pub(super) fn put_counters_each_filter_view(
         &for_each.filter,
         None,
     ))
+}
+
+/// True when the filter identifies objects solely by a "<verbed> this way"
+/// provenance tag over generic battlefield scaffolding — a back-reference to
+/// the set the previous sentence acted on.
+pub(super) fn this_way_back_reference_filter(filter: &ObjectFilter) -> bool {
+    if describe_tagged_this_way_action(filter).is_none() {
+        return false;
+    }
+    if !filter.card_types.is_empty() {
+        return false;
+    }
+    let mut base = filter.clone();
+    base.tagged_constraints.clear();
+    base.set_prior_effect_action_surface(None);
+    base.zone = None;
+    base == ObjectFilter::default()
 }
 
 pub(super) fn untap_target_is_implicit_previous_group(untap: &crate::effects::UntapEffect) -> bool {
@@ -2110,6 +2150,11 @@ pub(crate) fn pluralize_word(word: &str) -> String {
         || lower.ends_with("ch")
         || lower.ends_with("sh")
     {
+        return format!("{word}es");
+    }
+    // English -o plurals are irregular (Heroes, but Rhinos); enumerate the
+    // -es cases that appear as game nouns.
+    if matches!(lower.as_str(), "hero" | "potato" | "tomato") {
         return format!("{word}es");
     }
     format!("{word}s")
@@ -2375,7 +2420,7 @@ pub(super) fn filter_excludes_chosen_tag(filter: &ObjectFilter, tag: &str) -> bo
     })
 }
 
-pub(super) fn destroy_effect_for_choose_compaction(
+pub(in crate::compiled_text) fn destroy_effect_for_choose_compaction(
     effect: &Effect,
 ) -> Option<&crate::effects::DestroyEffect> {
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
@@ -2472,7 +2517,7 @@ pub(super) fn describe_for_players_bend_or_break(
     )
 }
 
-pub(super) fn describe_for_players_may_choose_then_destroy_chosen(
+pub(in crate::compiled_text) fn describe_for_players_may_choose_then_destroy_chosen(
     for_players: &crate::effects::ForPlayersEffect,
     destroy: &crate::effects::DestroyEffect,
 ) -> Option<String> {

@@ -3,13 +3,15 @@ use super::*;
 struct ImmediateObservation<'a> {
     effect: &'a Effect,
     tag: &'a TagKey,
-    may_decider: Option<&'a PlayerFilter>,
+    optional: bool,
 }
 
 impl<'a> ImmediateObservation<'a> {
     fn from_effect(effect: &'a Effect) -> Option<Self> {
-        let unwrapped = structural_unwrap_render_wrappers(effect);
-        if let Some(may) = unwrapped.downcast_ref::<crate::effects::MayEffect>() {
+        // A direct May wrapper is part of the authored observation surface;
+        // inspect it before the generic structural unwrapping can erase that
+        // optionality.
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
             let [inner] = may.effects.as_slice() else {
                 return None;
             };
@@ -22,10 +24,11 @@ impl<'a> ImmediateObservation<'a> {
                 return None;
             }
             return Some(Self {
-                may_decider: may.decider.as_ref(),
+                optional: true,
                 ..observation
             });
         }
+        let unwrapped = structural_unwrap_render_wrappers(effect);
         Self::from_direct_effect(unwrapped)
     }
 
@@ -34,7 +37,7 @@ impl<'a> ImmediateObservation<'a> {
             return Some(Self {
                 effect,
                 tag: reveal.tag.as_ref()?,
-                may_decider: None,
+                optional: false,
             });
         }
         let look = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
@@ -44,7 +47,7 @@ impl<'a> ImmediateObservation<'a> {
         Some(Self {
             effect,
             tag: &look.tag,
-            may_decider: None,
+            optional: false,
         })
     }
 
@@ -75,7 +78,7 @@ impl<'a> ImmediateObservation<'a> {
     }
 
     fn is_optional_reveal(&self) -> bool {
-        self.may_decider.is_some()
+        self.optional
             && self
                 .effect
                 .downcast_ref::<crate::effects::RevealTopEffect>()
@@ -100,7 +103,7 @@ impl<'a> ImmediateObservation<'a> {
         if rendered.is_empty() {
             return None;
         }
-        if self.may_decider.is_some() {
+        if self.optional {
             return Some(format!("You may {}", lowercase_first(rendered)));
         }
         Some(rendered.to_string())
@@ -170,7 +173,16 @@ fn describe_observed_filter(observed_tag: &TagKey, filter: &ObjectFilter) -> Str
     if let Some(permanent) = describe_permanent_card_filter(filter) {
         return permanent;
     }
-    let described = describe_player_tagged_object_text(observed_tag, filter);
+    // A top-of-library observation always classifies a card. Constructors
+    // such as `ObjectFilter::creature()` carry a battlefield presentation
+    // zone, which would otherwise render "creature"/"permanent" and lose the
+    // card noun in the conditional.
+    let mut card_filter = filter.clone();
+    if card_filter.zone == Some(Zone::Battlefield) {
+        card_filter.zone = None;
+    }
+    card_filter.set_explicit_card_noun(true);
+    let described = describe_player_tagged_object_text(observed_tag, &card_filter);
     if filter.card_types.is_empty()
         && !filter.subtypes.is_empty()
         && filter.excluded_card_types.is_empty()
@@ -286,7 +298,18 @@ fn normalize_observed_action(effect: &Effect, text: &str) -> Option<String> {
     if text.is_empty() || text.contains(". ") || text.starts_with("If effect #") {
         return None;
     }
-    let text = lowercase_first(text);
+    let mut text = lowercase_first(text);
+    if structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_to_zone| move_to_zone.zone == Zone::Hand)
+    {
+        for reference in ["it", "them", "that card", "the card"] {
+            text = text.replace(
+                &format!("return {reference} to "),
+                &format!("put {reference} into "),
+            );
+        }
+    }
     if effect_preserves_that_card_surface(effect) {
         return Some(text);
     }
@@ -415,7 +438,10 @@ fn describe_observed_move_with_actor(
     {
         return None;
     }
-    let action = normalize_observed_action(effect, &describe_effect(effect))?;
+    let mut action = normalize_observed_action(effect, &describe_effect(effect))?;
+    if *observing_player == PlayerFilter::IteratedPlayer {
+        action = action.replace("that player's", "their");
+    }
     let rest = action.strip_prefix("put ")?;
     let actor = if *observing_player == PlayerFilter::IteratedPlayer {
         "the player".to_string()
@@ -840,7 +866,10 @@ fn describe_observation_after_if_result(effects: &[&Effect]) -> Option<(String, 
         .unwrap_or_else(|| describe_effect(&with_id.effect));
     let observation_branch = describe_with_id_if_clause(with_id, if_effect)?;
     Some((
-        format!("{setup}. {observation_branch}. {observed_conditional}"),
+        format!(
+            "{}. {observation_branch}. {observed_conditional}",
+            capitalize_first(&setup)
+        ),
         3,
     ))
 }
@@ -1244,7 +1273,7 @@ mod tests {
             rendered.contains("you may put it onto the battlefield. If you don't put the card onto the battlefield, you may put it on the bottom of your library"),
             "{rendered}"
         );
-        assert!(!rendered.contains("If you do"), "{rendered}");
+        assert!(!rendered.contains("If you do,"), "{rendered}");
         assert!(!rendered.contains("Otherwise"), "{rendered}");
         assert!(!rendered.contains("you may You"), "{rendered}");
     }
@@ -1278,7 +1307,7 @@ mod tests {
             rendered.contains("If you don't put it onto the battlefield, put it into your hand"),
             "{rendered}"
         );
-        assert!(!rendered.contains("If you do"), "{rendered}");
+        assert!(!rendered.contains("If you do,"), "{rendered}");
         assert!(!rendered.contains("Otherwise"), "{rendered}");
     }
 

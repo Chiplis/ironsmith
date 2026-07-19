@@ -45,6 +45,72 @@ use super::tagging_runtime::{
 ///     ),
 /// ]
 /// ```
+/// Tag the execution context (and runtime tag state) from an inner effect's
+/// outcome — shared by live execution and batched simultaneous commits.
+/// (Free function because `TaggedEffect` aliases a foreign core type.)
+fn apply_outcome_tags(
+    effect: &TaggedEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    outcome: &EffectOutcome,
+    runtime: TaggedRuntimeState,
+) {
+        for damage in outcome.events_of_type::<DamageEvent>() {
+            if damage.amount == 0 {
+                continue;
+            }
+            match damage.target {
+                DamageTarget::Player(player_id) => {
+                    ctx.tag_player(effect.tag.clone(), player_id);
+                    if effect.tag.as_str() != "__it__"
+                        && effect.tag.as_str() != "__copied_stack_object__"
+                    {
+                        ctx.tag_player(TagKey::from("__it__"), player_id);
+                    }
+                }
+                DamageTarget::Object(object_id) => {
+                    if let Some(snapshot) = damage.target_snapshot.clone().or_else(|| {
+                        game.object(object_id)
+                            .map(|obj| ObjectSnapshot::from_object(obj, game))
+                    }) {
+                        ctx.tag_object(effect.tag.clone(), snapshot.clone());
+                        if effect.tag.as_str() != "__it__"
+                            && effect.tag.as_str() != "__copied_stack_object__"
+                        {
+                            ctx.tag_object(TagKey::from("__it__"), snapshot);
+                        }
+                    }
+                }
+            }
+        }
+        apply_tagged_runtime_state(game, ctx, effect.tag.clone(), outcome, runtime.clone());
+        if effect.tag.as_str() != "__it__" && effect.tag.as_str() != "__copied_stack_object__" {
+            apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), outcome, runtime);
+        }
+}
+
+/// A tagged wrapper around another effect's simultaneous proposal: committing
+/// runs the inner commit, then applies the same outcome-driven tagging as a
+/// live execution.
+#[derive(Debug)]
+struct TaggedProposal {
+    effect: TaggedEffect,
+    inner: Box<dyn crate::effects::SimultaneousEffectProposal>,
+    runtime: TaggedRuntimeState,
+}
+
+impl crate::effects::SimultaneousEffectProposal for TaggedProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let outcome = self.inner.commit(game, ctx)?;
+        apply_outcome_tags(&self.effect, game, ctx, &outcome, self.runtime);
+        Ok(outcome)
+    }
+}
+
 impl EffectExecutor for TaggedEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effect
@@ -80,40 +146,30 @@ impl EffectExecutor for TaggedEffect {
 
         // Execute the inner effect
         let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
-        for damage in outcome.events_of_type::<DamageEvent>() {
-            if damage.amount == 0 {
-                continue;
-            }
-            match damage.target {
-                DamageTarget::Player(player_id) => {
-                    ctx.tag_player(self.tag.clone(), player_id);
-                    if self.tag.as_str() != "__it__"
-                        && self.tag.as_str() != "__copied_stack_object__"
-                    {
-                        ctx.tag_player(TagKey::from("__it__"), player_id);
-                    }
-                }
-                DamageTarget::Object(object_id) => {
-                    if let Some(snapshot) = damage.target_snapshot.clone().or_else(|| {
-                        game.object(object_id)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game))
-                    }) {
-                        ctx.tag_object(self.tag.clone(), snapshot.clone());
-                        if self.tag.as_str() != "__it__"
-                            && self.tag.as_str() != "__copied_stack_object__"
-                        {
-                            ctx.tag_object(TagKey::from("__it__"), snapshot);
-                        }
-                    }
-                }
-            }
-        }
-        apply_tagged_runtime_state(game, ctx, self.tag.clone(), &outcome, runtime.clone());
-        if self.tag.as_str() != "__it__" && self.tag.as_str() != "__copied_stack_object__" {
-            apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), &outcome, runtime);
-        }
-
+        apply_outcome_tags(self, game, ctx, &outcome, runtime);
         Ok(outcome)
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.effect.0.supports_simultaneous_player_action()
+    }
+
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        self.effect.0.is_read_only_simultaneous_player_action()
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
+        let inner = self.effect.0.prepare_simultaneous_player_action(game, ctx)?;
+        Ok(Box::new(TaggedProposal {
+            effect: self.clone(),
+            inner,
+            runtime,
+        }))
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {

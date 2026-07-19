@@ -2005,8 +2005,9 @@ pub(super) fn test_blocked_attacker_deals_damage_to_blocker() {
     // Should have events for attacker->blocker and blocker->attacker
     assert!(events.len() >= 2);
 
-    // Blocker should have 2 damage (lethal - without trample, attacker only assigns lethal)
-    assert_eq!(game.damage_on(blocker_id), 2);
+    // With a single blocker and no alternative recipient, all 3 combat damage
+    // is assigned to that blocker. Assignment is not capped at lethal damage.
+    assert_eq!(game.damage_on(blocker_id), 3);
 
     // Attacker should have 2 damage
     assert_eq!(game.damage_on(attacker_id), 2);

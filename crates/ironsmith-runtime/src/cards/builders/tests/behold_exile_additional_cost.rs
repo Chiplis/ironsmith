@@ -1,6 +1,5 @@
 use super::shard_16::parse_oracle_card_definition;
 use super::*;
-use crate::costs::CostPayer as _;
 
 const CASES: &[(&str, Subtype, &str)] = &[
     (

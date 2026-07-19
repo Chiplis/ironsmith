@@ -598,10 +598,6 @@ pub(crate) fn effect_mentions_iterated_player(effect: &Effect) -> bool {
     found
 }
 
-pub(crate) fn effects_mention_iterated_player(effects: &[Effect]) -> bool {
-    effects.iter().any(effect_mentions_iterated_player)
-}
-
 pub(crate) fn effect_contains_pending_effect_metric(effect: &Effect) -> bool {
     if effect
         .target_spec()

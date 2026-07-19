@@ -130,7 +130,7 @@ pub(super) fn chain_of_vapor_uses_the_bounced_permanents_last_known_controller()
     let land = CardBuilder::new(CardId::new(), "Bob's Island")
         .card_types(vec![CardType::Land])
         .build();
-    let land_id = game.create_object_from_card(&land, bob, Zone::Battlefield);
+    let _land_id = game.create_object_from_card(&land, bob, Zone::Battlefield);
     let next_target = CardBuilder::new(CardId::new(), "Next Relic")
         .card_types(vec![CardType::Artifact])
         .build();
@@ -148,16 +148,25 @@ pub(super) fn chain_of_vapor_uses_the_bounced_permanents_last_known_controller()
     resolve_stack_entry_with(&mut game, &mut decisions)
         .expect("Chain of Vapor should use target last-known information");
 
-    assert_eq!(
-        game.object(borrowed_id)
-            .expect("borrowed relic exists")
-            .zone,
-        Zone::Hand
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Borrowed Relic")),
+        "the bounced permanent should be represented by its new hand object"
     );
-    assert_eq!(
-        game.object(land_id).expect("sacrificed land exists").zone,
-        Zone::Graveyard,
-        "the bounced permanent's controller should make the enabling sacrifice"
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .graveyard
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Bob's Island")),
+        "the bounced permanent's last-known controller should make the enabling sacrifice"
     );
     let [copy_entry] = game.stack.as_slice() else {
         panic!(

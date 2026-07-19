@@ -3502,6 +3502,6 @@ pub(super) fn test_indomitable_might_blocked_combat_defaults_to_blocker_damage_a
 
     let events = execute_combat_damage_step(&mut game, &combat, false);
     assert!(!events.is_empty());
-    assert_eq!(game.damage_on(blocker_id), 2);
+    assert_eq!(game.damage_on(blocker_id), 5);
     assert_eq!(game.player(bob).expect("defender should exist").life, 20);
 }

@@ -384,11 +384,12 @@ pub(super) fn describe_may_compound_payment(may: &crate::effects::MayEffect) -> 
     }
 
     (typed_payments > 0).then(|| {
-        format!(
-            "{} may {}",
-            describe_player_filter(&decider),
-            join_with_and(&parts)
-        )
+        let participant = if decider == PlayerFilter::Active {
+            "the active player".to_string()
+        } else {
+            describe_player_filter(&decider)
+        };
+        format!("{} may {}", participant, join_with_and(&parts))
     })
 }
 
@@ -6709,9 +6710,10 @@ fn describe_consult_conditional_may_cast_remainder_bottom(effects: &[&Effect]) -
         crate::effect::ValueComparisonOperator::LessThan => {
             format!("less than {}", describe_value(right))
         }
-        crate::effect::ValueComparisonOperator::LessThanOrEqual => {
-            format!("less than or equal to {}", describe_value(right))
-        }
+        crate::effect::ValueComparisonOperator::LessThanOrEqual => match right {
+            Value::Fixed(n) => format!("{n} or less"),
+            right => format!("less than or equal to {}", describe_value(right)),
+        },
         _ => return None,
     };
     if conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
@@ -6799,9 +6801,10 @@ fn describe_consult_exile_may_cast_else_your_hand(effects: &[Effect]) -> Option<
         crate::effect::ValueComparisonOperator::LessThan => {
             format!("less than {}", describe_value(right))
         }
-        crate::effect::ValueComparisonOperator::LessThanOrEqual => {
-            format!("less than or equal to {}", describe_value(right))
-        }
+        crate::effect::ValueComparisonOperator::LessThanOrEqual => match right {
+            Value::Fixed(n) => format!("{n} or less"),
+            right => format!("less than or equal to {}", describe_value(right)),
+        },
         _ => return None,
     };
     if conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
@@ -6959,6 +6962,13 @@ pub(in crate::compiled_text) fn describe_same_name_three_zone_extraction(
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    // Preserve a direct quantified discard actor before generic rendering
+    // flattens `NotYou` to the singular description "a player other than
+    // you". The paired outcome metric proves this is the all-participants
+    // instruction represented by the producer.
+    if let Some(compact) = describe_discard_then_draw_for_discarded(effects) {
+        return compact;
+    }
     // This exact producer/consumer triple is a single authored library
     // procedure. Recognize it before broad list renderers can consume the
     // consult, move, and remainder independently and lose their shared tags.
@@ -7337,7 +7347,18 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
         include!("effect_list/loop_patterns_early.rs");
         include!("effect_list/loop_patterns_late.rs");
     }
-    let text = parts.join(". ");
+    let text = parts
+        .into_iter()
+        .enumerate()
+        .map(|(index, part)| {
+            if index == 0 {
+                part
+            } else {
+                capitalize_first(&part)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(". ");
     if let Some(compact) = normalize_haunting_echoes_text(&text) {
         return compact;
     }
@@ -9163,6 +9184,9 @@ fn describe_hand_pipeline_then_leading_conditional(effects: &[Effect]) -> Option
 }
 
 pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
+    if let Some(compact) = describe_discard_then_draw_for_discarded(effects) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_choose_exiled_card_then_play_without_paying(effects) {
         return Some(lowercase_first(&compact));
     }
@@ -9387,11 +9411,12 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         }
         let suffix = describe_effect_clause_list(&effects[2..])
             .unwrap_or_else(|| describe_effect_list(&effects[2..]));
-        return Some(format!(
-            "{}. {}",
-            prefix.trim_end_matches('.'),
-            capitalize_first(suffix.trim_end_matches('.'))
-        ));
+        let suffix = capitalize_first(suffix.trim_end_matches('.'));
+        let suffix = suffix
+            .strip_prefix("You ")
+            .map(capitalize_first)
+            .unwrap_or(suffix);
+        return Some(format!("{}. {}", prefix.trim_end_matches('.'), suffix));
     }
 
     if let Some(compact) = describe_optional_look_then_reveal_top_rest_bottom(effects) {

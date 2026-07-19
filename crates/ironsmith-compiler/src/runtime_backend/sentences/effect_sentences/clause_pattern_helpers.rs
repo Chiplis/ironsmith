@@ -12,7 +12,6 @@ use crate::{ChoiceCount, Supertype};
 use super::super::activation_and_restrictions::activation_restriction_clauses::starts_with_target_indicator;
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
 use super::super::grammar::effects::clause_pattern_shapes as clause_shapes;
-use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{

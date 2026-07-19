@@ -960,7 +960,9 @@ pub fn run_replay_test(input: impl Into<ReplayInput>, config: ReplayTestConfig) 
     let mut trigger_queue = TriggerQueue::new();
 
     // Run priority loop - this handles casting spells, stack resolution, etc.
-    let _ = run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm);
+    if let Err(err) = run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm) {
+        eprintln!("run_replay_test: priority loop ended with error: {err:?}");
+    }
 
     game
 }

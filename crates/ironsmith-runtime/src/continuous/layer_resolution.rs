@@ -682,9 +682,15 @@ pub(super) fn calculate_with_layers(
                 Modification::RemoveAbilityGeneric { ability, .. } => {
                     chars
                         .abilities
-                        .retain(|candidate| !object_abilities_match(candidate, ability));
+                        .retain(|candidate| !object_ability_matches_loss(candidate, ability));
                     if let AbilityKind::Static(static_ability) = &ability.kind {
-                        chars.static_abilities.retain(|sa| sa != static_ability);
+                        chars.static_abilities.retain(|candidate| {
+                            candidate != static_ability
+                                && !(static_ability.id()
+                                    == crate::static_abilities::StaticAbilityId::Banding
+                                    && candidate.id()
+                                        == crate::static_abilities::StaticAbilityId::BandsWithOther)
+                        });
                     }
                 }
                 Modification::RemoveAllAbilities => {
@@ -1937,9 +1943,61 @@ pub(super) fn resolve_value_with_context(
                 .sum()
         }
         Value::PartySize(player_filter) => {
+            // Count the party through the in-progress layered characteristics.
+            // Going through GameState's calculated queries here would restart
+            // the full layer pipeline and recurse back into this value.
             required_continuous_value_players(value, ctx, player_filter, controller, source)
                 .into_iter()
-                .map(|player| crate::party::party_size(ctx.game, player))
+                .map(|player| {
+                    const PARTY_ROLES: [Subtype; 4] = [
+                        Subtype::Cleric,
+                        Subtype::Rogue,
+                        Subtype::Warrior,
+                        Subtype::Wizard,
+                    ];
+                    // Bit `assignment` is set when that subset of the four
+                    // roles is reachable (same DP as crate::party::party_size).
+                    let mut reachable_assignments = 1u16;
+                    for object_id in ctx.battlefield.iter().copied() {
+                        let Some(chars) = ctx.effects.calculate_characteristics(
+                            object_id,
+                            ctx.objects,
+                            ctx.battlefield,
+                            ctx.game,
+                        ) else {
+                            continue;
+                        };
+                        if chars.controller != player
+                            || !chars.card_types.contains(&CardType::Creature)
+                        {
+                            continue;
+                        }
+                        let mut creature_roles = 0u8;
+                        for (index, role) in PARTY_ROLES.iter().copied().enumerate() {
+                            if chars.subtypes.contains(&role) {
+                                creature_roles |= 1 << index;
+                            }
+                        }
+                        let previous_assignments = reachable_assignments;
+                        for assignment in 0u8..16 {
+                            if previous_assignments & (1u16 << assignment) == 0 {
+                                continue;
+                            }
+                            let available_roles = creature_roles & !assignment;
+                            for role_index in 0..4 {
+                                let role = 1u8 << role_index;
+                                if available_roles & role != 0 {
+                                    reachable_assignments |= 1u16 << (assignment | role);
+                                }
+                            }
+                        }
+                    }
+                    (0u8..16)
+                        .filter(|assignment| reachable_assignments & (1u16 << assignment) != 0)
+                        .map(|assignment| assignment.count_ones() as i32)
+                        .max()
+                        .unwrap_or(0)
+                })
                 .sum()
         }
         Value::GreatestToughness(filter) => {
@@ -2496,6 +2554,7 @@ pub(super) fn effect_can_change_static_ability_presence(effect: &ContinuousEffec
             | Modification::SetAuraAttachmentFilter(_)
             | Modification::SetAbilities(_)
             | Modification::RemoveAbility(_)
+            | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )

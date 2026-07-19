@@ -746,7 +746,11 @@ pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Opt
         .replace("that player's library", "their library")
         .replace("that player's hand", "their hand")
         .replace(", then that player shuffles", ", then shuffle")
-        .replace(". Then that player shuffles", ". Then shuffle");
+        .replace(". Then that player shuffles", ", then shuffle")
+        .replace(", then they shuffle", ", then shuffle")
+        .replace(". Then they shuffle", ", then shuffle")
+        .replace(", then they shuffles", ", then shuffle")
+        .replace(". Then they shuffles", ", then shuffle");
     Some(search_text)
 }
 
@@ -772,7 +776,12 @@ pub(super) fn describe_for_players_may_search_library_then_shuffle(
             describe_iterated_player_search_effects(&may.effects)?
         };
         let rest = search_text.strip_prefix("Search ")?;
-        return Some(format!("{subject} may search {}", lowercase_first(rest)));
+        let rendered = format!("{subject} may search {}", lowercase_first(rest));
+        return Some(
+            rendered
+                .replace(". Then they shuffle", ", then shuffle")
+                .replace(". Then they shuffles", ", then shuffle"),
+        );
     }
 
     let [search_effect, shuffle_effect] = for_players.effects.as_slice() else {
@@ -1051,7 +1060,7 @@ pub(super) fn describe_for_players_search_library_then_shuffle(
             .replace(", put ", ", puts ")
             .replace(". Put ", ". Puts ")
             .replace(", then shuffle", ", then shuffles")
-            .replace(". Then shuffle", ". Then shuffles");
+            .replace(". Then shuffle", ", then shuffles");
     }
     let verb = if subject == "You" {
         "search"
@@ -1061,7 +1070,7 @@ pub(super) fn describe_for_players_search_library_then_shuffle(
     Some(format!("{subject} {verb} {rest}"))
 }
 
-pub(super) fn describe_each_player_return_from_graveyard_to_hand(
+pub(in crate::compiled_text) fn describe_each_player_return_from_graveyard_to_hand(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
     if for_players.filter != PlayerFilter::Any {
@@ -1093,7 +1102,19 @@ pub(super) fn describe_each_player_choose_type_return_from_graveyard_to_hand(
     if for_players.filter != PlayerFilter::Any {
         return None;
     }
-    let [choose_effect, return_effect] = for_players.effects.as_slice() else {
+    // The choose/return pair may arrive as two sibling effects or folded
+    // into a single per-player SequenceEffect by sentence lowering.
+    let effects: &[Effect] = match for_players.effects.as_slice() {
+        [single] => {
+            if let Some(sequence) = single.downcast_ref::<crate::effects::SequenceEffect>() {
+                &sequence.effects
+            } else {
+                return None;
+            }
+        }
+        effects => effects,
+    };
+    let [choose_effect, return_effect] = effects else {
         return None;
     };
     let choose_type = choose_effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()?;
@@ -2178,12 +2199,19 @@ pub(super) fn describe_tagged_for_each_put_counters(
         return None;
     }
 
-    let description = for_each.filter.description();
-    let filter_text = strip_indefinite_article(&description);
-    let first_clause = format!(
-        "Put {} on each {filter_text}",
-        describe_put_counter_phrase(&put.amount, put.counter_type)
-    );
+    let first_clause = if this_way_back_reference_filter(&for_each.filter) {
+        format!(
+            "Put {} on each of them",
+            describe_put_counter_phrase(&put.amount, put.counter_type)
+        )
+    } else {
+        let description = for_each.filter.description();
+        let filter_text = strip_indefinite_article(&description);
+        format!(
+            "Put {} on each {filter_text}",
+            describe_put_counter_phrase(&put.amount, put.counter_type)
+        )
+    };
     Some((
         tag,
         first_clause,
@@ -4016,12 +4044,22 @@ fn describe_iterated_player_for_each_life_amount(amount: &Value, subject: &str) 
     counted = counted
         .replace("that player's", possessive)
         .replace("that player", personal);
+    if subject != "You" {
+        counted = rewrite_iterated_player_references(&counted);
+    }
     Some(format!("{multiplier} life for each {counted}"))
 }
 
 pub(super) fn describe_for_players_simple_iterated_action(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
+    // Dedicated surfaces first — the generic "that player ..." rewrite below
+    // can't conjugate coordinated verb chains ("chooses ... and returns ...").
+    if let Some(compact) =
+        describe_each_player_choose_type_return_from_graveyard_to_hand(for_players)
+    {
+        return Some(compact);
+    }
     let [effect] = for_players.effects.as_slice() else {
         return None;
     };
@@ -4325,6 +4363,18 @@ fn rewrite_iterated_player_references(text: &str) -> String {
         .replace("they draws", "they draw")
         .replace("they discards", "they discard")
         .replace("they sacrifices", "they sacrifice")
+        .replace("they shuffles", "they shuffle")
+        .replace("they searches", "they search")
+        .replace("they reveals", "they reveal")
+        .replace("they puts", "they put")
+        .replace("they returns", "they return")
+        .replace("they exiles", "they exile")
+        .replace("they pays", "they pay")
+        .replace("they loses", "they lose")
+        .replace("they gains", "they gain")
+        .replace("they chooses", "they choose")
+        .replace("they mills", "they mill")
+        .replace("they scries", "they scry")
 }
 
 pub(super) fn iterated_player_structural_action_phrase(

@@ -365,6 +365,7 @@ pub(crate) enum TriggerSpec {
         counter_type: Option<CounterType>,
         source_controller: Option<PlayerFilter>,
         one_or_more: bool,
+        include_players: bool,
     },
     CounterRemovedFrom {
         filter: ObjectFilter,
@@ -554,10 +555,6 @@ pub(crate) enum PredicateAst {
         filter: ObjectFilter,
     },
     PlayerControlsMoreThanEachOtherPlayer {
-        player: PlayerAst,
-        filter: ObjectFilter,
-    },
-    AnOpponentControlsMoreThanPlayer {
         player: PlayerAst,
         filter: ObjectFilter,
     },

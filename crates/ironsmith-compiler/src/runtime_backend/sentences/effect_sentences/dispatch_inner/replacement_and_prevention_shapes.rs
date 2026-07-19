@@ -107,6 +107,13 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     let Some(shape) = replacement_grammar::parse_exile_return_same_shape(tokens) else {
         return Ok(None);
     };
+    crate::parse_trace::event(format!(
+        "exile-return-same: counter_tokens={:?} return_tokens_len={}",
+        shape
+            .counter_tokens
+            .map(crate::runtime_backend::token_word_refs),
+        shape.return_tokens.len()
+    ));
 
     let mut first_effects = parse_effect_chain_inner(shape.exile_tokens)?;
     if !first_effects.iter().any(|effect| {
@@ -126,8 +133,12 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     let mut second_effects = if let Some(effects) = parse_sentence_return_with_counters_on_it(
         super::SubjectVerbPrimitiveClause::new(shape.return_tokens),
     )? {
+        crate::parse_trace::event("exile-return-same: with-counters parser matched".to_string());
         effects
     } else {
+        crate::parse_trace::event(
+            "exile-return-same: with-counters parser MISSED, chain fallback".to_string(),
+        );
         parse_effect_chain_inner(shape.return_tokens)?
     };
     let has_counter_followup = second_effects.iter().any(|effect| {

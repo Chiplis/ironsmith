@@ -44,6 +44,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = compact_any_player_may_choose_sacrifice_surface(&normalized) {
         normalized = compact;
     }
+    normalized = normalize_post_search_shuffle_tails(&normalized);
+    normalized = normalize_else_branch_otherwise_surface(&normalized);
+    normalized = normalize_redundant_choose_target_opponent_scaffold(&normalized);
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalize_searched_tagged_hand_followup(&normalized);
@@ -4363,4 +4366,121 @@ pub(crate) fn strip_square_bracketed_segments(text: &str) -> String {
         idx += 1;
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Post-search/reveal library shuffles use the modern oracle tail ("Then
+/// shuffle" / "Then that player shuffles") instead of restating the library
+/// noun. Gated on a preceding search or reveal-from-library clause in the
+/// same line so standalone shuffle instructions keep their explicit object.
+fn normalize_post_search_shuffle_tails(line: &str) -> String {
+    let mut normalized = line.to_string();
+
+    // Inside a quantified optional search, the shuffle remains part of the
+    // same may-action. Generic sentence rendering can repeat the plural actor
+    // as a new sentence; restore the authored connective and implicit actor.
+    if let Some(idx) = normalized.find(". Then they shuffle") {
+        let before = normalized[..idx].to_ascii_lowercase();
+        if before.contains("may search their library") {
+            normalized.replace_range(idx..idx + ". Then they shuffle".len(), ", then shuffle");
+        }
+    }
+
+    // The comma variant stays connective-free: ", then shuffle" would be
+    // split as a separate clause by the semantic comparer, while oracle's
+    // "If you search your library this way, shuffle." keeps one clause.
+    for (needle, replacement) in [
+        (". Shuffle your library", ". Then shuffle"),
+        (", shuffle your library", ", shuffle"),
+    ] {
+        if let Some(idx) = normalized.find(needle) {
+            let before = normalized[..idx].to_ascii_lowercase();
+            if before.contains("search your library")
+                || before.contains("searches your library")
+                || before.contains("reveal cards from the top of your library")
+            {
+                let tail_start = idx + needle.len();
+                normalized = format!(
+                    "{}{replacement}{}",
+                    &normalized[..idx],
+                    &normalized[tail_start..]
+                );
+            }
+        }
+    }
+
+    let their_idx = normalized.find(". Shuffle their library");
+    if let Some(idx) = their_idx {
+        let before = normalized[..idx].to_ascii_lowercase();
+        if (before.contains("search") || before.contains("searches")) && before.contains("library")
+        {
+            let tail_start = idx + ". Shuffle their library".len();
+            normalized = format!(
+                "{}. Then that player shuffles{}",
+                &normalized[..idx],
+                &normalized[tail_start..]
+            );
+        }
+    }
+
+    normalized
+}
+
+/// Oracle writes the negative branch of an in-line conditional as
+/// "Otherwise, ..."; the renderer's literal else surface ("If that doesn't
+/// happen, ...") never appears in printed text. Gated on a preceding
+/// conditional marker so a bare else branch without an antecedent keeps the
+/// explicit form.
+fn normalize_else_branch_otherwise_surface(line: &str) -> String {
+    const NEEDLE: &str = ". If that doesn't happen, ";
+    let Some(idx) = line.find(NEEDLE) else {
+        return line.to_string();
+    };
+    let before = line[..idx].to_ascii_lowercase();
+    // A declined payment names the payer in oracle ("its controller may pay
+    // {1}. If that player doesn't, ..."); other declined choices read as
+    // "Otherwise, ...".
+    if before.contains(" may pay ") {
+        return format!(
+            "{}. If that player doesn't, {}",
+            &line[..idx],
+            &line[idx + NEEDLE.len()..]
+        );
+    }
+    let has_antecedent = before.contains(" if ")
+        || before.contains(" unless ")
+        || before.contains(" may ")
+        || before.starts_with("if ");
+    if !has_antecedent {
+        return line.to_string();
+    }
+    format!(
+        "{}. Otherwise, {}",
+        &line[..idx],
+        &line[idx + NEEDLE.len()..]
+    )
+}
+
+/// "Choose target opponent and <verb> ... target opponent ..." repeats the
+/// target selection oracle expresses once; the choose clause is renderer
+/// scaffolding for the shared target, so drop it when the remainder still
+/// names the target opponent.
+fn normalize_redundant_choose_target_opponent_scaffold(line: &str) -> String {
+    const PREFIXES: &[&str] = &["Choose target opponent and ", "choose target opponent and "];
+    let mut normalized = line.to_string();
+    for prefix in PREFIXES {
+        loop {
+            let Some(idx) = normalized.find(prefix) else {
+                break;
+            };
+            let sentence_start =
+                idx == 0 || normalized[..idx].ends_with(". ") || normalized[..idx].ends_with(": ");
+            let rest = &normalized[idx + prefix.len()..];
+            let rest_sentence = rest.split(". ").next().unwrap_or(rest);
+            if !sentence_start || !rest_sentence.contains("target opponent") {
+                break;
+            }
+            normalized = format!("{}{}", &normalized[..idx], capitalize_first(rest));
+        }
+    }
+    normalized
 }

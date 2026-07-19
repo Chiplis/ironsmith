@@ -62,6 +62,24 @@ use super::lifecycle::{
 pub type CreateTokenEffect = ironsmith_core::CreateTokenEffect<CardDefinition>;
 
 impl EffectExecutor for CreateTokenEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Token creation involves no player choices; defer to commit so the
+        // whole each-player action lands as one batch.
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
+
     fn execute(
         &self,
         game: &mut GameState,

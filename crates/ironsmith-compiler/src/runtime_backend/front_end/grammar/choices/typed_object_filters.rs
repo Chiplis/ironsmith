@@ -5,7 +5,7 @@ use crate::effect::Value;
 #[cfg(test)]
 use crate::filter::Comparison;
 use crate::filter::TaggedObjectConstraint;
-use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView};
+use crate::runtime_backend::front_end::lexer::OwnedLexToken;
 use crate::target::{ObjectFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 

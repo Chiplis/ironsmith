@@ -168,11 +168,10 @@ fn fallback_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilit
         CantFallbackFact::SourceCantAttackOrBlockUnlessEvenCounters => Some(
             StaticAbility::rule_fallback_text(format_negated_restriction_display(tokens)),
         ),
-        CantFallbackFact::SourceDamageDoubledForManaValueParity(_) => {
-            Some(StaticAbility::rule_fallback_text(
-                crate::runtime_backend::token_word_refs(tokens).join(" "),
-            ))
-        }
+        // Parity-scoped damage doubling lowers through the functional
+        // DoubleDamageAmountReplacement rule in the keyword-static family
+        // (parse_damage_doubling_mana_value_marker_line tries it first).
+        CantFallbackFact::SourceDamageDoubledForManaValueParity(_) => None,
     }
 }
 

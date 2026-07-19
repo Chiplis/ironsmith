@@ -4350,6 +4350,7 @@ enum PregameStage {
 }
 
 impl PregameState {
+    #[cfg(test)]
     fn new(turn_order: &[PlayerId], opening_hand_size: usize, format: MatchFormatInput) -> Self {
         Self::new_with_hand_sizes(
             turn_order,

@@ -609,6 +609,11 @@ fn normalize_that_player_references_for_clause_surface(text: &str) -> String {
         .replace("that player ", "they ")
         .replace(", that player ", ", they ")
         .replace("that player, ", "they, ")
+        // "The player" is the same anaphor in older templating; only the
+        // reveal-until "puts" form is canonicalized — the generic form
+        // over-rewrites first mentions.
+        .replace("The player puts", "They put")
+        .replace("the player puts", "they put")
 }
 
 /// Canonicalize player anaphors only after an explicit target-player actor has
@@ -660,8 +665,15 @@ fn normalize_carried_target_player_references(text: &str) -> String {
         .replace("that player sacrifices", "they sacrifice")
         .replace("That player owns", "They own")
         .replace("that player owns", "they own")
+        .replace("That player puts", "They put")
+        .replace("that player puts", "they put")
+        .replace("The player puts", "They put")
+        .replace("the player puts", "they put")
         .replace("That player ", "They ")
-        .replace("that player ", "they ");
+        .replace("that player ", "they ")
+        // Older templating names the carried player as "the player".
+        .replace("The player ", "They ")
+        .replace("the player ", "they ");
     format!("{prefix}{tail}")
 }
 
@@ -1288,6 +1300,16 @@ fn strip_ability_word_prefix(clause: &str) -> String {
     if is_chapter_style_prefix(prefix) {
         return trimmed.to_string();
     }
+    // A die-roll range endpoint ("1—9 | Each player draws a card") is not an
+    // ability word; keep the range intact.
+    if !prefix.trim().is_empty()
+        && prefix.trim().chars().all(|ch| ch.is_ascii_digit())
+        && tail
+            .trim_start()
+            .starts_with(|ch: char| ch.is_ascii_digit())
+    {
+        return trimmed.to_string();
+    }
     let tail = tail.trim();
     if tail.is_empty() {
         return trimmed.to_string();
@@ -1362,6 +1384,16 @@ fn strip_compiled_ability_cost_prefix(clause: &str) -> &str {
 /// verb is the same back-reference as "it".  Word-boundary aware so
 /// possessives ("that creature's controller") are left alone.
 fn normalize_anaphoric_object_surfaces(text: &str) -> String {
+    const HALF_PERMANENT_SENTINEL: &str = "half __ironsmith_that_permanent__ power and toughness";
+    // In an isolated characteristic-setting clause, "that permanent" can
+    // name a different antecedent from the subject denoted by "its". Protect
+    // that relationship from the generic possessive-anaphor rewrite below;
+    // the Saw in Half normalization handles its narrower, proven context
+    // explicitly after this pass.
+    let text = text.replace(
+        "half that permanent's power and toughness",
+        HALF_PERMANENT_SENTINEL,
+    );
     const REWRITES: &[(&str, &str)] = &[
         ("becomes blocked by a creature", "becomes blocked"),
         ("that creature's", "its"),
@@ -1389,8 +1421,12 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("Those creatures", "Each creature"),
         ("those cards", "them"),
         ("Those cards", "Them"),
-        // The just-chosen color/type back-reference.
+        // The just-chosen color/type back-reference. The renderer sometimes
+        // repeats the type family noun ("the chosen land type"); oracle's
+        // back-reference is bare.
         ("the chosen color", "that color"),
+        ("the chosen land type", "that type"),
+        ("the chosen creature type", "that type"),
         ("the chosen type", "that type"),
         // "deals damage ... to each of two target creatures" — full damage
         // to every target; the count alone carries the same meaning.
@@ -1410,12 +1446,175 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("shuffles your library", "shuffles"),
         ("shuffle their library", "shuffle"),
         ("shuffles their library", "shuffles"),
+        ("Shuffle your library", "Shuffle"),
+        ("Shuffle their library", "Shuffle"),
+        // Negated control is templated both ways per card era; canonicalize
+        // so "don't control an artifact" and "control no artifacts" agree.
+        ("don't control an", "control no"),
+        ("don't control a", "control no"),
+        ("doesn't control an", "controls no"),
+        ("doesn't control a", "controls no"),
+        // "each player's end step" is the pre-2023 templating of
+        // "each end step" — the same trigger event.
+        ("each player's end step", "each end step"),
+        // Whole-graveyard shuffles are templated with and without the
+        // explicit card enumeration across eras; canonicalize to the modern
+        // short form.
+        (
+            "shuffle all cards from your graveyard into your library",
+            "shuffle your graveyard into your library",
+        ),
+        (
+            "Shuffle all cards from your graveyard into your library",
+            "Shuffle your graveyard into your library",
+        ),
+        (
+            "shuffles all cards from their graveyard into their library",
+            "shuffles their graveyard into their library",
+        ),
+        (
+            "shuffle all cards from their graveyard into their library",
+            "shuffle their graveyard into their library",
+        ),
+        (
+            "shuffle all cards from its owner's graveyard into its owner's library",
+            "its owner shuffles their graveyard into their library",
+        ),
+        // The copy retarget rider is printed both as its own sentence and
+        // conjoined ("copy it and you may ..."); canonicalize to one shape.
+        (
+            "copy that spell. You may choose new targets for the copy",
+            "copy it and you may choose new targets for the copy",
+        ),
+        (
+            "copy that spell or ability. You may choose new targets for the copy",
+            "copy it and you may choose new targets for the copy",
+        ),
+        (
+            "copy that ability. You may choose new targets for the copy",
+            "copy it and you may choose new targets for the copy",
+        ),
+        (
+            "copy it. You may choose new targets for the copy",
+            "copy it and you may choose new targets for the copy",
+        ),
+        (
+            "copy that spell. They may choose new targets for that copy",
+            "copy it and you may choose new targets for the copy",
+        ),
+        (
+            "Copy that spell. You may choose new targets for the copy",
+            "Copy it and you may choose new targets for the copy",
+        ),
+        (
+            "Copy that spell or ability. You may choose new targets for the copy",
+            "Copy it and you may choose new targets for the copy",
+        ),
+        (
+            "Copy it. You may choose new targets for the copy",
+            "Copy it and you may choose new targets for the copy",
+        ),
+        (
+            "Copy that ability. You may choose new targets for the copy",
+            "Copy it and you may choose new targets for the copy",
+        ),
+        // A one-shot flicker return names its object either way ("return the
+        // exiled card" / "return it"); the antecedent is the same exile.
+        // Anchored to the delayed-return contexts so "a card exiled with
+        // this enchantment" phrasings (Purgatory) keep their 'exiled' token.
+        (
+            "step, return the exiled card to the battlefield",
+            "step, return it to the battlefield",
+        ),
+        (
+            "Return the exiled card to the battlefield",
+            "Return it to the battlefield",
+        ),
+        // A reflexive controller/owner destination is implicit in oracle
+        // ("Return ... to the battlefield"); only a control CHANGE ("under
+        // your control") is spelled out, and those forms are untouched.
+        (
+            " to the battlefield face down under its owner's control",
+            " to the battlefield face down",
+        ),
+        (
+            " to the battlefield face down under their owners' control",
+            " to the battlefield face down",
+        ),
+        (
+            " to the battlefield face down under their owner's control",
+            " to the battlefield face down",
+        ),
+        (
+            " to the battlefield under their owners' control",
+            " to the battlefield",
+        ),
+        (
+            " to the battlefield under their owner's control",
+            " to the battlefield",
+        ),
+        (
+            " to the battlefield under its owner's control",
+            " to the battlefield",
+        ),
+        (
+            " to the battlefield under its owners' control",
+            " to the battlefield",
+        ),
+        (
+            "create a token that's a copy of it under its controller's control",
+            "its controller creates a token that's a copy of it",
+        ),
+        // Oracle always sequences looting as ", then discard(s)"; the
+        // renderer's "and" join is the same instruction sequence. No
+        // trailing space in the needle — the rewriter's word-boundary check
+        // rejects matches whose tail continues with a letter.
+        (" cards and discards", " cards, then discards"),
+        (" card and discards", " card, then discards"),
+        (" cards and discard", " cards, then discard"),
+        (" card and discard", " card, then discard"),
+        // Battlefield is the implicit zone for an iterated permanent noun;
+        // both templatings appear across eras, so canonicalize both sides.
+        (
+            "for each creature token on the battlefield",
+            "for each creature token",
+        ),
+        (
+            "For each creature token on the battlefield",
+            "For each creature token",
+        ),
+        ("for each creature on the battlefield", "for each creature"),
+        ("For each creature on the battlefield", "For each creature"),
+        ("for each land on the battlefield", "for each land"),
+        ("For each land on the battlefield", "For each land"),
+        ("for each artifact on the battlefield", "for each artifact"),
+        ("For each artifact on the battlefield", "For each artifact"),
+        (
+            "for each enchantment on the battlefield",
+            "for each enchantment",
+        ),
+        (
+            "For each enchantment on the battlefield",
+            "For each enchantment",
+        ),
+        (
+            "for each permanent on the battlefield",
+            "for each permanent",
+        ),
+        (
+            "For each permanent on the battlefield",
+            "For each permanent",
+        ),
     ];
-    let mut normalized = text.to_string();
+    let mut normalized = text;
     for (from, to) in REWRITES {
         if !normalized.contains(from) {
             continue;
         }
+        // "each of those creatures" is partitive, not a group reference —
+        // but only the demonstrative-group rewrites are sensitive to it;
+        // "cards of the chosen type" must still rewrite.
+        let partitive_sensitive = from.starts_with("those") || from.starts_with("Those");
         let mut rewritten = String::with_capacity(normalized.len());
         let mut rest = normalized.as_str();
         while let Some(idx) = rest.find(from) {
@@ -1424,8 +1623,8 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
                 .chars()
                 .next()
                 .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '\'' && c != '’');
-            // "each of those creatures" is partitive, not a group reference.
-            let partitive = rest[..idx].ends_with("of ") || rest[..idx].ends_with("Of ");
+            let partitive = partitive_sensitive
+                && (rest[..idx].ends_with("of ") || rest[..idx].ends_with("Of "));
             rewritten.push_str(&rest[..idx]);
             rewritten.push_str(if boundary && !partitive { to } else { from });
             rest = after;
@@ -1433,7 +1632,10 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         rewritten.push_str(rest);
         normalized = rewritten;
     }
-    normalized
+    normalized.replace(
+        HALF_PERMANENT_SENTINEL,
+        "half that permanent's power and toughness",
+    )
 }
 
 fn normalize_repeated_you_after_draw(text: &str) -> String {
@@ -2567,8 +2769,20 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "except their power is half that permanent's power and their toughness is half that permanent's toughness. Round up each time",
             "except their power and toughness are each half that permanent's power and toughness, rounded up",
         )
+        .replace(
+            "except their power is half its power and their toughness is half its toughness",
+            "except their power and toughness are each half its power and toughness",
+        )
         .replace(". Round up each time", ", rounded up")
         .replace(". round up each time", ", rounded up")
+        .replace(
+            "If it dies this way, Create two tokens that are copies of it under its controller's control, except",
+            "If it dies this way, its controller creates two tokens that are copies of it, except",
+        )
+        .replace(
+            "if it dies this way, create two tokens that are copies of it under its controller's control, except",
+            "if it dies this way, its controller creates two tokens that are copies of it, except",
+        )
         .replace(
             "If that permanent dies this way, Create two tokens that are copies of it under its controller's control, except",
             "If that creature dies this way, its controller creates two tokens that are copies of that creature, except",
@@ -3006,16 +3220,15 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "choose new targets for the copy",
         );
     }
-    if normalized
-        .to_ascii_lowercase()
-        .contains("if that creature dies this way")
-        && normalized
-            .to_ascii_lowercase()
-            .contains("copies of that creature")
-    {
+    let lower_normalized = normalized.to_ascii_lowercase();
+    let saw_in_half_context = (lower_normalized.contains("if that creature dies this way")
+        && lower_normalized.contains("copies of that creature"))
+        || (lower_normalized.contains("if it dies this way")
+            && lower_normalized.contains("copies of it"));
+    if saw_in_half_context {
         normalized = normalized.replace(
             "half that permanent's power and toughness",
-            "half that creature's power and toughness",
+            "half its power and toughness",
         );
     }
     let normalized = normalized
@@ -4519,6 +4732,14 @@ fn normalize_word(token: &str) -> Option<String> {
         "deals" | "dealing" | "dealt" => "deal".to_string(),
         "matches" | "matched" | "matching" => "match".to_string(),
         "has" => "have".to_string(),
+        // Short (<=4 letter) verbs escape the generic s-strip above; their
+        // agreement forms are never a semantic difference.
+        "puts" => "put".to_string(),
+        "does" => "do".to_string(),
+        "pays" | "paid" => "pay".to_string(),
+        "wins" | "won" => "win".to_string(),
+        "adds" => "add".to_string(),
+        "taps" => "tap".to_string(),
         _ => base,
     };
     // NOTE: compiler-scaffolding vocabulary ("tag", "tagged", "object") is

@@ -379,6 +379,11 @@ fn is_subtype_word(word: &str) -> bool {
     if matches!(candidate.as_str(), "mice" | "ouphe" | "oxen" | "spacecraft") {
         return true;
     }
+    // "time"/"times" in rules text is always the English noun ("the number
+    // of times this ability has resolved"), never the Time subtype.
+    if matches!(candidate.as_str(), "time" | "times") {
+        return false;
+    }
     for family in [
         SubtypeFamily::Land,
         SubtypeFamily::Creature,

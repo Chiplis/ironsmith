@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, opt, peek, repeat, repeat_till};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -23,17 +23,6 @@ pub(crate) enum VoteCountRewriteSurface {
         vote: String,
     },
 }
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ReturnSourceLeavesSurface {
-    pub(crate) subject: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PreviousExileSurface;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct UntilThisSurface;
 
 pub(crate) fn parse_vote_count_rewrite_surface(sentence: &str) -> Option<VoteCountRewriteSurface> {
     let tokens = lex_line(sentence.trim(), 0).ok()?;
@@ -150,87 +139,6 @@ fn parse_vote_word(input: &mut LexStream<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_return_source_leaves_surface(
-    sentence: &str,
-) -> Option<ReturnSourceLeavesSurface> {
-    let tokens = lex_line(sentence.trim(), 0).ok()?;
-    primitives::parse_all(
-        &tokens,
-        parse_return_source_leaves_surface_lexed,
-        "return when source leaves",
-    )
-    .ok()
-}
-
-fn parse_return_source_leaves_surface_lexed(
-    input: &mut LexStream<'_>,
-) -> WResult<ReturnSourceLeavesSurface> {
-    primitives::phrase(&[
-        "return",
-        "that",
-        "card",
-        "to",
-        "the",
-        "battlefield",
-        "under",
-        "its",
-    ])
-    .parse_next(input)?;
-    alt((
-        primitives::kw("owner's"),
-        primitives::kw("owners"),
-        primitives::kw("owners'"),
-    ))
-    .parse_next(input)?;
-    primitives::phrase(&["control", "when", "this"]).parse_next(input)?;
-    let subject_tokens = repeat_till::<_, _, (), _, _, _, _>(
-        1..,
-        any.void(),
-        peek(primitives::phrase(&["leaves", "the", "battlefield"])),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(input)?;
-    primitives::phrase(&["leaves", "the", "battlefield"]).parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(ReturnSourceLeavesSurface {
-        subject: render(subject_tokens),
-    })
-}
-
-pub(crate) fn parse_previous_exile_surface(previous: &str) -> Option<PreviousExileSurface> {
-    let tokens = lex_line(previous.trim(), 0).ok()?;
-    if primitives::parse_all(
-        &tokens,
-        parse_until_this_surface_lexed,
-        "until-this surface",
-    )
-    .is_ok()
-    {
-        return None;
-    }
-    primitives::parse_all(
-        &tokens,
-        parse_previous_exile_surface_lexed,
-        "previous exile surface",
-    )
-    .ok()
-}
-
-fn parse_until_this_surface_lexed(input: &mut LexStream<'_>) -> WResult<UntilThisSurface> {
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::phrase(&["until", "this"]))
-        .parse_next(input)?;
-    repeat::<_, _, (), _, _>(0.., any.void()).parse_next(input)?;
-    Ok(UntilThisSurface)
-}
-
-fn parse_previous_exile_surface_lexed(input: &mut LexStream<'_>) -> WResult<PreviousExileSurface> {
-    repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw("exile"))
-        .parse_next(input)?;
-    repeat::<_, _, (), _, _>(0.., any.void()).parse_next(input)?;
-    Ok(PreviousExileSurface)
-}
-
 fn render(tokens: &[OwnedLexToken]) -> String {
     render_token_slice(tokens).trim().to_string()
 }
@@ -274,17 +182,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn parses_return_and_previous_exile_surfaces() {
-        let returned = parse_return_source_leaves_surface(
-            "Return that card to the battlefield under its owner's control when this artifact leaves the battlefield",
-        )
-        .expect("return surface");
-        assert_eq!(returned.subject, "artifact");
-        assert!(parse_previous_exile_surface("Exile target creature").is_some());
-        assert!(
-            parse_previous_exile_surface("Exile target creature until this artifact leaves")
-                .is_none()
-        );
-    }
 }

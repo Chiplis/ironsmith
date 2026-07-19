@@ -1425,6 +1425,14 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
+    // "As this artifact enters, you may have it become a copy of ..." has a
+    // dedicated as-enters copy-replacement static; let the static line family
+    // claim it instead of the generic as-enters effect program.
+    if super::super::grammar::keyword_static_lines::parse_enter_as_copy_tokens(&ctx.line.tokens)
+        .is_some()
+    {
+        return Ok(None);
+    }
     if let Some(split_result) =
         parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?
     {

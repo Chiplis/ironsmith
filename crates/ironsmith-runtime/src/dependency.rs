@@ -1888,11 +1888,46 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
         return true;
     }
 
+    if identical_unconditioned_additive_group(effects) {
+        return true;
+    }
+
     if attachment_scoped_effects_have_disjoint_scopes(effects, game) {
         return true;
     }
 
     non_pt_group_has_no_dynamic_dependencies(effects)
+}
+
+/// True when every effect in the group is an unconditioned copy of the same
+/// additive set-union modification over the same target. Ordering provably
+/// cannot matter: all effects share one filter, so an object either matches
+/// every effect in the group at a given stage or none of them — an unmatched
+/// object is never modified by any group member and can never start matching
+/// mid-sequence, while a matched object receives the same idempotent union
+/// regardless of order. Six copies of Mycosynth Lattice ("all permanents are
+/// artifacts...") previously forced quadratic full-board baseline sorting on
+/// every characteristics recompute through exactly this shape.
+fn identical_unconditioned_additive_group(effects: &[&ContinuousEffect]) -> bool {
+    let first = effects[0];
+    if first.condition.is_some() {
+        return false;
+    }
+    if !matches!(
+        first.modification,
+        Modification::AddCardTypes(_)
+            | Modification::AddSubtypes(_)
+            | Modification::AddSupertypes(_)
+            | Modification::AddAllSubtypesOfFamily(_)
+            | Modification::AddColors(_)
+    ) {
+        return false;
+    }
+    effects.iter().skip(1).all(|effect| {
+        effect.condition.is_none()
+            && effect.modification == first.modification
+            && effect.applies_to == first.applies_to
+    })
 }
 
 /// The single battlefield object this effect can ever apply to, when the

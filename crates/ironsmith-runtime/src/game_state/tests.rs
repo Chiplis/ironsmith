@@ -482,10 +482,17 @@ fn active_player_filters_still_invalidate_characteristic_cache() {
 #[test]
 fn cloned_state_cows_extended_battlefield_flags() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = crate::ids::PlayerId::from_index(0);
     let renowned = ObjectId::from_raw(10_004);
     let face_down = ObjectId::from_raw(10_005);
     let transformed = ObjectId::from_raw(10_006);
-    let phased = ObjectId::from_raw(10_007);
+    let phased = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Phasing Probe")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
 
     game.set_renowned(renowned);
     let mut hypothetical = game.clone();

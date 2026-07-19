@@ -516,6 +516,7 @@ mod tests {
     struct InspectColorChoiceDm {
         color: Color,
         awaiting: bool,
+        suspend_on_color_choice: bool,
         sources: Vec<Option<ObjectId>>,
         source_zones: Vec<Option<Zone>>,
         battlefield_sizes: Vec<usize>,
@@ -526,6 +527,7 @@ mod tests {
             Self {
                 color,
                 awaiting: false,
+                suspend_on_color_choice: false,
                 sources: Vec::new(),
                 source_zones: Vec::new(),
                 battlefield_sizes: Vec::new(),
@@ -545,6 +547,9 @@ mod tests {
                     .and_then(|source| game.object(source).map(|object| object.zone)),
             );
             self.battlefield_sizes.push(game.battlefield.len());
+            if self.suspend_on_color_choice {
+                self.awaiting = true;
+            }
             vec![self.color]
         }
     }
@@ -599,7 +604,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let entrant = create_color_chooser(&mut game, "Pending Reliquary", alice, Zone::Hand);
         let mut dm = InspectColorChoiceDm {
-            awaiting: true,
+            suspend_on_color_choice: true,
             ..InspectColorChoiceDm::synchronous(Color::Red)
         };
 

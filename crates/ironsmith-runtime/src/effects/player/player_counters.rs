@@ -26,6 +26,23 @@ impl PlayerCountersEffect {
 }
 
 impl EffectExecutor for PlayerCountersEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Player counters involve no choices.
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
+
     fn execute(
         &self,
         game: &mut GameState,

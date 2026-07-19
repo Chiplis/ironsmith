@@ -523,8 +523,11 @@ fn parse_sacrifice_source<'a>(input: &mut LexStream<'a>) -> WResult<SacrificeCos
                 primitives::kw("equipment"),
                 primitives::kw("fortification"),
                 primitives::kw("land"),
-                primitives::kw("permanent"),
-                primitives::kw("card"),
+                alt((
+                    primitives::kw("permanent"),
+                    primitives::kw("card"),
+                    primitives::kw("token"),
+                )),
             ))),
         )
             .void(),

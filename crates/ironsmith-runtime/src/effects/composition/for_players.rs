@@ -1,7 +1,7 @@
 //! ForPlayers effect implementation.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
@@ -97,6 +97,114 @@ fn order_selected_players_from(
     ordered_players
 }
 
+/// In Two-Headed Giant, a shared-life action like a "set life total" effect
+/// applies once per team: the team's primary player picks which head performs
+/// it at the team's first position in APNAP order. Returns, per shared
+/// effect, the acting players in that order; other effects keep ordinary
+/// per-player iteration.
+fn twohg_shared_action_players(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    players: &[PlayerId],
+) -> Result<std::collections::HashMap<usize, Vec<PlayerId>>, ExecutionError> {
+    let mut shared: std::collections::HashMap<usize, Vec<PlayerId>> =
+        std::collections::HashMap::new();
+    if game.two_headed_giant().is_none() {
+        return Ok(shared);
+    }
+    for (effect_index, effect) in effects.iter().enumerate() {
+        if effect
+            .downcast_ref::<crate::effects::SetLifeTotalEffect>()
+            .is_none()
+        {
+            continue;
+        }
+        let mut seen_teams = std::collections::HashSet::new();
+        for player in players.iter().copied() {
+            let Some(team) = game.team_index_for(player) else {
+                continue;
+            };
+            if !seen_teams.insert(team) {
+                continue;
+            }
+            let candidates = game
+                .team_players_for(player)
+                .into_iter()
+                .filter(|member| players.contains(member))
+                .collect::<Vec<_>>();
+            if candidates.len() == 1 {
+                shared.entry(effect_index).or_default().push(candidates[0]);
+                continue;
+            }
+            let options = candidates
+                .iter()
+                .filter_map(|member| {
+                    game.player(*member)
+                        .map(|candidate| (candidate.name.to_string(), *member))
+                })
+                .collect::<Vec<_>>();
+            let chooser = game.primary_player_for_team(team).unwrap_or(player);
+            let chosen = crate::decisions::ask_choose_one(
+                game,
+                &mut ctx.decision_maker,
+                chooser,
+                ctx.source,
+                &options,
+            )
+            .unwrap_or(player);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(shared);
+            }
+            shared.entry(effect_index).or_default().push(chosen);
+        }
+    }
+    Ok(shared)
+}
+
+
+/// True when this effect (or a nested child) selects objects through the
+/// given context tag, i.e. it consumes what an earlier tagged effect binds.
+fn effect_consumes_tag(effect: &Effect, tag: &crate::tag::TagKey) -> bool {
+    fn spec_consumes(spec: &crate::target::ChooseSpec, tag: &crate::tag::TagKey) -> bool {
+        match spec.base() {
+            crate::target::ChooseSpec::Tagged(spec_tag) => spec_tag == tag,
+            crate::target::ChooseSpec::Object(filter) => filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| &constraint.tag == tag),
+            _ => false,
+        }
+    }
+    if effect
+        .0
+        .get_target_spec()
+        .is_some_and(|spec| spec_consumes(spec, tag))
+    {
+        return true;
+    }
+    if effect
+        .0
+        .decision_related_object_specs()
+        .iter()
+        .any(|spec| spec_consumes(spec, tag))
+    {
+        return true;
+    }
+    let mut found = false;
+    effect.0.visit_child_effects(&mut |child| {
+        found |= effect_consumes_tag(child, tag);
+    });
+    found
+}
+
+/// The tag a wrapper effect binds for later effects, if any.
+fn effect_bound_tag(effect: &Effect) -> Option<crate::tag::TagKey> {
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.tag.clone())
+}
+
 impl EffectExecutor for ForPlayersEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -138,16 +246,17 @@ impl EffectExecutor for ForPlayersEffect {
         let mut outcomes = Vec::new();
         let mut outcomes_by_player = vec![Vec::new(); players.len()];
 
-        if !self.starting_with_controller
-            && !self.stop_after_first_happened
-            && self.effects.iter().any(|effect| {
+        if !self.starting_with_controller && !self.stop_after_first_happened {
+            if let Some(unsupported) = self.effects.iter().find(|effect| {
                 !effect.0.supports_simultaneous_player_action()
                     && !effect.0.is_read_only_simultaneous_player_action()
-            })
-        {
-            return Err(ExecutionError::Impossible(
-                "generic each-player action lacks simultaneous proposal support".to_string(),
-            ));
+            }) {
+                let mut description = format!("{:?}", unsupported.0);
+                description.truncate(120);
+                return Err(ExecutionError::Impossible(format!(
+                    "generic each-player action lacks simultaneous proposal support: {description}"
+                )));
+            }
         }
 
         if self.starting_with_controller || self.stop_after_first_happened {
@@ -175,100 +284,107 @@ impl EffectExecutor for ForPlayersEffect {
                 }
             }
         } else {
-            // CR 608.2e: for a generic each-player instruction, finish the
-            // first action for every player in APNAP order before beginning the
-            // next printed action.
-            for effect in &self.effects {
-                if effect.0.supports_simultaneous_player_action() {
-                    // CR 101.4/608.2f: collect every player's fully determined
-                    // proposal from one immutable state, then commit the whole
-                    // action as one transaction. No proposal can observe a
-                    // mutation committed for an earlier player.
-                    let action_players = if game.two_headed_giant().is_some()
-                        && effect
-                            .downcast_ref::<crate::effects::SetLifeTotalEffect>()
-                            .is_some()
-                    {
-                        let mut seen_teams = std::collections::HashSet::new();
-                        let mut selected = Vec::new();
-                        for player in players.iter().copied() {
-                            let Some(team) = game.team_index_for(player) else {
-                                selected.push(player);
-                                continue;
-                            };
-                            if !seen_teams.insert(team) {
-                                continue;
-                            }
-                            let candidates = game
-                                .team_players_for(player)
-                                .into_iter()
-                                .filter(|member| players.contains(member))
-                                .collect::<Vec<_>>();
-                            let options = candidates
-                                .iter()
-                                .filter_map(|member| {
-                                    game.player(*member)
-                                        .map(|candidate| (candidate.name.to_string(), *member))
-                                })
-                                .collect::<Vec<_>>();
-                            let chooser = game.primary_player_for_team(team).unwrap_or(player);
-                            let chosen = crate::decisions::ask_choose_one(
-                                game,
-                                &mut ctx.decision_maker,
-                                chooser,
-                                ctx.source,
-                                &options,
-                            )
-                            .unwrap_or(player);
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(EffectOutcome::count(0));
-                            }
-                            selected.push(chosen);
-                        }
-                        selected
-                    } else {
-                        players.clone()
-                    };
-                    let mut proposals = Vec::with_capacity(action_players.len());
-                    for player_id in action_players {
-                        let player_index = players
-                            .iter()
-                            .position(|candidate| *candidate == player_id)
-                            .expect("team-selected action player is in the iteration set");
-                        let proposal = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
-                            effect.0.prepare_simultaneous_player_action(game, ctx)
-                        })?;
-                        proposals.push((player_index, proposal));
-                    }
+            // CR 608.2f: choices for a simultaneous each-player action are
+            // made in APNAP order against the pre-action game state, then the
+            // whole action commits as one transaction. Decisions (including
+            // read-only chooser effects that tag the execution context) run
+            // player-major so one player's tags feed that player's own
+            // proposal without leaking into the next player's pass; game
+            // mutations are deferred to the batched commit below.
+            let shared_action_players =
+                twohg_shared_action_players(game, ctx, &self.effects, &players)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-                    let game_checkpoint = game.clone();
-                    let mut batch_outcomes = Vec::with_capacity(proposals.len());
-                    for (player_index, proposal) in proposals {
-                        match proposal.commit(game) {
-                            Ok(outcome) => batch_outcomes.push((player_index, outcome)),
-                            Err(error) => {
-                                *game = game_checkpoint;
-                                return Err(error);
+            // CR 608.2e: finish each printed action for every player before
+            // beginning the next. A read-only chooser effect is not a printed
+            // action of its own — it feeds the effect that follows it — so
+            // effects are grouped into action units: any run of read-only
+            // effects plus the next mutating effect. Within one unit, choices
+            // and proposal preparation happen player-major in APNAP order
+            // against the pre-action state (CR 608.2f, 101.4), keeping each
+            // player's context tags scoped to their own proposal; the unit
+            // then commits as one batch before the next unit begins.
+            let mut units: Vec<Vec<usize>> = Vec::new();
+            let mut current: Vec<usize> = Vec::new();
+            for (effect_index, effect) in self.effects.iter().enumerate() {
+                current.push(effect_index);
+                if effect.0.is_read_only_simultaneous_player_action() {
+                    continue;
+                }
+                // A mutating effect that binds a tag consumed by the next
+                // effect is half of one printed action ("return it ... with a
+                // counter on it") — keep the consumer in the same unit so the
+                // per-player commit interleaving preserves the tag handoff.
+                if let Some(tag) = effect_bound_tag(effect)
+                    && self
+                        .effects
+                        .get(effect_index + 1)
+                        .is_some_and(|next| effect_consumes_tag(next, &tag))
+                {
+                    continue;
+                }
+                units.push(std::mem::take(&mut current));
+            }
+            if !current.is_empty() {
+                units.push(current);
+            }
+
+            for unit in units {
+                let mut prepared: Vec<(usize, Box<dyn SimultaneousEffectProposal>)> = Vec::new();
+                // A shared (once-per-team) effect prepares for its chosen
+                // acting players in team-first APNAP order instead of every
+                // seat; the whole unit follows that ordering so commit order
+                // matches the pre-unit behavior.
+                let unit_shared_order: Option<&Vec<PlayerId>> = unit
+                    .iter()
+                    .find_map(|effect_index| shared_action_players.get(effect_index));
+                let unit_players: Vec<PlayerId> = match unit_shared_order {
+                    Some(acting) => acting.clone(),
+                    None => players.clone(),
+                };
+                for &player_id in &unit_players {
+                    let player_index = players
+                        .iter()
+                        .position(|candidate| *candidate == player_id)
+                        .expect("acting player is in the iteration set");
+                    ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                        for &effect_index in &unit {
+                            let effect = &self.effects[effect_index];
+                            if effect.0.is_read_only_simultaneous_player_action() {
+                                let outcome = execute_effect(game, effect, ctx)?;
+                                outcomes_by_player[player_index].push(outcome.clone());
+                                outcomes.push(outcome);
+                            } else if effect.0.supports_simultaneous_player_action() {
+                                let proposal =
+                                    effect.0.prepare_simultaneous_player_action(game, ctx)?;
+                                prepared.push((player_index, proposal));
+                            } else {
+                                return Err(ExecutionError::Impossible(
+                                    "generic each-player action lacks simultaneous proposal support"
+                                        .to_string(),
+                                ));
                             }
                         }
+                        Ok::<(), ExecutionError>(())
+                    })?;
+                }
+
+                let game_checkpoint = game.clone();
+                let mut batch_outcomes = Vec::with_capacity(prepared.len());
+                for (player_index, proposal) in prepared {
+                    match proposal.commit(game, ctx) {
+                        Ok(outcome) => batch_outcomes.push((player_index, outcome)),
+                        Err(error) => {
+                            *game = game_checkpoint;
+                            return Err(error);
+                        }
                     }
-                    for (player_index, outcome) in batch_outcomes {
-                        outcomes_by_player[player_index].push(outcome.clone());
-                        outcomes.push(outcome);
-                    }
-                } else if effect.0.is_read_only_simultaneous_player_action() {
-                    for (player_index, &player_id) in players.iter().enumerate() {
-                        let outcome = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
-                            execute_effect(game, effect, ctx)
-                        })?;
-                        outcomes_by_player[player_index].push(outcome.clone());
-                        outcomes.push(outcome);
-                    }
-                } else {
-                    return Err(ExecutionError::Impossible(
-                        "generic each-player action lacks simultaneous proposal support"
-                            .to_string(),
-                    ));
+                }
+                for (player_index, outcome) in batch_outcomes {
+                    outcomes_by_player[player_index].push(outcome.clone());
+                    outcomes.push(outcome);
                 }
             }
         }
@@ -306,7 +422,11 @@ mod tests {
     struct ReadOnlyChoiceProposal;
 
     impl crate::effects::SimultaneousEffectProposal for ReadOnlyChoiceProposal {
-        fn commit(self: Box<Self>, _game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+        fn commit(
+            self: Box<Self>,
+            _game: &mut GameState,
+            _ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
             Ok(EffectOutcome::count(0))
         }
     }
@@ -388,7 +508,11 @@ mod tests {
     }
 
     impl crate::effects::SimultaneousEffectProposal for AtomicBatchProposal {
-        fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+        fn commit(
+            self: Box<Self>,
+            game: &mut GameState,
+            _ctx: &mut ExecutionContext,
+        ) -> Result<EffectOutcome, ExecutionError> {
             if self.fail {
                 return Err(ExecutionError::Impossible("probe failure".to_string()));
             }
@@ -579,11 +703,16 @@ mod tests {
         .execute(&mut game, &mut ctx)
         .expect_err("unsupported mutation must not run sequentially");
 
-        assert_eq!(
-            error,
-            ExecutionError::Impossible(
-                "generic each-player action lacks simultaneous proposal support".to_string()
-            )
+        let ExecutionError::Impossible(message) = &error else {
+            panic!("expected Impossible error, got {error:?}");
+        };
+        assert!(
+            message.starts_with("generic each-player action lacks simultaneous proposal support"),
+            "unexpected gate message: {message}"
+        );
+        assert!(
+            message.contains("UnsupportedMutationProbe"),
+            "gate message should name the offending effect: {message}"
         );
         assert_eq!(game.player(alice).expect("alice").life, 20);
         assert_eq!(game.player(bob).expect("bob").life, 20);

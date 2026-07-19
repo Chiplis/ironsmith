@@ -248,25 +248,6 @@ impl LoweredSubject {
         Ok(resolved)
     }
 
-    pub(crate) fn bind_battlefield_filter_with_default_controller(
-        &self,
-        filter: &ObjectFilter,
-        ctx: &mut EffectLoweringContext,
-    ) -> Result<ObjectFilter, CardTextError> {
-        let mut resolved = self.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
-        if resolved.zone.is_none() {
-            resolved.zone = Some(Zone::Battlefield);
-        }
-        if resolved.zone == Some(Zone::Battlefield)
-            && resolved.controller.is_none()
-            && resolved.tagged_constraints.is_empty()
-            && resolved.could_be_targeted_by.is_none()
-        {
-            resolved.controller = Some(self.player_filter.clone());
-        }
-        Ok(resolved)
-    }
-
     pub(crate) fn bind_revealed_hand_choice_filter(
         &self,
         filter: &ObjectFilter,

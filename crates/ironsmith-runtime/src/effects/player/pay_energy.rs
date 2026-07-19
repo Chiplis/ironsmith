@@ -239,8 +239,97 @@ impl EffectExecutor for PayAnyLifeEffect {
         }
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+        if !game.can_lose_life(player_id) {
+            return Ok(Box::new(PayAnyLifeProposal {
+                player: player_id,
+                amount: 0,
+            }));
+        }
+        let available = game
+            .player(player_id)
+            .map(|player| player.life)
+            .unwrap_or(0)
+            .max(0) as u32;
+        if available < self.min_amount {
+            return Ok(Box::new(PayAnyLifeProposal {
+                player: player_id,
+                amount: 0,
+            }));
+        }
+        let number_spec = if self.min_amount == 0 {
+            NumberSpec::up_to(ctx.source, available, "Choose how much life to pay")
+        } else {
+            NumberSpec::range(
+                ctx.source,
+                self.min_amount,
+                available,
+                "Choose how much life to pay",
+            )
+        };
+        let chosen = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            player_id,
+            Some(ctx.source),
+            number_spec,
+            FallbackStrategy::Maximum,
+        );
+        let amount = if ctx.decision_maker.awaiting_choice() {
+            0
+        } else {
+            chosen.clamp(self.min_amount, available)
+        };
+        Ok(Box::new(PayAnyLifeProposal {
+            player: player_id,
+            amount,
+        }))
+    }
+
     fn target_description(&self) -> &'static str {
         "player to pay life"
+    }
+}
+
+/// One player's declared life payment for a simultaneous each-player round;
+/// the amount was chosen against pre-round state and commits atomically with
+/// the other players' payments.
+#[derive(Debug)]
+struct PayAnyLifeProposal {
+    player: crate::ids::PlayerId,
+    amount: u32,
+}
+
+impl crate::effects::SimultaneousEffectProposal for PayAnyLifeProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if self.amount == 0 {
+            return Ok(
+                EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0))
+            );
+        }
+        if !game.pay_life(self.player, self.amount) {
+            return Ok(EffectOutcome::count(0));
+        }
+        let event = TriggerEvent::new_with_provenance(
+            LifeLossEvent::from_effect(self.player, self.amount),
+            ctx.provenance,
+        );
+        Ok(EffectOutcome::count(self.amount as i32)
+            .with_event(event)
+            .with_execution_fact(ExecutionFact::ChosenNumber(self.amount)))
     }
 }
 

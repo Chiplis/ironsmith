@@ -8,6 +8,50 @@ use crate::target::ChooseSpec;
 use crate::types::{CardType, Subtype};
 use std::path::Path;
 
+fn find_create_token_effect(effects: &[Effect]) -> Option<&crate::effects::CreateTokenEffect> {
+    effects.iter().find_map(|effect| {
+        if let Some(create) = effect.as_create_token() {
+            return Some(create);
+        }
+        if let Some(tagged) = effect.as_tagged() {
+            return find_create_token_effect(std::slice::from_ref(&tagged.effect));
+        }
+        if let Some(with_id) = effect.as_with_id() {
+            return find_create_token_effect(std::slice::from_ref(&with_id.effect));
+        }
+        effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .and_then(|sequence| find_create_token_effect(&sequence.effects))
+    })
+}
+
+trait FindCreateTokenEffect {
+    fn find_create_token_effect(&self) -> Option<&crate::effects::CreateTokenEffect>;
+}
+
+impl FindCreateTokenEffect for [Effect] {
+    fn find_create_token_effect(&self) -> Option<&crate::effects::CreateTokenEffect> {
+        find_create_token_effect(self)
+    }
+}
+
+fn find_cant_effect(effects: &[Effect]) -> Option<&crate::effects::CantEffect> {
+    effects.iter().find_map(|effect| {
+        if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+            return Some(cant);
+        }
+        if let Some(tagged) = effect.as_tagged() {
+            return find_cant_effect(std::slice::from_ref(&tagged.effect));
+        }
+        if let Some(with_id) = effect.as_with_id() {
+            return find_cant_effect(std::slice::from_ref(&with_id.effect));
+        }
+        effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .and_then(|sequence| find_cant_effect(&sequence.effects))
+    })
+}
+
 fn walk_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
     for entry in std::fs::read_dir(root).expect("read source directory") {
         let entry = entry.expect("read source entry");
@@ -398,7 +442,7 @@ fn coordinated_equal_target_specs_keep_distinct_lowered_target_slots() {
     let repeated_target = TargetAst::WithCount(
         Box::new(TargetAst::Object(
             ObjectFilter::creature().other(),
-            None,
+            Some(TextSpan::synthetic()),
             None,
         )),
         ChoiceCount::up_to(1),
@@ -839,8 +883,8 @@ fn inline_quoted_token_trigger_stays_on_the_created_token() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Goblin token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -866,8 +910,7 @@ fn full_triggered_token_creation_keeps_quoted_blocks_untap_ability() {
             AbilityKind::Triggered(triggered) => triggered
                 .effects
                 .flattened_default_effects()
-                .iter()
-                .find_map(|effect| effect.as_create_token()),
+                .find_create_token_effect(),
             _ => None,
         })
         .expect("entry trigger should create Illusion tokens");
@@ -888,11 +931,7 @@ fn full_triggered_token_creation_keeps_quoted_blocks_untap_ability() {
             if filter.card_types.as_slice() == [CardType::Creature]
     ));
 
-    let [effect] = nested.effects.flattened_default_effects() else {
-        panic!("expected one nested untap restriction: {nested:#?}");
-    };
-    let cant = effect
-        .downcast_ref::<crate::effects::CantEffect>()
+    let cant = find_cant_effect(nested.effects.flattened_default_effects())
         .expect("nested trigger should apply an untap restriction");
     assert!(matches!(
         &cant.restriction,
@@ -916,8 +955,8 @@ fn pest_token_attack_trigger_keeps_its_life_gain() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Pest token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -958,8 +997,8 @@ fn create_token_modifiers_do_not_leak_from_for_each_filter() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Treasure token");
 
     assert!(
@@ -980,8 +1019,8 @@ fn token_self_attack_requirement_lowers_as_must_attack() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Alien token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -1017,8 +1056,8 @@ fn token_pronoun_followup_parses_under_the_token_source_identity() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Avatar token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -1039,8 +1078,8 @@ fn token_pronoun_activation_resolves_this_token_to_source() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Skeleton token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -1061,8 +1100,8 @@ fn multiple_quoted_artifact_token_rules_are_all_nested() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Meteorite token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -1086,8 +1125,8 @@ fn quoted_tap_sacrifice_any_color_rule_keeps_both_costs() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Etherium Cell token");
     let activated = create
         .token
@@ -1120,8 +1159,8 @@ fn full_lost_in_the_spirit_world_keeps_reciprocal_spirit_restriction_once() {
         .spell_effect
         .as_ref()
         .expect("instant spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("Lost in the Spirit World should create a Spirit");
 
     assert_eq!(
@@ -1150,16 +1189,15 @@ fn full_tezzeret_the_schemer_keeps_etherium_cell_mana_ability_once() {
             AbilityKind::Activated(activated) => activated
                 .effects
                 .flattened_default_effects()
-                .iter()
-                .find_map(|effect| effect.as_create_token()),
+                .find_create_token_effect(),
             _ => None,
         })
         .expect("Tezzeret's +1 should create an Etherium Cell");
 
     assert_eq!(
         create.token.abilities.len(),
-        1,
-        "the specialized mana rule must not also be granted generically: {create:#?}"
+        2,
+        "the colorless marker and specialized mana rule should each occur once: {create:#?}"
     );
     let activated = create
         .token
@@ -1195,19 +1233,32 @@ fn full_toggo_keeps_rock_grant_and_equip_once_each() {
             AbilityKind::Triggered(triggered) => triggered
                 .effects
                 .flattened_default_effects()
-                .iter()
-                .find_map(|effect| effect.as_create_token()),
+                .find_create_token_effect(),
             _ => None,
         })
         .expect("Toggo's landfall ability should create a Rock");
 
     assert_eq!(
         create.token.abilities.len(),
-        2,
-        "Rock should own one attached grant and one equip ability: {create:#?}"
+        3,
+        "Rock should own one colorless marker, one attached grant, and one equip ability: {create:#?}"
     );
     let debug = format!("{:#?}", create.token.abilities);
-    assert_eq!(debug.matches("AttachedAbilityGrant").count(), 1, "{debug}");
+    assert_eq!(
+        create
+            .token
+            .abilities
+            .iter()
+            .filter(|ability| matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id
+                        == Some(crate::static_abilities::StaticAbilityId::AttachedAbilityGrant)
+            ))
+            .count(),
+        1,
+        "{debug}"
+    );
     let equip_costs = create
         .token
         .abilities
@@ -1233,12 +1284,12 @@ fn later_quoted_artifact_token_activation_is_not_dropped() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Notebook token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
-        debug.contains("DrawCardEffect"),
+        debug.contains("DrawCardsEffect"),
         "the second quoted Notebook ability should remain attached: {debug}"
     );
 }
@@ -1256,7 +1307,7 @@ fn full_tamiyo_compleated_sage_keeps_both_notebook_abilities() {
     assert!(
         debug.contains("CreateTokenEffect")
             && debug.contains("CostReduction")
-            && debug.contains("DrawCardEffect"),
+            && debug.contains("DrawCardsEffect"),
         "full-card production dispatch must retain both Notebook abilities: {debug}"
     );
 }
@@ -1273,8 +1324,8 @@ fn quoted_sacrifice_damage_activation_stays_on_created_token() {
         .spell_effect
         .as_ref()
         .expect("spell effects")
-        .iter()
-        .find_map(|effect| effect.as_create_token())
+        .flattened_default_effects()
+        .find_create_token_effect()
         .expect("created Triskelavite token");
     let debug = format!("{:#?}", create.token.abilities);
     assert!(
@@ -1903,7 +1954,7 @@ fn devour_flesh_carries_its_target_into_the_life_gain_without_retargeting() {
 
     let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
     assert!(
-        debug.contains("SacrificeEffect"),
+        debug.contains("SacrificePlayerEffect"),
         "sacrifice effect: {debug}"
     );
     assert!(
@@ -1911,7 +1962,7 @@ fn devour_flesh_carries_its_target_into_the_life_gain_without_retargeting() {
         "life-gain effect: {debug}"
     );
     assert!(
-        debug.contains("player: AliasedTarget(Any)"),
+        debug.contains("player: Player(AliasedTarget(Any))"),
         "implicit follow-up should use the previously selected target: {debug}"
     );
 }
@@ -1926,7 +1977,7 @@ fn restorative_technique_keeps_the_target_as_searcher_and_library_owner() {
 
     let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
     assert!(
-        debug.contains("SearchLibraryEffect"),
+        debug.contains("ChooseObjectsEffect") && debug.contains("is_search: true"),
         "search effect: {debug}"
     );
     assert!(

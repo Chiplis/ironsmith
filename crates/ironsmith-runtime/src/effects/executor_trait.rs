@@ -145,7 +145,37 @@ where
 /// mutation: it must not ask a new question or recalculate a value from game
 /// state changed by an earlier proposal in the same batch.
 pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
-    fn commit(self: Box<Self>, game: &mut GameState) -> Result<EffectOutcome, ExecutionError>;
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError>;
+}
+
+
+/// A proposal that defers a choice-free per-player effect to commit time.
+///
+/// Correct for effects whose behavior involves no decisions and whose
+/// matching set is scoped to the iterated player (e.g. "each player returns
+/// all creature cards from their graveyard"): earlier players' commits cannot
+/// change what this player's action does.
+#[derive(Debug)]
+pub struct DeferredPlayerActionProposal {
+    pub effect: crate::effect::Effect,
+    pub iterated_player: Option<crate::ids::PlayerId>,
+}
+
+impl SimultaneousEffectProposal for DeferredPlayerActionProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let effect = self.effect;
+        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+            crate::effects::execute_effect(game, &effect, ctx)
+        })
+    }
 }
 
 pub trait EffectExecutor:

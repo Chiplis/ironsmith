@@ -2688,6 +2688,10 @@ fn parse_effect_sentences_lexed_inner(
         return Ok(vec![effect]);
     }
 
+    if let Some(effect) = parse_tapped_land_mana_replacement(tokens) {
+        return Ok(vec![effect]);
+    }
+
     if let Some(effect) = reflected_prevent_next_damage_from_tokens(tokens) {
         return Ok(vec![effect]);
     }
@@ -2727,6 +2731,30 @@ fn parse_effect_sentences_lexed_inner(
 /// Parse a resolving effect that establishes a turn-long cost for each
 /// creature declared as a blocker. The affected creature filter remains live
 /// for the duration, while the activation's X value is captured at resolution.
+/// "Until end of turn, if you tap a land you control for mana, it produces
+/// {U} instead of any other type." (Deep Water) — a whole-sentence shape that
+/// registers a turn-scoped mana-production replacement. The clause carries
+/// its own scope and duration, so it must not be split into a generic
+/// conditional around a verb clause.
+fn parse_tapped_land_mana_replacement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let spec = effect_grammar::parse_mana_replacement_clause_spec_lexed(tokens)?;
+    Some(EffectAst::SubjectVerb(
+        crate::runtime_backend::ast::SubjectVerbEffectAst {
+            subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                role: SubjectVerbRoleAst::Actor,
+                player: PlayerAst::Implicit,
+            },
+            action: SubjectVerbActionAst::RegisterManaReplacement {
+                source_filter: crate::target::ObjectFilter::default()
+                    .with_type(crate::types::CardType::Land)
+                    .you_control(),
+                replacement_mana: vec![spec.replacement_mana],
+                mode: crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+            },
+        },
+    ))
+}
+
 fn parse_temporary_per_blocker_tax(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {

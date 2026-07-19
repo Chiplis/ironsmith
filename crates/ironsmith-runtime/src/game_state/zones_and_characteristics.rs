@@ -1590,6 +1590,29 @@ impl GameState {
                 &choices.as_enters_tagged_objects,
             );
         }
+        // As-enters effect programs execute against the pre-move object id;
+        // migrate any choices they recorded to the battlefield id.
+        if new_id != old_id {
+            let choice_store = self.choice_store_mut();
+            if let Some(color) = choice_store.chosen_colors.remove(&old_id) {
+                choice_store.chosen_colors.insert(new_id, color);
+            }
+            if let Some(land_type) = choice_store.chosen_land_types.remove(&old_id) {
+                choice_store.chosen_land_types.insert(new_id, land_type);
+            }
+            if let Some(creature_type) = choice_store.chosen_creature_types.remove(&old_id) {
+                choice_store.chosen_creature_types.insert(new_id, creature_type);
+            }
+            if let Some(card_type) = choice_store.chosen_card_types.remove(&old_id) {
+                choice_store.chosen_card_types.insert(new_id, card_type);
+            }
+            if let Some(player) = choice_store.chosen_players.remove(&old_id) {
+                choice_store.chosen_players.insert(new_id, player);
+            }
+            if let Some(names) = choice_store.chosen_named_options.remove(&old_id) {
+                choice_store.chosen_named_options.insert(new_id, names);
+            }
+        }
         if choices.transfer_as_enters_source_links {
             self.transfer_exiled_with_source_links(old_id, new_id);
             let imprinted_cards = self.get_imprinted_cards(old_id).to_vec();

@@ -1962,7 +1962,7 @@ pub(super) fn vote_count_followup_preprocess_uses_tokens_not_raw_text() {
     let helper = function_source(
         &content,
         "fn rewrite_vote_count_followups_line",
-        "fn rewrite_exile_return_when_source_leaves_line",
+        "fn resized_char_map_for_rewrite",
     );
     let actual = non_test_raw_text_check_literals(helper)
         .into_iter()

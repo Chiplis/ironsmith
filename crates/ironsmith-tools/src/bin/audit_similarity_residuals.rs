@@ -11,7 +11,8 @@
 
 use ironsmith::semantic_compare::compare_card_semantics_clause_residuals;
 use ironsmith_tools::{
-    CardPayload, CardStatusDb, compile_strict_snapshot_from_payload, default_db_path,
+    CardPayload, CardStatusDb, compile_authoritative_snapshot_from_payload,
+    compile_strict_snapshot_from_payload, default_db_path,
 };
 use rayon::prelude::*;
 use serde::Serialize;
@@ -27,6 +28,7 @@ struct Args {
     out: String,
     compare_file: Option<String>,
     names: Option<String>,
+    authoritative: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -35,6 +37,7 @@ fn parse_args() -> Result<Args, String> {
     let mut out = "/tmp/residuals.jsonl".to_string();
     let mut compare_file = None;
     let mut names = None;
+    let mut authoritative = false;
 
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -68,6 +71,9 @@ fn parse_args() -> Result<Args, String> {
                         .ok_or_else(|| "--names requires a path".to_string())?,
                 );
             }
+            "--authoritative" => {
+                authoritative = true;
+            }
             "-h" | "--help" => {
                 return Err(
                     "usage: audit_similarity_residuals [--db-path <path>] [--threshold 0.99] [--out <path>] [--compare-file <path>] [--names <path>]"
@@ -84,6 +90,7 @@ fn parse_args() -> Result<Args, String> {
         out,
         compare_file,
         names,
+        authoritative,
     })
 }
 
@@ -195,7 +202,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cards
             .par_iter()
             .filter_map(|payload| {
-                let snapshot = compile_strict_snapshot_from_payload(payload);
+                let snapshot = if args.authoritative {
+                    compile_authoritative_snapshot_from_payload(payload)
+                } else {
+                    compile_strict_snapshot_from_payload(payload)
+                };
                 if !matches!(
                     snapshot.parse_status,
                     ironsmith_tools::ParseStatus::StrictCompiled

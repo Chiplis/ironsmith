@@ -120,6 +120,35 @@ pub(crate) fn apply_tagged_runtime_state(
     outcome: &EffectOutcome,
     state: TaggedRuntimeState,
 ) {
+    // Zone changes create a new object, but later references such as "that
+    // permanent's controller" use the characteristics of the object as it
+    // last existed in the old zone. Keep that LKI snapshot when the stable
+    // card reached the expected destination; object-resolution helpers can
+    // still follow its stable id to the new object when a later effect needs
+    // to move or otherwise affect the card itself.
+    if let Some(fallback) = state.stable_id_fallback.as_ref() {
+        let moved_stable_ids = fallback
+            .stable_ids
+            .iter()
+            .copied()
+            .filter(|stable_id| {
+                game.find_object_by_stable_id(*stable_id)
+                    .and_then(|id| game.object(id))
+                    .is_some_and(|object| object.zone == fallback.zone)
+            })
+            .collect::<HashSet<_>>();
+        let snapshots = state
+            .pre_snapshots
+            .iter()
+            .filter(|snapshot| moved_stable_ids.contains(&snapshot.stable_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if !snapshots.is_empty() {
+            ctx.set_tagged_objects(tag, snapshots);
+            return;
+        }
+    }
+
     // Primary post-map path: if the effect returned object IDs, tag those.
     let output_ids = outcome_object_candidates(outcome);
     if !output_ids.is_empty() {
@@ -428,5 +457,37 @@ mod tests {
         let tagged = ctx.get_tagged("tagged").expect("tagged object");
         assert_eq!(tagged.zone, Zone::Battlefield);
         assert_eq!(tagged.stable_id, game.object(exile_id).unwrap().stable_id);
+    }
+
+    #[test]
+    fn test_zone_change_tag_preserves_last_known_controller() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = create_creature(&mut game, alice);
+        game.set_current_controller(creature, bob);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature)]);
+
+        let runtime = capture_tagged_runtime_state(
+            &game,
+            &Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                crate::target::ChooseSpec::SpecificObject(creature),
+            )),
+            &ctx,
+        );
+        let hand_id = game
+            .move_object_by_effect(creature, Zone::Hand)
+            .expect("creature should return to its owner's hand");
+        let outcome = EffectOutcome::resolved().with_affected_objects(vec![hand_id]);
+
+        apply_tagged_runtime_state(&game, &mut ctx, TagKey::new("returned"), &outcome, runtime);
+
+        let tagged = ctx.get_tagged("returned").expect("returned object LKI");
+        assert_eq!(tagged.object_id, creature);
+        assert_eq!(tagged.controller, bob);
+        assert_eq!(tagged.zone, Zone::Battlefield);
+        assert_eq!(tagged.stable_id, game.object(hand_id).unwrap().stable_id);
     }
 }

@@ -71,12 +71,55 @@ impl EffectExecutor for GainLifeEffect {
         }
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        // Life gain involves no choices; the amount is fixed against the
+        // pre-action state and the whole batch commits together.
+        let player = resolve_player_from_spec(game, &self.player, ctx)?;
+        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        Ok(Box::new(GainLifeProposal { player, amount }))
+    }
+
     fn target_description(&self) -> &'static str {
         "player to gain life"
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+}
+
+/// One player's part of a simultaneous each-player life gain.
+#[derive(Debug)]
+struct GainLifeProposal {
+    player: crate::ids::PlayerId,
+    amount: u32,
+}
+
+impl crate::effects::SimultaneousEffectProposal for GainLifeProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let final_amount = process_life_gain_with_event(game, self.player, self.amount);
+        if final_amount > 0 {
+            game.gain_life(self.player, final_amount);
+            let event = TriggerEvent::new_with_provenance(
+                LifeGainEvent::new(self.player, final_amount),
+                ctx.provenance,
+            );
+            Ok(EffectOutcome::count(final_amount as i32).with_event(event))
+        } else {
+            Ok(EffectOutcome::count(0))
+        }
     }
 }
 

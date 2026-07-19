@@ -797,7 +797,7 @@ pub(crate) fn preserve_result_conjunction_body_lexed(
     if let [
         EffectAst::Coordinated {
             effects: coordinated,
-            result_conjunction,
+            result_conjunction: _,
             ..
         },
     ] = effects.as_slice()

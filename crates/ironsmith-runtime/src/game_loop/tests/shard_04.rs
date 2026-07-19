@@ -150,7 +150,7 @@ pub(super) fn triggering_permanent_controller_chooses_targets_using_ability_cont
 pub(super) fn test_triggered_mana_ability_resolves_immediately_without_stack() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
-    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut dm = SelectFirstDecisionMaker;
     let alice = PlayerId::from_index(0);
 
     let swamp_card = CardBuilder::new(CardId::new(), "Test Swamp")
@@ -191,6 +191,8 @@ pub(super) fn test_triggered_mana_ability_resolves_immediately_without_stack() {
     .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana)
     .into_trigger_event();
     queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("the triggered mana ability should resolve in the trigger-processing window");
 
     assert!(
         trigger_queue.is_empty(),
@@ -211,7 +213,7 @@ pub(super) fn test_triggered_mana_ability_resolves_immediately_without_stack() {
 pub(super) fn tap_for_mana_trigger_requires_tapped_source_provenance_and_credits_land_controller() {
     let mut game = setup_game();
     let mut trigger_queue = TriggerQueue::new();
-    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut dm = SelectFirstDecisionMaker;
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -263,6 +265,8 @@ pub(super) fn tap_for_mana_trigger_requires_tapped_source_provenance_and_credits
             )
             .into_trigger_event();
     queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("the triggered mana ability should resolve in the trigger-processing window");
     assert!(
         trigger_queue.is_empty() && game.stack.is_empty(),
         "the triggered mana ability should resolve immediately"

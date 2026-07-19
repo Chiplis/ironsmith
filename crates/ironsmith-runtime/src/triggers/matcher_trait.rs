@@ -19,7 +19,7 @@ use super::TriggerEvent;
 /// recipients. Matches with the same key during one simultaneous action queue
 /// the ability only once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum SimultaneousTriggerKey {
+pub enum SimultaneousTriggerKey {
     /// All matching damage assignments in the action form one event group.
     DamageBatch,
     /// Damage assignments are grouped independently for each source.

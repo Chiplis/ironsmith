@@ -1031,7 +1031,10 @@ fn test_bonus_mana_grants_temporary_static_ability_to_matching_spell() {
 fn domri_style_bonus_mana_grants_riot_to_the_matching_creature_spell() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
-    let source_id = game.new_object_id();
+    let source = CardDefinitionBuilder::new(CardId::new(), "Domri Mana Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
     let restriction = ManaUsageRestriction::CastSpellWithManaBonus {
         filter: ObjectFilter::default().with_type(CardType::Creature),
         condition: crate::ability::ManaSpendBonusCondition::IfThatManaIsSpentOn,
@@ -1054,16 +1057,53 @@ fn domri_style_bonus_mana_grants_riot_to_the_matching_creature_spell() {
         .card_types(vec![CardType::Creature])
         .build();
     let spell_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+    game.refresh_continuous_state();
+    let unit = game
+        .player(alice)
+        .expect("Alice exists")
+        .restricted_mana
+        .first()
+        .expect("Domri mana unit exists");
+    assert!(
+        restriction_bonus_applies_to_payment_source(
+            &game,
+            unit,
+            &unit.restrictions[0],
+            Some(spell_id),
+        ),
+        "the creature filter should match the stack spell before mana is spent"
+    );
     let spent = spend_pool_symbol(&mut game, alice, ManaSymbol::Red, Some(spell_id))
         .expect("bonus-bearing mana should pay for the creature spell");
+    assert_eq!(spent.restrictions.len(), 1);
     apply_spent_mana_bonuses(&mut game, Some(spell_id), &spent);
 
-    let riot = crate::cards::builders::riot_triggered_ability();
+    let has_runtime_riot = |game: &GameState, object_id: ObjectId| {
+        game.object(object_id).is_some_and(|object| {
+            object.abilities.iter().any(|ability| {
+                let AbilityKind::Triggered(triggered) = &ability.kind else {
+                    return false;
+                };
+                let effects = triggered.effects.flattened_default_effects();
+                let Some(modes) = effects
+                    .first()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>())
+                else {
+                    return false;
+                };
+                triggered.trigger == crate::triggers::Trigger::this_enters_battlefield()
+                    && modes.modes.len() == 2
+                    && modes.modes.iter().any(|mode| {
+                        mode.source_text == "This creature enters with a +1/+1 counter on it"
+                    })
+                    && modes.modes.iter().any(|mode| {
+                        mode.source_text == "This creature gains haste until end of turn"
+                    })
+            })
+        })
+    };
     assert!(
-        game.object(spell_id)
-            .expect("creature spell should remain on the stack")
-            .abilities
-            .contains(&riot),
+        has_runtime_riot(&game, spell_id),
         "spending Domri-style mana should grant the runtime riot ability"
     );
 
@@ -1071,10 +1111,7 @@ fn domri_style_bonus_mana_grants_riot_to_the_matching_creature_spell() {
         .move_object_by_effect(spell_id, Zone::Battlefield)
         .expect("creature spell should resolve to the battlefield");
     assert!(
-        game.object(permanent_id)
-            .expect("resolved creature should exist")
-            .abilities
-            .contains(&riot),
+        has_runtime_riot(&game, permanent_id),
         "the granted riot ability should survive stack-to-battlefield movement"
     );
 }

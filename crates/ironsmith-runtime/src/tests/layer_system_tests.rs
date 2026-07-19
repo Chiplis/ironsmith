@@ -4005,10 +4005,13 @@ fn test_yawgmoth_undying_loop_draws_cards_until_death() {
         cards_drawn, iterations,
         "Should draw one card per iteration"
     );
+    // The final activation pays Alice's last life point, so CR 704.5a removes
+    // her from the game before that ability resolves — its draw never happens.
     assert_eq!(
         final_hand_size,
-        initial_hand_size + cards_drawn,
-        "Hand size should increase by cards drawn"
+        initial_hand_size + cards_drawn - 1,
+        "Hand size should increase by one card per iteration except the last, \
+         which never resolves because its life payment is lethal"
     );
     assert_eq!(
         final_life,

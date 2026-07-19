@@ -2375,12 +2375,30 @@ pub(crate) fn rewrite_lower_static_ability_ast(
         } => rewrite_lower_attached_chosen_landwalk_grant(display, snow, condition),
         StaticAbilityAst::EquipmentKeywordActionsGrant { actions } => {
             let mut lowered = Vec::new();
-            let mut displays = Vec::with_capacity(actions.len());
+            let mut names = Vec::with_capacity(actions.len());
             for action in actions {
-                displays.push(action.display_text());
+                let display = action.display_text();
+                let mut name = display.clone();
+                if let Some(first) = name.get(..1) {
+                    name = format!("{}{}", first.to_ascii_lowercase(), &display[1..]);
+                }
+                names.push(name);
                 lowered.extend(rewrite_lower_keyword_action_to_object_abilities(action)?);
             }
-            rewrite_attached_object_abilities_grant(lowered, displays.join(", "), None)
+            // The printed line for a multi-keyword equipment grant is a full
+            // sentence ("Equipped creature has deathtouch and lifelink."),
+            // not a bare keyword header.
+            let joined = match names.as_slice() {
+                [] => String::new(),
+                [only] => only.clone(),
+                [first, second] => format!("{first} and {second}"),
+                [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+            };
+            rewrite_attached_object_abilities_grant(
+                lowered,
+                format!("Equipped creature has {joined}."),
+                None,
+            )
         }
         StaticAbilityAst::GrantObjectAbility {
             filter,

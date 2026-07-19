@@ -2826,11 +2826,21 @@ pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_ba
         .with_spell_effect(vec![Effect::gain_life(1)])
         .build();
     let spell_id = game.create_object_from_definition(&spell, alice, Zone::Hand);
+    let grant_source = CardDefinitionBuilder::new(CardId::new(), "Conspire Grant Source")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let grant_source_id =
+        game.create_object_from_definition(&grant_source, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
     game.add_temporary_spell_ability_grant(
         alice,
-        spell_id,
+        grant_source_id,
         ObjectFilter::instant_or_sorcery().cast_by(crate::PlayerFilter::You),
-        StaticAbility::keyword_marker("Conspire").into(),
+        Ability::static_ability(StaticAbility::keyword_marker("Conspire"))
+            .in_zones(vec![Zone::Stack]),
         1,
     );
 
@@ -2890,9 +2900,9 @@ pub(super) fn next_spell_ability_grant_applies_before_announcements_and_rolls_ba
         &mut game,
         &mut trigger_queue,
         &mut state,
-        &PriorityResponse::OptionalCosts(vec![]),
+        &PriorityResponse::OptionalCosts(vec![(usize::MAX, 1)]),
     )
-    .expect_err("the unpaid generic mana cost should cancel the proposal");
+    .expect_err("an invalid optional-cost response should cancel the proposal");
     assert!(matches!(error, GameLoopError::ActionCancelled(_)));
     assert!(game.stack_is_empty());
     let restored_spell = game

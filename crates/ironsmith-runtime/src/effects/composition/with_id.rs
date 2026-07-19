@@ -24,6 +24,27 @@ pub type WithIdEffect = ironsmith_core::WithIdEffect<crate::effect::Effect>;
 ///     Effect::sacrifice(ObjectFilter::creature(), 1),
 /// );
 /// ```
+
+/// Wraps an inner proposal so the committed outcome is still recorded under
+/// this effect's outcome id, mirroring live execution.
+#[derive(Debug)]
+struct WithIdProposal {
+    id: ironsmith_core::EffectId,
+    inner: Box<dyn crate::effects::SimultaneousEffectProposal>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for WithIdProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let outcome = self.inner.commit(game, ctx)?;
+        ctx.store_outcome(self.id, outcome.clone());
+        Ok(outcome)
+    }
+}
+
 impl EffectExecutor for WithIdEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effect
@@ -42,6 +63,23 @@ impl EffectExecutor for WithIdEffect {
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.effect.0.supports_simultaneous_player_action()
+    }
+
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
+        self.effect.0.is_read_only_simultaneous_player_action()
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let inner = self.effect.0.prepare_simultaneous_player_action(game, ctx)?;
+        Ok(Box::new(WithIdProposal { id: self.id, inner }))
     }
 
     fn execute(

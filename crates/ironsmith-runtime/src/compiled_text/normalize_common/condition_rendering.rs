@@ -1866,6 +1866,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            // Revealed/exiled card predicates can retain the generic
+            // battlefield zone supplied by constructors such as
+            // `ObjectFilter::creature()`. The observation tag proves this is
+            // a card reference, so clear only that presentation scaffolding.
+            let display_filter = if tagged_condition_is_known_card_reference(tag)
+                && filter.zone == Some(Zone::Battlefield)
+            {
+                let mut display = filter.clone();
+                display.zone = None;
+                Some(display)
+            } else {
+                None
+            };
+            let filter = display_filter.as_ref().unwrap_or(filter);
             let mut same_name_comparison_set = filter.clone();
             let before = same_name_comparison_set.tagged_constraints.len();
             same_name_comparison_set
@@ -1876,8 +1890,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                             == crate::filter::TaggedOpbjectRelation::SameNameAsTagged)
                 });
             if same_name_comparison_set.tagged_constraints.len() != before {
-                let comparison = same_name_comparison_set.description();
+                let comparison = ensure_indefinite_article(&same_name_comparison_set.description());
                 return format!("it has the same name as {comparison}");
+            }
+            if tagged_condition_is_known_card_reference(tag)
+                && simple_type_identity_condition_filter(filter)
+                && (!filter.card_types.is_empty() || !filter.all_card_types.is_empty())
+            {
+                let description = ensure_indefinite_article(&filter.description());
+                let card_description = if description.ends_with(" card") {
+                    description
+                } else {
+                    format!("{description} card")
+                };
+                return format!("it's {card_description}");
             }
             let desc = filter.description();
             if filter.shares_creature_type_with_source
@@ -2169,13 +2195,24 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                             format!("is less than {}", describe_value(value))
                         }
                         ironsmith_core::FilterComparison::LessThanOrEqualExpr(value) => {
-                            format!("is less than or equal to {}", describe_value(value))
+                            match value.as_ref() {
+                                Value::Fixed(n) => format!("is {n} or less"),
+                                value => {
+                                    format!("is less than or equal to {}", describe_value(value))
+                                }
+                            }
                         }
                         ironsmith_core::FilterComparison::GreaterThanExpr(value) => {
                             format!("is greater than {}", describe_value(value))
                         }
                         ironsmith_core::FilterComparison::GreaterThanOrEqualExpr(value) => {
-                            format!("is greater than or equal to {}", describe_value(value))
+                            match value.as_ref() {
+                                Value::Fixed(n) => format!("is {n} or greater"),
+                                value => format!(
+                                    "is greater than or equal to {}",
+                                    describe_value(value)
+                                ),
+                            }
                         }
                         ironsmith_core::FilterComparison::EqualExpr(value) => {
                             format!("is equal to {}", describe_value(value))
@@ -3304,6 +3341,56 @@ fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilt
     if filter.has_nonbasic_land_type {
         return "that land had a nonbasic land type".to_string();
     }
+    // A bare state filter is an adjective predicate in oracle ("If it was
+    // tapped"), not a classified noun ("it was a tapped permanent").
+    {
+        let description = filter.description();
+        let stripped = strip_indefinite_article(&description);
+        let adjective = stripped
+            .strip_suffix(" permanent")
+            .or_else(|| stripped.strip_suffix(" object"))
+            .unwrap_or(stripped);
+        if matches!(
+            adjective,
+            "tapped" | "untapped" | "attacking" | "blocking" | "attacking or blocking"
+        ) {
+            return format!("it was {adjective}");
+        }
+    }
+    // A bare color set is an adjective predicate in oracle ("If it was blue
+    // or black"), not a classified noun ("it was a blue or black permanent").
+    if let Some(colors) = filter.colors {
+        let mut bare = filter.clone();
+        bare.colors = None;
+        if matches!(bare.zone, Some(Zone::Battlefield)) {
+            bare.zone = None;
+        }
+        if bare == ObjectFilter::default() {
+            let color_words = crate::color::Color::ALL
+                .into_iter()
+                .filter(|color| colors.contains(*color))
+                .map(|color| color.name().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            if !color_words.is_empty() {
+                return format!("it was {}", color_words.join(" or "));
+            }
+        }
+    }
+    // A bare mana-value bound reads as a property of the object ("If its
+    // mana value was 3 or less"), not a classified noun ("it was a
+    // permanent with mana value 3 or less").
+    if let Some(mana_value) = &filter.mana_value {
+        let mut bare = filter.clone();
+        bare.mana_value = None;
+        if matches!(bare.zone, Some(Zone::Battlefield)) {
+            bare.zone = None;
+        }
+        if bare == ObjectFilter::default() {
+            let comparison = describe_filter_comparison_clause(mana_value);
+            let comparison = comparison.strip_prefix("is ").unwrap_or(&comparison);
+            return format!("its mana value was {comparison}");
+        }
+    }
     // Last-known predicates retain an explicit pronoun subject. Action tags
     // describe how that object reached its last-known state, but must not
     // replace `it was` with a new event-subject sentence.
@@ -3666,15 +3753,19 @@ pub(crate) fn describe_filter_comparison_clause(
         ironsmith_core::FilterComparison::LessThanExpr(value) => {
             format!("is less than {}", describe_value(value))
         }
-        ironsmith_core::FilterComparison::LessThanOrEqualExpr(value) => {
-            format!("is less than or equal to {}", describe_value(value))
-        }
+        // A literal bound reads as "N or less"/"N or greater" in oracle; the
+        // spelled-out comparative only survives for computed values.
+        ironsmith_core::FilterComparison::LessThanOrEqualExpr(value) => match value.as_ref() {
+            Value::Fixed(n) => format!("is {n} or less"),
+            value => format!("is less than or equal to {}", describe_value(value)),
+        },
         ironsmith_core::FilterComparison::GreaterThanExpr(value) => {
             format!("is greater than {}", describe_value(value))
         }
-        ironsmith_core::FilterComparison::GreaterThanOrEqualExpr(value) => {
-            format!("is greater than or equal to {}", describe_value(value))
-        }
+        ironsmith_core::FilterComparison::GreaterThanOrEqualExpr(value) => match value.as_ref() {
+            Value::Fixed(n) => format!("is {n} or greater"),
+            value => format!("is greater than or equal to {}", describe_value(value)),
+        },
         ironsmith_core::FilterComparison::EqualExpr(value) => {
             format!("is equal to {}", describe_value(value))
         }

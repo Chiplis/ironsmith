@@ -130,7 +130,37 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
 
     let target_tokens = shape.target_tokens;
     let has_target_selector = shape.has_target_selector;
-    if !has_target_selector {
+    // "Shuffle all creature cards of that type from your graveyard ..." moves
+    // a filtered subset, not the whole graveyard; only a bare possessive
+    // graveyard phrase (optionally "all cards from ...") is the whole-zone
+    // shuffle. A filtered phrase that fails to parse still falls back to the
+    // whole-zone reading rather than failing the card.
+    let whole_graveyard_target = {
+        let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+        let rest: &[&str] = if target_words.len() >= 3
+            && target_words[..3] == ["all", "cards", "from"]
+        {
+            &target_words[3..]
+        } else {
+            &target_words[..]
+        };
+        matches!(
+            rest,
+            ["graveyard"]
+                | ["your", "graveyard"]
+                | ["their", "graveyard"]
+                | ["their", "graveyards"]
+                | ["his", "or", "her", "graveyard"]
+                | ["that", "player's", "graveyard"]
+                | ["each", "player's", "graveyard"]
+        )
+    };
+    let filtered_graveyard_target = !has_target_selector
+        && !whole_graveyard_target
+        && !shape.has_source_and_graveyard_clause
+        && !shape.has_hand_clause
+        && parse_target_phrase(&target_tokens).is_ok();
+    if !has_target_selector && !filtered_graveyard_target {
         let mut effects = Vec::new();
         let has_source_and_graveyard_clause = shape.has_source_and_graveyard_clause;
         let has_hand_clause = shape.has_hand_clause;

@@ -47,8 +47,13 @@ pub(crate) fn first_token_definition_pt_token(tokens: &[OwnedLexToken]) -> Optio
 fn artifact_subtypes(words: &[&str]) -> Vec<Subtype> {
     let mut subtypes = Vec::new();
     for word in words {
+        // Only artifact-family subtypes belong on an artifact token's type
+        // line; a leading proper-noun token name ("Tamiyo's Notebook") must
+        // not match same-named subtypes from other families.
         if let Ok(subtype) = leaf::parse_leaf_subtype_complete(word)
-            && !subtype.is_creature_type()
+            && ironsmith_core::SubtypeFamily::Artifact
+                .all_subtypes()
+                .contains(&subtype)
             && !subtypes.iter().any(|candidate| *candidate == subtype)
         {
             subtypes.push(subtype);

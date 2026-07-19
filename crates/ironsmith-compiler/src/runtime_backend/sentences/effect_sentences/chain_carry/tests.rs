@@ -744,14 +744,14 @@ fn trailing_duration_applies_to_ability_loss_before_type_change() {
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
-                (SubjectVerbActionAst::SetCreatureSubtypes {
+                SubjectVerbActionAst::SetCreatureSubtypes {
                     duration: second_duration,
                     ..
                 }
                 | SubjectVerbActionAst::AddSubtypes {
                     duration: second_duration,
                     ..
-                }),
+                },
             ..
         }),
     ] = coordinated.as_slice()

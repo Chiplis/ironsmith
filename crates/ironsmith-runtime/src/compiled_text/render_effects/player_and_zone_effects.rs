@@ -245,15 +245,32 @@ pub(crate) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
     if for_players.effects.len() != 3 {
         return None;
     }
-    let reveal = for_players.effects[0].downcast_ref::<crate::effects::RevealTopEffect>()?;
-    let reveal_tag = reveal.tag.as_ref()?;
+    let reveal_effect =
+        crate::compiled_text::render_effects::sequences_and_votes::unwrap_basic_tag_wrappers(
+            &for_players.effects[0],
+        );
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTopEffect>()?;
+    // The reveal's tag may live on the effect itself or on a Tagged/WithId
+    // wrapper the sentence lowering added around it.
+    let reveal_tag = reveal
+        .tag
+        .as_ref()
+        .or_else(|| {
+            crate::compiled_text::render_effects::sequences_and_votes::wrapped_effect_tag(
+                &for_players.effects[0],
+            )
+        })?;
     if reveal.player != PlayerFilter::IteratedPlayer
         || !(reveal_tag.as_str().starts_with("revealed_")
             || crate::cards::is_sentence_helper_tag(reveal_tag.as_str(), "revealed"))
     {
         return None;
     }
-    let lose = for_players.effects[1].downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    let lose =
+        crate::compiled_text::render_effects::sequences_and_votes::unwrap_basic_tag_wrappers(
+            &for_players.effects[1],
+        )
+        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
     if lose.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer) {
         return None;
     }
@@ -263,7 +280,11 @@ pub(crate) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
     if !matches!(spec.base(), ChooseSpec::Tagged(tag) if tag == reveal_tag) {
         return None;
     }
-    let move_to_zone = for_players.effects[2].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone =
+        crate::compiled_text::render_effects::sequences_and_votes::unwrap_basic_tag_wrappers(
+            &for_players.effects[2],
+        )
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_to_zone.zone != Zone::Hand {
         return None;
     }

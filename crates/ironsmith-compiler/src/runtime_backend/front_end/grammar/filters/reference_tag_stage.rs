@@ -587,10 +587,19 @@ pub(super) fn parse_object_filter_inner(
         base_tokens = tokens[..that_idx].to_vec();
         let mut target_tokens = &tokens[targets_idx + 1..];
         let mut relation_target_count = None;
-        if let Some((count, rest)) = primitives::parse_prefix(
-            target_tokens,
-            crate::runtime_backend::front_end::grammar::leaf::parse_leaf_choice_count_prefix_lexed,
-        ) {
+        // A bare article is grammar, not arity: "that targets a permanent you
+        // control" constrains what is targeted, never how many targets the
+        // spell has. Only an explicit count ("that targets two ...") narrows
+        // the relation's target count.
+        let leading_article = target_tokens
+            .first()
+            .is_some_and(|token| token.as_word().is_some_and(|word| word == "a" || word == "an"));
+        if !leading_article
+            && let Some((count, rest)) = primitives::parse_prefix(
+                target_tokens,
+                crate::runtime_backend::front_end::grammar::leaf::parse_leaf_choice_count_prefix_lexed,
+            )
+        {
             relation_target_count = Some(count);
             target_tokens = rest;
         }

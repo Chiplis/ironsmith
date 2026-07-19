@@ -208,9 +208,16 @@ pub(super) fn apply_trait_replacement(
             added_abilities,
         } => {
             let value_source = if etb_value_uses_entering_object(count) {
+                // The enter replacement can arrive as either event shape.
                 crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event.inner())
                     .filter(|zone_change| zone_change.to == Zone::Battlefield)
                     .and_then(|zone_change| zone_change.objects.first().copied())
+                    .or_else(|| {
+                        crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
+                            event.inner(),
+                        )
+                        .map(|etb| etb.object)
+                    })
                     .unwrap_or(effect.source)
             } else {
                 effect.source

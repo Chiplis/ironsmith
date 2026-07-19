@@ -688,7 +688,6 @@ pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> b
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. }
         | PredicateAst::PlayerControlsMoreThanEachOtherPlayer { filter, .. }
-        | PredicateAst::AnOpponentControlsMoreThanPlayer { filter, .. }
         | PredicateAst::AnOpponentHasFewerThanPlayer { filter, .. }
         | PredicateAst::PlayerControlsMoreThanYou { filter, .. }
         | PredicateAst::SourceHasAttachmentsMatching { filter, .. } => {

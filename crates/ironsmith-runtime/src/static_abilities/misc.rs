@@ -266,6 +266,26 @@ fn describe_mana_source_spent_for_each_basis(
             let mut source = source_filter.description();
             if *include_source_noun {
                 source.push_str(" source");
+            } else if let Some(stripped) = source.strip_prefix("artifact ")
+                && source_filter.subtypes.len() == 1
+            {
+                // A lone artifact subtype already implies the card type
+                // ("artifact Treasure" → "Treasure").
+                source = stripped.to_string();
+            }
+            // The filter description carries no article; oracle text wants one
+            // ("an artifact source", "a Treasure").
+            if !source.starts_with("a ") && !source.starts_with("an ") {
+                let article = if source
+                    .chars()
+                    .next()
+                    .is_some_and(|first| "aeiou".contains(first.to_ascii_lowercase()))
+                {
+                    "an"
+                } else {
+                    "a"
+                };
+                source = format!("{article} {source}");
             }
             Some((
                 1,

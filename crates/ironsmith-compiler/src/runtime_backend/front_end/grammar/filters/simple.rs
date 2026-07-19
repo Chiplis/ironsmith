@@ -559,14 +559,18 @@ fn parse_simple_object_filter_atom(input: &mut WordInput<'_>) -> WResult<SimpleO
 
 fn parse_type_list_separator(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
     alt((
+        (
+            primitives::word_slice_exact("and"),
+            primitives::word_slice_exact("or"),
+        )
+            .value(SimpleObjectFilterAtom::TypeListSeparator(
+                TypeListSeparator::AndOr,
+            )),
         primitives::word_slice_exact("and").value(SimpleObjectFilterAtom::TypeListSeparator(
             TypeListSeparator::Conjunction,
         )),
         primitives::word_slice_exact("or").value(SimpleObjectFilterAtom::TypeListSeparator(
             TypeListSeparator::Disjunction,
-        )),
-        primitives::word_slice_exact("and/or").value(SimpleObjectFilterAtom::TypeListSeparator(
-            TypeListSeparator::AndOr,
         )),
     ))
     .parse_next(input)

@@ -74,6 +74,9 @@ fn convert_counter_put_on_trigger(
     if let Some(source_controller) = trigger.source_controller {
         out = out.source_controller(source_controller);
     }
+    if trigger.include_players {
+        out = out.include_players();
+    }
     out = out.count(convert_count_mode(trigger.count));
     crate::triggers::Trigger::new(out)
 }

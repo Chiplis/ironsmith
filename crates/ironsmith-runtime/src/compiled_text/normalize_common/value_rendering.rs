@@ -927,6 +927,11 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             moved.zone = None;
             moved.owner = None;
             moved.tagged_constraints.clear();
+            // Once the graveyard presentation zone is removed, retain the
+            // fact that this is a card movement rather than a battlefield
+            // permanent description (for example, "land card put into a
+            // graveyard this way").
+            moved.set_explicit_card_noun(true);
             let moved = strip_indefinite_article(&moved.description())
                 .trim()
                 .to_string();
@@ -1553,7 +1558,7 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::ObjectOrPlayer(object_filter, player_filter) => format!(
             "{} or {}",
             describe_choose_spec(&ChooseSpec::Object(object_filter.clone())),
-            describe_player_filter(player_filter)
+            strip_leading_article(&describe_player_filter(player_filter))
         ),
         ChooseSpec::Object(filter) => {
             if let Some(zone_union) =
@@ -1595,6 +1600,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
             if tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
                 return "the exiled card".to_string();
+            }
+            if tag.as_str() == "rest" {
+                return "the rest".to_string();
             }
             if is_implicit_reference_tag(tag.as_str()) {
                 "it".to_string()
@@ -2167,7 +2175,7 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             describe_choose_spec_without_graveyard_zone(
                 &ChooseSpec::Object(object_filter.clone(),)
             ),
-            describe_player_filter(player_filter)
+            strip_leading_article(&describe_player_filter(player_filter))
         ),
         ChooseSpec::AttackedPlayerOrPlaneswalker => {
             "the player or planeswalker it's attacking".to_string()
@@ -3666,6 +3674,9 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
                     "{subject} {} cast from anywhere other than their hand this turn",
                     describe_player_filter(player)
                 ),
+                // Oracle text leaves the actor implicit when any player counts
+                // ("for each other spell cast this turn").
+                (PlayerFilter::Any, None, false) => format!("{subject} cast this turn"),
                 (_, None, false) => format!(
                     "{subject} {} cast this turn",
                     describe_player_filter(player)
@@ -4298,7 +4309,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
                     || tag.as_str().starts_with("milled_")
                     || tag.as_str().starts_with("discarded_")
                     || tag.as_str().starts_with("exiled_")
-                    || tag.as_str().starts_with("__sentence_helper_exiled"))
+                    || tag.as_str().starts_with("__sentence_helper_exiled")
+                    || tag.as_str().starts_with("__sentence_helper_revealed"))
             {
                 "that card's mana value".to_string()
             } else if let ChooseSpec::Tagged(tag) = spec.base()

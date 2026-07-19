@@ -395,13 +395,13 @@ impl WasmGame {
         self.loaded_decks = Vec::new();
     }
 
-    fn populate_demo_libraries(&mut self) -> Result<(), JsValue> {
+    fn populate_demo_libraries(&mut self) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         let mut generated_decks = Vec::with_capacity(player_ids.len());
         for _ in &player_ids {
             generated_decks.push(
                 self.build_random_demo_deck_names(60, 24)
-                    .map_err(|error| JsValue::from_str(&error))?,
+                    ?,
             );
         }
         for (&player_id, deck) in player_ids.iter().zip(&generated_decks) {
@@ -411,7 +411,7 @@ impl WasmGame {
         Ok(())
     }
 
-    fn populate_explicit_libraries(&mut self, decks: &[Vec<String>]) -> Result<(), JsValue> {
+    fn populate_explicit_libraries(&mut self, decks: &[Vec<String>]) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, deck) in player_ids.iter().zip(decks.iter()) {
             self.populate_player_library(player_id, deck)?;
@@ -424,7 +424,7 @@ impl WasmGame {
         &mut self,
         decks: &[Vec<String>],
         hidden_manifests: &[HiddenDeckManifestInput],
-    ) -> Result<(), JsValue> {
+    ) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (player_index, (&player_id, deck)) in player_ids.iter().zip(decks.iter()).enumerate() {
             let manifest = hidden_manifests
@@ -435,10 +435,10 @@ impl WasmGame {
                 && manifest.slot_commitments.is_empty()
                 && manifest.deck_count > 0
             {
-                return Err(JsValue::from_str(&format!(
+                return Err(format!(
                     "hidden deck manifest for player {} has no slot commitments",
                     player_index + 1
-                )));
+                ));
             }
 
             if !deck.is_empty() {
@@ -450,7 +450,7 @@ impl WasmGame {
                 slots.sort_by_key(|slot| slot.slot);
                 for (slot_index, name) in deck.iter().enumerate() {
                     let Some(definition) = self.find_card_definition(name).cloned() else {
-                        return Err(JsValue::from_str(&format!("unknown card name: {name}")));
+                        return Err(format!("unknown card name: {name}"));
                     };
                     let object_id = self.game.create_object_from_catalog_definition(
                         &definition,
@@ -529,7 +529,7 @@ impl WasmGame {
         }
     }
 
-    fn populate_explicit_sideboards(&mut self, sideboards: &[Vec<String>]) -> Result<(), JsValue> {
+    fn populate_explicit_sideboards(&mut self, sideboards: &[Vec<String>]) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, sideboard) in player_ids.iter().zip(sideboards.iter()) {
             self.registry
@@ -537,7 +537,7 @@ impl WasmGame {
 
             for name in sideboard {
                 let Some(definition) = self.find_card_definition(name).cloned() else {
-                    return Err(JsValue::from_str(&format!("unknown card name: {name}")));
+                    return Err(format!("unknown card name: {name}"));
                 };
                 self.game.create_object_from_catalog_definition(
                     &definition,
@@ -550,7 +550,7 @@ impl WasmGame {
         Ok(())
     }
 
-    fn populate_explicit_commanders(&mut self, commanders: &[Vec<String>]) -> Result<(), JsValue> {
+    fn populate_explicit_commanders(&mut self, commanders: &[Vec<String>]) -> Result<(), String> {
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         for (&player_id, commander_names) in player_ids.iter().zip(commanders.iter()) {
             self.registry
@@ -558,7 +558,7 @@ impl WasmGame {
 
             for name in commander_names {
                 let Some(definition) = self.find_card_definition(name).cloned() else {
-                    return Err(JsValue::from_str(&format!("unknown card name: {name}")));
+                    return Err(format!("unknown card name: {name}"));
                 };
                 let object_id = self.game.create_object_from_catalog_definition(
                     &definition,
@@ -730,7 +730,7 @@ impl WasmGame {
     fn populate_companion_designations(
         &mut self,
         companions: &[Option<CardDefinition>],
-    ) -> Result<(), JsValue> {
+    ) -> Result<(), String> {
         let players = self
             .game
             .players
@@ -774,7 +774,7 @@ impl WasmGame {
                     &starting_deck,
                     Self::companion_minimum_deck_size(self.match_format),
                 )
-                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+                .map_err(|error| error.to_string())?;
         }
         Ok(())
     }
@@ -3031,7 +3031,7 @@ impl WasmGame {
         self.snapshot()
     }
 
-    fn finish_match_setup(&mut self, opening_hand_size: usize) -> Result<(), JsValue> {
+    fn finish_match_setup(&mut self, opening_hand_size: usize) -> Result<(), String> {
         self.reset_runtime_state();
         let player_ids: Vec<PlayerId> = self.game.players.iter().map(|p| p.id).collect();
         let opening_hand_sizes = player_ids
@@ -3060,7 +3060,11 @@ impl WasmGame {
             opening_hand_sizes,
             self.match_format,
         ));
+        // recompute_ui_decision reports JsValue errors for the UI layer; on
+        // the native path an error JsValue cannot exist (its construction
+        // panics), so this conversion only runs in wasm builds.
         self.recompute_ui_decision()
+            .map_err(|error| format!("{error:?}"))
     }
 
     fn reset_runtime_state(&mut self) {
@@ -3696,7 +3700,7 @@ mod normal_constructed_setup_tests {
         let _id_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
         let selections = Some(vec![Some("Gyruda, Doom of Depths".to_string()), None]);
-        game.apply_match_setup_with_companions(
+        game.apply_match_setup_with_companions_native(
             normal_config(
                 repeated("Plains", 60),
                 vec!["Gyruda, Doom of Depths".to_string()],
@@ -3714,7 +3718,7 @@ mod normal_constructed_setup_tests {
         invalid_deck.push("Lightning Bolt".to_string());
         let players_before = game.game.players.clone();
         let error = game
-            .apply_match_setup_with_companions(
+            .apply_match_setup_with_companions_native(
                 normal_config(
                     invalid_deck,
                     vec!["Gyruda, Doom of Depths".to_string()],
@@ -3722,7 +3726,7 @@ mod normal_constructed_setup_tests {
                 Some(vec![Some("Gyruda, Doom of Depths".to_string()), None]),
             )
             .expect_err("an odd-mana-value card violates Gyruda's condition");
-        assert!(error.as_string().unwrap_or_default().contains("does not fulfill"));
+        assert!(error.contains("does not fulfill"), "{error}");
         assert_eq!(game.game.players, players_before, "rejection must not replace live setup");
     }
 }
@@ -4058,7 +4062,7 @@ mod commander_setup_tests {
     fn commander_companion_uses_the_pre_command_zone_starting_deck() {
         let _id_guard = crate::test_id_counter_guard();
         let mut game = WasmGame::new();
-        game.apply_match_setup_with_companions(
+        game.apply_match_setup_with_companions_native(
             explicit_config(repeated("Swamp", 99), vec!["Anje Falkenrath".to_string()]),
             Some(vec![Some("Obosh, the Preypiercer".to_string()), None]),
         )
